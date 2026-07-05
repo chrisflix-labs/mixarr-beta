@@ -1,0 +1,481 @@
+/* ---- Settings Page ---- */
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  height: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.header {
+  margin-bottom: 0.5rem;
+}
+
+.header h2 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.header p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.healthLink {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1rem 1.15rem;
+  color: var(--fg);
+  border-radius: var(--radius-lg);
+}
+
+.healthLink > svg { color: var(--accent); }
+.healthLink strong { display: block; font-size: 0.95rem; }
+.healthLink small { display: block; color: var(--muted); font-size: 0.78rem; margin-top: 0.2rem; }
+
+/* ---- Section panels ---- */
+
+.section {
+  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+}
+
+.sectionTitle {
+  margin: 0 0 1rem 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.aboutSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.aboutHeader {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.aboutHeader .sectionTitle {
+  margin-bottom: 0.15rem;
+}
+
+.aboutHeader p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.aboutIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.versionBadge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.42rem 0.62rem;
+  border: 1px solid rgba(124, 111, 247, 0.36);
+  border-radius: 999px;
+  color: #d9d5ff;
+  background: rgba(124, 111, 247, 0.13);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.aboutRows {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+}
+
+.aboutRows div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.38fr) 1fr;
+  gap: 0.75rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.aboutRows dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.aboutRows dd {
+  margin: 0;
+  color: var(--fg);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.aboutActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 38px;
+  padding: 0.58rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.secondaryButton:hover {
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.sectionDesc {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0 0 1rem 0;
+  line-height: 1.5;
+}
+
+/* ---- Inputs ---- */
+
+.field {
+  margin-bottom: 0.85rem;
+}
+
+.field label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+.readonlyInput {
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  width: 100%;
+  outline: none;
+  cursor: not-allowed;
+}
+
+.input {
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  width: 100%;
+  outline: none;
+}
+
+.input option {
+  color: #111;
+}
+
+.schedulerForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.schedulerStatusGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.schedulerStatusCard {
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.schedulerStatusCard span,
+.schedulerStatusCard small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.schedulerStatusCard strong {
+  display: block;
+  margin: 0.18rem 0;
+  color: var(--fg);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.toggleRow {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.7rem;
+  align-items: start;
+  padding: 0.8rem 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.toggleRow input {
+  width: 18px;
+  height: 18px;
+  margin-top: 0.12rem;
+  accent-color: var(--accent);
+}
+
+.toggleRow strong,
+.toggleRow small {
+  display: block;
+}
+
+.toggleRow strong {
+  font-size: 0.88rem;
+}
+
+.toggleRow small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.schedulerGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.schedulerGrid .field {
+  margin-bottom: 0;
+}
+
+.fullWidthField {
+  grid-column: 1 / -1;
+}
+
+.schedulerPreview {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.65rem;
+  align-items: start;
+  padding: 0.8rem;
+  border: 1px solid rgba(53, 174, 234, 0.22);
+  border-radius: var(--radius-md);
+  color: #b9e9ff;
+  background: rgba(53, 174, 234, 0.07);
+}
+
+.schedulerPreview strong,
+.schedulerPreview span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.schedulerPreview strong {
+  font-size: 0.84rem;
+}
+
+.schedulerPreview span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-top: 0.15rem;
+}
+
+.schedulerRunRows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin: 0;
+}
+
+.schedulerRunRows div {
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.schedulerRunRows dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.schedulerRunRows dd {
+  margin: 0.12rem 0 0;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.schedulerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.primaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 38px;
+  padding: 0.58rem 0.8rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  background: var(--accent);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.primaryButton:hover {
+  background: var(--accent-hover);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.inlineNote,
+.successText,
+.errorText {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.inlineNote {
+  color: var(--muted);
+}
+
+.successText {
+  color: #8de6b0;
+}
+
+.errorText {
+  color: var(--danger);
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 0.85rem 0;
+  padding-top: 0.85rem;
+}
+
+.divider h4 {
+  margin: 0 0 0.65rem 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* ---- Danger section ---- */
+
+.dangerSection {
+  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(215, 91, 91, 0.15);
+}
+
+.dangerSection h3 {
+  margin: 0 0 0.85rem 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--danger);
+}
+
+.dangerActions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.dangerBtn {
+  background: rgba(215, 91, 91, 0.08);
+  border: 1px solid rgba(215, 91, 91, 0.25);
+  color: var(--danger);
+  padding: 0.65rem 1.25rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+
+.dangerBtn:hover {
+  background: rgba(215, 91, 91, 0.15);
+}
+
+/* ---- Provider list ---- */
+
+.providerList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 768px) {
+  .wrapper {
+    max-width: 100%;
+  }
+
+  .aboutHeader,
+  .aboutRows div,
+  .schedulerStatusGrid,
+  .schedulerGrid,
+  .schedulerRunRows {
+    grid-template-columns: 1fr;
+  }
+
+  .aboutIcon {
+    display: none;
+  }
+
+  .aboutActions {
+    flex-direction: column;
+  }
+}

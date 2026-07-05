@@ -1,0 +1,79 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, it } from "node:test";
+import {
+  compareSemanticVersions,
+  getReleaseNotesNewestFirst,
+  getReleaseNotesOldestFirst,
+  MIXARR_BETA_DISCORD_URL,
+  releaseNotes,
+} from "./releaseNotes";
+
+describe("release notes", () => {
+  it("sorts release notes from oldest to newest", () => {
+    const ordered = getReleaseNotesOldestFirst();
+
+    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix"]);
+  });
+
+  it("sorts release notes from newest to oldest", () => {
+    const ordered = getReleaseNotesNewestFirst();
+
+    assert.deepEqual(ordered.map((note) => note.version), ["1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
+  });
+
+  it("sorts semantic versions newest first without string ordering", () => {
+    const ordered = getReleaseNotesNewestFirst([
+      { version: "v1.2.0", title: "One", badges: ["Beta"], changes: ["One"] },
+      { version: "v1.10.0", title: "Two", badges: ["Beta"], changes: ["Two"] },
+      { version: "v1.99.99", title: "Three", badges: ["Beta"], changes: ["Three"] },
+      { version: "v2.0.0", title: "Four", badges: ["Beta"], changes: ["Four"] },
+      { version: "v1.1.0", title: "Five", badges: ["Beta"], changes: ["Five"] },
+      { version: "v1.1.1", title: "Six", badges: ["Beta"], changes: ["Six"] },
+    ]);
+
+    assert.deepEqual(ordered.map((note) => note.version), ["v2.0.0", "v1.99.99", "v1.10.0", "v1.2.0", "v1.1.1", "v1.1.0"]);
+  });
+
+  it("uses semantic version ordering", () => {
+    assert.equal(compareSemanticVersions("1.0.10", "1.0.9") > 0, true);
+    assert.equal(compareSemanticVersions("v1.0.9", "1.0.10") < 0, true);
+    assert.equal(compareSemanticVersions("v1.10.0", "v1.2.0") > 0, true);
+    assert.equal(compareSemanticVersions("v2.0.0", "v1.99.99") > 0, true);
+    assert.equal(compareSemanticVersions("v1.1.1", "v1.1.0") > 0, true);
+    assert.equal(compareSemanticVersions("v1.1.6-hotfix", "v1.1.6") > 0, true);
+  });
+
+  it("keeps the beta Discord invite exact", () => {
+    assert.equal(MIXARR_BETA_DISCORD_URL, "https://discord.com/invite/B7xMvAhaF");
+  });
+
+  it("includes changes for each seeded version", () => {
+    assert.equal(releaseNotes.every((note) => note.title && note.changes.length > 0), true);
+  });
+
+  it("links the sidebar navigation to the release notes page", () => {
+    const sidebarPath = join(process.cwd(), "src", "components", "Sidebar.tsx");
+    const sidebar = readFileSync(sidebarPath, "utf8");
+
+    assert.match(sidebar, /href="\/release-notes"/);
+    assert.match(sidebar, /Release Notes/);
+  });
+
+  it("links the sidebar navigation to the roadmap page", () => {
+    const sidebarPath = join(process.cwd(), "src", "components", "Sidebar.tsx");
+    const sidebar = readFileSync(sidebarPath, "utf8");
+
+    assert.match(sidebar, /href="\/roadmap"/);
+    assert.match(sidebar, /Roadmap/);
+  });
+
+  it("links the sidebar navigation to the job history page", () => {
+    const sidebarPath = join(process.cwd(), "src", "components", "Sidebar.tsx");
+    const sidebar = readFileSync(sidebarPath, "utf8");
+
+    assert.match(sidebar, /href="\/jobs"/);
+    assert.match(sidebar, /Job History/);
+  });
+});

@@ -1,0 +1,368 @@
+.page {
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.kicker,
+.badge,
+.versionPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.kicker {
+  margin-bottom: 0.45rem;
+  padding: 0.28rem 0.5rem;
+  border: 1px solid rgba(53, 174, 234, 0.25);
+  color: #b9e9ff;
+  background: rgba(53, 174, 234, 0.09);
+}
+
+.header h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.75rem;
+}
+
+.header p {
+  max-width: 760px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.releasePanel {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.9rem;
+  margin-bottom: 1.5rem;
+  padding: 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.panelIcon,
+.teaserIcon,
+.calloutIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  flex: 0 0 auto;
+}
+
+.panelIcon {
+  width: 42px;
+  height: 42px;
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.badge {
+  margin-bottom: 0.45rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid rgba(124, 111, 247, 0.36);
+  color: #d9d5ff;
+  background: rgba(124, 111, 247, 0.13);
+}
+
+.releasePanel h3 {
+  margin: 0 0 0.3rem;
+  font-size: 1.15rem;
+}
+
+.releasePanel p {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.currentReleaseList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.currentReleaseList span {
+  max-width: 100%;
+  padding: 0.28rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.section {
+  margin-bottom: 1.5rem;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.sectionHeader h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.sectionHeader p {
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.featureGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.futureNote {
+  margin-top: 0.8rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.featureCard {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(20, 20, 24, 0.78);
+}
+
+.featureCard span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--info);
+  box-shadow: 0 0 0 4px rgba(53, 174, 234, 0.09);
+}
+
+.featureCard p {
+  min-width: 0;
+  color: var(--fg);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.teaser {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid rgba(124, 111, 247, 0.24);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(124, 111, 247, 0.11), rgba(53, 174, 234, 0.06) 50%, rgba(242, 181, 46, 0.04)),
+    rgba(20, 20, 24, 0.88);
+  box-shadow: var(--shadow);
+}
+
+.teaserTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.teaserIcon {
+  width: 40px;
+  height: 40px;
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.versionPill {
+  padding: 0.42rem 0.62rem;
+  border: 1px solid rgba(124, 111, 247, 0.36);
+  color: #d9d5ff;
+  background: rgba(124, 111, 247, 0.13);
+}
+
+.teaser h3 {
+  margin: 0 0 0.45rem;
+  font-size: 1.35rem;
+}
+
+.teaser p {
+  max-width: 850px;
+  margin-bottom: 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.ideaGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.ideaGrid span {
+  max-width: 100%;
+  padding: 0.3rem 0.52rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.communityGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.callout {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.85rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.calloutIcon {
+  width: 36px;
+  height: 36px;
+  color: #b9e9ff;
+  background: rgba(53, 174, 234, 0.09);
+  border: 1px solid rgba(53, 174, 234, 0.22);
+}
+
+.callout h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.callout p {
+  margin: 0 0 0.55rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.callout a {
+  display: inline-flex;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: #b9e9ff;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.footerActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 38px;
+  padding: 0.58rem 0.8rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.primaryButton {
+  color: #fff;
+  background: var(--accent);
+}
+
+.primaryButton:hover {
+  background: var(--accent-hover);
+}
+
+.secondaryButton {
+  border: 1px solid var(--line);
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.secondaryButton:hover {
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+@media (max-width: 768px) {
+  .page {
+    max-width: none;
+  }
+
+  .header {
+    margin-bottom: 1rem;
+  }
+
+  .header h2 {
+    font-size: 1.55rem;
+  }
+
+  .releasePanel,
+  .callout {
+    grid-template-columns: 1fr;
+  }
+
+  .sectionHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .featureGrid,
+  .communityGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .teaser {
+    padding: 1rem;
+  }
+
+  .footerActions {
+    justify-content: stretch;
+    flex-direction: column;
+  }
+}
