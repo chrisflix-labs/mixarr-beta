@@ -58,6 +58,7 @@ export function summarizePlaylistRecipeFilters(filters: PlaylistConfigInput) {
   const rules = collectRules(filters.ruleTree as RuleNode | undefined, filters.rules);
   const genres = rules.filter((rule) => rule.field === "genre").map((rule) => rule.value);
   const parts: string[] = [];
+  if (filters.smartPresetName) parts.push(`Preset: ${filters.smartPresetName}`);
   if (genres.length) parts.push(`Genres: ${genres.slice(0, 3).join(", ")}${genres.length > 3 ? "..." : ""}`);
 
   const bpm = numericRangeLabel(rules, "tempo");

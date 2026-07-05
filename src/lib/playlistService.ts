@@ -90,6 +90,9 @@ export const playlistConfigSchema = z.object({
   libraryId: z.string().optional().nullable(),
   pinnedTrackIds: z.array(z.string()).max(maxPlaylistSize).default([]),
   excludedTrackIds: z.array(z.string()).max(maxPlaylistSize).default([]),
+  smartPresetId: z.string().trim().max(80).optional(),
+  smartPresetName: z.string().trim().max(120).optional(),
+  smartPresetVersion: z.string().trim().max(40).optional(),
 }).merge(playlistOptionsSchema);
 
 export const savedPlaylistSchema = playlistConfigSchema.extend({
@@ -692,20 +695,26 @@ function buildPreviewWarnings({
   tracks,
   matchedTrackCount,
   requestedLimit,
+  smartPresetName,
 }: {
   tracks: any[];
   matchedTrackCount: number;
   requestedLimit: number;
+  smartPresetName?: string;
 }) {
   const warnings: string[] = [];
   if (matchedTrackCount === 0 || tracks.length === 0) {
-    warnings.push("No tracks matched this playlist recipe. Adjust your filters and preview again.");
+    warnings.push(smartPresetName
+      ? `No tracks matched the ${smartPresetName} preset. Try widening the BPM range, allowing more genres, or disabling popularity limits.`
+      : "No tracks matched this playlist recipe. Adjust your filters and preview again.");
     warnings.push("Some filters may be too restrictive. Try widening BPM, energy, mood, genre, or popularity filters.");
     return warnings;
   }
 
   if (matchedTrackCount < requestedLimit) {
-    warnings.push(`Only ${matchedTrackCount} tracks matched your filters. Try widening the BPM range, removing a genre filter, or allowing tracks with missing audio features.`);
+    warnings.push(smartPresetName
+      ? `Only ${matchedTrackCount} tracks matched the ${smartPresetName} preset. Try widening the BPM range, allowing more genres, or disabling popularity limits.`
+      : `Only ${matchedTrackCount} tracks matched your filters. Try widening the BPM range, removing a genre filter, or allowing tracks with missing audio features.`);
   }
   if (tracks.length < requestedLimit) {
     warnings.push(`Playlist has fewer tracks than requested: ${tracks.length} of ${requestedLimit}.`);
@@ -779,6 +788,9 @@ export async function previewPlaylistTracks({
     removedBySafetyRules: generation.safety.removedBySafetyRules,
     safetyRearrangedTrackCount: generation.safety.rearrangedTrackCount,
     safetyRuleSummary: generation.safety.summary,
+    smartPresetId: config.smartPresetId || null,
+    smartPresetName: config.smartPresetName || null,
+    smartPresetVersion: config.smartPresetVersion || null,
     artistLimitApplied: generation.safety.artistLimitApplied,
     albumLimitApplied: generation.safety.albumLimitApplied,
     artistSpacingApplied: generation.safety.artistSpacingApplied,
@@ -798,6 +810,7 @@ export async function previewPlaylistTracks({
   };
 
   const filterSummary = [
+    ...(config.smartPresetName ? [{ label: "Smart preset", value: config.smartPresetName }] : []),
     { label: "Server", value: server?.name || (config.serverId ? "Selected server" : "Any connected server") },
     { label: "Library", value: library?.name || (config.libraryId ? "Selected library" : "Any music library") },
     { label: "Genres", value: summary.genreFilters },
@@ -815,7 +828,7 @@ export async function previewPlaylistTracks({
   ];
 
   const warnings = [
-    ...buildPreviewWarnings({ tracks: previewTracks, matchedTrackCount, requestedLimit: config.limit }),
+    ...buildPreviewWarnings({ tracks: previewTracks, matchedTrackCount, requestedLimit: config.limit, smartPresetName: config.smartPresetName }),
     ...generation.safety.warnings,
   ].filter((warning, index, list) => list.indexOf(warning) === index);
 

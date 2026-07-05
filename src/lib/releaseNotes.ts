@@ -22,6 +22,7 @@ export type ReleaseNoteBadge =
   | "Safety Rules"
   | "Scheduler"
   | "Settings"
+  | "Smart Builder"
   | "UI";
 
 export type ReleaseNote = {
@@ -33,6 +34,19 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.2.0",
+    title: "Smart Playlist Builder v1",
+    badges: ["Smart Builder", "Playlists", "Recipes", "Preview", "Safety Rules"],
+    changes: [
+      "Added Smart Playlist Builder v1 with guided playlist presets.",
+      "Added presets for Workout, Chill, Party, Focus, Driving, Discovery, Deep Cuts, Popular Favorites, and Balanced Mix.",
+      "Smart Builder now suggests filters, BPM ranges, energy/mood ranges, popularity preferences, and safety rules.",
+      "Smart Builder uses the existing playlist preview flow before creating playlists.",
+      "Smart Builder setups can be saved as reusable playlist recipes.",
+      "Playlist creation history now records the Smart Builder preset used.",
+    ],
+  },
   {
     version: "1.1.10",
     title: "Playlist Safety Rules",

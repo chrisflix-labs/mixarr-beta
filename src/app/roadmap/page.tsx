@@ -10,21 +10,23 @@ export const metadata = {
 };
 
 const nextFeatures = [
-  "Webhook-triggered recently-added scans",
-  "Smart playlist builder",
-  "Advanced playlist regeneration",
-  "Artist variety controls",
-  "Artist/album exclusion rules",
+  "Mood presets",
+  "BPM range presets",
+  "Playlist regeneration",
+  "Playlist history improvements",
   "Import/export recipes",
-  "Recipe sharing",
+  "Advanced Smart Mix Engine",
+  "Deep cut / discovery tuning",
+  "Beta experimental features",
 ];
 
 const currentReleaseFeatures = [
-  "Playlist safety rules",
-  "Avoid same-artist back-to-back tracks",
-  "Max tracks per artist and album controls",
-  "Low-track-count playlist warnings",
-  "Safety summaries in preview and Job History",
+  "Smart playlist builder",
+  "Guided presets for Workout, Chill, Party, Focus, Driving, Discovery, Deep Cuts, Popular Favorites, and Balanced Mix",
+  "Preset-generated BPM, energy, mood, popularity, and safety defaults",
+  "Playlist preview before Smart Builder creates playlists",
+  "Smart Builder setups saved as reusable playlist recipes",
+  "Smart Builder preset details recorded in Job History",
 ];
 
 const v2Ideas = [
@@ -62,7 +64,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release adds basic Playlist Safety Rules so generated previews can avoid repetitive artist runs, album pileups, and very small playlist results.</p>
+          <p>This release adds Smart Playlist Builder v1, a guided preset layer on top of the existing playlist builder, preview, recipes, and safety rules.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -87,7 +89,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Webhook-triggered scans, Smart Mix Engine work, and broader artist or album exclusion rules are planned for future releases.</p>
+        <p className={styles.futureNote}>Mood presets, BPM presets, regeneration, recipe portability, and deeper discovery tuning are planned for future releases.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

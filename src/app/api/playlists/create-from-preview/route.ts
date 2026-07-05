@@ -53,17 +53,22 @@ export async function POST(req: Request) {
       ? ` Manual exclusions removed ${excludedTrackCount} track${excludedTrackCount === 1 ? "" : "s"} from the candidate pool.`
       : "";
     const safetyConfig = optionsSnapshot ? playlistConfigSchema.safeParse(optionsSnapshot) : null;
-    const safetyRuleSummary = safetyConfig?.success ? summarizePlaylistSafetyRules(safetyConfig.data) : "Safety: off";
+    const parsedOptions = safetyConfig?.success ? safetyConfig.data : null;
+    const safetyRuleSummary = parsedOptions ? summarizePlaylistSafetyRules(parsedOptions) : "Safety: off";
     const safetySummary = safetyRulesApplied || (safetyConfig?.success && safetyRuleSummary !== "Safety: off")
       ? ` Safety rules applied: ${safetyRuleSummary.replace(/^Safety: /, "")}.`
       : "";
+    const smartPresetName = parsedOptions?.smartPresetName || null;
+    const smartPresetSummary = smartPresetName ? ` from Smart Builder preset "${smartPresetName}"` : "";
     await safeRecordJobHistory({
       userId,
       type: "playlist",
       name: "Playlist create from preview",
       status: "success",
       trigger: "manual",
-      summary: resolvedRecipeName
+      summary: smartPresetName
+        ? `Created playlist "${trimmedName}"${smartPresetSummary} with ${result.trackCount} tracks.${exclusionSummary}${safetySummary}`
+        : resolvedRecipeName
         ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}" with ${result.trackCount} tracks.${exclusionSummary}${safetySummary}`
         : `Created playlist "${trimmedName}" from preview with ${result.trackCount} tracks.${exclusionSummary}${safetySummary}`,
       counts: { attempted: trackIds.length, processed: result.trackCount, skipped: Math.max(0, trackIds.length - result.trackCount), failed: 0 },
@@ -74,12 +79,15 @@ export async function POST(req: Request) {
         previewId: previewId || null,
         recipeId: ownedRecipe?.id || recipeId || null,
         recipeName: resolvedRecipeName,
+        smartPresetId: parsedOptions?.smartPresetId || null,
+        smartPresetName,
+        smartPresetVersion: parsedOptions?.smartPresetVersion || null,
         playlistName: trimmedName,
         trackCount: result.trackCount,
         manualExclusionsApplied: excludedTrackCount > 0,
         excludedTrackCount,
         manualExclusionsRemoved: excludedTrackCount,
-        safetyRules: safetyConfig?.success ? safetyConfig.data.safetyRules : null,
+        safetyRules: parsedOptions?.safetyRules || null,
         safetyRuleSummary,
         safetyRulesApplied: Boolean(safetySummary),
         removedBySafetyRules: Math.max(0, Number(removedBySafetyRules) || 0),

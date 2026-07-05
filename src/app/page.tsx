@@ -1,6 +1,6 @@
 import styles from "./page.module.css";
 import Link from "next/link";
-import { BookMarked, BrainCircuit, Fingerprint, Gauge, HeartPulse, History, ListMusic, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Wand2 } from "lucide-react";
+import { BookMarked, BrainCircuit, Fingerprint, Gauge, HeartPulse, History, ListMusic, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
 import LibrarySelector from "@/components/LibrarySelector";
 import SyncProgress from "@/components/SyncProgress";
 import PlexLoginButton from "@/components/PlexLoginButton";
@@ -12,11 +12,11 @@ import { getRecentJobSummary } from "@/lib/jobHistory";
 
 const previewFeatures = [
   {
-    title: "Smart Mix Builder",
-    description: "Build playlists from a vibe, mood, energy level, BPM range, genre blend, or listening goal.",
-    examples: ["Late-night drive", "Gym mode", "Deep cuts only"],
+    title: "Smart Playlist Builder",
+    description: "Start with guided presets for workout, chill, party, focus, driving, discovery, deep cuts, favorites, or balanced mixes.",
+    examples: ["Workout", "Discovery", "Balanced Mix"],
     icon: SlidersHorizontal,
-    badge: "Planned",
+    badge: "v1.2.0",
   },
   {
     title: "AI DJ Flow",
@@ -109,6 +109,20 @@ function PlaylistRecipesCard({ count }: { count: number }) {
           <Link href="/recipes" className={styles.cardAction}>View Recipes</Link>
           <Link href="/builder" className={`${styles.cardAction} ${styles.secondaryCardAction}`}>Build Playlist</Link>
         </div>
+      </div>
+    </article>
+  );
+}
+
+function SmartBuilderCard() {
+  return (
+    <article className={styles.card}>
+      <Sparkles size={22} className={styles.cardIcon} />
+      <h3>Smart Playlist Builder</h3>
+      <p>Choose a goal like Workout, Chill, Party, Focus, or Discovery and let Mixarr suggest the starting filters.</p>
+      <div className={styles.versionCardActions}>
+        <Link href="/smart-builder" className={styles.cardAction}>Open Smart Builder</Link>
+        <Link href="/recipes" className={`${styles.cardAction} ${styles.secondaryCardAction}`}>View Recipes</Link>
       </div>
     </article>
   );
@@ -211,6 +225,7 @@ export default async function Home() {
           )}
           <div className={styles.compactCardsGrid}>
             <RecentJobsCard summary={jobSummary} />
+            <SmartBuilderCard />
             <PlaylistRecipesCard count={recipeCount} />
             <MixarrVersionCard />
             <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
@@ -295,6 +310,8 @@ export default async function Home() {
             <RecentJobsCard summary={null} />
 
             <PlaylistRecipesCard count={0} />
+
+            <SmartBuilderCard />
 
             <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
               <Map size={24} className={styles.cardIcon} />

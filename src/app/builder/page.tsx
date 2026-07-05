@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks, Ban, ShieldCheck } from "lucide-react";
+import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks, Ban, ShieldCheck, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import styles from "./builder.module.css";
@@ -39,6 +39,12 @@ type SafetyRules = {
   maxTracksPerAlbum: string;
   warnIfFewerThan: boolean;
   minimumTrackCount: string;
+};
+
+type SmartPresetMetadata = {
+  smartPresetId?: string;
+  smartPresetName?: string;
+  smartPresetVersion?: string;
 };
 
 type SavedRule = {
@@ -159,6 +165,7 @@ export default function BuilderPage() {
     warnIfFewerThan: true,
     minimumTrackCount: "10",
   });
+  const [smartPresetMetadata, setSmartPresetMetadata] = useState<SmartPresetMetadata>({});
   const [pinnedTrackIds, setPinnedTrackIds] = useState<string[]>([]);
   const [excludedTrackIds, setExcludedTrackIds] = useState<string[]>([]);
   const [draggedTrackId, setDraggedTrackId] = useState("");
@@ -344,6 +351,7 @@ export default function BuilderPage() {
       warnIfFewerThan: safetyRules.warnIfFewerThan,
       minimumTrackCount: safetyRules.minimumTrackCount || undefined,
     },
+    ...smartPresetMetadata,
     ...extra,
   });
 
@@ -376,6 +384,9 @@ export default function BuilderPage() {
       warnIfFewerThan: filters.safetyRules?.warnIfFewerThan ?? true,
       minimumTrackCount: filters.safetyRules?.minimumTrackCount != null ? filters.safetyRules.minimumTrackCount.toString() : "10",
     },
+    smartPresetId: filters.smartPresetId,
+    smartPresetName: filters.smartPresetName,
+    smartPresetVersion: filters.smartPresetVersion,
     pinnedTrackIds: filters.pinnedTrackIds || [],
     excludedTrackIds: filters.excludedTrackIds || [],
   });
@@ -472,6 +483,7 @@ export default function BuilderPage() {
     setIsEditingRecipe(false);
     setRecipeBaselineSignature("");
     setRecipeNotice("");
+    setSmartPresetMetadata({});
     if (!id) return;
 
     const savedRule = savedRules.find(rule => rule.id === id);
@@ -498,6 +510,11 @@ export default function BuilderPage() {
       maxDurationMinutes: savedRule.options?.negativeFilters?.maxDurationMinutes?.toString() || "",
     });
     restoreSafetyRules(savedRule.options?.safetyRules);
+    setSmartPresetMetadata({
+      smartPresetId: savedRule.options?.smartPresetId,
+      smartPresetName: savedRule.options?.smartPresetName,
+      smartPresetVersion: savedRule.options?.smartPresetVersion,
+    });
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
     setTracks([]);
@@ -536,6 +553,11 @@ export default function BuilderPage() {
       maxDurationMinutes: filters.negativeFilters?.maxDurationMinutes?.toString() || "",
     });
     restoreSafetyRules(filters.safetyRules);
+    setSmartPresetMetadata({
+      smartPresetId: filters.smartPresetId,
+      smartPresetName: filters.smartPresetName,
+      smartPresetVersion: filters.smartPresetVersion,
+    });
     setPinnedTrackIds(filters.pinnedTrackIds || []);
     setExcludedTrackIds(filters.excludedTrackIds || []);
     setTracks([]);
@@ -678,6 +700,7 @@ export default function BuilderPage() {
     setIsEditingRecipe(false);
     setRecipeBaselineSignature("");
     setRecipeNotice("");
+    setSmartPresetMetadata({});
     if (templateName === "deep_cuts") {
       setRules([{ field: "popularity", operator: "lt", value: "30" }]);
       setPlaylistName("Deep Cuts Discovered");
@@ -901,9 +924,24 @@ export default function BuilderPage() {
       {/* LEFT COLUMN: BUILDER */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "1.5rem" }}>
         <header className={styles.header}>
-          <h2>Playlist Builder</h2>
-          <p>Create dynamic mixes using cached metadata</p>
+          <div>
+            <h2>Playlist Builder</h2>
+            <p>Create dynamic mixes using cached metadata</p>
+          </div>
+          <button type="button" onClick={() => router.push("/smart-builder")} className={styles.btnSecondary}>
+            <Sparkles size={16} />
+            Try Smart Builder
+          </button>
         </header>
+
+        {smartPresetMetadata.smartPresetName && (
+          <div className={styles.recipeNotice}>
+            <span>Smart preset: {smartPresetMetadata.smartPresetName}</span>
+            <button type="button" onClick={() => setSmartPresetMetadata({})} className={styles.btnIcon} aria-label="Clear smart preset metadata">
+              <X size={14} />
+            </button>
+          </div>
+        )}
 
         {recipeNotice && (
           <div className={styles.recipeNotice}>

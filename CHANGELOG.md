@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.0 - Smart Playlist Builder v1
+
+- Added Smart Playlist Builder v1 with guided playlist presets.
+- Added presets for Workout, Chill, Party, Focus, Driving, Discovery, Deep Cuts, Popular Favorites, and Balanced Mix.
+- Smart Builder now suggests filters, BPM ranges, energy/mood ranges, popularity preferences, and safety rules.
+- Smart Builder uses the existing playlist preview flow before creating playlists.
+- Smart Builder setups can be saved as reusable playlist recipes.
+- Playlist creation history now records the Smart Builder preset used.
+
 ## v1.1.10 - Playlist Safety Rules
 
 - Added optional playlist safety rules to reduce repetitive results.

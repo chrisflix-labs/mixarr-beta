@@ -1,0 +1,619 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import axios from "axios";
+import Link from "next/link";
+import { AlertTriangle, ArrowLeft, Ban, BookMarked, CheckCircle2, ListChecks, Play, RefreshCw, Save, Sparkles, Upload } from "lucide-react";
+import TrackPreviewButton from "@/components/TrackPreviewButton";
+import { buildSmartPresetConfig, SMART_PRESET_VERSION, smartPlaylistPresets, type SmartPlaylistPreset } from "@/lib/smartPlaylistPresets";
+import styles from "./smart-builder.module.css";
+
+type Rule = {
+  field: string;
+  operator: string;
+  value: string;
+};
+
+type SafetyRules = {
+  avoidSameArtistBackToBack: boolean;
+  limitTracksPerArtist: boolean;
+  maxTracksPerArtist: string;
+  limitTracksPerAlbum: boolean;
+  maxTracksPerAlbum: string;
+  warnIfFewerThan: boolean;
+  minimumTrackCount: string;
+};
+
+type RangeState = {
+  bpmMin: string;
+  bpmMax: string;
+  energyMin: string;
+  energyMax: string;
+  moodMin: string;
+  moodMax: string;
+  popularityMin: string;
+  popularityMax: string;
+};
+
+type ServerOption = {
+  id: string;
+  name: string;
+  libraries: Array<{ id: string; name: string }>;
+};
+
+type PlaylistPreviewSummary = {
+  targetTrackCount: number;
+  matchingTrackCount: number;
+  finalTrackCount: number;
+  estimatedDurationMinutes: number;
+  manualExclusionsRemoved?: number;
+  removedBySafetyRules?: number;
+  safetyRuleSummary?: string;
+  smartPresetName?: string | null;
+  bpmRange: string;
+  energyRange: string;
+  moodRange: string;
+  popularityRange: string;
+};
+
+type PlaylistPreviewState = {
+  previewId: string;
+  trackIds: string[];
+  totalPreviewTrackCount: number;
+  summary: PlaylistPreviewSummary;
+  filterSummary: Array<{ label: string; value: string }>;
+  warnings: string[];
+  signature: string;
+};
+
+const emptyRanges: RangeState = {
+  bpmMin: "",
+  bpmMax: "",
+  energyMin: "",
+  energyMax: "",
+  moodMin: "",
+  moodMax: "",
+  popularityMin: "",
+  popularityMax: "",
+};
+
+function formatDuration(ms?: number | null) {
+  if (!ms) return "-";
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function formatEstimatedDuration(minutes?: number | null) {
+  if (!minutes) return "0 min";
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (hours === 0) return `${minutes} min`;
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+}
+
+function rangeFromRules(rules: Rule[], field: string) {
+  const min = rules.find((rule) => rule.field === field && (rule.operator === "gte" || rule.operator === "gt"))?.value || "";
+  const max = rules.find((rule) => rule.field === field && (rule.operator === "lte" || rule.operator === "lt"))?.value || "";
+  return { min, max };
+}
+
+function rangesFromPreset(preset: SmartPlaylistPreset): RangeState {
+  const bpm = rangeFromRules(preset.filters.rules, "tempo");
+  const energy = rangeFromRules(preset.filters.rules, "energy");
+  const mood = rangeFromRules(preset.filters.rules, "valence");
+  const popularity = rangeFromRules(preset.filters.rules, "popularity");
+  return {
+    bpmMin: bpm.min,
+    bpmMax: bpm.max,
+    energyMin: energy.min,
+    energyMax: energy.max,
+    moodMin: mood.min,
+    moodMax: mood.max,
+    popularityMin: popularity.min,
+    popularityMax: popularity.max,
+  };
+}
+
+function safetyFromPreset(preset: SmartPlaylistPreset): SafetyRules {
+  return {
+    avoidSameArtistBackToBack: preset.filters.safetyRules.avoidSameArtistBackToBack,
+    limitTracksPerArtist: preset.filters.safetyRules.limitTracksPerArtist,
+    maxTracksPerArtist: String(preset.filters.safetyRules.maxTracksPerArtist),
+    limitTracksPerAlbum: preset.filters.safetyRules.limitTracksPerAlbum,
+    maxTracksPerAlbum: String(preset.filters.safetyRules.maxTracksPerAlbum),
+    warnIfFewerThan: preset.filters.safetyRules.warnIfFewerThan,
+    minimumTrackCount: String(preset.filters.safetyRules.minimumTrackCount),
+  };
+}
+
+function rangeRules(field: string, min: string, max: string): Rule[] {
+  return [
+    ...(min.trim() ? [{ field, operator: "gte", value: min.trim() }] : []),
+    ...(max.trim() ? [{ field, operator: "lte", value: max.trim() }] : []),
+  ];
+}
+
+export default function SmartBuilderPage() {
+  const [selectedPresetId, setSelectedPresetId] = useState("");
+  const selectedPreset = useMemo(
+    () => smartPlaylistPresets.find((preset) => preset.id === selectedPresetId) || null,
+    [selectedPresetId],
+  );
+  const [playlistName, setPlaylistName] = useState("");
+  const [limit, setLimit] = useState(50);
+  const [genres, setGenres] = useState("");
+  const [ranges, setRanges] = useState<RangeState>(emptyRanges);
+  const [safetyRules, setSafetyRules] = useState<SafetyRules>({
+    avoidSameArtistBackToBack: true,
+    limitTracksPerArtist: true,
+    maxTracksPerArtist: "3",
+    limitTracksPerAlbum: false,
+    maxTracksPerAlbum: "2",
+    warnIfFewerThan: true,
+    minimumTrackCount: "10",
+  });
+  const [serverId, setServerId] = useState("");
+  const [libraryId, setLibraryId] = useState("");
+  const [servers, setServers] = useState<ServerOption[]>([]);
+  const [tracks, setTracks] = useState<any[]>([]);
+  const [playlistPreview, setPlaylistPreview] = useState<PlaylistPreviewState | null>(null);
+  const [previewError, setPreviewError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [savingRecipe, setSavingRecipe] = useState(false);
+
+  useEffect(() => {
+    const loadDefaults = async () => {
+      try {
+        const res = await axios.get("/api/settings/library-selection");
+        setServerId(res.data.defaultServerId || "");
+        setLibraryId(res.data.defaultLibraryId || "");
+        setServers(res.data.servers || []);
+      } catch (error) {
+        console.error("Failed to load library defaults", error);
+      }
+    };
+
+    loadDefaults();
+  }, []);
+
+  const clearPreview = () => {
+    setTracks([]);
+    setPlaylistPreview(null);
+    setPreviewError("");
+    setNotice("");
+  };
+
+  const selectPreset = (preset: SmartPlaylistPreset) => {
+    const config = buildSmartPresetConfig(preset);
+    setSelectedPresetId(preset.id);
+    setPlaylistName(preset.suggestedPlaylistName);
+    setLimit(config.limit);
+    setGenres("");
+    setRanges(rangesFromPreset(preset));
+    setSafetyRules(safetyFromPreset(preset));
+    clearPreview();
+  };
+
+  const selectedServer = servers.find((server) => server.id === serverId) || null;
+  const availableLibraries = selectedServer?.libraries || servers.flatMap((server) => server.libraries || []);
+
+  const buildRules = () => [
+    ...rangeRules("tempo", ranges.bpmMin, ranges.bpmMax),
+    ...rangeRules("energy", ranges.energyMin, ranges.energyMax),
+    ...rangeRules("valence", ranges.moodMin, ranges.moodMax),
+    ...rangeRules("popularity", ranges.popularityMin, ranges.popularityMax),
+  ];
+
+  const buildGenreRules = () => genres
+    .split(",")
+    .map((genre) => genre.trim())
+    .filter(Boolean)
+    .slice(0, 10)
+    .map((genre) => ({ field: "genre", operator: "contains", value: genre }));
+
+  const buildRuleTree = () => {
+    const baseRules = buildRules();
+    const genreRules = buildGenreRules();
+    const children: any[] = [];
+    if (baseRules.length > 0) {
+      children.push({ type: "group", combinator: "AND", children: baseRules.map((rule) => ({ type: "rule", ...rule })) });
+    }
+    if (genreRules.length > 0) {
+      children.push({ type: "group", combinator: "OR", children: genreRules.map((rule) => ({ type: "rule", ...rule })) });
+    }
+    if (children.length === 0) return undefined;
+    if (children.length === 1) return children[0];
+    return { type: "group", combinator: "AND", children };
+  };
+
+  const playlistPayload = () => {
+    if (!selectedPreset) return null;
+    const rules = [...buildRules(), ...buildGenreRules()];
+    return {
+      rules,
+      ruleTree: buildRuleTree(),
+      limit,
+      serverId: serverId || undefined,
+      libraryId: libraryId || undefined,
+      duplicateStrategy: "song_artist",
+      preferNonLive: true,
+      excludeRemasters: false,
+      negativeFilters: {
+        excludeHoliday: false,
+        excludeLive: false,
+        excludeRemasters: false,
+        excludeExplicit: false,
+        excludeIntroOutro: false,
+      },
+      safetyRules: {
+        avoidSameArtistBackToBack: safetyRules.avoidSameArtistBackToBack,
+        limitTracksPerArtist: safetyRules.limitTracksPerArtist,
+        maxTracksPerArtist: safetyRules.maxTracksPerArtist || undefined,
+        limitTracksPerAlbum: safetyRules.limitTracksPerAlbum,
+        maxTracksPerAlbum: safetyRules.maxTracksPerAlbum || undefined,
+        warnIfFewerThan: safetyRules.warnIfFewerThan,
+        minimumTrackCount: safetyRules.minimumTrackCount || undefined,
+      },
+      smartPresetId: selectedPreset.id,
+      smartPresetName: selectedPreset.name,
+      smartPresetVersion: SMART_PRESET_VERSION,
+      pinnedTrackIds: [],
+      excludedTrackIds: [],
+    };
+  };
+
+  const previewSignature = () => JSON.stringify(playlistPayload());
+  const isPreviewCurrent = Boolean(playlistPreview && playlistPreview.signature === previewSignature());
+  const playlistNameReady = playlistName.trim().length > 0;
+  const canCreate = Boolean(playlistNameReady && playlistPreview && isPreviewCurrent && tracks.length > 0);
+
+  const updateRange = (key: keyof RangeState, value: string) => {
+    setRanges((current) => ({ ...current, [key]: value }));
+    clearPreview();
+  };
+
+  const updateSafetyRules = (patch: Partial<SafetyRules>) => {
+    setSafetyRules((current) => ({ ...current, ...patch }));
+    clearPreview();
+  };
+
+  const previewPlaylist = async () => {
+    const payload = playlistPayload();
+    if (!payload) return;
+    setLoading(true);
+    setPreviewError("");
+    setNotice("");
+    try {
+      const signature = JSON.stringify(payload);
+      const res = await axios.post("/api/playlists/preview", payload);
+      setTracks(res.data.tracks || []);
+      setPlaylistPreview({
+        previewId: res.data.previewId,
+        trackIds: res.data.trackIds || [],
+        totalPreviewTrackCount: res.data.totalPreviewTrackCount || 0,
+        summary: res.data.summary,
+        filterSummary: res.data.filterSummary || [],
+        warnings: res.data.warnings || [],
+        signature,
+      });
+    } catch (error) {
+      console.error(error);
+      setPreviewError("Unable to generate playlist preview. Adjust the preset settings and try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveRecipe = async () => {
+    const payload = playlistPayload();
+    if (!payload || !playlistName.trim()) {
+      alert("Choose a preset and enter a playlist name before saving a recipe.");
+      return;
+    }
+
+    setSavingRecipe(true);
+    try {
+      await axios.post("/api/playlist-recipes", {
+        name: playlistName.trim(),
+        description: selectedPreset ? `Smart Builder preset: ${selectedPreset.name}` : "",
+        filters: payload,
+      });
+      setNotice(`Saved "${playlistName.trim()}" as a playlist recipe.`);
+    } catch (error: any) {
+      console.error(error);
+      alert(error.response?.data?.error || "Failed to save playlist recipe");
+    } finally {
+      setSavingRecipe(false);
+    }
+  };
+
+  const createPlaylist = async () => {
+    const payload = playlistPayload();
+    if (!payload || !playlistPreview || !isPreviewCurrent) {
+      alert("Preview this Smart Builder setup before creating the playlist.");
+      return;
+    }
+    if (!playlistName.trim() || tracks.length === 0) {
+      alert("Enter a playlist name and preview at least one track.");
+      return;
+    }
+
+    setCreating(true);
+    try {
+      await axios.post("/api/playlists/create-from-preview", {
+        name: playlistName.trim(),
+        trackIds: tracks.map((track) => track.id),
+        rulesSnapshot: payload.ruleTree || payload.rules,
+        optionsSnapshot: payload,
+        previewId: playlistPreview.previewId,
+        filters: payload,
+        manualExclusionsApplied: playlistPreview.summary.manualExclusionsRemoved || 0,
+        removedBySafetyRules: playlistPreview.summary.removedBySafetyRules || 0,
+        safetyRulesApplied: Boolean(playlistPreview.summary.safetyRuleSummary && playlistPreview.summary.safetyRuleSummary !== "Safety: off"),
+      });
+      setNotice(`Created "${playlistName.trim()}" in Plex from ${selectedPreset?.name}.`);
+    } catch (error: any) {
+      console.error(error);
+      alert(error.response?.data?.error || "Failed to create playlist in Plex");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <main className={styles.page}>
+      <header className={styles.header}>
+        <div>
+          <span className={styles.kicker}>
+            <Sparkles size={14} />
+            Smart Playlist Builder v1
+          </span>
+          <h2>What kind of playlist do you want to build?</h2>
+          <p>Start with a playlist goal like Workout, Chill, Party, Focus, or Discovery, then preview before creating.</p>
+        </div>
+        <Link href="/builder" className={styles.secondaryButton}>
+          <ArrowLeft size={16} />
+          Standard Builder
+        </Link>
+      </header>
+
+      <section className={styles.presetGrid} aria-label="Smart playlist presets">
+        {smartPlaylistPresets.map((preset) => (
+          <button
+            key={preset.id}
+            type="button"
+            onClick={() => selectPreset(preset)}
+            className={`${styles.presetCard} ${selectedPresetId === preset.id ? styles.selectedPreset : ""}`}
+          >
+            <div className={styles.presetTop}>
+              <h3>{preset.name}</h3>
+              {selectedPresetId === preset.id && <CheckCircle2 size={18} />}
+            </div>
+            <p>{preset.description}</p>
+            <div className={styles.badgeRow}>
+              {preset.badges.map((badge) => (
+                <span key={badge}>{badge}</span>
+              ))}
+            </div>
+          </button>
+        ))}
+      </section>
+
+      {selectedPreset && (
+        <section className={styles.workspace}>
+          <div className={styles.customizeColumn}>
+            <div className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div>
+                  <h3>{selectedPreset.name}</h3>
+                  <p>Smart Builder picked a starting point. Adjust anything before previewing.</p>
+                </div>
+                <button type="button" onClick={() => setSelectedPresetId("")} className={styles.ghostButton}>
+                  Back to Presets
+                </button>
+              </div>
+              <div className={styles.explanation}>{selectedPreset.explanation}</div>
+
+              <div className={styles.formGrid}>
+                <label className={styles.fieldLabel}>
+                  Playlist name
+                  <input value={playlistName} onChange={(event) => { setPlaylistName(event.target.value); clearPreview(); }} className={styles.input} />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Track limit
+                  <input type="number" min="1" value={limit} onChange={(event) => { setLimit(Number(event.target.value)); clearPreview(); }} className={styles.input} />
+                </label>
+                <label className={styles.fieldLabel}>
+                  Server
+                  <select value={serverId} onChange={(event) => { setServerId(event.target.value); setLibraryId(""); clearPreview(); }} className={styles.select}>
+                    <option value="">Any connected server</option>
+                    {servers.map((server) => (
+                      <option key={server.id} value={server.id}>{server.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.fieldLabel}>
+                  Library
+                  <select value={libraryId} onChange={(event) => { setLibraryId(event.target.value); clearPreview(); }} className={styles.select}>
+                    <option value="">Any music library</option>
+                    {availableLibraries.map((library) => (
+                      <option key={library.id} value={library.id}>{library.name}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className={styles.fieldLabel}>
+                Optional genres
+                <input value={genres} onChange={(event) => { setGenres(event.target.value); clearPreview(); }} placeholder="rock, pop, synthwave" className={styles.input} />
+              </label>
+
+              <div className={styles.rangeGrid}>
+                <label className={styles.fieldLabel}>BPM min<input value={ranges.bpmMin} onChange={(event) => updateRange("bpmMin", event.target.value)} className={styles.input} /></label>
+                <label className={styles.fieldLabel}>BPM max<input value={ranges.bpmMax} onChange={(event) => updateRange("bpmMax", event.target.value)} className={styles.input} /></label>
+                <label className={styles.fieldLabel}>Energy min<input value={ranges.energyMin} onChange={(event) => updateRange("energyMin", event.target.value)} className={styles.input} /></label>
+                <label className={styles.fieldLabel}>Energy max<input value={ranges.energyMax} onChange={(event) => updateRange("energyMax", event.target.value)} className={styles.input} /></label>
+                <label className={styles.fieldLabel}>Mood min<input value={ranges.moodMin} onChange={(event) => updateRange("moodMin", event.target.value)} className={styles.input} /></label>
+                <label className={styles.fieldLabel}>Mood max<input value={ranges.moodMax} onChange={(event) => updateRange("moodMax", event.target.value)} className={styles.input} /></label>
+                <label className={styles.fieldLabel}>Popularity min<input value={ranges.popularityMin} onChange={(event) => updateRange("popularityMin", event.target.value)} className={styles.input} /></label>
+                <label className={styles.fieldLabel}>Popularity max<input value={ranges.popularityMax} onChange={(event) => updateRange("popularityMax", event.target.value)} className={styles.input} /></label>
+              </div>
+            </div>
+
+            <div className={styles.panel}>
+              <h3>Safety Rules</h3>
+              <div className={styles.safetyGrid}>
+                <label className={styles.checkLabel}>
+                  <input type="checkbox" checked={safetyRules.avoidSameArtistBackToBack} onChange={(event) => updateSafetyRules({ avoidSameArtistBackToBack: event.target.checked })} />
+                  Avoid same artist back-to-back
+                </label>
+                <div className={styles.safetyControl}>
+                  <label className={styles.checkLabel}>
+                    <input type="checkbox" checked={safetyRules.limitTracksPerArtist} onChange={(event) => updateSafetyRules({ limitTracksPerArtist: event.target.checked })} />
+                    Limit tracks per artist
+                  </label>
+                  <input type="number" min="1" value={safetyRules.maxTracksPerArtist} disabled={!safetyRules.limitTracksPerArtist} onChange={(event) => updateSafetyRules({ maxTracksPerArtist: event.target.value })} className={styles.input} />
+                </div>
+                <div className={styles.safetyControl}>
+                  <label className={styles.checkLabel}>
+                    <input type="checkbox" checked={safetyRules.limitTracksPerAlbum} onChange={(event) => updateSafetyRules({ limitTracksPerAlbum: event.target.checked })} />
+                    Limit tracks per album
+                  </label>
+                  <input type="number" min="1" value={safetyRules.maxTracksPerAlbum} disabled={!safetyRules.limitTracksPerAlbum} onChange={(event) => updateSafetyRules({ maxTracksPerAlbum: event.target.value })} className={styles.input} />
+                </div>
+                <div className={styles.safetyControl}>
+                  <label className={styles.checkLabel}>
+                    <input type="checkbox" checked={safetyRules.warnIfFewerThan} onChange={(event) => updateSafetyRules({ warnIfFewerThan: event.target.checked })} />
+                    Warn if fewer than
+                  </label>
+                  <input type="number" min="1" value={safetyRules.minimumTrackCount} disabled={!safetyRules.warnIfFewerThan} onChange={(event) => updateSafetyRules({ minimumTrackCount: event.target.value })} className={styles.input} />
+                </div>
+              </div>
+              <div className={styles.actionRow}>
+                <button type="button" onClick={previewPlaylist} disabled={loading} className={styles.primaryButton}>
+                  {loading ? <RefreshCw size={16} className="animate-spin" /> : <Play size={16} />}
+                  Preview Playlist
+                </button>
+                <button type="button" onClick={saveRecipe} disabled={savingRecipe} className={styles.secondaryButton}>
+                  {savingRecipe ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+                  Save as Recipe
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.previewColumn}>
+            <div className={styles.panel}>
+              <div className={styles.previewHeader}>
+                <div>
+                  <h3>Playlist Preview</h3>
+                  <p>Review the exact playlist order before Mixarr writes to Plex.</p>
+                </div>
+                <button type="button" onClick={createPlaylist} disabled={creating || !canCreate} className={styles.primaryButton}>
+                  {creating ? <RefreshCw size={16} className="animate-spin" /> : <Upload size={16} />}
+                  Create Playlist
+                </button>
+              </div>
+
+              {!playlistNameReady && <p className={styles.helperText}>Enter a playlist name before creating the playlist.</p>}
+              {playlistPreview && !isPreviewCurrent && (
+                <div className={styles.warningNotice}>
+                  <AlertTriangle size={16} />
+                  Settings changed after this preview. Preview again before creating the playlist.
+                </div>
+              )}
+              {notice && (
+                <div className={styles.successNotice}>
+                  <CheckCircle2 size={16} />
+                  {notice}
+                </div>
+              )}
+
+              {playlistPreview && (
+                <>
+                  <div className={styles.statsGrid}>
+                    <div><span>Preset</span><strong>{playlistPreview.summary.smartPresetName || selectedPreset.name}</strong></div>
+                    <div><span>Target</span><strong>{playlistPreview.summary.targetTrackCount}</strong></div>
+                    <div><span>Matched</span><strong>{playlistPreview.summary.matchingTrackCount}</strong></div>
+                    <div><span>Preview</span><strong>{playlistPreview.summary.finalTrackCount}</strong></div>
+                    <div><span>Duration</span><strong>{formatEstimatedDuration(playlistPreview.summary.estimatedDurationMinutes)}</strong></div>
+                    <div><span>Manual exclusions</span><strong>{playlistPreview.summary.manualExclusionsRemoved || 0}</strong></div>
+                  </div>
+                  {playlistPreview.summary.safetyRuleSummary && <p className={styles.helperText}>{playlistPreview.summary.safetyRuleSummary}</p>}
+                  {playlistPreview.warnings.length > 0 && (
+                    <div className={styles.warningPanel}>
+                      <div><AlertTriangle size={16} /> Warnings</div>
+                      {playlistPreview.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+                    </div>
+                  )}
+                </>
+              )}
+
+              <section className={styles.trackSection} aria-labelledby="smart-previewed-tracks">
+                <div className={styles.trackHeader}>
+                  <h4 id="smart-previewed-tracks">Previewed Tracks</h4>
+                  {playlistPreview && tracks.length > 0 && <span>Create Playlist will use these {tracks.length} previewed tracks in this order.</span>}
+                </div>
+                {loading ? (
+                  <div className={styles.emptyPreview}>Generating playlist preview...</div>
+                ) : previewError ? (
+                  <div className={styles.errorPreview}>{previewError}</div>
+                ) : tracks.length === 0 ? (
+                  <div className={styles.emptyPreview}>Choose a preset and preview it before creating anything in Plex.</div>
+                ) : (
+                  <div className={styles.trackList}>
+                    {tracks.map((track, index) => (
+                      <article key={track.id} className={styles.trackCard}>
+                        <span className={styles.trackIndex}>{index + 1}</span>
+                        <div>
+                          <h5>{track.title || "-"}</h5>
+                          <p>{track.artist?.title || "-"} · {track.album?.title || "-"}</p>
+                          <div className={styles.trackMeta}>
+                            <span>{formatDuration(track.duration)}</span>
+                            <span>BPM {(track.effectiveBpm ?? track.bpm ?? track.audioFeature?.tempo)?.toFixed(0) || "-"}</span>
+                            <span>Energy {(track.audioFeature?.effectiveEnergy ?? track.audioFeature?.energy)?.toFixed(2) || "-"}</span>
+                            <span>Mood {(track.audioFeature?.effectiveMood ?? track.audioFeature?.valence)?.toFixed(2) || "-"}</span>
+                            <span>Popularity {track.popularity?.score?.toFixed(0) || "-"}</span>
+                          </div>
+                        </div>
+                        <div className={styles.trackActions}>
+                          <TrackPreviewButton trackId={track.id} />
+                          <span title="Manual exclusions still apply in Smart Builder"><Ban size={14} /></span>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {playlistPreview && (
+                <details className={styles.detailsPanel}>
+                  <summary><ListChecks size={15} /> Filters used</summary>
+                  <dl>
+                    {playlistPreview.filterSummary.map((item) => (
+                      <div key={item.label}>
+                        <dt>{item.label}</dt>
+                        <dd>{item.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </details>
+              )}
+
+              <div className={styles.footerActions}>
+                <Link href="/recipes" className={styles.secondaryButton}>
+                  <BookMarked size={16} />
+                  View Recipes
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+    </main>
+  );
+}

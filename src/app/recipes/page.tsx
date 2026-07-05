@@ -88,6 +88,10 @@ export default function RecipesPage() {
           <Wand2 size={16} />
           Build Playlist
         </Link>
+        <Link href="/smart-builder" className={styles.secondaryButton}>
+          <Wand2 size={16} />
+          Create Smart Recipe
+        </Link>
       </header>
 
       {loading ? (

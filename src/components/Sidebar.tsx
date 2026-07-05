@@ -1,7 +1,7 @@
 "use client";
 
 import styles from "./Sidebar.module.css";
-import { AudioWaveform, BadgeCheck, BookMarked, ExternalLink, Github, HeartPulse, History, LayoutDashboard, ListMusic, Map, ScrollText, Settings, Tags, Wand2 } from "lucide-react";
+import { AudioWaveform, BadgeCheck, BookMarked, ExternalLink, Github, HeartPulse, History, LayoutDashboard, ListMusic, Map, ScrollText, Settings, Sparkles, Tags, Wand2 } from "lucide-react";
 import PlexLoginButton from "./PlexLoginButton";
 import LogoutButton from "./LogoutButton";
 import Link from "next/link";
@@ -66,6 +66,9 @@ export default function Sidebar({ user, appVersion }: { user: any; appVersion: s
         </Link>
         <Link href="/builder" className={`${styles.navItem} ${pathname === "/builder" ? styles.active : ""}`}>
           <Wand2 size={18} /> Build Playlist
+        </Link>
+        <Link href="/smart-builder" className={`${styles.navItem} ${pathname === "/smart-builder" ? styles.active : ""}`}>
+          <Sparkles size={18} /> Smart Builder
         </Link>
         <Link href="/recipes" className={`${styles.navItem} ${pathname.startsWith("/recipes") ? styles.active : ""}`}>
           <BookMarked size={18} /> Recipes
