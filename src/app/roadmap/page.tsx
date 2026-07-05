@@ -11,19 +11,19 @@ export const metadata = {
 
 const nextFeatures = [
   "Webhook-triggered recently-added scans",
-  "Manual track exclusions",
   "Playlist safety rules",
   "Smart playlist builder",
+  "Artist/album exclusion rules",
   "Import/export recipes",
   "Recipe sharing",
 ];
 
 const currentReleaseFeatures = [
-  "Playlist recipe editing and duplication",
-  "Update existing recipes from the playlist builder",
-  "Recipe metadata editing for names and descriptions",
-  "Duplicate recipes as editable starting points",
-  "Preview edited recipe filters before creating playlists",
+  "Manual track exclusions",
+  "Exclude tracks from playlist previews",
+  "Excluded track management in Settings",
+  "Remove exclusions to make tracks eligible again",
+  "Exclusion counts in playlist preview stats",
 ];
 
 const v2Ideas = [
@@ -61,7 +61,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release adds editing and duplication for saved playlist recipes so users can refine, rename, preview, and branch recipe ideas before writing anything to Plex.</p>
+          <p>This release adds manual track exclusions so users can keep individual tracks out of Mixarr-generated playlist previews and Plex playlist creation.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -86,7 +86,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Webhook-triggered scans and recently-added automation are planned for a future release.</p>
+        <p className={styles.futureNote}>Webhook-triggered scans, playlist safety rules, and broader artist or album exclusion rules are planned for future releases.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

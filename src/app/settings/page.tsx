@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Settings as SettingsIcon, Database, ExternalLink, Github, HeartPulse, Info, Key, Map, RefreshCw, ScrollText, Server } from "lucide-react";
+import { Settings as SettingsIcon, Ban, Database, ExternalLink, Github, HeartPulse, Info, Key, Map, RefreshCw, ScrollText, Server } from "lucide-react";
 import ProviderTestButton from "@/components/ProviderTestButton";
 import LibraryDefaultSelector from "@/components/LibraryDefaultSelector";
 import SyncOptionsForm from "@/components/SyncOptionsForm";
 import BackgroundSchedulerSettings from "@/components/BackgroundSchedulerSettings";
+import TrackExclusionsManager from "@/components/TrackExclusionsManager";
 import { APP_DESCRIPTION, APP_NAME, MIXARR_GITHUB_URL } from "@/lib/appInfo";
 import { APP_VERSION } from "@/lib/appVersion";
 import styles from "./settings.module.css";
@@ -192,6 +193,13 @@ export default function SettingsPage() {
           Control when Mixarr automatically runs background sync and analysis jobs.
         </p>
         <BackgroundSchedulerSettings />
+      </section>
+
+      <section className={`glass-panel ${styles.section}`}>
+        <h3 className={styles.sectionTitle}>
+          <Ban size={20} color="var(--warning)" /> Track Exclusions
+        </h3>
+        <TrackExclusionsManager />
       </section>
 
       {/* Database Management */}

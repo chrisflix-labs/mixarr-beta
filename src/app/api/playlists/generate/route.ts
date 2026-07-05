@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { generatePlaylistTracks, playlistConfigSchema } from "@/lib/playlistService";
+import { generatePlaylistTracksWithStats, playlistConfigSchema } from "@/lib/playlistService";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
 
 export async function POST(req: Request) {
@@ -14,19 +14,28 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const config = playlistConfigSchema.parse(body);
-    const tracks = await generatePlaylistTracks({
+    const result = await generatePlaylistTracksWithStats({
       userId,
       config,
     });
+    const tracks = result.tracks;
+    const exclusionSummary = result.manualExclusionsApplied > 0
+      ? ` Manual exclusions removed ${result.manualExclusionsApplied} track${result.manualExclusionsApplied === 1 ? "" : "s"} from the candidate pool.`
+      : "";
     await safeRecordJobHistory({
       userId,
       type: "playlist",
       name: "Playlist generation",
       status: "success",
       trigger: "manual",
-      summary: `Playlist generation completed. attempted=${config.limit}, processed=${tracks.length}, skipped=${Math.max(0, config.limit - tracks.length)}, failed=0.`,
+      summary: `Playlist generation completed. attempted=${config.limit}, processed=${tracks.length}, skipped=${Math.max(0, config.limit - tracks.length)}, failed=0.${exclusionSummary}`,
       counts: { attempted: config.limit, processed: tracks.length, skipped: Math.max(0, config.limit - tracks.length), failed: 0 },
-      metadata: { libraryId: config.libraryId || null, serverId: config.serverId || null },
+      metadata: {
+        libraryId: config.libraryId || null,
+        serverId: config.serverId || null,
+        manualExclusionsApplied: result.manualExclusionsApplied > 0,
+        excludedTrackCount: result.manualExclusionsApplied,
+      },
     });
 
     return NextResponse.json({ tracks });

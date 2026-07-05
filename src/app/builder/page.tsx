@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks } from "lucide-react";
+import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks, Ban } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import BlockTrackButton from "@/components/BlockTrackButton";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import styles from "./builder.module.css";
 
@@ -59,6 +58,7 @@ type PlaylistPreviewSummary = {
   energyRange: string;
   moodRange: string;
   popularityRange: string;
+  manualExclusionsRemoved?: number;
   genreFilters: string;
   sortMode: string;
   duplicateStrategy: string;
@@ -149,6 +149,7 @@ export default function BuilderPage() {
   const [tracks, setTracks] = useState<any[]>([]);
   const [playlistPreview, setPlaylistPreview] = useState<PlaylistPreviewState | null>(null);
   const [previewError, setPreviewError] = useState("");
+  const [exclusionNotice, setExclusionNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -352,6 +353,7 @@ export default function BuilderPage() {
     setTracks([]);
     setPlaylistPreview(null);
     setPreviewError("");
+    setExclusionNotice("");
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
   };
@@ -652,6 +654,7 @@ export default function BuilderPage() {
   const runPreview = async (config = playlistPayload(), signature = previewConfigSignature(), recipeForUsage: PlaylistRecipe | null = isEditingRecipe ? null : activeRecipe) => {
     setLoading(true);
     setPreviewError("");
+    setExclusionNotice("");
     try {
       setPinnedTrackIds([]);
       setExcludedTrackIds([]);
@@ -687,6 +690,7 @@ export default function BuilderPage() {
   const regenerateUnpinned = async () => {
     setLoading(true);
     setPreviewError("");
+    setExclusionNotice("");
     try {
       const signature = previewConfigSignature();
       const res = await axios.post("/api/playlists/preview", playlistPayload({
@@ -725,6 +729,41 @@ export default function BuilderPage() {
     } : null);
     setPinnedTrackIds(pinnedTrackIds.filter(id => id !== trackId));
     setExcludedTrackIds([...excludedTrackIds, trackId]);
+  };
+
+  const excludeTrack = async (track: any) => {
+    const title = track.title || "this track";
+    if (!window.confirm(`Exclude "${title}" from future Mixarr playlists?`)) return;
+
+    try {
+      await axios.post("/api/track-exclusions", {
+        trackId: track.id,
+        reason: "Do not want in playlists",
+      });
+      setTracks((current) => current.filter((item) => item.id !== track.id));
+      setPlaylistPreview((current) => current ? {
+        ...current,
+        trackIds: current.trackIds.filter((id) => id !== track.id),
+        totalPreviewTrackCount: Math.max(0, current.totalPreviewTrackCount - 1),
+        summary: {
+          ...current.summary,
+          matchingTrackCount: Math.max(0, current.summary.matchingTrackCount - 1),
+          finalTrackCount: Math.max(0, current.summary.finalTrackCount - 1),
+          displayedTrackCount: Math.max(0, current.summary.displayedTrackCount - 1),
+          manualExclusionsRemoved: (current.summary.manualExclusionsRemoved || 0) + 1,
+        },
+        filterSummary: [
+          ...current.filterSummary.filter((item) => item.label !== "Manual exclusions"),
+          { label: "Manual exclusions", value: `${(current.summary.manualExclusionsRemoved || 0) + 1} removed` },
+        ],
+      } : null);
+      setPinnedTrackIds((current) => current.filter((id) => id !== track.id));
+      setExcludedTrackIds((current) => current.filter((id) => id !== track.id));
+      setExclusionNotice(`Excluded "${title}" from future Mixarr playlists.`);
+    } catch (error: any) {
+      console.error("Failed to exclude track", error);
+      alert(error.response?.data?.error || "Could not exclude track");
+    }
   };
 
   const togglePin = (trackId: string) => {
@@ -778,6 +817,7 @@ export default function BuilderPage() {
         recipeId: activeRecipe?.id || undefined,
         recipeName: activeRecipe?.name || undefined,
         filters: activeRecipe ? playlistPayload({ pinnedTrackIds: [], excludedTrackIds: [] }) : undefined,
+        manualExclusionsApplied: playlistPreview.summary.manualExclusionsRemoved || 0,
       });
       await fetchSavedRules();
       await fetchHistory();
@@ -1121,6 +1161,13 @@ export default function BuilderPage() {
           </div>
         )}
 
+        {exclusionNotice && (
+          <div className={styles.exclusionNotice}>
+            <Ban size={16} />
+            {exclusionNotice}
+          </div>
+        )}
+
         {playlistPreview && (
           <>
             <div className={styles.statsGrid}>
@@ -1140,7 +1187,19 @@ export default function BuilderPage() {
                 <span>Duration</span>
                 <strong>{formatEstimatedDuration(playlistPreview.summary.estimatedDurationMinutes)}</strong>
               </div>
+              {(playlistPreview.summary.manualExclusionsRemoved || 0) > 0 && (
+                <div className={styles.statCard}>
+                  <span>Manual exclusions</span>
+                  <strong>{playlistPreview.summary.manualExclusionsRemoved} removed</strong>
+                </div>
+              )}
             </div>
+
+            {(playlistPreview.summary.manualExclusionsRemoved || 0) > 0 && (
+              <p className={styles.manualExclusionText}>
+                {playlistPreview.summary.manualExclusionsRemoved} manually excluded track{playlistPreview.summary.manualExclusionsRemoved === 1 ? " was" : "s were"} removed from this preview.
+              </p>
+            )}
 
             {playlistPreview.warnings.length > 0 && (
               <div className={styles.warningPanel}>
@@ -1235,7 +1294,7 @@ export default function BuilderPage() {
                             <button title={pinnedTrackIds.includes(track.id) ? "Unpin" : "Pin"} onClick={() => togglePin(track.id)} className={`${styles.btnIcon} ${pinnedTrackIds.includes(track.id) ? styles.pinActive : ""}`}><Pin size={14} /></button>
                             <button title="Remove from this preview" onClick={() => removeTrack(track.id)} className={styles.btnIcon}><X size={14} /></button>
                             <TrackPreviewButton trackId={track.id} />
-                            <BlockTrackButton trackId={track.id} onBlocked={removeTrack} />
+                            <button title="Exclude from future Mixarr playlists" onClick={() => excludeTrack(track)} className={styles.btnIcon}><Ban size={14} /></button>
                           </div>
                         </td>
                       </tr>
@@ -1260,6 +1319,12 @@ export default function BuilderPage() {
                       <span>BPM <strong>{(track.effectiveBpm ?? track.bpm ?? track.audioFeature?.tempo)?.toFixed(0) || "—"}</strong></span>
                       <span>Energy <strong>{(track.audioFeature?.effectiveEnergy ?? track.audioFeature?.energy)?.toFixed(2) || "—"}</strong></span>
                       <span>Mood <strong>{(track.audioFeature?.effectiveMood ?? track.audioFeature?.valence)?.toFixed(2) || "—"}</strong></span>
+                    </div>
+                    <div className={styles.mobileTrackActions}>
+                      <button type="button" onClick={() => excludeTrack(track)} className={styles.btnSecondary}>
+                        <Ban size={14} />
+                        Exclude
+                      </button>
                     </div>
                   </article>
                 ))}
@@ -1292,6 +1357,7 @@ export default function BuilderPage() {
                   <div><dt>Popularity</dt><dd>{playlistPreview.summary.popularityRange}</dd></div>
                   <div><dt>Artists</dt><dd>{playlistPreview.summary.diversity.artistCount}</dd></div>
                   <div><dt>Albums</dt><dd>{playlistPreview.summary.diversity.albumCount}</dd></div>
+                  {(playlistPreview.summary.manualExclusionsRemoved || 0) > 0 && <div><dt>Manual exclusions</dt><dd>{playlistPreview.summary.manualExclusionsRemoved} removed</dd></div>}
                   <div><dt>Missing BPM</dt><dd>{playlistPreview.summary.missing.bpm}</dd></div>
                   <div><dt>Missing features</dt><dd>{playlistPreview.summary.missing.audioFeatures}</dd></div>
                 </dl>

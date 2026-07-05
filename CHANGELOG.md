@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.9.1 - Manual Track Exclusion
+
+- Added manual track exclusions for Mixarr-generated playlists.
+- Added exclude actions from playlist previews.
+- Added excluded track management with remove-exclusion support.
+- Applied manual exclusions to playlist previews, recipe previews, and playlist creation.
+- Added exclusion counts to playlist preview stats where applicable.
+
 ## v1.1.9 - Edit and Duplicate Playlist Recipes
 
 - Added editing for saved playlist recipes.

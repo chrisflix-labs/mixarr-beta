@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, trackIds, savedRuleId, rulesSnapshot, optionsSnapshot, previewId, recipeId, recipeName, filters } = await req.json();
+    const { name, trackIds, savedRuleId, rulesSnapshot, optionsSnapshot, previewId, recipeId, recipeName, filters, manualExclusionsApplied } = await req.json();
 
     const trimmedName = typeof name === "string" ? name.trim() : "";
 
@@ -48,6 +48,10 @@ export async function POST(req: Request) {
     }
 
     const resolvedRecipeName = ownedRecipe?.name || recipeName || null;
+    const excludedTrackCount = Math.max(0, Number(manualExclusionsApplied) || 0, result.excludedTrackCount || 0);
+    const exclusionSummary = excludedTrackCount > 0
+      ? ` Manual exclusions removed ${excludedTrackCount} track${excludedTrackCount === 1 ? "" : "s"} from the candidate pool.`
+      : "";
     await safeRecordJobHistory({
       userId,
       type: "playlist",
@@ -55,8 +59,8 @@ export async function POST(req: Request) {
       status: "success",
       trigger: "manual",
       summary: resolvedRecipeName
-        ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}" with ${result.trackCount} tracks.`
-        : `Created playlist "${trimmedName}" from preview with ${result.trackCount} tracks.`,
+        ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}" with ${result.trackCount} tracks.${exclusionSummary}`
+        : `Created playlist "${trimmedName}" from preview with ${result.trackCount} tracks.${exclusionSummary}`,
       counts: { attempted: trackIds.length, processed: result.trackCount, skipped: Math.max(0, trackIds.length - result.trackCount), failed: 0 },
       metadata: {
         savedRuleId: savedRuleId || null,
@@ -67,6 +71,8 @@ export async function POST(req: Request) {
         recipeName: resolvedRecipeName,
         playlistName: trimmedName,
         trackCount: result.trackCount,
+        manualExclusionsApplied: excludedTrackCount > 0,
+        excludedTrackCount,
         filters: filters || optionsSnapshot || null,
       },
     });

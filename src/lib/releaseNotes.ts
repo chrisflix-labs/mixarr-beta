@@ -9,6 +9,7 @@ export type ReleaseNoteBadge =
   | "Dashboard"
   | "Debugging"
   | "Jobs"
+  | "Library"
   | "Library Health"
   | "Local Analysis"
   | "Playlists"
@@ -31,6 +32,18 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.1.9.1",
+    title: "Manual Track Exclusion",
+    badges: ["Playlists", "Recipes", "Preview", "Library"],
+    changes: [
+      "Added manual track exclusions for Mixarr-generated playlists.",
+      "Added exclude actions from playlist previews.",
+      "Added excluded track management with remove-exclusion support.",
+      "Applied manual exclusions to playlist previews, recipe previews, and playlist creation.",
+      "Added exclusion counts to playlist preview stats where applicable.",
+    ],
+  },
   {
     version: "1.1.9",
     title: "Edit and Duplicate Playlist Recipes",

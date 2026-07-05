@@ -6,6 +6,7 @@ import { audioFeatureFilterGuardWhere, type AudioFeatureFilterOptions } from "./
 import { activeSyncStatusWhere } from "./syncStatus";
 import { getUserSyncSettings } from "./syncSettings";
 import { safeFinishJobHistory, safeRecordJobHistory, safeStartJobHistory } from "./jobHistory";
+import { filterManualTrackExclusions, getManualTrackExclusionIds } from "./trackExclusions";
 import {
   playlistExportDurationSeconds,
   playlistExportsTotal,
@@ -388,19 +389,29 @@ async function resolvePlaylistGenerationInputs(userId: string, config: PlaylistC
     where: { userId },
     select: { trackId: true },
   });
+  const manualExcludedTrackIds = await getManualTrackExclusionIds(userId);
+  const manualExcludedTrackIdSet = new Set(manualExcludedTrackIds);
+  const eligiblePinnedTracks = pinnedTracks.filter((track) => !manualExcludedTrackIdSet.has(track.id));
   const omittedIds = config.excludedTrackIds
     .concat(blockedTracks.map((track) => track.trackId))
-    .concat(pinnedTracks.map((track) => track.id));
+    .concat(manualExcludedTrackIds)
+    .concat(eligiblePinnedTracks.map((track) => track.id));
   const syncSettings = await getUserSyncSettings(userId);
   const audioFeatureFilterOptions = {
     includeEstimated: syncSettings.includeEstimatedAudioFeaturesInFilters === true,
     minimumConfidence: syncSettings.audioFeatureMinimumConfidence ?? null,
   };
 
-  return { pinnedTracks, blockedTrackIds: blockedTracks.map((track) => track.trackId), omittedIds, audioFeatureFilterOptions };
+  return {
+    pinnedTracks: eligiblePinnedTracks,
+    blockedTrackIds: blockedTracks.map((track) => track.trackId),
+    manualExcludedTrackIds,
+    omittedIds,
+    audioFeatureFilterOptions,
+  };
 }
 
-export async function generatePlaylistTracks({
+export async function generatePlaylistTracksWithStats({
   userId,
   config,
 }: {
@@ -410,14 +421,28 @@ export async function generatePlaylistTracks({
   const endTimer = playlistGenerationDurationSeconds.startTimer();
   let result: "success" | "failed" = "success";
   try {
-    const { pinnedTracks, omittedIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
+    const { pinnedTracks, omittedIds, blockedTrackIds, manualExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
     const remainingLimit = Math.max(0, config.limit - pinnedTracks.length);
     const take = config.duplicateStrategy === "allow" ? remainingLimit : Math.max(remainingLimit * 5, remainingLimit + 25);
     const candidates = remainingLimit > 0 ? await queryCandidateTracks(userId, config, omittedIds, take, audioFeatureFilterOptions) : [];
     const generatedTracks = applyDuplicatePolicy(candidates, config, remainingLimit);
     const reasons = collectRuleReasons(config.ruleTree, config.rules);
 
-    return pinnedTracks.concat(generatedTracks).slice(0, config.limit).map((track) => annotateTrack(track, reasons));
+    const baseOmittedIds = config.excludedTrackIds
+      .concat(blockedTrackIds)
+      .concat(pinnedTracks.map((track) => track.id))
+      .filter((id, index, ids) => id && ids.indexOf(id) === index);
+    const matchedBeforeManualExclusions = await prisma.track.count({
+      where: buildTrackWhereClause(userId, config, baseOmittedIds, audioFeatureFilterOptions),
+    });
+    const matchedAfterManualExclusions = await prisma.track.count({
+      where: buildTrackWhereClause(userId, config, baseOmittedIds.concat(manualExcludedTrackIds), audioFeatureFilterOptions),
+    });
+
+    return {
+      tracks: pinnedTracks.concat(generatedTracks).slice(0, config.limit).map((track) => annotateTrack(track, reasons)),
+      manualExclusionsApplied: Math.max(0, matchedBeforeManualExclusions - matchedAfterManualExclusions),
+    };
   } catch (error) {
     result = "failed";
     throw error;
@@ -425,6 +450,17 @@ export async function generatePlaylistTracks({
     endTimer();
     playlistGenerationsTotal.inc({ result });
   }
+}
+
+export async function generatePlaylistTracks({
+  userId,
+  config,
+}: {
+  userId: string;
+  config: PlaylistConfigInput;
+}) {
+  const result = await generatePlaylistTracksWithStats({ userId, config });
+  return result.tracks;
 }
 
 function numericRangeLabel(rules: PlaylistRuleInput[], field: string, emptyLabel = "Any") {
@@ -519,11 +555,16 @@ export async function previewPlaylistTracks({
   config: PlaylistConfigInput;
   displayLimit?: number;
 }) {
-  const { blockedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
-  const matchedTrackCount = await prisma.track.count({
-    where: buildTrackWhereClause(userId, config, config.excludedTrackIds.concat(blockedTrackIds), audioFeatureFilterOptions),
+  const { blockedTrackIds, manualExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
+  const baseOmittedIds = config.excludedTrackIds.concat(blockedTrackIds);
+  const matchedBeforeManualExclusions = await prisma.track.count({
+    where: buildTrackWhereClause(userId, config, baseOmittedIds, audioFeatureFilterOptions),
   });
-  const tracks = await generatePlaylistTracks({ userId, config });
+  const matchedTrackCount = await prisma.track.count({
+    where: buildTrackWhereClause(userId, config, baseOmittedIds.concat(manualExcludedTrackIds), audioFeatureFilterOptions),
+  });
+  const generation = await generatePlaylistTracksWithStats({ userId, config });
+  const tracks = generation.tracks;
   const rules = collectRules(config.ruleTree, config.rules);
   const server = config.serverId ? await prisma.server.findFirst({ where: { id: config.serverId, userId }, select: { name: true } }) : null;
   const library = config.libraryId ? await prisma.library.findFirst({ where: { id: config.libraryId, server: { userId } }, select: { name: true } }) : null;
@@ -540,6 +581,7 @@ export async function previewPlaylistTracks({
     energyRange: numericRangeLabel(rules, "energy"),
     moodRange: numericRangeLabel(rules, "valence"),
     popularityRange: numericRangeLabel(rules, "popularity"),
+    manualExclusionsRemoved: Math.max(0, matchedBeforeManualExclusions - matchedTrackCount),
     genreFilters: genreFilterLabel(rules),
     sortMode: "Popularity score descending",
     duplicateStrategy: config.duplicateStrategy === "allow" ? "Allow duplicates" : "One version per song",
@@ -567,6 +609,7 @@ export async function previewPlaylistTracks({
     { label: "Sort", value: summary.sortMode },
     { label: "Duplicate control", value: summary.duplicateStrategy },
     { label: "Negative filters", value: formatNegativeFilters(config.negativeFilters) },
+    ...(summary.manualExclusionsRemoved > 0 ? [{ label: "Manual exclusions", value: `${summary.manualExclusionsRemoved} removed` }] : []),
     { label: "Rules", value: collectRuleReasons(config.ruleTree, config.rules).join("; ") || "All active tracks" },
   ];
 
@@ -577,6 +620,7 @@ export async function previewPlaylistTracks({
     totalPreviewTrackCount: tracks.length,
     summary,
     filterSummary,
+    manualExclusionsApplied: summary.manualExclusionsRemoved,
     warnings: buildPreviewWarnings({ tracks: previewTracks, matchedTrackCount, requestedLimit: config.limit }),
   };
 }
@@ -675,7 +719,12 @@ export async function exportTracksToPlex({
   rulesJson?: string;
   optionsJson?: string;
 }) {
-  const tracks = await fetchOwnedTracksInOrder(userId, trackIds);
+  const filtered = await filterManualTrackExclusions(userId, trackIds);
+  if (filtered.trackIds.length === 0) {
+    throw new Error("All selected tracks are manually excluded from Mixarr playlists");
+  }
+
+  const tracks = await fetchOwnedTracksInOrder(userId, filtered.trackIds);
   const targetServer = assertSingleServer(tracks);
   const existingRule = savedRuleId
     ? await prisma.playlistRule.findFirst({ where: { id: savedRuleId, userId } })
@@ -727,6 +776,7 @@ export async function exportTracksToPlex({
       playlistId,
       serverId: targetServer.id,
       trackCount: tracks.length,
+      excludedTrackCount: filtered.excludedTrackCount,
     };
   } catch (error: any) {
     exportResult = "failed";
@@ -816,6 +866,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
     metadata: { ruleId, mode },
   });
   let trackCount = 0;
+  let manualExclusionsApplied = 0;
   let refreshError: string | undefined;
   try {
     const savedRules = JSON.parse(rule.rulesJson);
@@ -826,10 +877,12 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
       libraryId: rule.libraryId,
       ...JSON.parse(rule.optionsJson || "{}"),
     });
-    const tracks = await generatePlaylistTracks({
+    const generation = await generatePlaylistTracksWithStats({
       userId: rule.userId,
       config: parsed,
     });
+    const tracks = generation.tracks;
+    manualExclusionsApplied = generation.manualExclusionsApplied;
     trackCount = tracks.length;
 
     if (tracks.length === 0) {
@@ -893,14 +946,18 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
       },
     });
   } finally {
+    const exclusionSummary = manualExclusionsApplied > 0
+      ? ` Manual exclusions removed ${manualExclusionsApplied} track${manualExclusionsApplied === 1 ? "" : "s"} from the candidate pool.`
+      : "";
     await safeFinishJobHistory({
       job: history,
       status: refreshResult,
       summary: refreshResult === "success"
-        ? `Playlist refresh completed. attempted=${trackCount}, processed=${trackCount}, skipped=0, failed=0.`
+        ? `Playlist refresh completed. attempted=${trackCount}, processed=${trackCount}, skipped=0, failed=0.${exclusionSummary}`
         : "Playlist refresh failed.",
       counts: { attempted: trackCount, processed: refreshResult === "success" ? trackCount : 0, skipped: 0, failed: refreshResult === "success" ? 0 : 1 },
       error: refreshError,
+      metadata: { ruleId, mode, manualExclusionsApplied: manualExclusionsApplied > 0, excludedTrackCount: manualExclusionsApplied },
     });
     inflightRefreshes.delete(ruleId);
     endTimer();

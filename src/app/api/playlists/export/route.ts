@@ -26,15 +26,24 @@ export async function POST(req: Request) {
       rulesJson: rulesSnapshot ? JSON.stringify(rulesSnapshot) : undefined,
       optionsJson: optionsSnapshot ? JSON.stringify(optionsSnapshot) : undefined,
     });
+    const exclusionSummary = result.excludedTrackCount > 0
+      ? ` Manual exclusions removed ${result.excludedTrackCount} track${result.excludedTrackCount === 1 ? "" : "s"} from the candidate pool.`
+      : "";
     await safeRecordJobHistory({
       userId,
       type: "playlist",
       name: "Playlist export",
       status: "success",
       trigger: "manual",
-      summary: `Playlist export completed. attempted=${trackIds.length}, processed=${result.trackCount}, skipped=${Math.max(0, trackIds.length - result.trackCount)}, failed=0.`,
+      summary: `Playlist export completed. attempted=${trackIds.length}, processed=${result.trackCount}, skipped=${Math.max(0, trackIds.length - result.trackCount)}, failed=0.${exclusionSummary}`,
       counts: { attempted: trackIds.length, processed: result.trackCount, skipped: Math.max(0, trackIds.length - result.trackCount), failed: 0 },
-      metadata: { savedRuleId: savedRuleId || null, serverId: result.serverId, playlistId: result.playlistId || null },
+      metadata: {
+        savedRuleId: savedRuleId || null,
+        serverId: result.serverId,
+        playlistId: result.playlistId || null,
+        manualExclusionsApplied: result.excludedTrackCount > 0,
+        excludedTrackCount: result.excludedTrackCount,
+      },
     });
 
     return NextResponse.json({ success: true, ...result });
