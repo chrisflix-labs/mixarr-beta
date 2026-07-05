@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import BlockTrackButton from "@/components/BlockTrackButton";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import styles from "./builder.module.css";
@@ -83,6 +84,14 @@ type PlaylistPreviewState = {
   signature: string;
 };
 
+type PlaylistRecipe = {
+  id: string;
+  name: string;
+  description?: string | null;
+  filters: any;
+  filterSummary: string;
+};
+
 function formatDuration(ms?: number | null) {
   if (!ms) return "—";
   const totalSeconds = Math.round(ms / 1000);
@@ -100,6 +109,7 @@ function formatEstimatedDuration(minutes?: number | null) {
 }
 
 export default function BuilderPage() {
+  const searchParams = useSearchParams();
   const [rules, setRules] = useState<Rule[]>([{ field: "popularity", operator: "gt", value: "50" }]);
   const [rootCombinator, setRootCombinator] = useState<"AND" | "OR">("AND");
   const [ruleGroups, setRuleGroups] = useState<RuleGroup[]>([]);
@@ -128,12 +138,18 @@ export default function BuilderPage() {
   const [history, setHistory] = useState<any[]>([]);
   const [savedRules, setSavedRules] = useState<SavedRule[]>([]);
   const [selectedRuleId, setSelectedRuleId] = useState("");
+  const [activeRecipe, setActiveRecipe] = useState<PlaylistRecipe | null>(null);
+  const [recipeNotice, setRecipeNotice] = useState("");
+  const [showRecipeModal, setShowRecipeModal] = useState(false);
+  const [recipeName, setRecipeName] = useState("");
+  const [recipeDescription, setRecipeDescription] = useState("");
   const [tracks, setTracks] = useState<any[]>([]);
   const [playlistPreview, setPlaylistPreview] = useState<PlaylistPreviewState | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingRecipe, setSavingRecipe] = useState(false);
 
   useEffect(() => {
     fetchSavedRules();
@@ -274,6 +290,30 @@ export default function BuilderPage() {
     ...extra,
   });
 
+  const playlistPayloadFromRecipeFilters = (filters: any) => ({
+    rules: filters.rules || [],
+    ruleTree: filters.ruleTree,
+    limit: filters.limit || 50,
+    serverId: filters.serverId || undefined,
+    libraryId: filters.libraryId || undefined,
+    duplicateStrategy: filters.duplicateStrategy || "song_artist",
+    preferNonLive: filters.preferNonLive ?? true,
+    excludeRemasters: filters.excludeRemasters || false,
+    negativeFilters: {
+      excludeHoliday: filters.negativeFilters?.excludeHoliday || false,
+      excludeLive: filters.negativeFilters?.excludeLive || false,
+      excludeRemasters: filters.negativeFilters?.excludeRemasters || false,
+      excludeExplicit: filters.negativeFilters?.excludeExplicit || false,
+      excludeIntroOutro: filters.negativeFilters?.excludeIntroOutro || false,
+      minRating: filters.negativeFilters?.minRating != null ? filters.negativeFilters.minRating.toString() : undefined,
+      excludePlayedWithinDays: filters.negativeFilters?.excludePlayedWithinDays != null ? filters.negativeFilters.excludePlayedWithinDays.toString() : undefined,
+      minDurationMinutes: filters.negativeFilters?.minDurationMinutes != null ? filters.negativeFilters.minDurationMinutes.toString() : undefined,
+      maxDurationMinutes: filters.negativeFilters?.maxDurationMinutes != null ? filters.negativeFilters.maxDurationMinutes.toString() : undefined,
+    },
+    pinnedTrackIds: [],
+    excludedTrackIds: [],
+  });
+
   const previewConfigSignature = () => JSON.stringify(playlistPayload({ pinnedTrackIds: [], excludedTrackIds: [] }));
   const isPreviewCurrent = playlistPreview?.signature === previewConfigSignature();
   const createTrackIds = tracks.map((track) => track.id);
@@ -337,6 +377,8 @@ export default function BuilderPage() {
 
   const loadSavedRule = (id: string) => {
     setSelectedRuleId(id);
+    setActiveRecipe(null);
+    setRecipeNotice("");
     if (!id) return;
 
     const savedRule = savedRules.find(rule => rule.id === id);
@@ -368,6 +410,67 @@ export default function BuilderPage() {
     setPlaylistPreview(null);
   };
 
+  const applyRecipeFilters = async (recipe: PlaylistRecipe, shouldPreview = false) => {
+    const filters = recipe.filters || {};
+    const payload = playlistPayloadFromRecipeFilters(filters);
+
+    setActiveRecipe(recipe);
+    setRecipeNotice(`Loaded recipe "${recipe.name}". Preview the playlist before creating.`);
+    setSelectedRuleId("");
+    setPlaylistName(recipe.name);
+    restoreRuleTree(filters.ruleTree, filters.rules || []);
+    setLimit(filters.limit || 50);
+    setAutoRefresh(false);
+    setServerId(filters.serverId || "");
+    setLibraryId(filters.libraryId || "");
+    setDuplicateStrategy(filters.duplicateStrategy || "song_artist");
+    setPreferNonLive(filters.preferNonLive ?? true);
+    setExcludeRemasters(filters.excludeRemasters || false);
+    setNegativeFilters({
+      excludeHoliday: filters.negativeFilters?.excludeHoliday || false,
+      excludeLive: filters.negativeFilters?.excludeLive || false,
+      excludeRemasters: filters.negativeFilters?.excludeRemasters || false,
+      excludeExplicit: filters.negativeFilters?.excludeExplicit || false,
+      excludeIntroOutro: filters.negativeFilters?.excludeIntroOutro || false,
+      minRating: filters.negativeFilters?.minRating?.toString() || "",
+      excludePlayedWithinDays: filters.negativeFilters?.excludePlayedWithinDays?.toString() || "",
+      minDurationMinutes: filters.negativeFilters?.minDurationMinutes?.toString() || "",
+      maxDurationMinutes: filters.negativeFilters?.maxDurationMinutes?.toString() || "",
+    });
+    setPinnedTrackIds([]);
+    setExcludedTrackIds([]);
+    setTracks([]);
+    setPlaylistPreview(null);
+
+    if (shouldPreview) {
+      await runPreview(payload, JSON.stringify(payload), recipe);
+    }
+  };
+
+  useEffect(() => {
+    const recipeId = searchParams.get("recipeId");
+    if (!recipeId) return;
+
+    let cancelled = false;
+    const loadRecipe = async () => {
+      try {
+        const res = await axios.get(`/api/playlist-recipes/${recipeId}`);
+        if (cancelled) return;
+        await applyRecipeFilters(res.data.recipe, searchParams.get("preview") === "1");
+      } catch (e) {
+        console.error("Failed to load playlist recipe", e);
+        if (!cancelled) setRecipeNotice("Unable to load that playlist recipe.");
+      }
+    };
+
+    loadRecipe();
+    return () => {
+      cancelled = true;
+    };
+    // Load only when the URL-selected recipe changes; filter state changes should not reload it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const saveSmartPlaylist = async (showAlert = true) => {
     if (!playlistName.trim()) {
       alert("Please enter a playlist name");
@@ -394,6 +497,36 @@ export default function BuilderPage() {
     }
   };
 
+  const openRecipeModal = () => {
+    setRecipeName(playlistName.trim() || activeRecipe?.name || "");
+    setRecipeDescription(activeRecipe?.description || "");
+    setShowRecipeModal(true);
+  };
+
+  const savePlaylistRecipe = async () => {
+    if (!recipeName.trim()) {
+      alert("Recipe name is required");
+      return;
+    }
+
+    setSavingRecipe(true);
+    try {
+      const res = await axios.post("/api/playlist-recipes", {
+        name: recipeName,
+        description: recipeDescription,
+        filters: playlistPayload(),
+      });
+      setActiveRecipe(res.data.recipe);
+      setRecipeNotice(`Saved recipe "${res.data.recipe.name}".`);
+      setShowRecipeModal(false);
+    } catch (e: any) {
+      console.error(e);
+      alert(e.response?.data?.error || "Failed to save playlist recipe");
+    } finally {
+      setSavingRecipe(false);
+    }
+  };
+
   const refreshSelectedPlaylist = async () => {
     if (!selectedRuleId) return;
 
@@ -411,6 +544,8 @@ export default function BuilderPage() {
   };
 
   const applyTemplate = (templateName: string) => {
+    setActiveRecipe(null);
+    setRecipeNotice("");
     if (templateName === "deep_cuts") {
       setRules([{ field: "popularity", operator: "lt", value: "30" }]);
       setPlaylistName("Deep Cuts Discovered");
@@ -447,14 +582,13 @@ export default function BuilderPage() {
     setPlaylistPreview(null);
   };
 
-  const previewPlaylist = async () => {
+  const runPreview = async (config = playlistPayload(), signature = previewConfigSignature(), recipeForUsage = activeRecipe) => {
     setLoading(true);
     setPreviewError("");
     try {
       setPinnedTrackIds([]);
       setExcludedTrackIds([]);
-      const signature = previewConfigSignature();
-      const res = await axios.post("/api/playlists/preview", playlistPayload());
+      const res = await axios.post("/api/playlists/preview", config);
       setTracks(res.data.tracks || []);
       setPlaylistPreview({
         previewId: res.data.previewId,
@@ -465,6 +599,9 @@ export default function BuilderPage() {
         warnings: res.data.warnings || [],
         signature,
       });
+      if (recipeForUsage?.id) {
+        await axios.post(`/api/playlist-recipes/${recipeForUsage.id}/use`);
+      }
     } catch (e) {
       console.error(e);
       setPreviewError("Unable to generate playlist preview. Check your filters and try again.");
@@ -472,6 +609,8 @@ export default function BuilderPage() {
       setLoading(false);
     }
   };
+
+  const previewPlaylist = async () => runPreview();
 
   const regenerateUnpinned = async () => {
     setLoading(true);
@@ -564,6 +703,9 @@ export default function BuilderPage() {
         rulesSnapshot: buildRuleTree() || rules,
         optionsSnapshot: playlistPayload({ pinnedTrackIds: [], excludedTrackIds: [] }),
         previewId: playlistPreview.previewId,
+        recipeId: activeRecipe?.id || undefined,
+        recipeName: activeRecipe?.name || undefined,
+        filters: activeRecipe ? playlistPayload({ pinnedTrackIds: [], excludedTrackIds: [] }) : undefined,
       });
       await fetchSavedRules();
       await fetchHistory();
@@ -577,6 +719,7 @@ export default function BuilderPage() {
   };
 
   return (
+    <>
     <div className="builder-container">
       {/* LEFT COLUMN: BUILDER */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "1.5rem" }}>
@@ -584,6 +727,15 @@ export default function BuilderPage() {
           <h2>Playlist Builder</h2>
           <p>Create dynamic mixes using cached metadata</p>
         </header>
+
+        {recipeNotice && (
+          <div className={styles.recipeNotice}>
+            <span>{recipeNotice}</span>
+            <button type="button" onClick={() => setRecipeNotice("")} className={styles.btnIcon} aria-label="Dismiss recipe message">
+              <X size={14} />
+            </button>
+          </div>
+        )}
 
         {/* Saved Smart Playlists */}
         <div className={`glass-panel ${styles.panel}`}>
@@ -604,6 +756,10 @@ export default function BuilderPage() {
             <button onClick={() => saveSmartPlaylist()} disabled={saving} className={styles.btnSecondary}>
               {saving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
               {selectedRuleId ? "Update" : "Save"}
+            </button>
+            <button onClick={openRecipeModal} disabled={savingRecipe} className={styles.btnSecondary}>
+              {savingRecipe ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+              Save Recipe
             </button>
             {selectedRuleId && (
               <button onClick={refreshSelectedPlaylist} disabled={saving} className={styles.btnSecondary}>
@@ -1041,5 +1197,39 @@ export default function BuilderPage() {
         )}
       </div>
     </div>
+
+    {showRecipeModal && (
+      <div className={styles.modalOverlay} role="presentation">
+        <div className={styles.recipeModal} role="dialog" aria-modal="true" aria-labelledby="save-recipe-title">
+          <div className={styles.modalHeader}>
+            <div>
+              <h3 id="save-recipe-title">Save Playlist Recipe</h3>
+              <p>Save your current filters so you can reuse this playlist setup later.</p>
+            </div>
+            <button type="button" onClick={() => setShowRecipeModal(false)} className={styles.btnIcon} aria-label="Close save recipe dialog">
+              <X size={16} />
+            </button>
+          </div>
+          <label className={styles.optionLabel}>
+            Recipe name
+            <input value={recipeName} onChange={(e) => setRecipeName(e.target.value)} className={styles.input} autoFocus />
+          </label>
+          <label className={styles.optionLabel}>
+            Description, optional
+            <textarea value={recipeDescription} onChange={(e) => setRecipeDescription(e.target.value)} className={styles.textarea} rows={4} />
+          </label>
+          <div className={styles.modalActions}>
+            <button type="button" onClick={() => setShowRecipeModal(false)} className={styles.btnSecondary}>
+              Cancel
+            </button>
+            <button type="button" onClick={savePlaylistRecipe} disabled={savingRecipe} className={styles.btnPrimary}>
+              {savingRecipe ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+              Save Recipe
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

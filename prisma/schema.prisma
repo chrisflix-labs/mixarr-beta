@@ -21,6 +21,7 @@ model User {
   updatedAt     DateTime       @updatedAt
   servers       Server[]
   playlistRules PlaylistRule[]
+  playlistRecipes PlaylistRecipe[]
   playlistHistory PlaylistHistory[]
   blockedTracks BlockedTrack[]
   syncSettings  SyncSettings?
@@ -326,6 +327,25 @@ model PlaylistRule {
   server            Server?   @relation(fields: [serverId], references: [id], onDelete: SetNull)
   library           Library?  @relation(fields: [libraryId], references: [id], onDelete: SetNull)
   history           PlaylistHistory[]
+}
+
+model PlaylistRecipe {
+  id                 String    @id @default(uuid())
+  userId             String
+  name               String
+  description        String?
+  filtersJson        Json
+  createdFromVersion String?
+  isFavorite         Boolean   @default(false)
+  isArchived         Boolean   @default(false)
+  lastUsedAt         DateTime?
+  useCount           Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@index([userId, lastUsedAt])
 }
 
 model PlaylistHistory {

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.8 - Save Playlist Recipes
+
+- Added saved playlist recipes for reusable playlist filter setups.
+- Added Save Recipe action to the playlist builder.
+- Added a Saved Recipes page with recipe summaries and usage actions.
+- Added recipe preview support using the playlist preview flow.
+- Added dashboard visibility for saved playlist recipes.
+
 ## v1.1.7 - Playlist Preview Before Create
 
 - Added a playlist preview step before creating playlists.

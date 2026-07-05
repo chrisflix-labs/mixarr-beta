@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { exportTracksToPlex } from "@/lib/playlistService";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
+import prisma from "@/lib/prisma";
+import { markPlaylistRecipeUsed } from "@/lib/playlistRecipes";
 
 export async function POST(req: Request) {
   const cookieStore = cookies();
@@ -12,12 +14,24 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, trackIds, savedRuleId, rulesSnapshot, optionsSnapshot, previewId } = await req.json();
+    const { name, trackIds, savedRuleId, rulesSnapshot, optionsSnapshot, previewId, recipeId, recipeName, filters } = await req.json();
 
     const trimmedName = typeof name === "string" ? name.trim() : "";
 
     if (!trimmedName || !trackIds || !Array.isArray(trackIds) || trackIds.length === 0) {
       return NextResponse.json({ error: "Invalid preview payload" }, { status: 400 });
+    }
+
+    let ownedRecipe: { id: string; name: string } | null = null;
+    if (recipeId) {
+      ownedRecipe = await prisma.playlistRecipe.findFirst({
+        where: { id: recipeId, userId, isArchived: false },
+        select: { id: true, name: true },
+      });
+
+      if (!ownedRecipe) {
+        return NextResponse.json({ error: "Playlist recipe not found" }, { status: 404 });
+      }
     }
 
     const result = await exportTracksToPlex({
@@ -29,15 +43,32 @@ export async function POST(req: Request) {
       optionsJson: optionsSnapshot ? JSON.stringify(optionsSnapshot) : undefined,
     });
 
+    if (ownedRecipe) {
+      await markPlaylistRecipeUsed(userId, ownedRecipe.id);
+    }
+
+    const resolvedRecipeName = ownedRecipe?.name || recipeName || null;
     await safeRecordJobHistory({
       userId,
       type: "playlist",
       name: "Playlist create from preview",
       status: "success",
       trigger: "manual",
-      summary: `Created playlist "${trimmedName}" from preview with ${result.trackCount} tracks.`,
+      summary: resolvedRecipeName
+        ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}" with ${result.trackCount} tracks.`
+        : `Created playlist "${trimmedName}" from preview with ${result.trackCount} tracks.`,
       counts: { attempted: trackIds.length, processed: result.trackCount, skipped: Math.max(0, trackIds.length - result.trackCount), failed: 0 },
-      metadata: { savedRuleId: savedRuleId || null, serverId: result.serverId, playlistId: result.playlistId || null, previewId: previewId || null },
+      metadata: {
+        savedRuleId: savedRuleId || null,
+        serverId: result.serverId,
+        playlistId: result.playlistId || null,
+        previewId: previewId || null,
+        recipeId: ownedRecipe?.id || recipeId || null,
+        recipeName: resolvedRecipeName,
+        playlistName: trimmedName,
+        trackCount: result.trackCount,
+        filters: filters || optionsSnapshot || null,
+      },
     });
 
     return NextResponse.json({ success: true, ...result });

@@ -14,6 +14,7 @@ export type ReleaseNoteBadge =
   | "Playlists"
   | "Plex"
   | "Preview"
+  | "Recipes"
   | "Release Notes"
   | "Retry"
   | "Roadmap"
@@ -30,6 +31,18 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.1.8",
+    title: "Save Playlist Recipes",
+    badges: ["Playlists", "Recipes", "Preview", "UI"],
+    changes: [
+      "Added saved playlist recipes for reusable playlist filter setups.",
+      "Added Save Recipe action to the playlist builder.",
+      "Added a Saved Recipes page with recipe summaries and usage actions.",
+      "Added recipe preview support using the playlist preview flow.",
+      "Added dashboard visibility for saved playlist recipes.",
+    ],
+  },
   {
     version: "1.1.7",
     title: "Playlist Preview Before Create",

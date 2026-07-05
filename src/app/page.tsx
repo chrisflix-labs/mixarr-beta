@@ -1,6 +1,6 @@
 import styles from "./page.module.css";
 import Link from "next/link";
-import { BrainCircuit, Fingerprint, Gauge, HeartPulse, History, ListMusic, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Wand2 } from "lucide-react";
+import { BookMarked, BrainCircuit, Fingerprint, Gauge, HeartPulse, History, ListMusic, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Wand2 } from "lucide-react";
 import LibrarySelector from "@/components/LibrarySelector";
 import SyncProgress from "@/components/SyncProgress";
 import PlexLoginButton from "@/components/PlexLoginButton";
@@ -97,6 +97,23 @@ function RecentJobsCard({ summary }: { summary: Awaited<ReturnType<typeof getRec
   );
 }
 
+function PlaylistRecipesCard({ count }: { count: number }) {
+  return (
+    <article className={styles.card}>
+      <BookMarked size={22} className={styles.cardIcon} />
+      <h3>Playlist Recipes</h3>
+      <p>Save and reuse your favorite playlist filter setups.</p>
+      <div className={styles.recipeCardActions}>
+        <span>{count.toLocaleString()} saved recipe{count === 1 ? "" : "s"}</span>
+        <div>
+          <Link href="/recipes" className={styles.cardAction}>View Recipes</Link>
+          <Link href="/builder" className={`${styles.cardAction} ${styles.secondaryCardAction}`}>Build Playlist</Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export default async function Home() {
   const cookieStore = cookies();
   const sessionId = cookieStore.get("mixarr_session")?.value;
@@ -104,14 +121,16 @@ export default async function Home() {
   let user = null;
   let health: Awaited<ReturnType<typeof getCachedLibraryHealth>> = [];
   let jobSummary: Awaited<ReturnType<typeof getRecentJobSummary>> | null = null;
+  let recipeCount = 0;
   if (sessionId) {
     user = await prisma.user.findUnique({
       where: { id: sessionId },
     });
     if (user) {
-      [health, jobSummary] = await Promise.all([
+      [health, jobSummary, recipeCount] = await Promise.all([
         getCachedLibraryHealth(user.id),
         getRecentJobSummary(user.id),
+        prisma.playlistRecipe.count({ where: { userId: user.id, isArchived: false } }),
       ]);
     }
   }
@@ -192,6 +211,7 @@ export default async function Home() {
           )}
           <div className={styles.compactCardsGrid}>
             <RecentJobsCard summary={jobSummary} />
+            <PlaylistRecipesCard count={recipeCount} />
             <MixarrVersionCard />
             <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
               <Map size={22} className={styles.cardIcon} />
@@ -273,6 +293,8 @@ export default async function Home() {
             <MixarrVersionCard />
 
             <RecentJobsCard summary={null} />
+
+            <PlaylistRecipesCard count={0} />
 
             <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
               <Map size={24} className={styles.cardIcon} />
