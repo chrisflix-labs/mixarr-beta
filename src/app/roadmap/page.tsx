@@ -11,19 +11,20 @@ export const metadata = {
 
 const nextFeatures = [
   "Webhook-triggered recently-added scans",
-  "Playlist safety rules",
   "Smart playlist builder",
+  "Advanced playlist regeneration",
+  "Artist variety controls",
   "Artist/album exclusion rules",
   "Import/export recipes",
   "Recipe sharing",
 ];
 
 const currentReleaseFeatures = [
-  "Manual track exclusions",
-  "Exclude tracks from playlist previews",
-  "Excluded track management in Settings",
-  "Remove exclusions to make tracks eligible again",
-  "Exclusion counts in playlist preview stats",
+  "Playlist safety rules",
+  "Avoid same-artist back-to-back tracks",
+  "Max tracks per artist and album controls",
+  "Low-track-count playlist warnings",
+  "Safety summaries in preview and Job History",
 ];
 
 const v2Ideas = [
@@ -61,7 +62,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release adds manual track exclusions so users can keep individual tracks out of Mixarr-generated playlist previews and Plex playlist creation.</p>
+          <p>This release adds basic Playlist Safety Rules so generated previews can avoid repetitive artist runs, album pileups, and very small playlist results.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -86,7 +87,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Webhook-triggered scans, playlist safety rules, and broader artist or album exclusion rules are planned for future releases.</p>
+        <p className={styles.futureNote}>Webhook-triggered scans, Smart Mix Engine work, and broader artist or album exclusion rules are planned for future releases.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

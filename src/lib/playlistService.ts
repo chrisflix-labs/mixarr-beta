@@ -25,6 +25,16 @@ const duplicateStrategies = ["allow", "song_artist"] as const;
 
 const maxPlaylistSize = Number(process.env.MAX_PLAYLIST_SIZE || 5000);
 
+export const playlistSafetyRulesSchema = z.object({
+  avoidSameArtistBackToBack: z.boolean().default(true),
+  limitTracksPerArtist: z.boolean().default(false),
+  maxTracksPerArtist: z.coerce.number().int().min(1).max(maxPlaylistSize).default(3),
+  limitTracksPerAlbum: z.boolean().default(false),
+  maxTracksPerAlbum: z.coerce.number().int().min(1).max(maxPlaylistSize).default(2),
+  warnIfFewerThan: z.boolean().default(true),
+  minimumTrackCount: z.coerce.number().int().min(1).max(maxPlaylistSize).default(10),
+}).default({});
+
 export const playlistRuleSchema = z.object({
   type: z.literal("rule").optional(),
   field: z.enum(fields),
@@ -66,6 +76,7 @@ export const playlistOptionsSchema = z.object({
   preferNonLive: z.boolean().default(true),
   excludeRemasters: z.boolean().default(false),
   negativeFilters: negativeFiltersSchema,
+  safetyRules: playlistSafetyRulesSchema,
 });
 
 export const playlistConfigSchema = z.object({
@@ -296,6 +307,177 @@ function applyDuplicatePolicy(tracks: any[], config: PlaylistConfigInput, limit:
   return selected.slice(0, limit);
 }
 
+function artistSafetyKey(track: any) {
+  return (track.artistId || track.artist?.id || track.artist?.title || "Unknown artist").toString().trim().toLowerCase() || "unknown artist";
+}
+
+function albumSafetyKey(track: any) {
+  return (track.albumId || track.album?.id || track.album?.title || "Unknown album").toString().trim().toLowerCase() || "unknown album";
+}
+
+function hasBackToBackArtistRepeat(tracks: any[]) {
+  for (let index = 1; index < tracks.length; index += 1) {
+    if (artistSafetyKey(tracks[index - 1]) === artistSafetyKey(tracks[index])) return true;
+  }
+  return false;
+}
+
+export function enforceArtistSpacing(tracks: any[]) {
+  const remaining = [...tracks];
+  const spaced: any[] = [];
+
+  while (remaining.length > 0) {
+    const previousArtist = spaced.length > 0 ? artistSafetyKey(spaced[spaced.length - 1]) : "";
+    const nextIndex = previousArtist
+      ? remaining.findIndex((track) => artistSafetyKey(track) !== previousArtist)
+      : 0;
+    const selectedIndex = nextIndex === -1 ? 0 : nextIndex;
+    const [track] = remaining.splice(selectedIndex, 1);
+    spaced.push(track);
+  }
+
+  const rearrangedTrackCount = spaced.reduce((count, track, index) => count + (track.id !== tracks[index]?.id ? 1 : 0), 0);
+  return {
+    tracks: spaced,
+    rearrangedTrackCount,
+    fullyApplied: !hasBackToBackArtistRepeat(spaced),
+  };
+}
+
+export function limitTracksPerArtist(tracks: any[], maxTracksPerArtist: number) {
+  const counts = new Map<string, number>();
+  const kept: any[] = [];
+  let removed = 0;
+
+  for (const track of tracks) {
+    const key = artistSafetyKey(track);
+    const nextCount = (counts.get(key) || 0) + 1;
+    if (nextCount > maxTracksPerArtist) {
+      removed += 1;
+      continue;
+    }
+    counts.set(key, nextCount);
+    kept.push(track);
+  }
+
+  return { tracks: kept, removed };
+}
+
+export function limitTracksPerAlbum(tracks: any[], maxTracksPerAlbum: number) {
+  const counts = new Map<string, number>();
+  const kept: any[] = [];
+  let removed = 0;
+
+  for (const track of tracks) {
+    const key = albumSafetyKey(track);
+    const nextCount = (counts.get(key) || 0) + 1;
+    if (nextCount > maxTracksPerAlbum) {
+      removed += 1;
+      continue;
+    }
+    counts.set(key, nextCount);
+    kept.push(track);
+  }
+
+  return { tracks: kept, removed };
+}
+
+export function summarizePlaylistSafetyRules(config: Pick<PlaylistConfigInput, "safetyRules">) {
+  const safetyRules = playlistSafetyRulesSchema.parse(config.safetyRules || {});
+  const parts: string[] = [];
+
+  if (safetyRules.avoidSameArtistBackToBack) parts.push("avoid back-to-back artists");
+  if (safetyRules.limitTracksPerArtist) parts.push(`max ${safetyRules.maxTracksPerArtist} per artist`);
+  if (safetyRules.limitTracksPerAlbum) parts.push(`max ${safetyRules.maxTracksPerAlbum} per album`);
+  if (safetyRules.warnIfFewerThan) parts.push(`warn below ${safetyRules.minimumTrackCount} tracks`);
+
+  return parts.length ? `Safety: ${parts.join(", ")}` : "Safety: off";
+}
+
+function safetyRulesAreEnabled(config: PlaylistConfigInput) {
+  const safetyRules = config.safetyRules;
+  return Boolean(
+    safetyRules.avoidSameArtistBackToBack
+    || safetyRules.limitTracksPerArtist
+    || safetyRules.limitTracksPerAlbum
+    || safetyRules.warnIfFewerThan,
+  );
+}
+
+export function applyPlaylistSafetyRules(tracks: any[], config: PlaylistConfigInput) {
+  const safetyRules = config.safetyRules;
+  const warnings: string[] = [];
+  let nextTracks = [...tracks];
+  let removedBySafetyRules = 0;
+  let rearrangedTrackCount = 0;
+  let artistLimitApplied = false;
+  let albumLimitApplied = false;
+  let artistSpacingApplied = false;
+
+  if (safetyRules.limitTracksPerArtist) {
+    const beforeCount = nextTracks.length;
+    const result = limitTracksPerArtist(nextTracks, safetyRules.maxTracksPerArtist);
+    nextTracks = result.tracks;
+    removedBySafetyRules += result.removed;
+    artistLimitApplied = true;
+    if (beforeCount >= config.limit && nextTracks.length < config.limit) {
+      warnings.push(`Max tracks per artist reduced the playlist from ${Math.min(beforeCount, config.limit)} to ${nextTracks.length} tracks. Try increasing the limit or widening your filters.`);
+    }
+  }
+
+  if (safetyRules.limitTracksPerAlbum) {
+    const beforeCount = nextTracks.length;
+    const result = limitTracksPerAlbum(nextTracks, safetyRules.maxTracksPerAlbum);
+    nextTracks = result.tracks;
+    removedBySafetyRules += result.removed;
+    albumLimitApplied = true;
+    if (beforeCount >= config.limit && nextTracks.length < config.limit) {
+      warnings.push(`Max tracks per album reduced the playlist from ${Math.min(beforeCount, config.limit)} to ${nextTracks.length} tracks. Try increasing the limit or widening your filters.`);
+    }
+  }
+
+  if (safetyRules.avoidSameArtistBackToBack) {
+    const result = enforceArtistSpacing(nextTracks);
+    nextTracks = result.tracks;
+    rearrangedTrackCount = result.rearrangedTrackCount;
+    artistSpacingApplied = true;
+    if (!result.fullyApplied) {
+      warnings.push("Artist spacing could not be fully applied because there were not enough unique artists.");
+    }
+  }
+
+  const finalTracks = nextTracks.slice(0, config.limit);
+  if (removedBySafetyRules > 0 && finalTracks.length < config.limit) {
+    warnings.push("Safety rules reduced the preview below the requested target count.");
+  }
+  if (safetyRules.warnIfFewerThan && finalTracks.length > 0 && finalTracks.length < safetyRules.minimumTrackCount) {
+    warnings.push(`This playlist only has ${finalTracks.length} tracks. You may want to loosen your filters before creating it.`);
+  }
+
+  return {
+    tracks: finalTracks,
+    metadata: {
+      safetyRulesApplied: safetyRulesAreEnabled(config),
+      removedBySafetyRules,
+      rearrangedTrackCount,
+      warnings: warnings.filter((warning, index, list) => list.indexOf(warning) === index),
+      artistLimitApplied,
+      albumLimitApplied,
+      artistSpacingApplied,
+      summary: summarizePlaylistSafetyRules(config),
+      enabledRules: {
+        avoidSameArtistBackToBack: safetyRules.avoidSameArtistBackToBack,
+        limitTracksPerArtist: safetyRules.limitTracksPerArtist,
+        maxTracksPerArtist: safetyRules.maxTracksPerArtist,
+        limitTracksPerAlbum: safetyRules.limitTracksPerAlbum,
+        maxTracksPerAlbum: safetyRules.maxTracksPerAlbum,
+        warnIfFewerThan: safetyRules.warnIfFewerThan,
+        minimumTrackCount: safetyRules.minimumTrackCount,
+      },
+    },
+  };
+}
+
 const playlistTrackInclude = {
   artist: { include: { tags: true } },
   album: true,
@@ -423,9 +605,16 @@ export async function generatePlaylistTracksWithStats({
   try {
     const { pinnedTracks, omittedIds, blockedTrackIds, manualExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
     const remainingLimit = Math.max(0, config.limit - pinnedTracks.length);
-    const take = config.duplicateStrategy === "allow" ? remainingLimit : Math.max(remainingLimit * 5, remainingLimit + 25);
+    const safetyCandidateLimit = safetyRulesAreEnabled(config)
+      ? Math.min(maxPlaylistSize, Math.max(remainingLimit * 5, remainingLimit + 25))
+      : remainingLimit;
+    const take = Math.min(
+      maxPlaylistSize,
+      config.duplicateStrategy === "allow" ? safetyCandidateLimit : Math.max(safetyCandidateLimit * 5, safetyCandidateLimit + 25),
+    );
     const candidates = remainingLimit > 0 ? await queryCandidateTracks(userId, config, omittedIds, take, audioFeatureFilterOptions) : [];
-    const generatedTracks = applyDuplicatePolicy(candidates, config, remainingLimit);
+    const generatedTracks = applyDuplicatePolicy(candidates, config, safetyCandidateLimit);
+    const safetyResult = applyPlaylistSafetyRules(pinnedTracks.concat(generatedTracks), config);
     const reasons = collectRuleReasons(config.ruleTree, config.rules);
 
     const baseOmittedIds = config.excludedTrackIds
@@ -440,8 +629,12 @@ export async function generatePlaylistTracksWithStats({
     });
 
     return {
-      tracks: pinnedTracks.concat(generatedTracks).slice(0, config.limit).map((track) => annotateTrack(track, reasons)),
+      tracks: safetyResult.tracks.map((track) => annotateTrack(track, reasons)),
       manualExclusionsApplied: Math.max(0, matchedBeforeManualExclusions - matchedAfterManualExclusions),
+      safety: {
+        ...safetyResult.metadata,
+        manualExclusionsRemoved: Math.max(0, matchedBeforeManualExclusions - matchedAfterManualExclusions),
+      },
     };
   } catch (error) {
     result = "failed";
@@ -581,7 +774,14 @@ export async function previewPlaylistTracks({
     energyRange: numericRangeLabel(rules, "energy"),
     moodRange: numericRangeLabel(rules, "valence"),
     popularityRange: numericRangeLabel(rules, "popularity"),
-    manualExclusionsRemoved: Math.max(0, matchedBeforeManualExclusions - matchedTrackCount),
+    manualExclusionsRemoved: generation.safety.manualExclusionsRemoved,
+    safetyRulesApplied: generation.safety.safetyRulesApplied,
+    removedBySafetyRules: generation.safety.removedBySafetyRules,
+    safetyRearrangedTrackCount: generation.safety.rearrangedTrackCount,
+    safetyRuleSummary: generation.safety.summary,
+    artistLimitApplied: generation.safety.artistLimitApplied,
+    albumLimitApplied: generation.safety.albumLimitApplied,
+    artistSpacingApplied: generation.safety.artistSpacingApplied,
     genreFilters: genreFilterLabel(rules),
     sortMode: "Popularity score descending",
     duplicateStrategy: config.duplicateStrategy === "allow" ? "Allow duplicates" : "One version per song",
@@ -610,8 +810,14 @@ export async function previewPlaylistTracks({
     { label: "Duplicate control", value: summary.duplicateStrategy },
     { label: "Negative filters", value: formatNegativeFilters(config.negativeFilters) },
     ...(summary.manualExclusionsRemoved > 0 ? [{ label: "Manual exclusions", value: `${summary.manualExclusionsRemoved} removed` }] : []),
+    { label: "Safety rules", value: summary.safetyRuleSummary },
     { label: "Rules", value: collectRuleReasons(config.ruleTree, config.rules).join("; ") || "All active tracks" },
   ];
+
+  const warnings = [
+    ...buildPreviewWarnings({ tracks: previewTracks, matchedTrackCount, requestedLimit: config.limit }),
+    ...generation.safety.warnings,
+  ].filter((warning, index, list) => list.indexOf(warning) === index);
 
   return {
     previewId: Buffer.from(`${Date.now()}:${previewTracks.map((track) => track.id).join(",")}`).toString("base64url").slice(0, 48),
@@ -621,7 +827,11 @@ export async function previewPlaylistTracks({
     summary,
     filterSummary,
     manualExclusionsApplied: summary.manualExclusionsRemoved,
-    warnings: buildPreviewWarnings({ tracks: previewTracks, matchedTrackCount, requestedLimit: config.limit }),
+    safetyRulesApplied: generation.safety.safetyRulesApplied,
+    removedBySafetyRules: generation.safety.removedBySafetyRules,
+    manualExclusionsRemoved: summary.manualExclusionsRemoved,
+    warnings,
+    safety: generation.safety,
   };
 }
 
@@ -867,6 +1077,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
   });
   let trackCount = 0;
   let manualExclusionsApplied = 0;
+  let safetyMetadata: Awaited<ReturnType<typeof generatePlaylistTracksWithStats>>["safety"] | null = null;
   let refreshError: string | undefined;
   try {
     const savedRules = JSON.parse(rule.rulesJson);
@@ -883,6 +1094,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
     });
     const tracks = generation.tracks;
     manualExclusionsApplied = generation.manualExclusionsApplied;
+    safetyMetadata = generation.safety;
     trackCount = tracks.length;
 
     if (tracks.length === 0) {
@@ -949,15 +1161,28 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
     const exclusionSummary = manualExclusionsApplied > 0
       ? ` Manual exclusions removed ${manualExclusionsApplied} track${manualExclusionsApplied === 1 ? "" : "s"} from the candidate pool.`
       : "";
+    const safetySummary = safetyMetadata?.safetyRulesApplied
+      ? ` Safety rules applied: ${safetyMetadata.summary.replace(/^Safety: /, "")}.`
+      : "";
     await safeFinishJobHistory({
       job: history,
       status: refreshResult,
       summary: refreshResult === "success"
-        ? `Playlist refresh completed. attempted=${trackCount}, processed=${trackCount}, skipped=0, failed=0.${exclusionSummary}`
+        ? `Playlist refresh completed. attempted=${trackCount}, processed=${trackCount}, skipped=0, failed=0.${exclusionSummary}${safetySummary}`
         : "Playlist refresh failed.",
       counts: { attempted: trackCount, processed: refreshResult === "success" ? trackCount : 0, skipped: 0, failed: refreshResult === "success" ? 0 : 1 },
       error: refreshError,
-      metadata: { ruleId, mode, manualExclusionsApplied: manualExclusionsApplied > 0, excludedTrackCount: manualExclusionsApplied },
+      metadata: {
+        ruleId,
+        mode,
+        manualExclusionsApplied: manualExclusionsApplied > 0,
+        excludedTrackCount: manualExclusionsApplied,
+        manualExclusionsRemoved: manualExclusionsApplied,
+        safetyRules: safetyMetadata?.enabledRules || null,
+        safetyRuleSummary: safetyMetadata?.summary || "Safety: off",
+        removedBySafetyRules: safetyMetadata?.removedBySafetyRules || 0,
+        finalTrackCount: trackCount,
+      },
     });
     inflightRefreshes.delete(ruleId);
     endTimer();

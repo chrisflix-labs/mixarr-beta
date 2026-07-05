@@ -22,19 +22,26 @@ export async function POST(req: Request) {
     const exclusionSummary = result.manualExclusionsApplied > 0
       ? ` Manual exclusions removed ${result.manualExclusionsApplied} track${result.manualExclusionsApplied === 1 ? "" : "s"} from the candidate pool.`
       : "";
+    const safetySummary = result.safety.safetyRulesApplied
+      ? ` Safety rules applied: ${result.safety.summary.replace(/^Safety: /, "")}.`
+      : "";
     await safeRecordJobHistory({
       userId,
       type: "playlist",
       name: "Playlist generation",
       status: "success",
       trigger: "manual",
-      summary: `Playlist generation completed. attempted=${config.limit}, processed=${tracks.length}, skipped=${Math.max(0, config.limit - tracks.length)}, failed=0.${exclusionSummary}`,
+      summary: `Playlist generation completed. attempted=${config.limit}, processed=${tracks.length}, skipped=${Math.max(0, config.limit - tracks.length)}, failed=0.${exclusionSummary}${safetySummary}`,
       counts: { attempted: config.limit, processed: tracks.length, skipped: Math.max(0, config.limit - tracks.length), failed: 0 },
       metadata: {
         libraryId: config.libraryId || null,
         serverId: config.serverId || null,
         manualExclusionsApplied: result.manualExclusionsApplied > 0,
         excludedTrackCount: result.manualExclusionsApplied,
+        safetyRules: result.safety.enabledRules,
+        safetyRuleSummary: result.safety.summary,
+        removedBySafetyRules: result.safety.removedBySafetyRules,
+        finalTrackCount: tracks.length,
       },
     });
 

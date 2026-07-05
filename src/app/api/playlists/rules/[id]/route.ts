@@ -46,6 +46,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
           preferNonLive: parsed.preferNonLive,
           excludeRemasters: parsed.excludeRemasters,
           negativeFilters: parsed.negativeFilters,
+          safetyRules: parsed.safetyRules,
         }),
         limit: parsed.limit,
         autoRefresh: parsed.autoRefresh,

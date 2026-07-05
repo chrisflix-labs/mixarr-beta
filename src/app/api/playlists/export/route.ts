@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { exportTracksToPlex } from "@/lib/playlistService";
+import { exportTracksToPlex, playlistConfigSchema, summarizePlaylistSafetyRules } from "@/lib/playlistService";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
 
 export async function POST(req: Request) {
@@ -29,13 +29,18 @@ export async function POST(req: Request) {
     const exclusionSummary = result.excludedTrackCount > 0
       ? ` Manual exclusions removed ${result.excludedTrackCount} track${result.excludedTrackCount === 1 ? "" : "s"} from the candidate pool.`
       : "";
+    const safetyConfig = optionsSnapshot ? playlistConfigSchema.safeParse(optionsSnapshot) : null;
+    const safetyRuleSummary = safetyConfig?.success ? summarizePlaylistSafetyRules(safetyConfig.data) : "Safety: off";
+    const safetySummary = safetyConfig?.success && safetyRuleSummary !== "Safety: off"
+      ? ` Safety rules applied: ${safetyRuleSummary.replace(/^Safety: /, "")}.`
+      : "";
     await safeRecordJobHistory({
       userId,
       type: "playlist",
       name: "Playlist export",
       status: "success",
       trigger: "manual",
-      summary: `Playlist export completed. attempted=${trackIds.length}, processed=${result.trackCount}, skipped=${Math.max(0, trackIds.length - result.trackCount)}, failed=0.${exclusionSummary}`,
+      summary: `Playlist export completed. attempted=${trackIds.length}, processed=${result.trackCount}, skipped=${Math.max(0, trackIds.length - result.trackCount)}, failed=0.${exclusionSummary}${safetySummary}`,
       counts: { attempted: trackIds.length, processed: result.trackCount, skipped: Math.max(0, trackIds.length - result.trackCount), failed: 0 },
       metadata: {
         savedRuleId: savedRuleId || null,
@@ -43,6 +48,11 @@ export async function POST(req: Request) {
         playlistId: result.playlistId || null,
         manualExclusionsApplied: result.excludedTrackCount > 0,
         excludedTrackCount: result.excludedTrackCount,
+        manualExclusionsRemoved: result.excludedTrackCount,
+        safetyRules: safetyConfig?.success ? safetyConfig.data.safetyRules : null,
+        safetyRuleSummary,
+        safetyRulesApplied: Boolean(safetySummary),
+        finalTrackCount: result.trackCount,
       },
     });
 

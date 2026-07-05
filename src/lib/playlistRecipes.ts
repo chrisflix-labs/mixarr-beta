@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import prisma from "./prisma";
 import { APP_VERSION } from "./appVersion";
-import { playlistConfigSchema, type PlaylistConfigInput, type PlaylistRuleInput } from "./playlistService";
+import { playlistConfigSchema, summarizePlaylistSafetyRules, type PlaylistConfigInput, type PlaylistRuleInput } from "./playlistService";
 
 type RuleNode = PlaylistRuleInput | {
   type: "group";
@@ -79,6 +79,7 @@ export function summarizePlaylistRecipeFilters(filters: PlaylistConfigInput) {
   const negative = negativeFilterLabels(filters.negativeFilters);
   if (negative.length) parts.push(`Filters: ${negative.slice(0, 3).join(", ")}${negative.length > 3 ? "..." : ""}`);
 
+  parts.push(summarizePlaylistSafetyRules(filters));
   return parts.join(" · ");
 }
 

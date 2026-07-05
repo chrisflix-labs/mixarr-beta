@@ -19,6 +19,7 @@ export type ReleaseNoteBadge =
   | "Release Notes"
   | "Retry"
   | "Roadmap"
+  | "Safety Rules"
   | "Scheduler"
   | "Settings"
   | "UI";
@@ -32,6 +33,19 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.1.10",
+    title: "Playlist Safety Rules",
+    badges: ["Playlists", "Recipes", "Preview", "Safety Rules"],
+    changes: [
+      "Added optional playlist safety rules to reduce repetitive results.",
+      "Added artist spacing to avoid same-artist back-to-back tracks.",
+      "Added max tracks per artist and max tracks per album controls.",
+      "Added low-track-count warnings in playlist preview.",
+      "Saved safety rule settings with playlist recipes.",
+      "Added safety rule summaries and warnings to playlist preview and Job History.",
+    ],
+  },
   {
     version: "1.1.9.1",
     title: "Manual Track Exclusion",

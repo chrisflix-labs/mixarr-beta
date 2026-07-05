@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { exportTracksToPlex } from "@/lib/playlistService";
+import { exportTracksToPlex, playlistConfigSchema, summarizePlaylistSafetyRules } from "@/lib/playlistService";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
 import prisma from "@/lib/prisma";
 import { markPlaylistRecipeUsed } from "@/lib/playlistRecipes";
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, trackIds, savedRuleId, rulesSnapshot, optionsSnapshot, previewId, recipeId, recipeName, filters, manualExclusionsApplied } = await req.json();
+    const { name, trackIds, savedRuleId, rulesSnapshot, optionsSnapshot, previewId, recipeId, recipeName, filters, manualExclusionsApplied, removedBySafetyRules, safetyRulesApplied } = await req.json();
 
     const trimmedName = typeof name === "string" ? name.trim() : "";
 
@@ -52,6 +52,11 @@ export async function POST(req: Request) {
     const exclusionSummary = excludedTrackCount > 0
       ? ` Manual exclusions removed ${excludedTrackCount} track${excludedTrackCount === 1 ? "" : "s"} from the candidate pool.`
       : "";
+    const safetyConfig = optionsSnapshot ? playlistConfigSchema.safeParse(optionsSnapshot) : null;
+    const safetyRuleSummary = safetyConfig?.success ? summarizePlaylistSafetyRules(safetyConfig.data) : "Safety: off";
+    const safetySummary = safetyRulesApplied || (safetyConfig?.success && safetyRuleSummary !== "Safety: off")
+      ? ` Safety rules applied: ${safetyRuleSummary.replace(/^Safety: /, "")}.`
+      : "";
     await safeRecordJobHistory({
       userId,
       type: "playlist",
@@ -59,8 +64,8 @@ export async function POST(req: Request) {
       status: "success",
       trigger: "manual",
       summary: resolvedRecipeName
-        ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}" with ${result.trackCount} tracks.${exclusionSummary}`
-        : `Created playlist "${trimmedName}" from preview with ${result.trackCount} tracks.${exclusionSummary}`,
+        ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}" with ${result.trackCount} tracks.${exclusionSummary}${safetySummary}`
+        : `Created playlist "${trimmedName}" from preview with ${result.trackCount} tracks.${exclusionSummary}${safetySummary}`,
       counts: { attempted: trackIds.length, processed: result.trackCount, skipped: Math.max(0, trackIds.length - result.trackCount), failed: 0 },
       metadata: {
         savedRuleId: savedRuleId || null,
@@ -73,6 +78,12 @@ export async function POST(req: Request) {
         trackCount: result.trackCount,
         manualExclusionsApplied: excludedTrackCount > 0,
         excludedTrackCount,
+        manualExclusionsRemoved: excludedTrackCount,
+        safetyRules: safetyConfig?.success ? safetyConfig.data.safetyRules : null,
+        safetyRuleSummary,
+        safetyRulesApplied: Boolean(safetySummary),
+        removedBySafetyRules: Math.max(0, Number(removedBySafetyRules) || 0),
+        finalTrackCount: result.trackCount,
         filters: filters || optionsSnapshot || null,
       },
     });

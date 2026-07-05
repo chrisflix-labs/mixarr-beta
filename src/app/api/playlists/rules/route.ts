@@ -55,6 +55,7 @@ export async function POST(req: Request) {
           preferNonLive: parsed.preferNonLive,
           excludeRemasters: parsed.excludeRemasters,
           negativeFilters: parsed.negativeFilters,
+          safetyRules: parsed.safetyRules,
         }),
         limit: parsed.limit,
         autoRefresh: parsed.autoRefresh,

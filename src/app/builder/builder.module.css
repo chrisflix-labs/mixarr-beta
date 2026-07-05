@@ -35,6 +35,22 @@
   color: var(--muted);
 }
 
+.sectionTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.45rem;
+}
+
+.sectionTitleRow h3 {
+  margin: 0;
+}
+
+.sectionTitleRow svg {
+  color: var(--accent);
+}
+
 /* ---- Form controls ---- */
 
 .input,
@@ -359,6 +375,24 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
+}
+
+.safetyGrid {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 0.9rem;
+}
+
+.safetyControl {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(140px, 0.65fr);
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.safetyControl input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ---- Rule builder ---- */
@@ -991,6 +1025,10 @@
   }
 
   .recipeEditFields {
+    grid-template-columns: 1fr;
+  }
+
+  .safetyControl {
     grid-template-columns: 1fr;
   }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks, Ban } from "lucide-react";
+import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks, Ban, ShieldCheck } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import styles from "./builder.module.css";
@@ -29,6 +29,16 @@ type NegativeFilters = {
   excludePlayedWithinDays: string;
   minDurationMinutes: string;
   maxDurationMinutes: string;
+};
+
+type SafetyRules = {
+  avoidSameArtistBackToBack: boolean;
+  limitTracksPerArtist: boolean;
+  maxTracksPerArtist: string;
+  limitTracksPerAlbum: boolean;
+  maxTracksPerAlbum: string;
+  warnIfFewerThan: boolean;
+  minimumTrackCount: string;
 };
 
 type SavedRule = {
@@ -59,6 +69,13 @@ type PlaylistPreviewSummary = {
   moodRange: string;
   popularityRange: string;
   manualExclusionsRemoved?: number;
+  safetyRulesApplied?: boolean;
+  removedBySafetyRules?: number;
+  safetyRearrangedTrackCount?: number;
+  safetyRuleSummary?: string;
+  artistLimitApplied?: boolean;
+  albumLimitApplied?: boolean;
+  artistSpacingApplied?: boolean;
   genreFilters: string;
   sortMode: string;
   duplicateStrategy: string;
@@ -132,6 +149,15 @@ export default function BuilderPage() {
     excludePlayedWithinDays: "",
     minDurationMinutes: "",
     maxDurationMinutes: "",
+  });
+  const [safetyRules, setSafetyRules] = useState<SafetyRules>({
+    avoidSameArtistBackToBack: true,
+    limitTracksPerArtist: false,
+    maxTracksPerArtist: "3",
+    limitTracksPerAlbum: false,
+    maxTracksPerAlbum: "2",
+    warnIfFewerThan: true,
+    minimumTrackCount: "10",
   });
   const [pinnedTrackIds, setPinnedTrackIds] = useState<string[]>([]);
   const [excludedTrackIds, setExcludedTrackIds] = useState<string[]>([]);
@@ -250,6 +276,23 @@ export default function BuilderPage() {
     return { type: "group", combinator: rootCombinator, children };
   };
 
+  const restoreSafetyRules = (incoming: any = {}) => {
+    setSafetyRules({
+      avoidSameArtistBackToBack: incoming.avoidSameArtistBackToBack ?? true,
+      limitTracksPerArtist: incoming.limitTracksPerArtist || false,
+      maxTracksPerArtist: incoming.maxTracksPerArtist?.toString() || "3",
+      limitTracksPerAlbum: incoming.limitTracksPerAlbum || false,
+      maxTracksPerAlbum: incoming.maxTracksPerAlbum?.toString() || "2",
+      warnIfFewerThan: incoming.warnIfFewerThan ?? true,
+      minimumTrackCount: incoming.minimumTrackCount?.toString() || "10",
+    });
+  };
+
+  const updateSafetyRules = (patch: Partial<SafetyRules>) => {
+    setSafetyRules((current) => ({ ...current, ...patch }));
+    clearPreview();
+  };
+
   const restoreRuleTree = (tree: any, fallbackRules: Rule[]) => {
     if (!tree) {
       setRootCombinator("AND");
@@ -292,6 +335,15 @@ export default function BuilderPage() {
       minDurationMinutes: negativeFilters.minDurationMinutes || undefined,
       maxDurationMinutes: negativeFilters.maxDurationMinutes || undefined,
     },
+    safetyRules: {
+      avoidSameArtistBackToBack: safetyRules.avoidSameArtistBackToBack,
+      limitTracksPerArtist: safetyRules.limitTracksPerArtist,
+      maxTracksPerArtist: safetyRules.maxTracksPerArtist || undefined,
+      limitTracksPerAlbum: safetyRules.limitTracksPerAlbum,
+      maxTracksPerAlbum: safetyRules.maxTracksPerAlbum || undefined,
+      warnIfFewerThan: safetyRules.warnIfFewerThan,
+      minimumTrackCount: safetyRules.minimumTrackCount || undefined,
+    },
     ...extra,
   });
 
@@ -314,6 +366,15 @@ export default function BuilderPage() {
       excludePlayedWithinDays: filters.negativeFilters?.excludePlayedWithinDays != null ? filters.negativeFilters.excludePlayedWithinDays.toString() : undefined,
       minDurationMinutes: filters.negativeFilters?.minDurationMinutes != null ? filters.negativeFilters.minDurationMinutes.toString() : undefined,
       maxDurationMinutes: filters.negativeFilters?.maxDurationMinutes != null ? filters.negativeFilters.maxDurationMinutes.toString() : undefined,
+    },
+    safetyRules: {
+      avoidSameArtistBackToBack: filters.safetyRules?.avoidSameArtistBackToBack ?? true,
+      limitTracksPerArtist: filters.safetyRules?.limitTracksPerArtist || false,
+      maxTracksPerArtist: filters.safetyRules?.maxTracksPerArtist != null ? filters.safetyRules.maxTracksPerArtist.toString() : "3",
+      limitTracksPerAlbum: filters.safetyRules?.limitTracksPerAlbum || false,
+      maxTracksPerAlbum: filters.safetyRules?.maxTracksPerAlbum != null ? filters.safetyRules.maxTracksPerAlbum.toString() : "2",
+      warnIfFewerThan: filters.safetyRules?.warnIfFewerThan ?? true,
+      minimumTrackCount: filters.safetyRules?.minimumTrackCount != null ? filters.safetyRules.minimumTrackCount.toString() : "10",
     },
     pinnedTrackIds: filters.pinnedTrackIds || [],
     excludedTrackIds: filters.excludedTrackIds || [],
@@ -436,6 +497,7 @@ export default function BuilderPage() {
       minDurationMinutes: savedRule.options?.negativeFilters?.minDurationMinutes?.toString() || "",
       maxDurationMinutes: savedRule.options?.negativeFilters?.maxDurationMinutes?.toString() || "",
     });
+    restoreSafetyRules(savedRule.options?.safetyRules);
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
     setTracks([]);
@@ -473,6 +535,7 @@ export default function BuilderPage() {
       minDurationMinutes: filters.negativeFilters?.minDurationMinutes?.toString() || "",
       maxDurationMinutes: filters.negativeFilters?.maxDurationMinutes?.toString() || "",
     });
+    restoreSafetyRules(filters.safetyRules);
     setPinnedTrackIds(filters.pinnedTrackIds || []);
     setExcludedTrackIds(filters.excludedTrackIds || []);
     setTracks([]);
@@ -818,6 +881,8 @@ export default function BuilderPage() {
         recipeName: activeRecipe?.name || undefined,
         filters: activeRecipe ? playlistPayload({ pinnedTrackIds: [], excludedTrackIds: [] }) : undefined,
         manualExclusionsApplied: playlistPreview.summary.manualExclusionsRemoved || 0,
+        removedBySafetyRules: playlistPreview.summary.removedBySafetyRules || 0,
+        safetyRulesApplied: playlistPreview.summary.safetyRulesApplied || false,
       });
       await fetchSavedRules();
       await fetchHistory();
@@ -978,6 +1043,88 @@ export default function BuilderPage() {
               <label className={styles.optionLabel}>Not Played Days<input value={negativeFilters.excludePlayedWithinDays} onChange={(e) => { setNegativeFilters({ ...negativeFilters, excludePlayedWithinDays: e.target.value }); clearPreview(); }} placeholder="30" className={styles.input} /></label>
               <label className={styles.optionLabel}>Min Minutes<input value={negativeFilters.minDurationMinutes} onChange={(e) => { setNegativeFilters({ ...negativeFilters, minDurationMinutes: e.target.value }); clearPreview(); }} placeholder="1" className={styles.input} /></label>
               <label className={styles.optionLabel}>Max Minutes<input value={negativeFilters.maxDurationMinutes} onChange={(e) => { setNegativeFilters({ ...negativeFilters, maxDurationMinutes: e.target.value }); clearPreview(); }} placeholder="8" className={styles.input} /></label>
+            </div>
+          </div>
+        </div>
+
+        {/* Safety Rules */}
+        <div className={`glass-panel ${styles.panel}`}>
+          <div className={styles.sectionTitleRow}>
+            <h3>Safety Rules</h3>
+            <ShieldCheck size={18} />
+          </div>
+          <p className={styles.panelSubtext}>Optional guardrails to keep generated playlists cleaner and less repetitive.</p>
+          <div className={styles.safetyGrid}>
+            <label className={styles.checkLabel}>
+              <input
+                type="checkbox"
+                checked={safetyRules.avoidSameArtistBackToBack}
+                onChange={(e) => updateSafetyRules({ avoidSameArtistBackToBack: e.target.checked })}
+              />
+              Avoid same artist back-to-back
+            </label>
+            <div className={styles.safetyControl}>
+              <label className={styles.checkLabel}>
+                <input
+                  type="checkbox"
+                  checked={safetyRules.limitTracksPerArtist}
+                  onChange={(e) => updateSafetyRules({ limitTracksPerArtist: e.target.checked })}
+                />
+                Limit tracks per artist
+              </label>
+              <label className={styles.optionLabel}>
+                Max tracks per artist
+                <input
+                  type="number"
+                  min="1"
+                  value={safetyRules.maxTracksPerArtist}
+                  disabled={!safetyRules.limitTracksPerArtist}
+                  onChange={(e) => updateSafetyRules({ maxTracksPerArtist: e.target.value })}
+                  className={styles.input}
+                />
+              </label>
+            </div>
+            <div className={styles.safetyControl}>
+              <label className={styles.checkLabel}>
+                <input
+                  type="checkbox"
+                  checked={safetyRules.limitTracksPerAlbum}
+                  onChange={(e) => updateSafetyRules({ limitTracksPerAlbum: e.target.checked })}
+                />
+                Limit tracks per album
+              </label>
+              <label className={styles.optionLabel}>
+                Max tracks per album
+                <input
+                  type="number"
+                  min="1"
+                  value={safetyRules.maxTracksPerAlbum}
+                  disabled={!safetyRules.limitTracksPerAlbum}
+                  onChange={(e) => updateSafetyRules({ maxTracksPerAlbum: e.target.value })}
+                  className={styles.input}
+                />
+              </label>
+            </div>
+            <div className={styles.safetyControl}>
+              <label className={styles.checkLabel}>
+                <input
+                  type="checkbox"
+                  checked={safetyRules.warnIfFewerThan}
+                  onChange={(e) => updateSafetyRules({ warnIfFewerThan: e.target.checked })}
+                />
+                Warn if playlist has fewer than X tracks
+              </label>
+              <label className={styles.optionLabel}>
+                Minimum track warning
+                <input
+                  type="number"
+                  min="1"
+                  value={safetyRules.minimumTrackCount}
+                  disabled={!safetyRules.warnIfFewerThan}
+                  onChange={(e) => updateSafetyRules({ minimumTrackCount: e.target.value })}
+                  className={styles.input}
+                />
+              </label>
             </div>
           </div>
         </div>
@@ -1193,11 +1340,34 @@ export default function BuilderPage() {
                   <strong>{playlistPreview.summary.manualExclusionsRemoved} removed</strong>
                 </div>
               )}
+              {(playlistPreview.summary.removedBySafetyRules || 0) > 0 && (
+                <div className={styles.statCard}>
+                  <span>Safety rules</span>
+                  <strong>{playlistPreview.summary.removedBySafetyRules} removed</strong>
+                </div>
+              )}
+              {(playlistPreview.summary.safetyRearrangedTrackCount || 0) > 0 && (
+                <div className={styles.statCard}>
+                  <span>Artist spacing</span>
+                  <strong>{playlistPreview.summary.safetyRearrangedTrackCount} moved</strong>
+                </div>
+              )}
+              {playlistPreview.summary.safetyRulesApplied && (
+                <div className={styles.statCard}>
+                  <span>Safety</span>
+                  <strong>On</strong>
+                </div>
+              )}
             </div>
 
             {(playlistPreview.summary.manualExclusionsRemoved || 0) > 0 && (
               <p className={styles.manualExclusionText}>
                 {playlistPreview.summary.manualExclusionsRemoved} manually excluded track{playlistPreview.summary.manualExclusionsRemoved === 1 ? " was" : "s were"} removed from this preview.
+              </p>
+            )}
+            {playlistPreview.summary.safetyRuleSummary && (
+              <p className={styles.manualExclusionText}>
+                {playlistPreview.summary.safetyRuleSummary}
               </p>
             )}
 
@@ -1358,6 +1528,10 @@ export default function BuilderPage() {
                   <div><dt>Artists</dt><dd>{playlistPreview.summary.diversity.artistCount}</dd></div>
                   <div><dt>Albums</dt><dd>{playlistPreview.summary.diversity.albumCount}</dd></div>
                   {(playlistPreview.summary.manualExclusionsRemoved || 0) > 0 && <div><dt>Manual exclusions</dt><dd>{playlistPreview.summary.manualExclusionsRemoved} removed</dd></div>}
+                  <div><dt>Safety</dt><dd>{playlistPreview.summary.safetyRuleSummary || "Safety: off"}</dd></div>
+                  <div><dt>Safety removed</dt><dd>{playlistPreview.summary.removedBySafetyRules || 0}</dd></div>
+                  <div><dt>Artist spacing</dt><dd>{playlistPreview.summary.artistSpacingApplied ? "Yes" : "No"}</dd></div>
+                  <div><dt>Album limit</dt><dd>{playlistPreview.summary.albumLimitApplied ? "Yes" : "No"}</dd></div>
                   <div><dt>Missing BPM</dt><dd>{playlistPreview.summary.missing.bpm}</dd></div>
                   <div><dt>Missing features</dt><dd>{playlistPreview.summary.missing.audioFeatures}</dd></div>
                 </dl>

@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.10 - Playlist Safety Rules
+
+- Added optional playlist safety rules to reduce repetitive results.
+- Added artist spacing to avoid same-artist back-to-back tracks.
+- Added max tracks per artist and max tracks per album controls.
+- Added low-track-count warnings in playlist preview.
+- Saved safety rule settings with playlist recipes.
+- Added safety rule summaries and warnings to playlist preview and Job History.
+
 ## v1.1.9.1 - Manual Track Exclusion
 
 - Added manual track exclusions for Mixarr-generated playlists.
