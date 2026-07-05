@@ -11,7 +11,6 @@ export const metadata = {
 
 const nextFeatures = [
   "Webhook-triggered recently-added scans",
-  "Playlist preview before create",
   "Saved playlist recipes",
   "Playlist recipe editing and duplication",
   "Manual track exclusions",
@@ -20,11 +19,11 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
-  "Library Health details",
-  "Clickable health category drilldowns",
-  "Track-level health explanations",
-  "Filtered health tables with sorting",
-  "Manual retry actions connected to Job History",
+  "Playlist preview before create",
+  "Track preview list with stats and warnings",
+  "Filter summary before Plex writes",
+  "Create playlist from reviewed preview",
+  "Low-match and zero-match playlist guidance",
 ];
 
 const v2Ideas = [
@@ -62,7 +61,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release adds a dedicated Library Health Details page for track-level debugging and retry visibility.</p>
+          <p>This release adds a playlist preview step so users can review matched tracks before Mixarr writes to Plex.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>

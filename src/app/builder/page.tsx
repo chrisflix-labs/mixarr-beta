@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical } from "lucide-react";
+import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks } from "lucide-react";
 import BlockTrackButton from "@/components/BlockTrackButton";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import styles from "./builder.module.css";
@@ -47,6 +47,58 @@ type SavedRule = {
   lastRefreshError?: string | null;
 };
 
+type PlaylistPreviewSummary = {
+  targetTrackCount: number;
+  matchingTrackCount: number;
+  finalTrackCount: number;
+  displayedTrackCount: number;
+  estimatedDurationMs: number;
+  estimatedDurationMinutes: number;
+  bpmRange: string;
+  energyRange: string;
+  moodRange: string;
+  popularityRange: string;
+  genreFilters: string;
+  sortMode: string;
+  duplicateStrategy: string;
+  diversity: {
+    artistCount: number;
+    albumCount: number;
+    repeatedArtistTracks: number;
+  };
+  missing: {
+    bpm: number;
+    audioFeatures: number;
+    popularity: number;
+  };
+};
+
+type PlaylistPreviewState = {
+  previewId: string;
+  trackIds: string[];
+  totalPreviewTrackCount: number;
+  summary: PlaylistPreviewSummary;
+  filterSummary: Array<{ label: string; value: string }>;
+  warnings: string[];
+  signature: string;
+};
+
+function formatDuration(ms?: number | null) {
+  if (!ms) return "—";
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function formatEstimatedDuration(minutes?: number | null) {
+  if (!minutes) return "0 min";
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (hours === 0) return `${minutes} min`;
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+}
+
 export default function BuilderPage() {
   const [rules, setRules] = useState<Rule[]>([{ field: "popularity", operator: "gt", value: "50" }]);
   const [rootCombinator, setRootCombinator] = useState<"AND" | "OR">("AND");
@@ -77,6 +129,8 @@ export default function BuilderPage() {
   const [savedRules, setSavedRules] = useState<SavedRule[]>([]);
   const [selectedRuleId, setSelectedRuleId] = useState("");
   const [tracks, setTracks] = useState<any[]>([]);
+  const [playlistPreview, setPlaylistPreview] = useState<PlaylistPreviewState | null>(null);
+  const [previewError, setPreviewError] = useState("");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -131,6 +185,7 @@ export default function BuilderPage() {
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
     setTracks([]);
+    setPlaylistPreview(null);
   }, []);
 
   const fetchSavedRules = async () => {
@@ -219,31 +274,45 @@ export default function BuilderPage() {
     ...extra,
   });
 
+  const previewConfigSignature = () => JSON.stringify(playlistPayload({ pinnedTrackIds: [], excludedTrackIds: [] }));
+  const isPreviewCurrent = playlistPreview?.signature === previewConfigSignature();
+  const createTrackIds = tracks.map((track) => track.id);
+  const playlistNameReady = playlistName.trim().length > 0;
+  const canCreateFromPreview = Boolean(playlistNameReady && playlistPreview && isPreviewCurrent && createTrackIds.length > 0);
+
+  const clearPreview = () => {
+    setTracks([]);
+    setPlaylistPreview(null);
+    setPreviewError("");
+    setPinnedTrackIds([]);
+    setExcludedTrackIds([]);
+  };
+
   const addRule = () => {
     setRules([...rules, { field: "genre", operator: "contains", value: "" }]);
-    setTracks([]);
+    clearPreview();
   };
 
   const removeRule = (index: number) => {
     setRules(rules.filter((_, i) => i !== index));
-    setTracks([]);
+    clearPreview();
   };
 
   const updateRule = (index: number, key: keyof Rule, val: string) => {
     const newRules = [...rules];
     newRules[index][key] = val;
     setRules(newRules);
-    setTracks([]);
+    clearPreview();
   };
 
   const addGroup = () => {
     setRuleGroups([...ruleGroups, { id: `${Date.now()}-${Math.random()}`, combinator: "OR", rules: [{ field: "genre", operator: "contains", value: "" }] }]);
-    setTracks([]);
+    clearPreview();
   };
 
   const updateGroup = (groupId: string, patch: Partial<RuleGroup>) => {
     setRuleGroups(ruleGroups.map(group => group.id === groupId ? { ...group, ...patch } : group));
-    setTracks([]);
+    clearPreview();
   };
 
   const updateGroupRule = (groupId: string, index: number, key: keyof Rule, val: string) => {
@@ -253,17 +322,17 @@ export default function BuilderPage() {
       nextRules[index][key] = val;
       return { ...group, rules: nextRules };
     }));
-    setTracks([]);
+    clearPreview();
   };
 
   const addGroupRule = (groupId: string) => {
     setRuleGroups(ruleGroups.map(group => group.id === groupId ? { ...group, rules: [...group.rules, { field: "genre", operator: "contains", value: "" }] } : group));
-    setTracks([]);
+    clearPreview();
   };
 
   const removeGroupRule = (groupId: string, index: number) => {
     setRuleGroups(ruleGroups.map(group => group.id === groupId ? { ...group, rules: group.rules.filter((_, i) => i !== index) } : group));
-    setTracks([]);
+    clearPreview();
   };
 
   const loadSavedRule = (id: string) => {
@@ -296,6 +365,7 @@ export default function BuilderPage() {
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
     setTracks([]);
+    setPlaylistPreview(null);
   };
 
   const saveSmartPlaylist = async (showAlert = true) => {
@@ -374,18 +444,30 @@ export default function BuilderPage() {
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
     setTracks([]);
+    setPlaylistPreview(null);
   };
 
   const previewPlaylist = async () => {
     setLoading(true);
+    setPreviewError("");
     try {
       setPinnedTrackIds([]);
       setExcludedTrackIds([]);
-      const res = await axios.post("/api/playlists/generate", playlistPayload());
-      setTracks(res.data.tracks);
+      const signature = previewConfigSignature();
+      const res = await axios.post("/api/playlists/preview", playlistPayload());
+      setTracks(res.data.tracks || []);
+      setPlaylistPreview({
+        previewId: res.data.previewId,
+        trackIds: res.data.trackIds || [],
+        totalPreviewTrackCount: res.data.totalPreviewTrackCount || 0,
+        summary: res.data.summary,
+        filterSummary: res.data.filterSummary || [],
+        warnings: res.data.warnings || [],
+        signature,
+      });
     } catch (e) {
       console.error(e);
-      alert("Failed to generate preview");
+      setPreviewError("Unable to generate playlist preview. Check your filters and try again.");
     } finally {
       setLoading(false);
     }
@@ -393,16 +475,27 @@ export default function BuilderPage() {
 
   const regenerateUnpinned = async () => {
     setLoading(true);
+    setPreviewError("");
     try {
-      const res = await axios.post("/api/playlists/generate", playlistPayload({
+      const signature = previewConfigSignature();
+      const res = await axios.post("/api/playlists/preview", playlistPayload({
         pinnedTrackIds,
         excludedTrackIds,
       }));
-      setTracks(res.data.tracks);
-      setPinnedTrackIds(res.data.tracks.filter((track: any) => pinnedTrackIds.includes(track.id)).map((track: any) => track.id));
+      setTracks(res.data.tracks || []);
+      setPlaylistPreview({
+        previewId: res.data.previewId,
+        trackIds: res.data.trackIds || [],
+        totalPreviewTrackCount: res.data.totalPreviewTrackCount || 0,
+        summary: res.data.summary,
+        filterSummary: res.data.filterSummary || [],
+        warnings: res.data.warnings || [],
+        signature,
+      });
+      setPinnedTrackIds((res.data.trackIds || []).filter((trackId: string) => pinnedTrackIds.includes(trackId)));
     } catch (e) {
       console.error(e);
-      alert("Failed to regenerate preview");
+      setPreviewError("Unable to generate playlist preview. Check your filters and try again.");
     } finally {
       setLoading(false);
     }
@@ -410,6 +503,15 @@ export default function BuilderPage() {
 
   const removeTrack = (trackId: string) => {
     setTracks(tracks.filter(track => track.id !== trackId));
+    setPlaylistPreview(playlistPreview ? {
+      ...playlistPreview,
+      trackIds: playlistPreview.trackIds.filter(id => id !== trackId),
+      totalPreviewTrackCount: Math.max(0, playlistPreview.totalPreviewTrackCount - 1),
+      summary: {
+        ...playlistPreview.summary,
+        finalTrackCount: Math.max(0, playlistPreview.summary.finalTrackCount - 1),
+      },
+    } : null);
     setPinnedTrackIds(pinnedTrackIds.filter(id => id !== trackId));
     setExcludedTrackIds([...excludedTrackIds, trackId]);
   };
@@ -430,6 +532,7 @@ export default function BuilderPage() {
     const [draggedTrack] = nextTracks.splice(draggedIndex, 1);
     nextTracks.splice(targetIndex, 0, draggedTrack);
     setTracks(nextTracks);
+    if (playlistPreview) setPlaylistPreview({ ...playlistPreview, trackIds: nextTracks.map(track => track.id) });
     setPinnedTrackIds(nextTracks.filter(track => pinnedTrackIds.includes(track.id)).map(track => track.id));
     setDraggedTrackId("");
   };
@@ -439,8 +542,12 @@ export default function BuilderPage() {
       alert("Please enter a playlist name");
       return;
     }
-    if (tracks.length === 0) {
-      alert("Please preview tracks first to ensure the playlist is not empty");
+    if (!playlistPreview || !isPreviewCurrent) {
+      alert("Preview this playlist recipe before creating it");
+      return;
+    }
+    if (playlistPreview.trackIds.length === 0) {
+      alert("No tracks matched this playlist recipe. Adjust your filters and preview again.");
       return;
     }
     setExporting(true);
@@ -450,19 +557,20 @@ export default function BuilderPage() {
         : "";
       if ((autoRefresh || selectedRuleId) && !savedRuleId) return;
 
-      await axios.post("/api/playlists/export", {
+      await axios.post("/api/playlists/create-from-preview", {
         name: playlistName,
-        trackIds: tracks.map(t => t.id),
+        trackIds: createTrackIds,
         savedRuleId: savedRuleId || undefined,
         rulesSnapshot: buildRuleTree() || rules,
-        optionsSnapshot: playlistPayload({ pinnedTrackIds: [], excludedTrackIds: [] })
+        optionsSnapshot: playlistPayload({ pinnedTrackIds: [], excludedTrackIds: [] }),
+        previewId: playlistPreview.previewId,
       });
       await fetchSavedRules();
       await fetchHistory();
-      alert("Playlist exported to Plex successfully!");
+      alert("Playlist created in Plex successfully!");
     } catch (e) {
       console.error(e);
-      alert("Failed to export to Plex");
+      alert("Failed to create playlist in Plex");
     } finally {
       setExporting(false);
     }
@@ -530,32 +638,32 @@ export default function BuilderPage() {
             <div className={styles.behaviorRow}>
               <label className={styles.optionLabel}>
                 Duplicate Control
-                <select value={duplicateStrategy} onChange={(e) => { setDuplicateStrategy(e.target.value as "allow" | "song_artist"); setTracks([]); }} className={styles.select}>
+                <select value={duplicateStrategy} onChange={(e) => { setDuplicateStrategy(e.target.value as "allow" | "song_artist"); clearPreview(); }} className={styles.select}>
                   <option value="song_artist">One version per song</option>
                   <option value="allow">Allow duplicates</option>
                 </select>
               </label>
               <label className={styles.optionLabel}>
                 Top-Level Groups
-                <select value={rootCombinator} onChange={(e) => { setRootCombinator(e.target.value as "AND" | "OR"); setTracks([]); }} className={styles.select}>
+                <select value={rootCombinator} onChange={(e) => { setRootCombinator(e.target.value as "AND" | "OR"); clearPreview(); }} className={styles.select}>
                   <option value="AND">Match all groups</option>
                   <option value="OR">Match any group</option>
                 </select>
               </label>
             </div>
             <div className={styles.checkGroup}>
-              <label className={styles.checkLabel}><input type="checkbox" checked={preferNonLive} onChange={(e) => { setPreferNonLive(e.target.checked); setTracks([]); }} /> Prefer non-live duplicates</label>
-              <label className={styles.checkLabel}><input type="checkbox" checked={excludeRemasters} onChange={(e) => { setExcludeRemasters(e.target.checked); setTracks([]); }} /> Exclude remasters</label>
-              <label className={styles.checkLabel}><input type="checkbox" checked={negativeFilters.excludeHoliday} onChange={(e) => setNegativeFilters({ ...negativeFilters, excludeHoliday: e.target.checked })} /> Exclude holiday tracks</label>
-              <label className={styles.checkLabel}><input type="checkbox" checked={negativeFilters.excludeLive} onChange={(e) => setNegativeFilters({ ...negativeFilters, excludeLive: e.target.checked })} /> Exclude live tracks</label>
-              <label className={styles.checkLabel}><input type="checkbox" checked={negativeFilters.excludeExplicit} onChange={(e) => setNegativeFilters({ ...negativeFilters, excludeExplicit: e.target.checked })} /> Exclude explicit tracks</label>
-              <label className={styles.checkLabel}><input type="checkbox" checked={negativeFilters.excludeIntroOutro} onChange={(e) => setNegativeFilters({ ...negativeFilters, excludeIntroOutro: e.target.checked })} /> Exclude intros/outros</label>
+              <label className={styles.checkLabel}><input type="checkbox" checked={preferNonLive} onChange={(e) => { setPreferNonLive(e.target.checked); clearPreview(); }} /> Prefer non-live duplicates</label>
+              <label className={styles.checkLabel}><input type="checkbox" checked={excludeRemasters} onChange={(e) => { setExcludeRemasters(e.target.checked); clearPreview(); }} /> Exclude remasters</label>
+              <label className={styles.checkLabel}><input type="checkbox" checked={negativeFilters.excludeHoliday} onChange={(e) => { setNegativeFilters({ ...negativeFilters, excludeHoliday: e.target.checked }); clearPreview(); }} /> Exclude holiday tracks</label>
+              <label className={styles.checkLabel}><input type="checkbox" checked={negativeFilters.excludeLive} onChange={(e) => { setNegativeFilters({ ...negativeFilters, excludeLive: e.target.checked }); clearPreview(); }} /> Exclude live tracks</label>
+              <label className={styles.checkLabel}><input type="checkbox" checked={negativeFilters.excludeExplicit} onChange={(e) => { setNegativeFilters({ ...negativeFilters, excludeExplicit: e.target.checked }); clearPreview(); }} /> Exclude explicit tracks</label>
+              <label className={styles.checkLabel}><input type="checkbox" checked={negativeFilters.excludeIntroOutro} onChange={(e) => { setNegativeFilters({ ...negativeFilters, excludeIntroOutro: e.target.checked }); clearPreview(); }} /> Exclude intros/outros</label>
             </div>
             <div className={styles.behaviorRow}>
-              <label className={styles.optionLabel}>Min Rating<input value={negativeFilters.minRating} onChange={(e) => setNegativeFilters({ ...negativeFilters, minRating: e.target.value })} placeholder="0-10" className={styles.input} /></label>
-              <label className={styles.optionLabel}>Not Played Days<input value={negativeFilters.excludePlayedWithinDays} onChange={(e) => setNegativeFilters({ ...negativeFilters, excludePlayedWithinDays: e.target.value })} placeholder="30" className={styles.input} /></label>
-              <label className={styles.optionLabel}>Min Minutes<input value={negativeFilters.minDurationMinutes} onChange={(e) => setNegativeFilters({ ...negativeFilters, minDurationMinutes: e.target.value })} placeholder="1" className={styles.input} /></label>
-              <label className={styles.optionLabel}>Max Minutes<input value={negativeFilters.maxDurationMinutes} onChange={(e) => setNegativeFilters({ ...negativeFilters, maxDurationMinutes: e.target.value })} placeholder="8" className={styles.input} /></label>
+              <label className={styles.optionLabel}>Min Rating<input value={negativeFilters.minRating} onChange={(e) => { setNegativeFilters({ ...negativeFilters, minRating: e.target.value }); clearPreview(); }} placeholder="0-10" className={styles.input} /></label>
+              <label className={styles.optionLabel}>Not Played Days<input value={negativeFilters.excludePlayedWithinDays} onChange={(e) => { setNegativeFilters({ ...negativeFilters, excludePlayedWithinDays: e.target.value }); clearPreview(); }} placeholder="30" className={styles.input} /></label>
+              <label className={styles.optionLabel}>Min Minutes<input value={negativeFilters.minDurationMinutes} onChange={(e) => { setNegativeFilters({ ...negativeFilters, minDurationMinutes: e.target.value }); clearPreview(); }} placeholder="1" className={styles.input} /></label>
+              <label className={styles.optionLabel}>Max Minutes<input value={negativeFilters.maxDurationMinutes} onChange={(e) => { setNegativeFilters({ ...negativeFilters, maxDurationMinutes: e.target.value }); clearPreview(); }} placeholder="8" className={styles.input} /></label>
             </div>
           </div>
         </div>
@@ -640,7 +748,7 @@ export default function BuilderPage() {
                     <option value="OR">Any rule in this group</option>
                     <option value="AND">All rules in this group</option>
                   </select>
-                  <button onClick={() => setRuleGroups(ruleGroups.filter(item => item.id !== group.id))} className={styles.btnGhostDanger}>
+                  <button onClick={() => { setRuleGroups(ruleGroups.filter(item => item.id !== group.id)); clearPreview(); }} className={styles.btnGhostDanger}>
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -689,7 +797,7 @@ export default function BuilderPage() {
           <div className={styles.ruleFooter}>
             <div className={styles.limitLabel}>
               <label>Track Limit:</label>
-              <input type="number" value={limit} onChange={(e) => { setLimit(Number(e.target.value)); setTracks([]); }} className={styles.limitInput} />
+              <input type="number" value={limit} onChange={(e) => { setLimit(Number(e.target.value)); clearPreview(); }} className={styles.limitInput} />
             </div>
             <button onClick={previewPlaylist} disabled={loading} className={styles.btnPrimary} style={{ marginLeft: "auto" }}>
               <Play size={16} /> {loading ? "Querying..." : "Preview Playlist"}
@@ -701,10 +809,18 @@ export default function BuilderPage() {
       {/* RIGHT COLUMN: PREVIEW */}
       <div className={`glass-panel ${styles.previewPanel}`}>
         <div className={styles.previewHeader}>
-          <h3>Playlist Preview</h3>
-          <button onClick={regenerateUnpinned} disabled={loading || tracks.length === 0} className={styles.btnSecondary}>
-            <RefreshCw size={14} /> Regenerate Open Slots
-          </button>
+          <div>
+            <h3>Playlist Preview</h3>
+            <p>Review the exact playlist order before Mixarr writes to Plex.</p>
+          </div>
+          <div className={styles.previewActions}>
+            <button onClick={previewPlaylist} disabled={loading} className={styles.btnSecondary}>
+              <Play size={14} /> Preview Playlist
+            </button>
+            <button onClick={regenerateUnpinned} disabled={loading || !playlistPreview} className={styles.btnSecondary}>
+              <RefreshCw size={14} /> Refresh Preview
+            </button>
+          </div>
         </div>
 
         <div className={styles.previewNameRow}>
@@ -715,76 +831,201 @@ export default function BuilderPage() {
             onChange={(e) => setPlaylistName(e.target.value)}
             className={styles.previewNameInput}
           />
-          <button onClick={exportToPlex} disabled={exporting || tracks.length === 0} className={styles.btnPrimary}>
-            <Upload size={16} /> {exporting ? "Pushing..." : "Push to Plex"}
+          <button onClick={exportToPlex} disabled={exporting || !canCreateFromPreview} className={styles.btnPrimary}>
+            <Upload size={16} /> {exporting ? "Creating..." : "Create Playlist"}
           </button>
         </div>
+        {!playlistNameReady && (
+          <p className={styles.helperText}>Enter a playlist name before creating the playlist.</p>
+        )}
+        <p className={styles.helperText}>Refresh Preview reruns the current filters.</p>
 
-        <div className="table-container">
-          {tracks.length === 0 ? (
+        {playlistPreview && !isPreviewCurrent && (
+          <div className={styles.staleNotice}>
+            <AlertTriangle size={16} />
+            Filters changed after this preview. Refresh the preview before creating the playlist.
+          </div>
+        )}
+
+        {playlistPreview && (
+          <>
+            <div className={styles.statsGrid}>
+              <div className={styles.statCard}>
+                <span>Target</span>
+                <strong>{playlistPreview.summary.targetTrackCount}</strong>
+              </div>
+              <div className={styles.statCard}>
+                <span>Matched</span>
+                <strong>{playlistPreview.summary.matchingTrackCount}</strong>
+              </div>
+              <div className={styles.statCard}>
+                <span>Preview</span>
+                <strong>{playlistPreview.summary.finalTrackCount}</strong>
+              </div>
+              <div className={styles.statCard}>
+                <span>Duration</span>
+                <strong>{formatEstimatedDuration(playlistPreview.summary.estimatedDurationMinutes)}</strong>
+              </div>
+            </div>
+
+            {playlistPreview.warnings.length > 0 && (
+              <div className={styles.warningPanel}>
+                <div className={styles.warningTitle}>
+                  <AlertTriangle size={16} />
+                  Warnings
+                </div>
+                {playlistPreview.warnings.map((warning) => (
+                  <p key={warning}>{warning}</p>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        <section className={styles.trackPreviewSection} aria-labelledby="previewed-tracks">
+          <div className={styles.trackPreviewHeader}>
+            <div>
+              <h4 id="previewed-tracks">Previewed Tracks</h4>
+              <p>These are the tracks Mixarr will add to Plex in this order.</p>
+            </div>
+            {playlistPreview && tracks.length > 0 && (
+              <span className={styles.trackPreviewCount}>
+                {playlistPreview.totalPreviewTrackCount > tracks.length
+                  ? `Showing first ${tracks.length} of ${playlistPreview.totalPreviewTrackCount} matched tracks. Create Playlist will use these ${tracks.length} previewed tracks.`
+                  : `Showing ${tracks.length} previewed tracks. Create Playlist will use these exact tracks.`}
+              </span>
+            )}
+          </div>
+
+          {loading ? (
+            <div className={styles.loadingPreview}>Generating playlist preview...</div>
+          ) : previewError ? (
+            <div className={styles.errorPreview}>{previewError}</div>
+          ) : tracks.length === 0 ? (
             <div className={styles.emptyPreview}>
-              Click Preview Playlist to see results
+              {playlistPreview?.totalPreviewTrackCount === 0
+                ? "No tracks matched this playlist preview. Adjust your filters and try again."
+                : "Click Preview Playlist to see matched tracks before creating anything in Plex."}
             </div>
           ) : (
-            <table className={styles.previewTable}>
-              <thead>
-                <tr>
-                  <th className={styles.colIndex}>#</th>
-                  <th className={styles.colActions}></th>
-                  <th>Track</th>
-                  <th>Artist</th>
-                  <th className={styles.colBpm}>BPM</th>
-                  <th className={styles.colPop}>Pop</th>
-                  <th>Why</th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              <div className={`table-container ${styles.trackTableWrap}`}>
+                <table className={styles.previewTable}>
+                  <thead>
+                    <tr>
+                      <th className={styles.colIndex}>#</th>
+                      <th>Track title</th>
+                      <th>Artist</th>
+                      <th>Album</th>
+                      <th className={styles.colDuration}>Duration</th>
+                      <th className={styles.colBpm}>BPM</th>
+                      <th className={styles.colFeature}>Energy</th>
+                      <th className={styles.colFeature}>Mood</th>
+                      <th className={styles.colPop}>Popularity</th>
+                      <th className={styles.colActions}>Tools</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tracks.map((track, idx) => (
+                      <tr
+                        key={track.id}
+                        draggable
+                        onDragStart={() => setDraggedTrackId(track.id)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => moveDraggedTrack(track.id)}
+                      >
+                        <td className={styles.trackOrder}>{idx + 1}</td>
+                        <td className={styles.trackTitle}>
+                          {track.title || "—"}
+                          {(track.isLive || track.isRemaster || track.isExplicit) && (
+                            <div className={styles.badgeRow}>
+                              {track.isLive && <span className={styles.miniBadge}>Live</span>}
+                              {track.isRemaster && <span className={styles.miniBadge}>Remaster</span>}
+                              {track.isExplicit && <span className={styles.miniBadge}>Explicit</span>}
+                            </div>
+                          )}
+                        </td>
+                        <td className={styles.trackArtist}>{track.artist?.title || "—"}</td>
+                        <td className={styles.trackAlbum}>{track.album?.title || "—"}</td>
+                        <td className={styles.trackDuration}>{formatDuration(track.duration)}</td>
+                        <td className={styles.trackBpm}>
+                          {(track.effectiveBpm ?? track.bpm ?? track.audioFeature?.tempo)?.toFixed(0) || "—"}
+                          {track.metadataConfidence?.audio?.tempoLabel && <div className={styles.trackBpmLabel}>{track.metadataConfidence.audio.tempoLabel}</div>}
+                        </td>
+                        <td className={styles.trackFeature}>{(track.audioFeature?.effectiveEnergy ?? track.audioFeature?.energy)?.toFixed(2) || "—"}</td>
+                        <td className={styles.trackFeature}>{(track.audioFeature?.effectiveMood ?? track.audioFeature?.valence)?.toFixed(2) || "—"}</td>
+                        <td className={styles.trackPop}>{track.popularity?.score?.toFixed(0) || "—"}</td>
+                        <td>
+                          <div className={styles.actionGroup}>
+                            <button title="Drag row" className={styles.btnIcon}><GripVertical size={14} /></button>
+                            <button title={pinnedTrackIds.includes(track.id) ? "Unpin" : "Pin"} onClick={() => togglePin(track.id)} className={`${styles.btnIcon} ${pinnedTrackIds.includes(track.id) ? styles.pinActive : ""}`}><Pin size={14} /></button>
+                            <button title="Remove from this preview" onClick={() => removeTrack(track.id)} className={styles.btnIcon}><X size={14} /></button>
+                            <TrackPreviewButton trackId={track.id} />
+                            <BlockTrackButton trackId={track.id} onBlocked={removeTrack} />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className={styles.mobileTrackCards}>
                 {tracks.map((track, idx) => (
-                  <tr
-                    key={track.id}
-                    draggable
-                    onDragStart={() => setDraggedTrackId(track.id)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => moveDraggedTrack(track.id)}
-                  >
-                    <td style={{ color: "var(--faint)" }}>{idx + 1}</td>
-                    <td>
-                      <div className={styles.actionGroup}>
-                        <button title="Drag row" className={styles.btnIcon}><GripVertical size={14} /></button>
-                        <button title={pinnedTrackIds.includes(track.id) ? "Unpin" : "Pin"} onClick={() => togglePin(track.id)} className={`${styles.btnIcon} ${pinnedTrackIds.includes(track.id) ? styles.pinActive : ""}`}><Pin size={14} /></button>
-                        <button title="Remove from this preview" onClick={() => removeTrack(track.id)} className={styles.btnIcon}><X size={14} /></button>
-                        <TrackPreviewButton trackId={track.id} />
-                        <BlockTrackButton trackId={track.id} onBlocked={removeTrack} />
+                  <article key={track.id} className={styles.mobileTrackCard}>
+                    <div className={styles.mobileTrackTop}>
+                      <span className={styles.mobileTrackOrder}>{idx + 1}</span>
+                      <div>
+                        <h5>{track.title || "—"}</h5>
+                        <p>{track.artist?.title || "—"}</p>
                       </div>
-                    </td>
-                    <td className={styles.trackTitle}>
-                      {track.title}
-                      {(track.isLive || track.isRemaster || track.isExplicit) && (
-                        <div className={styles.badgeRow}>
-                          {track.isLive && <span className={styles.miniBadge}>Live</span>}
-                          {track.isRemaster && <span className={styles.miniBadge}>Remaster</span>}
-                          {track.isExplicit && <span className={styles.miniBadge}>Explicit</span>}
-                        </div>
-                      )}
-                    </td>
-                    <td className={styles.trackArtist}>{track.artist?.title}</td>
-                    <td className={styles.trackBpm}>
-                      {(track.effectiveBpm ?? track.bpm ?? track.audioFeature?.tempo)?.toFixed(0) || "-"}
-                      {track.metadataConfidence?.audio?.tempoLabel && <div className={styles.trackBpmLabel}>{track.metadataConfidence.audio.tempoLabel}</div>}
-                    </td>
-                    <td className={styles.trackPop}>{track.popularity?.score?.toFixed(0) || "-"}</td>
-                    <td className={styles.trackWhy}>
-                      {(track.matchReasons || []).slice(0, 2).join(" | ") || "Matched selected rules"}
-                    </td>
-                  </tr>
+                    </div>
+                    <div className={styles.mobileTrackMeta}>
+                      <span>Album <strong>{track.album?.title || "—"}</strong></span>
+                      <span>Duration <strong>{formatDuration(track.duration)}</strong></span>
+                      <span>BPM <strong>{(track.effectiveBpm ?? track.bpm ?? track.audioFeature?.tempo)?.toFixed(0) || "—"}</strong></span>
+                      <span>Energy <strong>{(track.audioFeature?.effectiveEnergy ?? track.audioFeature?.energy)?.toFixed(2) || "—"}</strong></span>
+                      <span>Mood <strong>{(track.audioFeature?.effectiveMood ?? track.audioFeature?.valence)?.toFixed(2) || "—"}</strong></span>
+                    </div>
+                  </article>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </>
           )}
-        </div>
-        <div className={styles.previewCount}>
-          {tracks.length} tracks matched
-        </div>
+        </section>
+
+        {playlistPreview && (
+          <details className={styles.detailsPanel}>
+            <summary>Filters used and playlist stats</summary>
+            <div className={styles.summaryGrid}>
+              <div className={styles.summaryPanel}>
+                <h4><ListChecks size={15} /> Filters used</h4>
+                <dl>
+                  {playlistPreview.filterSummary.map((item) => (
+                    <div key={item.label}>
+                      <dt>{item.label}</dt>
+                      <dd>{item.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+              <div className={styles.summaryPanel}>
+                <h4><Clock size={15} /> Playlist stats</h4>
+                <dl>
+                  <div><dt>BPM</dt><dd>{playlistPreview.summary.bpmRange}</dd></div>
+                  <div><dt>Energy</dt><dd>{playlistPreview.summary.energyRange}</dd></div>
+                  <div><dt>Mood</dt><dd>{playlistPreview.summary.moodRange}</dd></div>
+                  <div><dt>Popularity</dt><dd>{playlistPreview.summary.popularityRange}</dd></div>
+                  <div><dt>Artists</dt><dd>{playlistPreview.summary.diversity.artistCount}</dd></div>
+                  <div><dt>Albums</dt><dd>{playlistPreview.summary.diversity.albumCount}</dd></div>
+                  <div><dt>Missing BPM</dt><dd>{playlistPreview.summary.missing.bpm}</dd></div>
+                  <div><dt>Missing features</dt><dd>{playlistPreview.summary.missing.audioFeatures}</dd></div>
+                </dl>
+              </div>
+            </div>
+          </details>
+        )}
+
         {history.length > 0 && (
           <div className={styles.historySection}>
             <h4>Recent Playlist History</h4>

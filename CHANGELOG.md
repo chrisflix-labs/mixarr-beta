@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.7 - Playlist Preview Before Create
+
+- Added a playlist preview step before creating playlists.
+- Added track previews, filter summaries, and playlist stats before writing to Plex.
+- Added warnings for low-match and zero-match playlist filters.
+- Added create-from-preview flow so users can review playlists first.
+- Improved playlist creation confidence and reduced accidental bad playlists.
+
 ## v1.1.6-hotfix - Homepage Library Health Performance Hotfix
 
 - Fixed large-library homepage performance issue where Library Health counts could block SSR for several minutes.

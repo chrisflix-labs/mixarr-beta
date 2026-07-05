@@ -11,7 +11,9 @@ export type ReleaseNoteBadge =
   | "Jobs"
   | "Library Health"
   | "Local Analysis"
+  | "Playlists"
   | "Plex"
+  | "Preview"
   | "Release Notes"
   | "Retry"
   | "Roadmap"
@@ -28,6 +30,18 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.1.7",
+    title: "Playlist Preview Before Create",
+    badges: ["Playlists", "Preview", "UI", "Plex"],
+    changes: [
+      "Added a playlist preview step before creating playlists.",
+      "Added track previews, filter summaries, and playlist stats before writing to Plex.",
+      "Added warnings for low-match and zero-match playlist filters.",
+      "Added create-from-preview flow so users can review playlists first.",
+      "Improved playlist creation confidence and reduced accidental bad playlists.",
+    ],
+  },
   {
     version: "1.1.6-hotfix",
     title: "Homepage Library Health Performance Hotfix",

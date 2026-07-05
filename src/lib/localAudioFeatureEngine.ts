@@ -674,11 +674,15 @@ async function analyzeTrackLocally(track: any, scope: LocalAudioFeatureAnalysisS
   const tempDir = await createTempDir();
 
   try {
+    // We must await here so that the finally cleanup runs after the analysis
+    // finishes writing its WAV samples. A bare `return promise` would let the
+    // finally delete the temp dir first, and the still-running extraction would
+    // re-create and fill it with nothing left to clean it up afterward.
     if (scope === "whole_track") {
-      return analyzeTrackWholeTrack(track, tempDir);
+      return await analyzeTrackWholeTrack(track, tempDir);
     }
 
-    return analyzeTrackWindows(track, tempDir);
+    return await analyzeTrackWindows(track, tempDir);
   } finally {
     const removedBytes = await directorySize(tempDir).catch(() => 0);
     await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
@@ -1386,11 +1390,6 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
       },
     });
     logProgress(true);
-    if (summary.attempted === 0) {
-      console.log(`[LocalAudioFeatureEngine] Audio feature backfill completed with no eligible tracks. attempted=0, processed=0, skipped=${summary.skipped}, failed=${summary.failed}. The selected retry queue was empty, all matching tracks were already complete, or no tracks matched the selected retry filter.`);
-    } else {
-      console.log(`[LocalAudioFeatureEngine] Audio feature backfill completed. attempted=${summary.attempted}, processed=${summary.processed}, skipped=${summary.skipped}, failed=${summary.failed}.`);
-    }
 
     const [api, local, noData, tooShort, failed] = await runWithConcurrency([
       () => prisma.audioFeature.count({ where: { audioFeatureSource: "api", track: { syncStatus: "active" } } }),

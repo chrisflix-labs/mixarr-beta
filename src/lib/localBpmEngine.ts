@@ -1188,11 +1188,15 @@ async function analyzeTrackLocally(
   const tempDir = await createBpmTempDir();
 
   try {
+    // We must await here so that the finally cleanup runs after the analysis
+    // finishes writing its WAV samples. A bare `return promise` would let the
+    // finally delete the temp dir first, and the still-running extraction would
+    // re-create and fill it with nothing left to clean it up afterward.
     if (analysisScope === "whole_track") {
-      return analyzeTrackWholeTrack(track, tempDir, analyzer);
+      return await analyzeTrackWholeTrack(track, tempDir, analyzer);
     }
 
-    return analyzeTrackWindows(track, tempDir, analyzer);
+    return await analyzeTrackWindows(track, tempDir, analyzer);
   } finally {
     const removedBytes = await directorySize(tempDir).catch(() => 0);
     await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
@@ -1759,11 +1763,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
       },
     });
 
-    if (summary.attempted === 0) {
-      console.log(`[LocalBpmEngine] BPM backfill completed with no eligible tracks. attempted=0, processed=0, skipped=${summary.skipped}, failed=${summary.failed}. The selected retry queue was empty or all matching tracks were already complete.`);
-    } else {
-      console.log(`[LocalBpmEngine] BPM backfill completed. attempted=${summary.attempted}, processed=${summary.processed}, skipped=${summary.skipped}, failed=${summary.failed}.`);
-    }
+    console.log(`[LocalBpmEngine] BPM backfill completed. attempted=${summary.attempted}, processed=${summary.processed}, skipped=${summary.skipped}, failed=${summary.failed}.`);
   } catch (error) {
     console.error(`[LocalBpmEngine] Sync failed: ${sanitizedErrorMessage(error)}`);
   }

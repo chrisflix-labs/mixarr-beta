@@ -342,10 +342,23 @@
   gap: 0.85rem;
 }
 
+.previewActions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .previewHeader h3 {
   margin: 0;
   font-size: 1.15rem;
   font-weight: 600;
+}
+
+.previewHeader p {
+  margin: 0.2rem 0 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
 }
 
 .previewNameRow {
@@ -366,7 +379,173 @@
   color: var(--muted);
 }
 
+.helperText {
+  margin: -0.35rem 0 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.staleNotice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--warning);
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.8rem;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.statCard {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 0.65rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.statCard span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.68rem;
+  margin-bottom: 0.25rem;
+}
+
+.statCard strong {
+  color: var(--fg);
+  font-size: 1rem;
+}
+
+.warningPanel {
+  border: 1px solid rgba(215, 91, 91, 0.28);
+  background: rgba(215, 91, 91, 0.07);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.warningTitle {
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.warningPanel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.detailsPanel {
+  border-top: 1px solid var(--line);
+  padding-top: 0.7rem;
+}
+
+.detailsPanel summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-bottom: 0.7rem;
+}
+
+.summaryPanel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+}
+
+.summaryPanel h4 {
+  margin: 0 0 0.6rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+}
+
+.summaryPanel dl {
+  margin: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.summaryPanel dl div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.summaryPanel dt {
+  color: var(--faint);
+  font-size: 0.68rem;
+}
+
+.summaryPanel dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
 /* ---- Preview table ---- */
+
+.trackPreviewSection {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.02);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.trackPreviewHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.trackPreviewHeader h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.trackPreviewHeader p {
+  margin: 0.25rem 0 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.trackPreviewCount {
+  color: var(--accent);
+  font-size: 0.72rem;
+  text-align: right;
+  max-width: 260px;
+  line-height: 1.35;
+}
+
+.trackTableWrap {
+  max-height: 520px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
 
 .previewTable {
   width: 100%;
@@ -404,12 +583,17 @@
 }
 
 .colActions {
-  width: 190px;
+  width: 150px;
   white-space: nowrap;
 }
 
 .colBpm {
   width: 55px;
+}
+
+.colDuration,
+.colFeature {
+  width: 70px;
 }
 
 .colPop {
@@ -420,8 +604,20 @@
   font-weight: 500;
 }
 
+.trackOrder {
+  color: var(--fg);
+  font-weight: 700;
+}
+
 .trackArtist {
   color: var(--muted);
+}
+
+.trackAlbum,
+.trackDuration,
+.trackFeature {
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .trackBpm {
@@ -444,6 +640,69 @@
   color: var(--faint);
   font-size: 0.72rem;
   max-width: 200px;
+}
+
+.mobileTrackCards {
+  display: none;
+}
+
+.mobileTrackCard {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.7rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.mobileTrackTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.mobileTrackOrder {
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-dim);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.mobileTrackTop h5 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.mobileTrackTop p {
+  margin: 0.2rem 0 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.mobileTrackMeta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.mobileTrackMeta span {
+  color: var(--faint);
+  font-size: 0.68rem;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.mobileTrackMeta strong {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .actionGroup {
@@ -516,9 +775,34 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  min-height: 180px;
   color: var(--faint);
   font-size: 0.85rem;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+}
+
+.loadingPreview,
+.errorPreview {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+.loadingPreview {
+  color: var(--accent);
+}
+
+.errorPreview {
+  color: var(--danger);
 }
 
 /* ---- Responsive ---- */
@@ -545,5 +829,51 @@
 
   .colActions {
     width: auto;
+  }
+
+  .statsGrid,
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .previewNameRow {
+    flex-direction: column;
+  }
+
+  .previewHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .previewActions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .previewActions button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .trackPreviewHeader {
+    flex-direction: column;
+  }
+
+  .trackPreviewCount {
+    max-width: none;
+    text-align: left;
+  }
+
+  .trackTableWrap {
+    display: none;
+  }
+
+  .mobileTrackCards {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .summaryPanel dl div {
+    grid-template-columns: 80px minmax(0, 1fr);
   }
 }

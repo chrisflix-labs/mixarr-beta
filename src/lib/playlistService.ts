@@ -88,6 +88,8 @@ export const savedPlaylistSchema = playlistConfigSchema.extend({
 export type PlaylistRuleInput = z.infer<typeof playlistRuleSchema>;
 export type PlaylistConfigInput = z.infer<typeof playlistConfigSchema>;
 
+const previewDisplayLimit = Number(process.env.PLAYLIST_PREVIEW_DISPLAY_LIMIT || 100);
+
 const isNumericField = (field: string) => numericFields.includes(field as any);
 const isBooleanField = (field: string) => booleanFields.includes(field as any);
 
@@ -120,6 +122,12 @@ function collectRuleReasons(node: RuleNode | undefined, fallbackRules: PlaylistR
   if (node.type !== "group") return [readableRule(node)];
   const childReasons = node.children.reduce<string[]>((reasons, child) => reasons.concat(collectRuleReasons(child, [])), []);
   return childReasons.length ? [`${node.combinator}: ${childReasons.join("; ")}`] : [];
+}
+
+function collectRules(node: RuleNode | undefined, fallbackRules: PlaylistRuleInput[]): PlaylistRuleInput[] {
+  if (!node) return fallbackRules;
+  if (node.type !== "group") return [node];
+  return node.children.reduce<PlaylistRuleInput[]>((rules, child) => rules.concat(collectRules(child, [])), []);
 }
 
 function buildRuleCondition(rule: PlaylistRuleInput, audioFeatureFilterOptions: AudioFeatureFilterOptions = {}) {
@@ -287,6 +295,15 @@ function applyDuplicatePolicy(tracks: any[], config: PlaylistConfigInput, limit:
   return selected.slice(0, limit);
 }
 
+const playlistTrackInclude = {
+  artist: { include: { tags: true } },
+  album: true,
+  popularity: true,
+  audioFeature: true,
+  tags: true,
+  library: { include: { server: true } },
+} as const;
+
 function annotateTrack(track: any, reasons: string[]) {
   const effectiveBpm = getEffectiveBpm(track);
 
@@ -311,6 +328,43 @@ function annotateTrack(track: any, reasons: string[]) {
   };
 }
 
+function publicPreviewTrack(track: any) {
+  return {
+    id: track.id,
+    title: track.title,
+    artist: track.artist ? { id: track.artist.id, title: track.artist.title } : null,
+    album: track.album ? { id: track.album.id, title: track.album.title, year: track.album.year } : null,
+    duration: track.duration,
+    bpm: track.bpm,
+    effectiveBpm: track.effectiveBpm,
+    popularity: track.popularity ? {
+      score: track.popularity.score,
+      provider: track.popularity.provider,
+      confidence: track.popularity.confidence,
+    } : null,
+    audioFeature: track.audioFeature ? {
+      energy: track.audioFeature.energy,
+      valence: track.audioFeature.valence,
+      effectiveEnergy: track.audioFeature.effectiveEnergy,
+      effectiveMood: track.audioFeature.effectiveMood,
+      tempo: track.audioFeature.tempo,
+      source: track.audioFeature.source,
+      confidence: track.audioFeature.confidence,
+      tempoSource: track.audioFeature.tempoSource,
+      tempoConfidence: track.audioFeature.tempoConfidence,
+    } : null,
+    genres: [
+      ...((track.tags || []).filter((tag: any) => tag.type === "genre").map((tag: any) => tag.name)),
+      ...((track.artist?.tags || []).filter((tag: any) => tag.type === "genre").map((tag: any) => tag.name)),
+    ].filter((name, index, names) => name && names.indexOf(name) === index).slice(0, 4),
+    isLive: track.isLive,
+    isRemaster: track.isRemaster,
+    isExplicit: track.isExplicit,
+    matchReasons: track.matchReasons,
+    metadataConfidence: track.metadataConfidence,
+  };
+}
+
 async function queryCandidateTracks(
   userId: string,
   config: PlaylistConfigInput,
@@ -320,16 +374,30 @@ async function queryCandidateTracks(
 ) {
   return prisma.track.findMany({
     where: buildTrackWhereClause(userId, config, omitIds, audioFeatureFilterOptions),
-    include: {
-      artist: true,
-      album: true,
-      popularity: true,
-      audioFeature: true,
-      library: { include: { server: true } },
-    },
+    include: playlistTrackInclude,
     take,
     orderBy: { popularity: { score: "desc" } },
   });
+}
+
+async function resolvePlaylistGenerationInputs(userId: string, config: PlaylistConfigInput) {
+  const pinnedTracks = config.pinnedTrackIds.length
+    ? await fetchOwnedTracksInOrder(userId, config.pinnedTrackIds)
+    : [];
+  const blockedTracks = await prisma.blockedTrack.findMany({
+    where: { userId },
+    select: { trackId: true },
+  });
+  const omittedIds = config.excludedTrackIds
+    .concat(blockedTracks.map((track) => track.trackId))
+    .concat(pinnedTracks.map((track) => track.id));
+  const syncSettings = await getUserSyncSettings(userId);
+  const audioFeatureFilterOptions = {
+    includeEstimated: syncSettings.includeEstimatedAudioFeaturesInFilters === true,
+    minimumConfidence: syncSettings.audioFeatureMinimumConfidence ?? null,
+  };
+
+  return { pinnedTracks, blockedTrackIds: blockedTracks.map((track) => track.trackId), omittedIds, audioFeatureFilterOptions };
 }
 
 export async function generatePlaylistTracks({
@@ -342,23 +410,9 @@ export async function generatePlaylistTracks({
   const endTimer = playlistGenerationDurationSeconds.startTimer();
   let result: "success" | "failed" = "success";
   try {
-    const pinnedTracks = config.pinnedTrackIds.length
-      ? await fetchOwnedTracksInOrder(userId, config.pinnedTrackIds)
-      : [];
-    const blockedTracks = await prisma.blockedTrack.findMany({
-      where: { userId },
-      select: { trackId: true },
-    });
-    const omittedIds = config.excludedTrackIds
-      .concat(blockedTracks.map((track) => track.trackId))
-      .concat(pinnedTracks.map((track) => track.id));
+    const { pinnedTracks, omittedIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
     const remainingLimit = Math.max(0, config.limit - pinnedTracks.length);
     const take = config.duplicateStrategy === "allow" ? remainingLimit : Math.max(remainingLimit * 5, remainingLimit + 25);
-    const syncSettings = await getUserSyncSettings(userId);
-    const audioFeatureFilterOptions = {
-      includeEstimated: syncSettings.includeEstimatedAudioFeaturesInFilters === true,
-      minimumConfidence: syncSettings.audioFeatureMinimumConfidence ?? null,
-    };
     const candidates = remainingLimit > 0 ? await queryCandidateTracks(userId, config, omittedIds, take, audioFeatureFilterOptions) : [];
     const generatedTracks = applyDuplicatePolicy(candidates, config, remainingLimit);
     const reasons = collectRuleReasons(config.ruleTree, config.rules);
@@ -373,6 +427,160 @@ export async function generatePlaylistTracks({
   }
 }
 
+function numericRangeLabel(rules: PlaylistRuleInput[], field: string, emptyLabel = "Any") {
+  const relevant = rules.filter((rule) => rule.field === field);
+  if (relevant.length === 0) return emptyLabel;
+  const eq = relevant.find((rule) => rule.operator === "eq");
+  if (eq) return eq.value;
+  const lower = relevant.find((rule) => rule.operator === "gte" || rule.operator === "gt");
+  const upper = relevant.find((rule) => rule.operator === "lte" || rule.operator === "lt");
+  if (lower || upper) {
+    return `${lower ? `${lower.operator === "gt" ? ">" : ""}${lower.value}` : "Any"}-${upper ? `${upper.operator === "lt" ? "<" : ""}${upper.value}` : "Any"}`;
+  }
+  return relevant.map(readableRule).join(", ");
+}
+
+function genreFilterLabel(rules: PlaylistRuleInput[]) {
+  const genres = rules.filter((rule) => rule.field === "genre").map((rule) => rule.value);
+  return genres.length ? genres.join(", ") : "Any";
+}
+
+function formatNegativeFilters(filters: PlaylistConfigInput["negativeFilters"]) {
+  const enabled: string[] = [];
+  if (filters.excludeHoliday) enabled.push("Exclude holiday tracks");
+  if (filters.excludeLive) enabled.push("Exclude live tracks");
+  if (filters.excludeRemasters) enabled.push("Exclude remasters");
+  if (filters.excludeExplicit) enabled.push("Exclude explicit tracks");
+  if (filters.excludeIntroOutro) enabled.push("Exclude intros/outros");
+  if (filters.minRating != null) enabled.push(`Rating >= ${filters.minRating}`);
+  if (filters.excludePlayedWithinDays != null) enabled.push(`Not played in ${filters.excludePlayedWithinDays} days`);
+  if (filters.minDurationMinutes != null) enabled.push(`Duration >= ${filters.minDurationMinutes} min`);
+  if (filters.maxDurationMinutes != null) enabled.push(`Duration <= ${filters.maxDurationMinutes} min`);
+  return enabled.length ? enabled.join(", ") : "None";
+}
+
+function buildPreviewWarnings({
+  tracks,
+  matchedTrackCount,
+  requestedLimit,
+}: {
+  tracks: any[];
+  matchedTrackCount: number;
+  requestedLimit: number;
+}) {
+  const warnings: string[] = [];
+  if (matchedTrackCount === 0 || tracks.length === 0) {
+    warnings.push("No tracks matched this playlist recipe. Adjust your filters and preview again.");
+    warnings.push("Some filters may be too restrictive. Try widening BPM, energy, mood, genre, or popularity filters.");
+    return warnings;
+  }
+
+  if (matchedTrackCount < requestedLimit) {
+    warnings.push(`Only ${matchedTrackCount} tracks matched your filters. Try widening the BPM range, removing a genre filter, or allowing tracks with missing audio features.`);
+  }
+  if (tracks.length < requestedLimit) {
+    warnings.push(`Playlist has fewer tracks than requested: ${tracks.length} of ${requestedLimit}.`);
+  }
+
+  const missingBpm = tracks.filter((track) => !track.effectiveBpm && !track.bpm && !track.audioFeature?.tempo).length;
+  if (missingBpm >= Math.max(3, Math.ceil(tracks.length * 0.25))) {
+    warnings.push(`Many tracks are missing BPM data (${missingBpm} of ${tracks.length}).`);
+  }
+
+  const missingAudio = tracks.filter((track) => !track.audioFeature || (track.audioFeature.energy == null && track.audioFeature.valence == null && track.audioFeature.effectiveEnergy == null && track.audioFeature.effectiveMood == null)).length;
+  if (missingAudio >= Math.max(3, Math.ceil(tracks.length * 0.25))) {
+    warnings.push(`Many tracks are missing audio features (${missingAudio} of ${tracks.length}).`);
+  }
+
+  const artistCounts = new Map<string, number>();
+  for (const track of tracks) {
+    const artist = track.artist?.title || "Unknown artist";
+    artistCounts.set(artist, (artistCounts.get(artist) || 0) + 1);
+  }
+  const repeatedArtistTracks = Array.from(artistCounts.values()).reduce((sum, count) => sum + Math.max(0, count - 1), 0);
+  if (repeatedArtistTracks >= Math.max(4, Math.ceil(tracks.length * 0.25))) {
+    const repeatedArtists = Array.from(artistCounts.entries())
+      .filter(([, count]) => count > 1)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 3)
+      .map(([artist, count]) => `${artist} (${count})`);
+    warnings.push(`Preview contains repeated artists. ${artistCounts.size} artists appear across ${tracks.length} tracks.${repeatedArtists.length ? ` Most repeated: ${repeatedArtists.join(", ")}.` : ""} Try adjusting filters or refreshing the preview.`);
+  }
+
+  return warnings;
+}
+
+export async function previewPlaylistTracks({
+  userId,
+  config,
+  displayLimit = previewDisplayLimit,
+}: {
+  userId: string;
+  config: PlaylistConfigInput;
+  displayLimit?: number;
+}) {
+  const { blockedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
+  const matchedTrackCount = await prisma.track.count({
+    where: buildTrackWhereClause(userId, config, config.excludedTrackIds.concat(blockedTrackIds), audioFeatureFilterOptions),
+  });
+  const tracks = await generatePlaylistTracks({ userId, config });
+  const rules = collectRules(config.ruleTree, config.rules);
+  const server = config.serverId ? await prisma.server.findFirst({ where: { id: config.serverId, userId }, select: { name: true } }) : null;
+  const library = config.libraryId ? await prisma.library.findFirst({ where: { id: config.libraryId, server: { userId } }, select: { name: true } }) : null;
+  const previewTracks = tracks.slice(0, displayLimit);
+
+  const summary = {
+    targetTrackCount: config.limit,
+    matchingTrackCount: matchedTrackCount,
+    finalTrackCount: previewTracks.length,
+    displayedTrackCount: previewTracks.length,
+    estimatedDurationMs: previewTracks.reduce((sum, track) => sum + (track.duration || 0), 0),
+    estimatedDurationMinutes: Math.round(previewTracks.reduce((sum, track) => sum + (track.duration || 0), 0) / 60000),
+    bpmRange: numericRangeLabel(rules, "tempo"),
+    energyRange: numericRangeLabel(rules, "energy"),
+    moodRange: numericRangeLabel(rules, "valence"),
+    popularityRange: numericRangeLabel(rules, "popularity"),
+    genreFilters: genreFilterLabel(rules),
+    sortMode: "Popularity score descending",
+    duplicateStrategy: config.duplicateStrategy === "allow" ? "Allow duplicates" : "One version per song",
+    diversity: {
+      artistCount: new Set(previewTracks.map((track) => track.artist?.title).filter(Boolean)).size,
+      albumCount: new Set(previewTracks.map((track) => track.album?.title).filter(Boolean)).size,
+      repeatedArtistTracks: Math.max(0, previewTracks.length - new Set(previewTracks.map((track) => track.artist?.title).filter(Boolean)).size),
+    },
+    missing: {
+      bpm: previewTracks.filter((track) => !track.effectiveBpm && !track.bpm && !track.audioFeature?.tempo).length,
+      audioFeatures: previewTracks.filter((track) => !track.audioFeature || (track.audioFeature.energy == null && track.audioFeature.valence == null && track.audioFeature.effectiveEnergy == null && track.audioFeature.effectiveMood == null)).length,
+      popularity: previewTracks.filter((track) => !track.popularity).length,
+    },
+  };
+
+  const filterSummary = [
+    { label: "Server", value: server?.name || (config.serverId ? "Selected server" : "Any connected server") },
+    { label: "Library", value: library?.name || (config.libraryId ? "Selected library" : "Any music library") },
+    { label: "Genres", value: summary.genreFilters },
+    { label: "BPM", value: summary.bpmRange },
+    { label: "Energy", value: summary.energyRange },
+    { label: "Mood", value: summary.moodRange },
+    { label: "Popularity", value: summary.popularityRange },
+    { label: "Limit", value: `${config.limit} tracks` },
+    { label: "Sort", value: summary.sortMode },
+    { label: "Duplicate control", value: summary.duplicateStrategy },
+    { label: "Negative filters", value: formatNegativeFilters(config.negativeFilters) },
+    { label: "Rules", value: collectRuleReasons(config.ruleTree, config.rules).join("; ") || "All active tracks" },
+  ];
+
+  return {
+    previewId: Buffer.from(`${Date.now()}:${previewTracks.map((track) => track.id).join(",")}`).toString("base64url").slice(0, 48),
+    trackIds: previewTracks.map((track) => track.id),
+    tracks: previewTracks.map(publicPreviewTrack),
+    totalPreviewTrackCount: tracks.length,
+    summary,
+    filterSummary,
+    warnings: buildPreviewWarnings({ tracks: previewTracks, matchedTrackCount, requestedLimit: config.limit }),
+  };
+}
+
 async function fetchOwnedTracksInOrder(userId: string, trackIds: string[]) {
   const uniqueIds = trackIds.filter((id, index) => trackIds.indexOf(id) === index);
   const tracks = await prisma.track.findMany({
@@ -381,7 +589,7 @@ async function fetchOwnedTracksInOrder(userId: string, trackIds: string[]) {
       syncStatus: "active",
       library: { server: { userId } },
     },
-    include: { library: { include: { server: true } } },
+    include: playlistTrackInclude,
   });
 
   if (tracks.length !== uniqueIds.length) {
