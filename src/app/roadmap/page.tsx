@@ -11,18 +11,19 @@ export const metadata = {
 
 const nextFeatures = [
   "Webhook-triggered recently-added scans",
-  "Playlist recipe editing and duplication",
   "Manual track exclusions",
   "Playlist safety rules",
   "Smart playlist builder",
+  "Import/export recipes",
+  "Recipe sharing",
 ];
 
 const currentReleaseFeatures = [
-  "Saved playlist recipes",
-  "Save Recipe action in the playlist builder",
-  "Saved Recipes page with recipe summaries",
-  "Use and preview recipes before creating playlists",
-  "Dashboard visibility for saved recipes",
+  "Playlist recipe editing and duplication",
+  "Update existing recipes from the playlist builder",
+  "Recipe metadata editing for names and descriptions",
+  "Duplicate recipes as editable starting points",
+  "Preview edited recipe filters before creating playlists",
 ];
 
 const v2Ideas = [
@@ -60,7 +61,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release adds saved playlist recipes so users can reuse playlist builder filters without writing anything to Plex until they preview and create.</p>
+          <p>This release adds editing and duplication for saved playlist recipes so users can refine, rename, preview, and branch recipe ideas before writing anything to Plex.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>

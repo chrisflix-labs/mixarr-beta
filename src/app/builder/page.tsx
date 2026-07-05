@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import BlockTrackButton from "@/components/BlockTrackButton";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import styles from "./builder.module.css";
@@ -109,6 +109,7 @@ function formatEstimatedDuration(minutes?: number | null) {
 }
 
 export default function BuilderPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [rules, setRules] = useState<Rule[]>([{ field: "popularity", operator: "gt", value: "50" }]);
   const [rootCombinator, setRootCombinator] = useState<"AND" | "OR">("AND");
@@ -139,6 +140,8 @@ export default function BuilderPage() {
   const [savedRules, setSavedRules] = useState<SavedRule[]>([]);
   const [selectedRuleId, setSelectedRuleId] = useState("");
   const [activeRecipe, setActiveRecipe] = useState<PlaylistRecipe | null>(null);
+  const [isEditingRecipe, setIsEditingRecipe] = useState(false);
+  const [recipeBaselineSignature, setRecipeBaselineSignature] = useState("");
   const [recipeNotice, setRecipeNotice] = useState("");
   const [showRecipeModal, setShowRecipeModal] = useState(false);
   const [recipeName, setRecipeName] = useState("");
@@ -150,6 +153,7 @@ export default function BuilderPage() {
   const [exporting, setExporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingRecipe, setSavingRecipe] = useState(false);
+  const [updatingRecipe, setUpdatingRecipe] = useState(false);
 
   useEffect(() => {
     fetchSavedRules();
@@ -310,8 +314,14 @@ export default function BuilderPage() {
       minDurationMinutes: filters.negativeFilters?.minDurationMinutes != null ? filters.negativeFilters.minDurationMinutes.toString() : undefined,
       maxDurationMinutes: filters.negativeFilters?.maxDurationMinutes != null ? filters.negativeFilters.maxDurationMinutes.toString() : undefined,
     },
-    pinnedTrackIds: [],
-    excludedTrackIds: [],
+    pinnedTrackIds: filters.pinnedTrackIds || [],
+    excludedTrackIds: filters.excludedTrackIds || [],
+  });
+
+  const recipeEditSignature = (name: string, description: string, filters: any) => JSON.stringify({
+    name: name.trim(),
+    description: description.trim(),
+    filters,
   });
 
   const previewConfigSignature = () => JSON.stringify(playlistPayload({ pinnedTrackIds: [], excludedTrackIds: [] }));
@@ -319,6 +329,24 @@ export default function BuilderPage() {
   const createTrackIds = tracks.map((track) => track.id);
   const playlistNameReady = playlistName.trim().length > 0;
   const canCreateFromPreview = Boolean(playlistNameReady && playlistPreview && isPreviewCurrent && createTrackIds.length > 0);
+  const isRecipeDirty = Boolean(
+    activeRecipe
+    && isEditingRecipe
+    && recipeBaselineSignature
+    && recipeBaselineSignature !== recipeEditSignature(recipeName, recipeDescription, playlistPayload()),
+  );
+
+  useEffect(() => {
+    if (!isRecipeDirty) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "You have unsaved recipe changes. Leave without saving?";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isRecipeDirty]);
 
   const clearPreview = () => {
     setTracks([]);
@@ -378,6 +406,8 @@ export default function BuilderPage() {
   const loadSavedRule = (id: string) => {
     setSelectedRuleId(id);
     setActiveRecipe(null);
+    setIsEditingRecipe(false);
+    setRecipeBaselineSignature("");
     setRecipeNotice("");
     if (!id) return;
 
@@ -410,12 +440,16 @@ export default function BuilderPage() {
     setPlaylistPreview(null);
   };
 
-  const applyRecipeFilters = async (recipe: PlaylistRecipe, shouldPreview = false) => {
+  const applyRecipeFilters = async (recipe: PlaylistRecipe, shouldPreview = false, editMode = false) => {
     const filters = recipe.filters || {};
     const payload = playlistPayloadFromRecipeFilters(filters);
 
     setActiveRecipe(recipe);
-    setRecipeNotice(`Loaded recipe "${recipe.name}". Preview the playlist before creating.`);
+    setIsEditingRecipe(editMode);
+    setRecipeName(recipe.name);
+    setRecipeDescription(recipe.description || "");
+    setRecipeBaselineSignature(recipeEditSignature(recipe.name, recipe.description || "", payload));
+    setRecipeNotice(`Editing recipe: ${recipe.name}`);
     setSelectedRuleId("");
     setPlaylistName(recipe.name);
     restoreRuleTree(filters.ruleTree, filters.rules || []);
@@ -437,13 +471,13 @@ export default function BuilderPage() {
       minDurationMinutes: filters.negativeFilters?.minDurationMinutes?.toString() || "",
       maxDurationMinutes: filters.negativeFilters?.maxDurationMinutes?.toString() || "",
     });
-    setPinnedTrackIds([]);
-    setExcludedTrackIds([]);
+    setPinnedTrackIds(filters.pinnedTrackIds || []);
+    setExcludedTrackIds(filters.excludedTrackIds || []);
     setTracks([]);
     setPlaylistPreview(null);
 
     if (shouldPreview) {
-      await runPreview(payload, JSON.stringify(payload), recipe);
+      await runPreview(payload, JSON.stringify(payload), editMode ? null : recipe);
     }
   };
 
@@ -456,7 +490,7 @@ export default function BuilderPage() {
       try {
         const res = await axios.get(`/api/playlist-recipes/${recipeId}`);
         if (cancelled) return;
-        await applyRecipeFilters(res.data.recipe, searchParams.get("preview") === "1");
+        await applyRecipeFilters(res.data.recipe, searchParams.get("preview") === "1", searchParams.get("edit") === "1");
       } catch (e) {
         console.error("Failed to load playlist recipe", e);
         if (!cancelled) setRecipeNotice("Unable to load that playlist recipe.");
@@ -498,14 +532,14 @@ export default function BuilderPage() {
   };
 
   const openRecipeModal = () => {
-    setRecipeName(playlistName.trim() || activeRecipe?.name || "");
-    setRecipeDescription(activeRecipe?.description || "");
+    setRecipeName((recipeName || playlistName || activeRecipe?.name || "").trim());
+    setRecipeDescription(recipeDescription || activeRecipe?.description || "");
     setShowRecipeModal(true);
   };
 
   const savePlaylistRecipe = async () => {
     if (!recipeName.trim()) {
-      alert("Recipe name is required");
+      alert("Recipe name is required.");
       return;
     }
 
@@ -517,6 +551,9 @@ export default function BuilderPage() {
         filters: playlistPayload(),
       });
       setActiveRecipe(res.data.recipe);
+      setIsEditingRecipe(false);
+      setRecipeName(res.data.recipe.name);
+      setRecipeDescription(res.data.recipe.description || "");
       setRecipeNotice(`Saved recipe "${res.data.recipe.name}".`);
       setShowRecipeModal(false);
     } catch (e: any) {
@@ -524,6 +561,34 @@ export default function BuilderPage() {
       alert(e.response?.data?.error || "Failed to save playlist recipe");
     } finally {
       setSavingRecipe(false);
+    }
+  };
+
+  const updatePlaylistRecipe = async () => {
+    if (!activeRecipe) return;
+    if (!recipeName.trim()) {
+      alert("Recipe name is required.");
+      return;
+    }
+
+    setUpdatingRecipe(true);
+    try {
+      const res = await axios.patch(`/api/playlist-recipes/${activeRecipe.id}`, {
+        name: recipeName,
+        description: recipeDescription,
+        filters: playlistPayload(),
+      });
+      setActiveRecipe(res.data.recipe);
+      setIsEditingRecipe(true);
+      setRecipeName(res.data.recipe.name);
+      setRecipeDescription(res.data.recipe.description || "");
+      setRecipeBaselineSignature(recipeEditSignature(res.data.recipe.name, res.data.recipe.description || "", res.data.recipe.filters));
+      setRecipeNotice(`Updated recipe "${res.data.recipe.name}".`);
+    } catch (e: any) {
+      console.error(e);
+      alert(e.response?.data?.error || "Failed to update playlist recipe");
+    } finally {
+      setUpdatingRecipe(false);
     }
   };
 
@@ -545,6 +610,8 @@ export default function BuilderPage() {
 
   const applyTemplate = (templateName: string) => {
     setActiveRecipe(null);
+    setIsEditingRecipe(false);
+    setRecipeBaselineSignature("");
     setRecipeNotice("");
     if (templateName === "deep_cuts") {
       setRules([{ field: "popularity", operator: "lt", value: "30" }]);
@@ -582,7 +649,7 @@ export default function BuilderPage() {
     setPlaylistPreview(null);
   };
 
-  const runPreview = async (config = playlistPayload(), signature = previewConfigSignature(), recipeForUsage = activeRecipe) => {
+  const runPreview = async (config = playlistPayload(), signature = previewConfigSignature(), recipeForUsage: PlaylistRecipe | null = isEditingRecipe ? null : activeRecipe) => {
     setLoading(true);
     setPreviewError("");
     try {
@@ -611,6 +678,11 @@ export default function BuilderPage() {
   };
 
   const previewPlaylist = async () => runPreview();
+
+  const cancelRecipeEditing = () => {
+    if (isRecipeDirty && !window.confirm("You have unsaved recipe changes. Leave without saving?")) return;
+    router.push("/recipes");
+  };
 
   const regenerateUnpinned = async () => {
     setLoading(true);
@@ -737,6 +809,46 @@ export default function BuilderPage() {
           </div>
         )}
 
+        {activeRecipe && (
+          <div className={`glass-panel ${styles.recipeEditPanel}`}>
+            <div className={styles.recipeEditHeader}>
+              <div>
+                <h3>{isEditingRecipe ? "Edit Playlist Recipe" : "Recipe Loaded"}</h3>
+                <p>{isEditingRecipe ? "Update the saved recipe details and current builder filters." : `Editing recipe: ${activeRecipe.name}`}</p>
+              </div>
+              <div className={styles.recipeEditActions}>
+                <button type="button" onClick={previewPlaylist} disabled={loading} className={styles.btnSecondary}>
+                  <Play size={16} />
+                  Preview Recipe
+                </button>
+                <button type="button" onClick={openRecipeModal} disabled={savingRecipe} className={styles.btnSecondary}>
+                  {savingRecipe ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+                  Save as New Recipe
+                </button>
+                <button type="button" onClick={updatePlaylistRecipe} disabled={updatingRecipe} className={styles.btnPrimary}>
+                  {updatingRecipe ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+                  Update Recipe
+                </button>
+                {isEditingRecipe && (
+                  <button type="button" onClick={cancelRecipeEditing} className={styles.btnSecondary}>
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className={styles.recipeEditFields}>
+              <label className={styles.optionLabel}>
+                Recipe name
+                <input value={recipeName} onChange={(e) => setRecipeName(e.target.value)} className={styles.input} />
+              </label>
+              <label className={styles.optionLabel}>
+                Description, optional
+                <textarea value={recipeDescription} onChange={(e) => setRecipeDescription(e.target.value)} className={styles.textarea} rows={3} />
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* Saved Smart Playlists */}
         <div className={`glass-panel ${styles.panel}`}>
           <h3>Saved Smart Playlists</h3>
@@ -759,8 +871,14 @@ export default function BuilderPage() {
             </button>
             <button onClick={openRecipeModal} disabled={savingRecipe} className={styles.btnSecondary}>
               {savingRecipe ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
-              Save Recipe
+              {activeRecipe ? "Save as New Recipe" : "Save Recipe"}
             </button>
+            {activeRecipe && (
+              <button onClick={updatePlaylistRecipe} disabled={updatingRecipe} className={styles.btnSecondary}>
+                {updatingRecipe ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+                Update Recipe
+              </button>
+            )}
             {selectedRuleId && (
               <button onClick={refreshSelectedPlaylist} disabled={saving} className={styles.btnSecondary}>
                 <RefreshCw size={16} />
@@ -1203,7 +1321,7 @@ export default function BuilderPage() {
         <div className={styles.recipeModal} role="dialog" aria-modal="true" aria-labelledby="save-recipe-title">
           <div className={styles.modalHeader}>
             <div>
-              <h3 id="save-recipe-title">Save Playlist Recipe</h3>
+              <h3 id="save-recipe-title">{activeRecipe ? "Save as New Playlist Recipe" : "Save Playlist Recipe"}</h3>
               <p>Save your current filters so you can reuse this playlist setup later.</p>
             </div>
             <button type="button" onClick={() => setShowRecipeModal(false)} className={styles.btnIcon} aria-label="Close save recipe dialog">
@@ -1224,7 +1342,7 @@ export default function BuilderPage() {
             </button>
             <button type="button" onClick={savePlaylistRecipe} disabled={savingRecipe} className={styles.btnPrimary}>
               {savingRecipe ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
-              Save Recipe
+              {activeRecipe ? "Save as New Recipe" : "Save Recipe"}
             </button>
           </div>
         </div>

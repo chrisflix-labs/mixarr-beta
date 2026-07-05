@@ -32,6 +32,18 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.1.9",
+    title: "Edit and Duplicate Playlist Recipes",
+    badges: ["Playlists", "Recipes", "UI", "Preview"],
+    changes: [
+      "Added editing for saved playlist recipes.",
+      "Added recipe duplication for quickly creating variations.",
+      "Added update-existing-recipe support from the playlist builder.",
+      "Added improved recipe actions and updated recipe metadata.",
+      "Kept recipe previews connected to the playlist preview flow.",
+    ],
+  },
+  {
     version: "1.1.8",
     title: "Save Playlist Recipes",
     badges: ["Playlists", "Recipes", "Preview", "UI"],

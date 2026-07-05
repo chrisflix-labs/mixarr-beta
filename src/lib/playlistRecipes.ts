@@ -11,7 +11,7 @@ type RuleNode = PlaylistRuleInput | {
 };
 
 export const playlistRecipeSchema = z.object({
-  name: z.string().trim().min(1, "Recipe name is required").max(120),
+  name: z.string().trim().min(1, "Recipe name is required.").max(120),
   description: z.string().trim().max(500).optional().nullable(),
   filters: playlistConfigSchema,
 });
@@ -108,6 +108,28 @@ export function createPlaylistRecipeData(userId: string, input: PlaylistRecipeIn
     filtersJson: input.filters as Prisma.InputJsonValue,
     createdFromVersion: APP_VERSION,
   };
+}
+
+export function updatePlaylistRecipeData(input: PlaylistRecipeInput): Prisma.PlaylistRecipeUpdateInput {
+  return {
+    name: input.name,
+    description: input.description || null,
+    filtersJson: input.filters as Prisma.InputJsonValue,
+  };
+}
+
+export function duplicateRecipeName(originalName: string, existingNames: string[]) {
+  const usedNames = new Set(existingNames);
+  const baseName = `${originalName} Copy`;
+
+  if (!usedNames.has(baseName)) return baseName;
+
+  for (let copyNumber = 2; copyNumber < 1000; copyNumber += 1) {
+    const candidate = `${baseName} ${copyNumber}`;
+    if (!usedNames.has(candidate)) return candidate;
+  }
+
+  return `${baseName} ${Date.now()}`;
 }
 
 export async function markPlaylistRecipeUsed(userId: string, recipeId: string) {

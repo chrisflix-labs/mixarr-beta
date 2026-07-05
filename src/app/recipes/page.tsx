@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import axios from "axios";
-import { Play, Trash2, Wand2, BookMarked } from "lucide-react";
+import { Copy, Edit3, Play, Trash2, Wand2, BookMarked, RefreshCw } from "lucide-react";
 import styles from "./recipes.module.css";
 
 type PlaylistRecipe = {
@@ -12,6 +13,7 @@ type PlaylistRecipe = {
   description?: string | null;
   filterSummary: string;
   createdAt: string;
+  updatedAt: string;
   lastUsedAt?: string | null;
   useCount: number;
 };
@@ -22,8 +24,10 @@ function formatDate(value?: string | null) {
 }
 
 export default function RecipesPage() {
+  const router = useRouter();
   const [recipes, setRecipes] = useState<PlaylistRecipe[]>([]);
   const [loading, setLoading] = useState(true);
+  const [duplicatingRecipeId, setDuplicatingRecipeId] = useState("");
   const [error, setError] = useState("");
 
   const fetchRecipes = async () => {
@@ -52,6 +56,20 @@ export default function RecipesPage() {
     } catch (e) {
       console.error(e);
       alert("Failed to delete playlist recipe");
+    }
+  };
+
+  const duplicateRecipe = async (recipe: PlaylistRecipe) => {
+    setDuplicatingRecipeId(recipe.id);
+    try {
+      const res = await axios.post(`/api/playlist-recipes/${recipe.id}/duplicate`);
+      alert(res.data.message || `Duplicated recipe "${recipe.name}".`);
+      router.push(`/builder?recipeId=${res.data.recipe.id}&edit=1`);
+    } catch (e: any) {
+      console.error(e);
+      alert(e.response?.data?.error || "Failed to duplicate playlist recipe");
+    } finally {
+      setDuplicatingRecipeId("");
     }
   };
 
@@ -104,6 +122,10 @@ export default function RecipesPage() {
                   <dd>{formatDate(recipe.createdAt)}</dd>
                 </div>
                 <div>
+                  <dt>Updated</dt>
+                  <dd>{formatDate(recipe.updatedAt)}</dd>
+                </div>
+                <div>
                   <dt>Last used</dt>
                   <dd>{formatDate(recipe.lastUsedAt)}</dd>
                 </div>
@@ -120,6 +142,14 @@ export default function RecipesPage() {
                   <Play size={15} />
                   Preview
                 </Link>
+                <Link href={`/builder?recipeId=${recipe.id}&edit=1`} className={styles.secondaryButton}>
+                  <Edit3 size={15} />
+                  Edit
+                </Link>
+                <button type="button" onClick={() => duplicateRecipe(recipe)} disabled={duplicatingRecipeId === recipe.id} className={styles.secondaryButton}>
+                  {duplicatingRecipeId === recipe.id ? <RefreshCw size={15} className="animate-spin" /> : <Copy size={15} />}
+                  Duplicate
+                </button>
                 <button type="button" onClick={() => deleteRecipe(recipe)} className={styles.dangerButton}>
                   <Trash2 size={15} />
                   Delete

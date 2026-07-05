@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.9 - Edit and Duplicate Playlist Recipes
+
+- Added editing for saved playlist recipes.
+- Added recipe duplication for quickly creating variations.
+- Added update-existing-recipe support from the playlist builder.
+- Added improved recipe actions and updated recipe metadata.
+- Kept recipe previews connected to the playlist preview flow.
+
 ## v1.1.8 - Save Playlist Recipes
 
 - Added saved playlist recipes for reusable playlist filter setups.
