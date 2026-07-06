@@ -10,7 +10,6 @@ export const metadata = {
 };
 
 const nextFeatures = [
-  "Playlist regeneration",
   "Playlist history improvements",
   "Import/export recipes",
   "Advanced Smart Mix Engine",
@@ -21,6 +20,12 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "v1.2.3 adds Playlist Regeneration for Mixarr-created playlists.",
+  "Generated Playlists page for viewing tracked playlist metadata",
+  "Regeneration preview before replacing tracks in Plex",
+  "Saved generation metadata for builder, Smart Builder, and recipe-created playlists",
+  "Regeneration uses saved filters, presets, manual exclusions, and safety rules",
+  "Playlist regeneration runs recorded in Job History",
   "v1.2.2-hotfix improved independent Smart Builder preset selection and changed the app badge to Beta.",
   "BPM range presets for the Smart Playlist Builder",
   "Slow, Medium, Upbeat, Dance, High Energy, and Wide Open tempo presets",
@@ -73,7 +78,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release adds BPM Range Presets and a hotfix for independent Smart, Mood, and BPM preset selection.</p>
+          <p>This release adds Playlist Regeneration for Mixarr-created playlists, with preview-before-replace safety.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -98,7 +103,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Regeneration, recipe portability, mood blending, BPM transition/ramp tools, and deeper discovery tuning are planned for future releases.</p>
+        <p className={styles.futureNote}>Playlist history improvements, recipe portability, mood blending, BPM transition/ramp tools, and deeper discovery tuning are planned for future releases.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

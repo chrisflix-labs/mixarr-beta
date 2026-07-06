@@ -473,6 +473,7 @@ export default function SmartBuilderPage() {
         rulesSnapshot: payload.ruleTree || payload.rules,
         optionsSnapshot: payload,
         previewId: playlistPreview.previewId,
+        sourceType: "smart_builder",
         filters: payload,
         manualExclusionsApplied: playlistPreview.summary.manualExclusionsRemoved || 0,
         removedBySafetyRules: playlistPreview.summary.removedBySafetyRules || 0,

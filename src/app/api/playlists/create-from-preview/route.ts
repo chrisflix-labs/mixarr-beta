@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { exportTracksToPlex, playlistConfigSchema, summarizePlaylistSafetyRules } from "@/lib/playlistService";
+import { exportTracksToPlex, playlistConfigSchema, recordGeneratedPlaylist, summarizePlaylistSafetyRules } from "@/lib/playlistService";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
 import prisma from "@/lib/prisma";
 import { markPlaylistRecipeUsed } from "@/lib/playlistRecipes";
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, trackIds, savedRuleId, rulesSnapshot, optionsSnapshot, previewId, recipeId, recipeName, filters, manualExclusionsApplied, removedBySafetyRules, safetyRulesApplied } = await req.json();
+    const { name, trackIds, savedRuleId, rulesSnapshot, optionsSnapshot, previewId, recipeId, recipeName, filters, sourceType, manualExclusionsApplied, removedBySafetyRules, safetyRulesApplied } = await req.json();
 
     const trimmedName = typeof name === "string" ? name.trim() : "";
 
@@ -87,6 +87,21 @@ export async function POST(req: Request) {
     const presetSummary = presetSummaries.length ? ` with ${presetSummaries.join(" and ")}` : "";
     const trackCountSummary = presetSummary ? ` and ${result.trackCount} tracks` : ` with ${result.trackCount} tracks`;
     const bpmRange = tempoRangeFromOptions(parsedOptions);
+    const generationFilters = optionsSnapshot || filters;
+    if (generationFilters) {
+      await recordGeneratedPlaylist({
+        userId,
+        serverId: result.serverId,
+        plexPlaylistRatingKey: result.playlistId || null,
+        plexPlaylistTitle: trimmedName,
+        sourceType: sourceType || (ownedRecipe || recipeId ? "recipe" : smartPresetName ? "smart_builder" : "manual_builder"),
+        recipeId: ownedRecipe?.id || recipeId || null,
+        recipeName: resolvedRecipeName,
+        filters: generationFilters,
+        trackIds: result.exportedTrackIds || trackIds,
+      });
+    }
+
     await safeRecordJobHistory({
       userId,
       type: "playlist",

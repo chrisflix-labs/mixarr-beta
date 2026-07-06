@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.3 - Playlist Regeneration
+
+- Added playlist regeneration for Mixarr-created playlists.
+- Added saved generation metadata for playlists created from the builder, Smart Builder, and recipes.
+- Added regeneration preview before replacing tracks in Plex.
+- Added support for regenerating playlists using saved filters, presets, manual exclusions, and safety rules.
+- Added Generated Playlists visibility and Job History entries for regeneration runs.
+
 ## v1.2.2-hotfix - Smart Builder Preset Hotfix
 
 - Fixed Smart Builder so Mood Presets can be selected without first choosing a Smart Preset.

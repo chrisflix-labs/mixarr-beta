@@ -23,6 +23,7 @@ model User {
   playlistRules PlaylistRule[]
   playlistRecipes PlaylistRecipe[]
   playlistHistory PlaylistHistory[]
+  generatedPlaylists GeneratedPlaylist[]
   blockedTracks BlockedTrack[]
   trackExclusions TrackExclusion[]
   syncSettings  SyncSettings?
@@ -382,6 +383,52 @@ model PlaylistHistory {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   playlistRule    PlaylistRule? @relation(fields: [playlistRuleId], references: [id], onDelete: SetNull)
   server          Server?  @relation(fields: [serverId], references: [id], onDelete: SetNull)
+}
+
+model GeneratedPlaylist {
+  id                    String   @id @default(uuid())
+  userId                String
+  serverId              String?
+  plexPlaylistRatingKey String?
+  plexPlaylistTitle     String
+  sourceType            String   @default("unknown")
+  recipeId              String?
+  recipeName            String?
+  smartPresetId         String?
+  smartPresetName       String?
+  moodPresetId          String?
+  moodPresetName        String?
+  bpmPresetId           String?
+  bpmPresetName         String?
+  filtersJson           Json
+  safetyRulesJson       Json?
+  trackCount            Int      @default(0)
+  lastGeneratedAt       DateTime @default(now())
+  lastRegeneratedAt     DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracks                GeneratedPlaylistTrack[]
+
+  @@unique([userId, plexPlaylistRatingKey])
+  @@index([userId, updatedAt])
+  @@index([userId, sourceType])
+}
+
+model GeneratedPlaylistTrack {
+  id                  String   @id @default(uuid())
+  generatedPlaylistId String
+  trackId             String?
+  plexTrackRatingKey  String?
+  position            Int
+  title               String
+  artist              String?
+  album               String?
+  createdAt           DateTime @default(now())
+  generatedPlaylist   GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+
+  @@index([generatedPlaylistId, position])
+  @@index([trackId])
 }
 
 model SyncLog {

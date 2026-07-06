@@ -1,6 +1,6 @@
 import styles from "./page.module.css";
 import Link from "next/link";
-import { BookMarked, BrainCircuit, Fingerprint, Gauge, HeartPulse, History, ListMusic, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
+import { BookMarked, BrainCircuit, Fingerprint, Gauge, HeartPulse, History, ListMusic, ListRestart, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
 import LibrarySelector from "@/components/LibrarySelector";
 import SyncProgress from "@/components/SyncProgress";
 import PlexLoginButton from "@/components/PlexLoginButton";
@@ -16,7 +16,7 @@ const previewFeatures = [
     description: "Start with guided presets for workout, chill, party, focus, driving, discovery, deep cuts, favorites, or balanced mixes. Now with Mood and BPM Presets.",
     examples: ["Workout", "Mood Presets", "BPM Presets"],
     icon: SlidersHorizontal,
-    badge: "v1.2.2-hotfix",
+    badge: "v1.2.3",
   },
   {
     title: "AI DJ Flow",
@@ -114,6 +114,22 @@ function PlaylistRecipesCard({ count }: { count: number }) {
   );
 }
 
+function PlaylistRegenerationCard({ count }: { count: number }) {
+  return (
+    <article className={styles.card}>
+      <ListRestart size={22} className={styles.cardIcon} />
+      <h3>Playlist Regeneration</h3>
+      <p>Refresh existing Mixarr playlists using saved filters, recipes, presets, and safety rules.</p>
+      <div className={styles.recipeCardActions}>
+        <span>{count.toLocaleString()} generated playlist{count === 1 ? "" : "s"} tracked</span>
+        <div>
+          <Link href="/generated-playlists" className={styles.cardAction}>View Generated Playlists</Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function SmartBuilderCard() {
   return (
     <article className={styles.card}>
@@ -136,15 +152,17 @@ export default async function Home() {
   let health: Awaited<ReturnType<typeof getCachedLibraryHealth>> = [];
   let jobSummary: Awaited<ReturnType<typeof getRecentJobSummary>> | null = null;
   let recipeCount = 0;
+  let generatedPlaylistCount = 0;
   if (sessionId) {
     user = await prisma.user.findUnique({
       where: { id: sessionId },
     });
     if (user) {
-      [health, jobSummary, recipeCount] = await Promise.all([
+      [health, jobSummary, recipeCount, generatedPlaylistCount] = await Promise.all([
         getCachedLibraryHealth(user.id),
         getRecentJobSummary(user.id),
         prisma.playlistRecipe.count({ where: { userId: user.id, isArchived: false } }),
+        prisma.generatedPlaylist.count({ where: { userId: user.id } }),
       ]);
     }
   }
@@ -227,6 +245,7 @@ export default async function Home() {
             <RecentJobsCard summary={jobSummary} />
             <SmartBuilderCard />
             <PlaylistRecipesCard count={recipeCount} />
+            <PlaylistRegenerationCard count={generatedPlaylistCount} />
             <MixarrVersionCard />
             <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
               <Map size={22} className={styles.cardIcon} />
@@ -311,6 +330,8 @@ export default async function Home() {
 
             <PlaylistRecipesCard count={0} />
 
+            <PlaylistRegenerationCard count={0} />
+
             <SmartBuilderCard />
 
             <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
@@ -326,7 +347,7 @@ export default async function Home() {
       <div className={styles.recentSection}>
         <div className={styles.sectionHeader}>
           <h3>Recent Playlists</h3>
-          <a href="#" className={styles.viewAll}>View All &rarr;</a>
+          <Link href="/generated-playlists" className={styles.viewAll}>View All &rarr;</Link>
         </div>
         <div className={styles.recentGrid}>
           <div className={styles.recentCard}>

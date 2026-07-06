@@ -992,6 +992,7 @@ export default function BuilderPage() {
         previewId: playlistPreview.previewId,
         recipeId: activeRecipe?.id || undefined,
         recipeName: activeRecipe?.name || undefined,
+        sourceType: activeRecipe ? "recipe" : smartPresetMetadata.smartPresetName ? "smart_builder" : "manual_builder",
         filters: activeRecipe ? playlistPayload({ pinnedTrackIds: [], excludedTrackIds: [] }) : undefined,
         manualExclusionsApplied: playlistPreview.summary.manualExclusionsRemoved || 0,
         removedBySafetyRules: playlistPreview.summary.removedBySafetyRules || 0,

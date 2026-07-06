@@ -18,6 +18,7 @@ export type ReleaseNoteBadge =
   | "Plex"
   | "Preview"
   | "Recipes"
+  | "Regeneration"
   | "Release Notes"
   | "Retry"
   | "Roadmap"
@@ -36,6 +37,18 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.2.3",
+    title: "Playlist Regeneration",
+    badges: ["Playlists", "Regeneration", "Smart Builder", "Recipes", "Preview", "Plex"],
+    changes: [
+      "Added playlist regeneration for Mixarr-created playlists.",
+      "Added saved generation metadata for playlists created from the builder, Smart Builder, and recipes.",
+      "Added regeneration preview before replacing tracks in Plex.",
+      "Added support for regenerating playlists using saved filters, presets, manual exclusions, and safety rules.",
+      "Added Generated Playlists visibility and Job History entries for regeneration runs.",
+    ],
+  },
   {
     version: "1.2.2-hotfix",
     title: "Smart Builder Preset Hotfix",

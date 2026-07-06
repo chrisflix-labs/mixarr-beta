@@ -984,6 +984,358 @@ async function pushTracksToPlex({
   return response.data?.MediaContainer?.Metadata?.[0]?.ratingKey || null;
 }
 
+async function assertPlexPlaylistExists({
+  server,
+  playlistId,
+}: {
+  server: { uri: string; accessToken: string };
+  playlistId: string;
+}) {
+  try {
+    await axios.get(`${server.uri}/playlists/${playlistId}`, {
+      headers: plexHeaders(server.accessToken),
+    });
+  } catch {
+    throw new Error("Mixarr could not find the existing Plex playlist. Create a new playlist instead?");
+  }
+}
+
+export type GeneratedPlaylistSourceType = "manual_builder" | "recipe" | "smart_builder" | "unknown";
+
+function generatedPlaylistSourceType(config: Partial<PlaylistConfigInput>, fallback?: string | null): GeneratedPlaylistSourceType {
+  if (fallback === "manual_builder" || fallback === "recipe" || fallback === "smart_builder" || fallback === "unknown") {
+    return fallback;
+  }
+  if ((config as any).recipeId) return "recipe";
+  if (config.smartPresetId || config.smartPresetName || config.moodPresetId || config.bpmPresetId) return "smart_builder";
+  return "manual_builder";
+}
+
+function normalizeGeneratedPlaylistConfig(filters: unknown) {
+  return playlistConfigSchema.parse(filters || {});
+}
+
+function rulesJsonFromConfig(config: PlaylistConfigInput) {
+  return JSON.stringify(config.ruleTree || config.rules || []);
+}
+
+async function replaceGeneratedPlaylistSnapshot(generatedPlaylistId: string, tracks: any[]) {
+  await prisma.$transaction([
+    prisma.generatedPlaylistTrack.deleteMany({ where: { generatedPlaylistId } }),
+    prisma.generatedPlaylistTrack.createMany({
+      data: tracks.map((track, index) => ({
+        generatedPlaylistId,
+        trackId: track.id,
+        plexTrackRatingKey: track.ratingKey || track.plexId || null,
+        position: index + 1,
+        title: track.title || "Unknown track",
+        artist: track.artist?.title || null,
+        album: track.album?.title || null,
+      })),
+    }),
+  ]);
+}
+
+export async function recordGeneratedPlaylist({
+  userId,
+  serverId,
+  plexPlaylistRatingKey,
+  plexPlaylistTitle,
+  sourceType,
+  recipeId,
+  recipeName,
+  filters,
+  trackIds,
+}: {
+  userId: string;
+  serverId?: string | null;
+  plexPlaylistRatingKey?: string | null;
+  plexPlaylistTitle: string;
+  sourceType?: GeneratedPlaylistSourceType | string | null;
+  recipeId?: string | null;
+  recipeName?: string | null;
+  filters: unknown;
+  trackIds: string[];
+}) {
+  const config = normalizeGeneratedPlaylistConfig(filters);
+  const tracks = trackIds.length ? await fetchOwnedTracksInOrder(userId, trackIds) : [];
+  const resolvedSourceType = generatedPlaylistSourceType(config, sourceType);
+  const data = {
+    userId,
+    serverId: serverId || tracks[0]?.library?.server?.id || null,
+    plexPlaylistRatingKey: plexPlaylistRatingKey || null,
+    plexPlaylistTitle,
+    sourceType: resolvedSourceType,
+    recipeId: recipeId || null,
+    recipeName: recipeName || null,
+    smartPresetId: config.smartPresetId || null,
+    smartPresetName: config.smartPresetName || null,
+    moodPresetId: config.moodPresetId || null,
+    moodPresetName: config.moodPresetName || null,
+    bpmPresetId: config.bpmPresetId || null,
+    bpmPresetName: config.bpmPresetName || null,
+    filtersJson: config as any,
+    safetyRulesJson: config.safetyRules as any,
+    trackCount: tracks.length,
+    lastGeneratedAt: new Date(),
+  };
+
+  const existing = plexPlaylistRatingKey
+    ? await prisma.generatedPlaylist.findFirst({ where: { userId, plexPlaylistRatingKey } })
+    : null;
+  const generatedPlaylist = existing
+    ? await prisma.generatedPlaylist.update({
+        where: { id: existing.id },
+        data,
+      })
+    : await prisma.generatedPlaylist.create({ data });
+
+  await replaceGeneratedPlaylistSnapshot(generatedPlaylist.id, tracks);
+  return generatedPlaylist;
+}
+
+function uniqueTrackIds(ids: Array<string | null | undefined>) {
+  return ids.filter((id): id is string => Boolean(id)).filter((id, index, list) => list.indexOf(id) === index);
+}
+
+export async function previewGeneratedPlaylistRegeneration({
+  userId,
+  generatedPlaylistId,
+  preferDifferentTracks = false,
+}: {
+  userId: string;
+  generatedPlaylistId: string;
+  preferDifferentTracks?: boolean;
+}) {
+  const generatedPlaylist = await prisma.generatedPlaylist.findFirst({
+    where: { id: generatedPlaylistId, userId },
+    include: { tracks: { orderBy: { position: "asc" } } },
+  });
+
+  if (!generatedPlaylist) {
+    throw new Error("Generated playlist not found");
+  }
+
+  const savedConfig = normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson);
+  const snapshotTrackIds = generatedPlaylist.tracks.map((track) => track.trackId).filter((trackId): trackId is string => Boolean(trackId));
+  const config = preferDifferentTracks && snapshotTrackIds.length > 0
+    ? playlistConfigSchema.parse({
+        ...savedConfig,
+        excludedTrackIds: uniqueTrackIds([...(savedConfig.excludedTrackIds || []), ...snapshotTrackIds]),
+        pinnedTrackIds: [],
+      })
+    : savedConfig;
+  const preview = await previewPlaylistTracks({ userId, config });
+  const previousIds = new Set(snapshotTrackIds);
+  const nextIds = new Set(preview.trackIds);
+  const reused = preview.trackIds.filter((trackId) => previousIds.has(trackId)).length;
+  const removed = snapshotTrackIds.filter((trackId) => !nextIds.has(trackId)).length;
+  const recipe = generatedPlaylist.recipeId
+    ? await prisma.playlistRecipe.findFirst({ where: { id: generatedPlaylist.recipeId, userId, isArchived: false }, select: { id: true } })
+    : null;
+  const regenerationWarnings = [
+    "This will replace the tracks in the existing Plex playlist after confirmation.",
+    ...(generatedPlaylist.plexPlaylistRatingKey ? [] : ["The original Plex playlist could not be found because no Plex playlist identifier was saved."]),
+    ...(snapshotTrackIds.length === 0 ? ["Original playlist snapshot is not available. Mixarr will regenerate using the saved filters."] : []),
+    ...(preferDifferentTracks && snapshotTrackIds.length === 0 ? ["Previous track snapshot is not available yet. Regeneration will use the saved filters normally."] : []),
+    ...(generatedPlaylist.recipeId && !recipe ? ["Original recipe no longer exists. Using saved playlist settings from the last generation."] : []),
+    ...(generatedPlaylist.recipeId && recipe ? ["This regeneration uses the settings saved when the playlist was created."] : []),
+    ...preview.warnings,
+  ].filter((warning, index, list) => list.indexOf(warning) === index);
+
+  return {
+    generatedPlaylist,
+    preview: {
+      ...preview,
+      warnings: regenerationWarnings,
+      regeneration: {
+        mode: "replace_all",
+        currentPlaylistTrackCount: generatedPlaylist.trackCount,
+        previousSnapshotTrackCount: snapshotTrackIds.length,
+        newPreviewTrackCount: preview.trackIds.length,
+        tracksKept: 0,
+        tracksReused: reused,
+        newTracks: preview.trackIds.length - reused,
+        removedTracks: removed,
+        manualExclusionsApplied: preview.manualExclusionsApplied,
+        safetyRulesApplied: preview.safetyRulesApplied,
+        smartPresetName: generatedPlaylist.smartPresetName,
+        moodPresetName: generatedPlaylist.moodPresetName,
+        bpmPresetName: generatedPlaylist.bpmPresetName,
+        recipeName: generatedPlaylist.recipeName,
+        snapshotAvailable: snapshotTrackIds.length > 0,
+      },
+    },
+  };
+}
+
+export async function regenerateGeneratedPlaylistFromPreview({
+  userId,
+  generatedPlaylistId,
+  trackIds,
+  previewId,
+  mode = "replace_all",
+  warnings = [],
+}: {
+  userId: string;
+  generatedPlaylistId: string;
+  trackIds: string[];
+  previewId?: string | null;
+  mode?: string;
+  warnings?: string[];
+}) {
+  const generatedPlaylist = await prisma.generatedPlaylist.findFirst({
+    where: { id: generatedPlaylistId, userId },
+  });
+
+  if (!generatedPlaylist) {
+    throw new Error("Generated playlist not found");
+  }
+  if (mode !== "replace_all") {
+    throw new Error("Keep some existing tracks is coming later. Preview with Replace all tracks for v1.2.3.");
+  }
+  if (!generatedPlaylist.plexPlaylistRatingKey) {
+    throw new Error("Mixarr could not find the existing Plex playlist. Create a new playlist instead?");
+  }
+  if (!trackIds.length) {
+    throw new Error("Regeneration preview must include at least one track");
+  }
+
+  const startedAt = new Date();
+  let tracks: Awaited<ReturnType<typeof fetchOwnedTracksInOrder>> = [];
+  let targetServer: any = null;
+  try {
+    const filtered = await filterManualTrackExclusions(userId, trackIds);
+    if (filtered.excludedTrackCount > 0) {
+      throw new Error("The regeneration preview includes tracks that are now manually excluded. Preview regeneration again.");
+    }
+
+    tracks = await fetchOwnedTracksInOrder(userId, filtered.trackIds);
+    targetServer = generatedPlaylist.serverId
+      ? await prisma.server.findFirst({ where: { id: generatedPlaylist.serverId, userId } })
+      : null;
+    if (!targetServer) targetServer = assertSingleServer(tracks);
+    if (!targetServer) throw new Error("No Plex server was available for this playlist");
+
+    await assertPlexPlaylistExists({
+      server: targetServer,
+      playlistId: generatedPlaylist.plexPlaylistRatingKey,
+    });
+    await pushTracksToPlex({
+      server: targetServer,
+      name: generatedPlaylist.plexPlaylistTitle,
+      ratingKeys: tracks.map((track) => track.ratingKey || track.plexId),
+      playlistId: generatedPlaylist.plexPlaylistRatingKey,
+    });
+
+    const config = normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson);
+    await prisma.generatedPlaylist.update({
+      where: { id: generatedPlaylist.id },
+      data: {
+        serverId: targetServer.id,
+        trackCount: tracks.length,
+        lastRegeneratedAt: new Date(),
+        lastGeneratedAt: new Date(),
+      },
+    });
+    await replaceGeneratedPlaylistSnapshot(generatedPlaylist.id, tracks);
+    await prisma.playlistHistory.create({
+      data: {
+        userId,
+        serverId: targetServer.id,
+        name: generatedPlaylist.plexPlaylistTitle,
+        rulesJson: rulesJsonFromConfig(config),
+        optionsJson: JSON.stringify(config),
+        trackCount: tracks.length,
+        plexPlaylistId: generatedPlaylist.plexPlaylistRatingKey,
+        status: "success",
+      },
+    });
+    await safeRecordJobHistory({
+      userId,
+      type: "playlist",
+      name: "Playlist regeneration",
+      status: "success",
+      trigger: "manual",
+      startedAt,
+      summary: `Regenerated playlist "${generatedPlaylist.plexPlaylistTitle}" with ${tracks.length} tracks using saved ${generatedPlaylist.smartPresetName ? "Smart Builder" : generatedPlaylist.recipeName ? "recipe" : "builder"} settings.`,
+      counts: { attempted: trackIds.length, processed: tracks.length, skipped: Math.max(0, trackIds.length - tracks.length), failed: 0 },
+      metadata: {
+        generatedPlaylistId,
+        plexPlaylistRatingKey: generatedPlaylist.plexPlaylistRatingKey,
+        playlistName: generatedPlaylist.plexPlaylistTitle,
+        mode,
+        sourceType: generatedPlaylist.sourceType,
+        recipeId: generatedPlaylist.recipeId,
+        recipeName: generatedPlaylist.recipeName,
+        smartPresetId: generatedPlaylist.smartPresetId,
+        smartPresetName: generatedPlaylist.smartPresetName,
+        moodPresetId: generatedPlaylist.moodPresetId,
+        moodPresetName: generatedPlaylist.moodPresetName,
+        bpmPresetId: generatedPlaylist.bpmPresetId,
+        bpmPresetName: generatedPlaylist.bpmPresetName,
+        trackCount: tracks.length,
+        manualExclusionsRemoved: 0,
+        safetyRules: config.safetyRules,
+        warnings,
+        previewId: previewId || null,
+      },
+    });
+
+    return {
+      success: true,
+      playlistId: generatedPlaylist.plexPlaylistRatingKey,
+      serverId: targetServer.id,
+      trackCount: tracks.length,
+    };
+  } catch (error: any) {
+    const message = error.message || "Failed to regenerate playlist";
+    await prisma.playlistHistory.create({
+      data: {
+        userId,
+        serverId: targetServer?.id || generatedPlaylist.serverId,
+        name: generatedPlaylist.plexPlaylistTitle,
+        rulesJson: JSON.stringify((generatedPlaylist.filtersJson as any)?.ruleTree || (generatedPlaylist.filtersJson as any)?.rules || []),
+        optionsJson: JSON.stringify(generatedPlaylist.filtersJson || {}),
+        trackCount: 0,
+        plexPlaylistId: generatedPlaylist.plexPlaylistRatingKey,
+        status: "failed",
+        error: message,
+      },
+    }).catch(() => undefined);
+    await safeRecordJobHistory({
+      userId,
+      type: "playlist",
+      name: "Playlist regeneration",
+      status: "failed",
+      trigger: "manual",
+      startedAt,
+      summary: `Failed to regenerate playlist "${generatedPlaylist.plexPlaylistTitle}". ${message}`,
+      counts: { attempted: trackIds.length, processed: 0, skipped: 0, failed: 1 },
+      error: message,
+      metadata: {
+        generatedPlaylistId,
+        plexPlaylistRatingKey: generatedPlaylist.plexPlaylistRatingKey,
+        playlistName: generatedPlaylist.plexPlaylistTitle,
+        mode,
+        sourceType: generatedPlaylist.sourceType,
+        recipeId: generatedPlaylist.recipeId,
+        recipeName: generatedPlaylist.recipeName,
+        smartPresetId: generatedPlaylist.smartPresetId,
+        smartPresetName: generatedPlaylist.smartPresetName,
+        moodPresetId: generatedPlaylist.moodPresetId,
+        moodPresetName: generatedPlaylist.moodPresetName,
+        bpmPresetId: generatedPlaylist.bpmPresetId,
+        bpmPresetName: generatedPlaylist.bpmPresetName,
+        trackCount: 0,
+        warnings,
+        previewId: previewId || null,
+      },
+    });
+    throw error;
+  }
+}
+
 export async function exportTracksToPlex({
   userId,
   name,
@@ -1057,6 +1409,7 @@ export async function exportTracksToPlex({
       serverId: targetServer.id,
       trackCount: tracks.length,
       excludedTrackCount: filtered.excludedTrackCount,
+      exportedTrackIds: tracks.map((track) => track.id),
     };
   } catch (error: any) {
     exportResult = "failed";
@@ -1191,6 +1544,16 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
         plexPlaylistId: rule.plexPlaylistId,
         status: "success",
       },
+    });
+
+    await recordGeneratedPlaylist({
+      userId: rule.userId,
+      serverId: targetServer.id,
+      plexPlaylistRatingKey: rule.plexPlaylistId,
+      plexPlaylistTitle: rule.name,
+      sourceType: parsed.smartPresetName || parsed.moodPresetName || parsed.bpmPresetName ? "smart_builder" : "manual_builder",
+      filters: parsed,
+      trackIds: tracks.map((track) => track.id),
     });
 
     return prisma.playlistRule.update({

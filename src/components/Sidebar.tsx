@@ -1,7 +1,7 @@
 "use client";
 
 import styles from "./Sidebar.module.css";
-import { AudioWaveform, BookMarked, ExternalLink, FlaskConical, Github, HeartPulse, History, LayoutDashboard, ListMusic, Map, ScrollText, Settings, Sparkles, Tags, Wand2 } from "lucide-react";
+import { AudioWaveform, BookMarked, ExternalLink, FlaskConical, Github, HeartPulse, History, LayoutDashboard, ListMusic, ListRestart, Map, ScrollText, Settings, Sparkles, Tags, Wand2 } from "lucide-react";
 import PlexLoginButton from "./PlexLoginButton";
 import LogoutButton from "./LogoutButton";
 import Link from "next/link";
@@ -72,6 +72,9 @@ export default function Sidebar({ user, appVersion }: { user: any; appVersion: s
         </Link>
         <Link href="/recipes" className={`${styles.navItem} ${pathname.startsWith("/recipes") ? styles.active : ""}`}>
           <BookMarked size={18} /> Recipes
+        </Link>
+        <Link href="/generated-playlists" className={`${styles.navItem} ${pathname.startsWith("/generated-playlists") ? styles.active : ""}`}>
+          <ListRestart size={18} /> Generated Playlists
         </Link>
         <Link href="/library" className={`${styles.navItem} ${pathname === "/library" ? styles.active : ""}`}>
           <ListMusic size={18} /> Library
