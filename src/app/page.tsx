@@ -9,14 +9,15 @@ import prisma from "@/lib/prisma";
 import { getCachedLibraryHealth } from "@/lib/libraryHealth";
 import { APP_VERSION } from "@/lib/appVersion";
 import { getRecentJobSummary } from "@/lib/jobHistory";
+import { getPlaylistHistoryDashboardSummary } from "@/lib/playlistHistory";
 
 const previewFeatures = [
   {
     title: "Smart Playlist Builder",
-    description: "Start with guided presets for workout, chill, party, focus, driving, discovery, deep cuts, favorites, or balanced mixes. Now with Mood and BPM Presets.",
-    examples: ["Workout", "Mood Presets", "BPM Presets"],
+    description: "Start with guided presets, tune mood and BPM, then review created and regenerated versions in Playlist History.",
+    examples: ["Workout", "Mood Presets", "Playlist History"],
     icon: SlidersHorizontal,
-    badge: "v1.2.4",
+    badge: "v1.2.5",
   },
   {
     title: "AI DJ Flow",
@@ -130,6 +131,43 @@ function PlaylistRegenerationCard({ count }: { count: number }) {
   );
 }
 
+function PlaylistHistoryCard({
+  count,
+  lastEvent,
+}: {
+  count: number;
+  lastEvent?: { playlistName: string; eventType: string; createdAt: Date } | null;
+}) {
+  const eventLabel = lastEvent?.eventType === "regenerated"
+    ? "Regenerated"
+    : lastEvent?.eventType === "removed_tracking"
+    ? "Removed Tracking"
+    : lastEvent?.eventType === "created_copy"
+    ? "Created Copy"
+    : lastEvent
+    ? "Created"
+    : "No events yet";
+
+  return (
+    <article className={styles.card}>
+      <History size={22} className={styles.cardIcon} />
+      <h3>Playlist History</h3>
+      <p>Review recently created and regenerated playlists, including filters, presets, and track snapshots.</p>
+      <div className={styles.recipeCardActions}>
+        <span>{count.toLocaleString()} playlist histor{count === 1 ? "y entry" : "y entries"}</span>
+        {lastEvent && (
+          <small className={styles.cardDetailLine}>
+            Last: {eventLabel} {lastEvent.playlistName} on {lastEvent.createdAt.toLocaleString()}
+          </small>
+        )}
+        <div>
+          <Link href="/playlist-history" className={styles.cardAction}>View Playlist History</Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function SmartBuilderCard() {
   return (
     <article className={styles.card}>
@@ -153,17 +191,26 @@ export default async function Home() {
   let jobSummary: Awaited<ReturnType<typeof getRecentJobSummary>> | null = null;
   let recipeCount = 0;
   let generatedPlaylistCount = 0;
+  let playlistHistoryCount = 0;
+  let lastPlaylistHistoryEvent: { playlistName: string; eventType: string; createdAt: Date } | null = null;
   if (sessionId) {
     user = await prisma.user.findUnique({
       where: { id: sessionId },
     });
     if (user) {
-      [health, jobSummary, recipeCount, generatedPlaylistCount] = await Promise.all([
+      const [historyResult, jobsResult, recipesResult, generatedPlaylistsResult, playlistHistorySummary] = await Promise.all([
         getCachedLibraryHealth(user.id),
         getRecentJobSummary(user.id),
         prisma.playlistRecipe.count({ where: { userId: user.id, isArchived: false } }),
         prisma.generatedPlaylist.count({ where: { userId: user.id } }),
+        getPlaylistHistoryDashboardSummary(user.id),
       ]);
+      health = historyResult;
+      jobSummary = jobsResult;
+      recipeCount = recipesResult;
+      generatedPlaylistCount = generatedPlaylistsResult;
+      playlistHistoryCount = playlistHistorySummary.count;
+      lastPlaylistHistoryEvent = playlistHistorySummary.lastEvent;
     }
   }
 
@@ -246,6 +293,7 @@ export default async function Home() {
             <SmartBuilderCard />
             <PlaylistRecipesCard count={recipeCount} />
             <PlaylistRegenerationCard count={generatedPlaylistCount} />
+            <PlaylistHistoryCard count={playlistHistoryCount} lastEvent={lastPlaylistHistoryEvent} />
             <MixarrVersionCard />
             <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
               <Map size={22} className={styles.cardIcon} />
@@ -331,6 +379,8 @@ export default async function Home() {
             <PlaylistRecipesCard count={0} />
 
             <PlaylistRegenerationCard count={0} />
+
+            <PlaylistHistoryCard count={0} lastEvent={null} />
 
             <SmartBuilderCard />
 

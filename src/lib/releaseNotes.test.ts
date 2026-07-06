@@ -14,13 +14,13 @@ describe("release notes", () => {
   it("sorts release notes from oldest to newest", () => {
     const ordered = getReleaseNotesOldestFirst();
 
-    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2", "1.2.2-hotfix", "1.2.3", "1.2.4"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2", "1.2.2-hotfix", "1.2.3", "1.2.4", "1.2.5"]);
   });
 
   it("sorts release notes from newest to oldest", () => {
     const ordered = getReleaseNotesNewestFirst();
 
-    assert.deepEqual(ordered.map((note) => note.version), ["1.2.4", "1.2.3", "1.2.2-hotfix", "1.2.2", "1.2.1", "1.2.0", "1.1.10", "1.1.9.1", "1.1.9", "1.1.8", "1.1.7", "1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["1.2.5", "1.2.4", "1.2.3", "1.2.2-hotfix", "1.2.2", "1.2.1", "1.2.0", "1.1.10", "1.1.9.1", "1.1.9", "1.1.8", "1.1.7", "1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
   });
 
   it("sorts semantic versions newest first without string ordering", () => {
@@ -53,9 +53,10 @@ describe("release notes", () => {
     assert.equal(compareSemanticVersions("v1.2.2", "v1.2.2-rc") > 0, true);
     assert.equal(compareSemanticVersions("v1.2.2-rc", "v1.2.2-beta") > 0, true);
     assert.equal(compareSemanticVersions("v1.2.4", "v1.2.3") > 0, true);
+    assert.equal(compareSemanticVersions("v1.2.5", "v1.2.4") > 0, true);
   });
 
-  it("places v1.2.4 above v1.2.3 without string sorting", () => {
+  it("places v1.2.5 above v1.2.4 without string sorting", () => {
     const ordered = getReleaseNotesNewestFirst([
       { version: "v1.1.10", title: "One", badges: ["Beta"], changes: ["One"] },
       { version: "v1.2.0", title: "Two", badges: ["Beta"], changes: ["Two"] },
@@ -64,9 +65,10 @@ describe("release notes", () => {
       { version: "v1.2.2-hotfix", title: "Five", badges: ["Beta"], changes: ["Five"] },
       { version: "v1.2.3", title: "Six", badges: ["Beta"], changes: ["Six"] },
       { version: "v1.2.4", title: "Seven", badges: ["Beta"], changes: ["Seven"] },
+      { version: "v1.2.5", title: "Eight", badges: ["Beta"], changes: ["Eight"] },
     ]);
 
-    assert.deepEqual(ordered.map((note) => note.version), ["v1.2.4", "v1.2.3", "v1.2.2-hotfix", "v1.2.2", "v1.2.1", "v1.2.0", "v1.1.10"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["v1.2.5", "v1.2.4", "v1.2.3", "v1.2.2-hotfix", "v1.2.2", "v1.2.1", "v1.2.0", "v1.1.10"]);
   });
 
   it("places v1.2.2-hotfix above v1.2.2 and prior releases", () => {
@@ -124,5 +126,13 @@ describe("release notes", () => {
 
     assert.match(sidebar, /href="\/jobs"/);
     assert.match(sidebar, /Job History/);
+  });
+
+  it("links the sidebar navigation to the playlist history page", () => {
+    const sidebarPath = join(process.cwd(), "src", "components", "Sidebar.tsx");
+    const sidebar = readFileSync(sidebarPath, "utf8");
+
+    assert.match(sidebar, /href="\/playlist-history"/);
+    assert.match(sidebar, /Playlist History/);
   });
 });

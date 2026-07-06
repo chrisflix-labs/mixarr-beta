@@ -161,6 +161,16 @@
   font-weight: 800;
 }
 
+.cardDetailLine {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .recipeCardActions div {
   display: flex;
   flex-wrap: wrap;

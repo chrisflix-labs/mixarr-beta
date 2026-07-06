@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { exportTracksToPlex, playlistConfigSchema, recordGeneratedPlaylist, summarizePlaylistSafetyRules } from "@/lib/playlistService";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
+import { recordPlaylistHistoryEntry } from "@/lib/playlistHistory";
 import prisma from "@/lib/prisma";
 import { markPlaylistRecipeUsed } from "@/lib/playlistRecipes";
 
@@ -88,19 +89,53 @@ export async function POST(req: Request) {
     const trackCountSummary = presetSummary ? ` and ${result.trackCount} tracks` : ` with ${result.trackCount} tracks`;
     const bpmRange = tempoRangeFromOptions(parsedOptions);
     const generationFilters = optionsSnapshot || filters;
+    let generatedPlaylist: Awaited<ReturnType<typeof recordGeneratedPlaylist>> | null = null;
+    const resolvedSourceType = sourceType || (ownedRecipe || recipeId ? "recipe" : smartPresetName ? "smart_builder" : "manual_builder");
     if (generationFilters) {
-      await recordGeneratedPlaylist({
+      generatedPlaylist = await recordGeneratedPlaylist({
         userId,
         serverId: result.serverId,
         plexPlaylistRatingKey: result.playlistId || null,
         plexPlaylistTitle: trimmedName,
-        sourceType: sourceType || (ownedRecipe || recipeId ? "recipe" : smartPresetName ? "smart_builder" : "manual_builder"),
+        sourceType: resolvedSourceType,
         recipeId: ownedRecipe?.id || recipeId || null,
         recipeName: resolvedRecipeName,
         filters: generationFilters,
         trackIds: result.exportedTrackIds || trackIds,
       });
     }
+    const creationSummary = smartPresetName
+      ? `Created playlist "${trimmedName}"${smartPresetSummary}${presetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`
+      : resolvedRecipeName
+      ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}"${presetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`
+      : `Created playlist "${trimmedName}" from preview${presetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`;
+
+    await recordPlaylistHistoryEntry({
+      userId,
+      generatedPlaylistId: generatedPlaylist?.id || null,
+      serverId: result.serverId,
+      plexPlaylistRatingKey: result.playlistId || null,
+      playlistName: trimmedName,
+      eventType: "created",
+      sourceType: resolvedSourceType,
+      recipeId: ownedRecipe?.id || recipeId || null,
+      recipeName: resolvedRecipeName,
+      smartPresetId: parsedOptions?.smartPresetId || null,
+      smartPresetName,
+      moodPresetId: parsedOptions?.moodPresetId || null,
+      moodPresetName,
+      bpmPresetId: parsedOptions?.bpmPresetId || null,
+      bpmPresetName,
+      trackCount: result.trackCount,
+      manualExclusionsRemoved: excludedTrackCount,
+      safetyRulesApplied: Boolean(safetySummary),
+      safetyRulesRemoved: Math.max(0, Number(removedBySafetyRules) || 0),
+      warnings: [],
+      filters: generationFilters || null,
+      safetyRules: parsedOptions?.safetyRules || null,
+      summary: creationSummary,
+      trackIds: result.exportedTrackIds || trackIds,
+    });
 
     await safeRecordJobHistory({
       userId,
@@ -108,11 +143,7 @@ export async function POST(req: Request) {
       name: "Playlist create from preview",
       status: "success",
       trigger: "manual",
-      summary: smartPresetName
-        ? `Created playlist "${trimmedName}"${smartPresetSummary}${presetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`
-        : resolvedRecipeName
-        ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}"${presetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`
-        : `Created playlist "${trimmedName}" from preview${presetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`,
+      summary: creationSummary,
       counts: { attempted: trackIds.length, processed: result.trackCount, skipped: Math.max(0, trackIds.length - result.trackCount), failed: 0 },
       metadata: {
         savedRuleId: savedRuleId || null,

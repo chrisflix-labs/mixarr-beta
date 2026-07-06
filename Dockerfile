@@ -20,6 +20,7 @@ RUN \
 FROM base AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_APP_VERSION
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 

@@ -3,6 +3,7 @@ data
 node_modules
 .next
 .test-dist
+tsconfig.tsbuildinfo
 npm-debug.log
 Dockerfile
 docker-compose.yml

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { exportTracksToPlex, playlistConfigSchema, summarizePlaylistSafetyRules } from "@/lib/playlistService";
+import { exportTracksToPlex, playlistConfigSchema, recordGeneratedPlaylist, summarizePlaylistSafetyRules } from "@/lib/playlistService";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
+import { recordPlaylistHistoryEntry } from "@/lib/playlistHistory";
 
 export async function POST(req: Request) {
   const cookieStore = cookies();
@@ -34,6 +35,44 @@ export async function POST(req: Request) {
     const safetySummary = safetyConfig?.success && safetyRuleSummary !== "Safety: off"
       ? ` Safety rules applied: ${safetyRuleSummary.replace(/^Safety: /, "")}.`
       : "";
+    const filters = safetyConfig?.success ? safetyConfig.data : optionsSnapshot || { rules: rulesSnapshot || [] };
+    const sourceType = safetyConfig?.success && (safetyConfig.data.smartPresetName || safetyConfig.data.moodPresetName || safetyConfig.data.bpmPresetName)
+      ? "smart_builder"
+      : "manual_builder";
+    const generatedPlaylist = await recordGeneratedPlaylist({
+      userId,
+      serverId: result.serverId,
+      plexPlaylistRatingKey: result.playlistId || null,
+      plexPlaylistTitle: name,
+      sourceType,
+      filters,
+      trackIds: result.exportedTrackIds || trackIds,
+    });
+    const creationSummary = `Created playlist "${name}" from export with ${result.trackCount} track${result.trackCount === 1 ? "" : "s"}.${exclusionSummary}${safetySummary}`;
+    await recordPlaylistHistoryEntry({
+      userId,
+      generatedPlaylistId: generatedPlaylist.id,
+      serverId: result.serverId,
+      plexPlaylistRatingKey: result.playlistId || null,
+      playlistName: name,
+      eventType: "created",
+      sourceType,
+      smartPresetId: safetyConfig?.success ? safetyConfig.data.smartPresetId || null : null,
+      smartPresetName: safetyConfig?.success ? safetyConfig.data.smartPresetName || null : null,
+      moodPresetId: safetyConfig?.success ? safetyConfig.data.moodPresetId || null : null,
+      moodPresetName: safetyConfig?.success ? safetyConfig.data.moodPresetName || null : null,
+      bpmPresetId: safetyConfig?.success ? safetyConfig.data.bpmPresetId || null : null,
+      bpmPresetName: safetyConfig?.success ? safetyConfig.data.bpmPresetName || null : null,
+      trackCount: result.trackCount,
+      manualExclusionsRemoved: result.excludedTrackCount,
+      safetyRulesApplied: Boolean(safetySummary),
+      safetyRulesRemoved: 0,
+      warnings: [],
+      filters,
+      safetyRules: safetyConfig?.success ? safetyConfig.data.safetyRules : null,
+      summary: creationSummary,
+      trackIds: result.exportedTrackIds || trackIds,
+    });
     await safeRecordJobHistory({
       userId,
       type: "playlist",

@@ -9,6 +9,7 @@ export type ReleaseNoteBadge =
   | "Dashboard"
   | "Debugging"
   | "Hotfix"
+  | "History"
   | "Job History"
   | "Jobs"
   | "Library"
@@ -38,6 +39,18 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.2.5",
+    title: "Playlist History",
+    badges: ["Playlists", "History", "Regeneration", "Preview", "Job History"],
+    changes: [
+      "Added Playlist History for created and regenerated Mixarr playlists.",
+      "Added historical track snapshots showing the exact order written to Plex.",
+      "Added playlist creation and regeneration summaries with filters, recipes, presets, exclusions, and safety rules.",
+      "Added history details views with track lists and regeneration comparison stats.",
+      "Added links from Generated Playlists to related playlist history.",
+    ],
+  },
   {
     version: "1.2.4",
     title: "Advanced Playlist Regeneration",

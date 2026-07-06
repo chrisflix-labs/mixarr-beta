@@ -76,6 +76,9 @@ export default function Sidebar({ user, appVersion }: { user: any; appVersion: s
         <Link href="/generated-playlists" className={`${styles.navItem} ${pathname.startsWith("/generated-playlists") ? styles.active : ""}`}>
           <ListRestart size={18} /> Generated Playlists
         </Link>
+        <Link href="/playlist-history" className={`${styles.navItem} ${pathname.startsWith("/playlist-history") ? styles.active : ""}`}>
+          <History size={18} /> Playlist History
+        </Link>
         <Link href="/library" className={`${styles.navItem} ${pathname === "/library" ? styles.active : ""}`}>
           <ListMusic size={18} /> Library
         </Link>

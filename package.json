@@ -1,10 +1,10 @@
 {
   "name": "plex-playlist-builder",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && node -e \"require('fs').rmSync('tsconfig.tsbuildinfo',{force:true})\" && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "node -e \"require('fs').rmSync('.test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.tests.json && node --test .test-dist/src/lib/*.test.js",

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.5 - Playlist History
+
+- Added Playlist History for created and regenerated Mixarr playlists.
+- Added historical track snapshots showing the exact order written to Plex.
+- Added playlist creation and regeneration summaries with filters, recipes, presets, exclusions, and safety rules.
+- Added history details views with track lists and regeneration comparison stats.
+- Added links from Generated Playlists to related playlist history.
+
 ## v1.2.4 - Advanced Playlist Regeneration
 
 - Enabled Keep Some Existing Tracks regeneration mode.

@@ -6,6 +6,7 @@ import { audioFeatureFilterGuardWhere, type AudioFeatureFilterOptions } from "./
 import { activeSyncStatusWhere } from "./syncStatus";
 import { getUserSyncSettings } from "./syncSettings";
 import { safeFinishJobHistory, safeRecordJobHistory, safeStartJobHistory } from "./jobHistory";
+import { recordPlaylistHistoryEntry } from "./playlistHistory";
 import { filterManualTrackExclusions, getManualTrackExclusionIds } from "./trackExclusions";
 import {
   playlistExportDurationSeconds,
@@ -1634,6 +1635,10 @@ export async function regenerateGeneratedPlaylistFromPreview({
     });
     const keptCount = Math.max(0, Number(regeneration?.tracksKept) || 0);
     const replacedCount = Math.max(0, Number(regeneration?.tracksReplaced) || Math.max(0, trackIds.length - keptCount));
+    const newTrackCount = Math.max(0, Number(regeneration?.newTracksAdded ?? regeneration?.newTracks) || 0);
+    const removedCount = Math.max(0, Number(regeneration?.removedTracks) || 0);
+    const previousTrackCount = Math.max(0, Number(regeneration?.currentPlaylistTrackCount ?? regeneration?.previousSnapshotTrackCount) || 0);
+    const manualExclusionsRemoved = Math.max(0, Number(regeneration?.manualExclusionsRemoved ?? regeneration?.manualExclusionsApplied) || 0);
     const avoidedCount = Math.max(0, Number(regeneration?.previousTracksAvoided) || 0);
     const modeSummary = regenerationMode === "keep_some" && normalizedKeepPercent
       ? `Regenerated playlist "${generatedPlaylist.plexPlaylistTitle}" keeping ${normalizedKeepPercent}% of existing tracks. Kept ${keptCount}, replaced ${replacedCount}.`
@@ -1641,6 +1646,40 @@ export async function regenerateGeneratedPlaylistFromPreview({
     const preferDifferentSummary = preferDifferentTracks
       ? ` Regenerated playlist "${generatedPlaylist.plexPlaylistTitle}" with Prefer Different enabled. Avoided ${avoidedCount} previous tracks.`
       : "";
+    await recordPlaylistHistoryEntry({
+      userId,
+      generatedPlaylistId: generatedPlaylist.id,
+      serverId: targetServer.id,
+      plexPlaylistRatingKey: generatedPlaylist.plexPlaylistRatingKey,
+      playlistName: generatedPlaylist.plexPlaylistTitle,
+      eventType: "regenerated",
+      sourceType: "regeneration",
+      recipeId: generatedPlaylist.recipeId,
+      recipeName: generatedPlaylist.recipeName,
+      smartPresetId: generatedPlaylist.smartPresetId,
+      smartPresetName: generatedPlaylist.smartPresetName,
+      moodPresetId: generatedPlaylist.moodPresetId,
+      moodPresetName: generatedPlaylist.moodPresetName,
+      bpmPresetId: generatedPlaylist.bpmPresetId,
+      bpmPresetName: generatedPlaylist.bpmPresetName,
+      regenerationMode,
+      keepPercent: normalizedKeepPercent,
+      preferDifferentTracks,
+      trackCount: tracks.length,
+      previousTrackCount,
+      keptCount,
+      replacedCount,
+      newCount: newTrackCount,
+      removedCount,
+      manualExclusionsRemoved,
+      safetyRulesApplied: Boolean(regeneration?.safetyRulesApplied || safetyRulesAreEnabled(config)),
+      safetyRulesRemoved: Math.max(0, Number((regeneration as any)?.removedBySafetyRules) || 0),
+      warnings,
+      filters: config,
+      safetyRules: config.safetyRules,
+      summary: `${modeSummary}${preferDifferentSummary}`,
+      tracks,
+    });
     await safeRecordJobHistory({
       userId,
       type: "playlist",
@@ -1670,7 +1709,7 @@ export async function regenerateGeneratedPlaylistFromPreview({
         bpmPresetId: generatedPlaylist.bpmPresetId,
         bpmPresetName: generatedPlaylist.bpmPresetName,
         trackCount: tracks.length,
-        manualExclusionsRemoved: Math.max(0, Number(regeneration?.manualExclusionsRemoved ?? regeneration?.manualExclusionsApplied) || 0),
+        manualExclusionsRemoved,
         safetyRules: config.safetyRules,
         warnings,
         previewId: previewId || null,
@@ -1943,7 +1982,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
       },
     });
 
-    await recordGeneratedPlaylist({
+    const generatedPlaylist = await recordGeneratedPlaylist({
       userId: rule.userId,
       serverId: targetServer.id,
       plexPlaylistRatingKey: rule.plexPlaylistId,
@@ -1951,6 +1990,32 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
       sourceType: parsed.smartPresetName || parsed.moodPresetName || parsed.bpmPresetName ? "smart_builder" : "manual_builder",
       filters: parsed,
       trackIds: tracks.map((track) => track.id),
+    });
+    await recordPlaylistHistoryEntry({
+      userId: rule.userId,
+      generatedPlaylistId: generatedPlaylist.id,
+      serverId: targetServer.id,
+      plexPlaylistRatingKey: rule.plexPlaylistId,
+      playlistName: rule.name,
+      eventType: "regenerated",
+      sourceType: "regeneration",
+      smartPresetId: generatedPlaylist.smartPresetId,
+      smartPresetName: generatedPlaylist.smartPresetName,
+      moodPresetId: generatedPlaylist.moodPresetId,
+      moodPresetName: generatedPlaylist.moodPresetName,
+      bpmPresetId: generatedPlaylist.bpmPresetId,
+      bpmPresetName: generatedPlaylist.bpmPresetName,
+      regenerationMode: "replace_all",
+      trackCount: tracks.length,
+      previousTrackCount: rule.plexPlaylistId ? null : 0,
+      manualExclusionsRemoved: manualExclusionsApplied,
+      safetyRulesApplied: Boolean(safetyMetadata?.safetyRulesApplied),
+      safetyRulesRemoved: safetyMetadata?.removedBySafetyRules || 0,
+      warnings: safetyMetadata?.warnings || [],
+      filters: parsed,
+      safetyRules: parsed.safetyRules,
+      summary: `Regenerated "${rule.name}" from saved playlist refresh with ${tracks.length} track${tracks.length === 1 ? "" : "s"}.`,
+      tracks,
     });
 
     return prisma.playlistRule.update({

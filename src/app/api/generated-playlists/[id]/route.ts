@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
+import { recordPlaylistHistoryEntry } from "@/lib/playlistHistory";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const userId = cookies().get("mixarr_session")?.value;
@@ -34,12 +35,37 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   try {
     const playlist = await prisma.generatedPlaylist.findFirst({
       where: { id: params.id, userId },
-      select: { id: true, plexPlaylistTitle: true, plexPlaylistRatingKey: true, sourceType: true },
+      include: {
+        tracks: { orderBy: { position: "asc" } },
+      },
     });
 
     if (!playlist) {
       return NextResponse.json({ error: "Generated playlist not found" }, { status: 404 });
     }
+
+    await recordPlaylistHistoryEntry({
+      userId,
+      generatedPlaylistId: playlist.id,
+      serverId: playlist.serverId,
+      plexPlaylistRatingKey: playlist.plexPlaylistRatingKey,
+      playlistName: playlist.plexPlaylistTitle,
+      eventType: "removed_tracking",
+      sourceType: playlist.sourceType,
+      recipeId: playlist.recipeId,
+      recipeName: playlist.recipeName,
+      smartPresetId: playlist.smartPresetId,
+      smartPresetName: playlist.smartPresetName,
+      moodPresetId: playlist.moodPresetId,
+      moodPresetName: playlist.moodPresetName,
+      bpmPresetId: playlist.bpmPresetId,
+      bpmPresetName: playlist.bpmPresetName,
+      trackCount: playlist.trackCount,
+      filters: playlist.filtersJson,
+      safetyRules: playlist.safetyRulesJson,
+      summary: `Removed "${playlist.plexPlaylistTitle}" from Generated Playlists tracking. Plex playlist was not deleted.`,
+      trackIds: playlist.tracks.map((track) => track.trackId).filter((trackId): trackId is string => Boolean(trackId)),
+    });
 
     await prisma.generatedPlaylist.delete({ where: { id: playlist.id } });
     await safeRecordJobHistory({

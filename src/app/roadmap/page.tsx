@@ -10,16 +10,23 @@ export const metadata = {
 };
 
 const nextFeatures = [
-  "Playlist history improvements",
   "Import/export recipes",
+  "Export playlist history",
+  "Restore previous playlist version",
   "Advanced Smart Mix Engine",
   "Mood blending",
   "BPM transition/ramp tools",
   "Deep cut / discovery tuning",
+  "Recently added automation",
   "Beta experimental features",
 ];
 
 const currentReleaseFeatures = [
+  "v1.2.5 adds Playlist History for created and regenerated playlists.",
+  "Historical track snapshots preserve the exact order written to Plex",
+  "Playlist creation and regeneration summaries include filters, recipes, presets, exclusions, and safety rules",
+  "History details show track lists and regeneration comparison stats",
+  "Generated Playlists now links to related playlist history",
   "v1.2.4 adds Advanced Playlist Regeneration controls for Mixarr-created playlists.",
   "Keep Some Existing Tracks regeneration with 25% and 50% keep amounts",
   "Prefer Different Tracks Than Last Time using generated playlist snapshots",
@@ -82,7 +89,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release adds Advanced Playlist Regeneration with keep-some controls, prefer-different snapshots, comparison stats, and non-destructive tracking removal.</p>
+          <p>This release adds Playlist History with creation and regeneration timelines, track snapshots, filters, presets, exclusions, and safety-rule context.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -107,7 +114,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Playlist history improvements, recipe portability, mood blending, BPM transition/ramp tools, and deeper discovery tuning are planned for future releases.</p>
+        <p className={styles.futureNote}>Recipe portability, playlist history export, restore previous version, mood blending, BPM transition/ramp tools, recently added automation, and deeper discovery tuning are planned for future releases.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">
