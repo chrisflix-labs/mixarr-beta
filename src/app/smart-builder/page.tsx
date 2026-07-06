@@ -153,6 +153,22 @@ function presetRangeValues(range?: [number, number] | null) {
   };
 }
 
+function rangesWithMoodPreset(baseRanges: RangeState, preset?: MoodPreset | null): RangeState {
+  if (!preset) return baseRanges;
+  const bpm = presetRangeValues(preset.bpmRange);
+  const energy = presetRangeValues(preset.energyRange);
+  const mood = presetRangeValues(preset.moodRange);
+  return {
+    ...baseRanges,
+    bpmMin: bpm.min,
+    bpmMax: bpm.max,
+    energyMin: energy.min,
+    energyMax: energy.max,
+    moodMin: mood.min,
+    moodMax: mood.max,
+  };
+}
+
 export default function SmartBuilderPage() {
   const [selectedPresetId, setSelectedPresetId] = useState("");
   const selectedPreset = useMemo(
@@ -208,12 +224,12 @@ export default function SmartBuilderPage() {
 
   const selectPreset = (preset: SmartPlaylistPreset) => {
     const config = buildSmartPresetConfig(preset);
+    const currentMoodPreset = getMoodPreset(moodPresetMetadata.moodPresetId);
     setSelectedPresetId(preset.id);
     setPlaylistName(preset.suggestedPlaylistName);
     setLimit(config.limit);
     setGenres("");
-    setRanges(rangesFromPreset(preset));
-    setMoodPresetMetadata({});
+    setRanges(rangesWithMoodPreset(rangesFromPreset(preset), currentMoodPreset));
     setSafetyRules(safetyFromPreset(preset));
     clearPreview();
   };
@@ -329,6 +345,7 @@ export default function SmartBuilderPage() {
   const previewSignature = () => JSON.stringify(playlistPayload());
   const isPreviewCurrent = Boolean(playlistPreview && playlistPreview.signature === previewSignature());
   const playlistNameReady = playlistName.trim().length > 0;
+  const canPreview = Boolean(selectedPreset) && !loading;
   const canCreate = Boolean(playlistNameReady && playlistPreview && isPreviewCurrent && tracks.length > 0);
 
   const updateRange = (key: keyof RangeState, value: string) => {
@@ -466,86 +483,101 @@ export default function SmartBuilderPage() {
         ))}
       </section>
 
-      {selectedPreset && (
-        <section className={styles.workspace}>
-          <div className={styles.customizeColumn}>
-            <div className={styles.panel}>
-              <div className={styles.panelHeader}>
-                <div>
-                  <h3>Customize your Smart Playlist</h3>
-                  <p>Mixarr picked a starting point. Choose a mood, adjust filters, then preview before creating.</p>
-                </div>
-                <button type="button" onClick={() => setSelectedPresetId("")} className={styles.ghostButton}>
-                  Back to Presets
-                </button>
+      <MoodPresetPicker
+        title="Choose a mood"
+        description="Tune your smart playlist with mood, energy, and BPM presets."
+        selectedLabel={displayedMoodPreset}
+        selectedPresetId={moodPresetMetadata.moodPresetId}
+        selectedPreset={selectedMoodPreset}
+        onSelect={applyMoodPreset}
+        onClear={clearMoodPresetMetadata}
+        classes={{
+          section: styles.moodPresetSection,
+          header: styles.moodPresetHeader,
+          grid: styles.moodPresetGrid,
+          card: styles.moodPresetCard,
+          activeCard: styles.moodPresetActive,
+          badgeRow: styles.moodBadgeRow,
+          footer: styles.moodPresetFooter,
+          clearButton: styles.ghostButton,
+        }}
+      />
+
+      <section className={styles.selectionSummary} aria-label="Selected Smart Builder setup">
+        <span>Smart preset: <strong>{selectedPreset?.name || "None"}</strong></span>
+        <span>Mood preset: <strong>{displayedMoodPreset}</strong></span>
+        {!selectedPreset && <p>Choose a playlist goal to start building.</p>}
+      </section>
+
+      <section className={styles.workspace}>
+        <div className={styles.customizeColumn}>
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div>
+                <h3>Customize your Smart Playlist</h3>
+                <p>Choose a playlist goal, tune the mood, adjust filters, then preview before creating.</p>
               </div>
+              {selectedPreset && (
+                <button type="button" onClick={() => { setSelectedPresetId(""); clearPreview(); }} className={styles.ghostButton}>
+                  Clear Smart preset
+                </button>
+              )}
+            </div>
+            {selectedPreset ? (
               <div className={styles.explanation}>
                 <strong>Selected Smart preset: {selectedPreset.name}</strong>
                 <span>{selectedPreset.explanation}</span>
               </div>
-
-              <div className={styles.formGrid}>
-                <label className={styles.fieldLabel}>
-                  Playlist name
-                  <input value={playlistName} onChange={(event) => { setPlaylistName(event.target.value); clearPreview(); }} className={styles.input} />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Track limit
-                  <input type="number" min="1" value={limit} onChange={(event) => { setLimit(Number(event.target.value)); clearPreview(); }} className={styles.input} />
-                </label>
-                <label className={styles.fieldLabel}>
-                  Server
-                  <select value={serverId} onChange={(event) => { setServerId(event.target.value); setLibraryId(""); clearPreview(); }} className={styles.select}>
-                    <option value="">Any connected server</option>
-                    {servers.map((server) => (
-                      <option key={server.id} value={server.id}>{server.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className={styles.fieldLabel}>
-                  Library
-                  <select value={libraryId} onChange={(event) => { setLibraryId(event.target.value); clearPreview(); }} className={styles.select}>
-                    <option value="">Any music library</option>
-                    {availableLibraries.map((library) => (
-                      <option key={library.id} value={library.id}>{library.name}</option>
-                    ))}
-                  </select>
-                </label>
+            ) : (
+              <div className={styles.helperNotice}>
+                Select a playlist goal above, then choose a mood.
               </div>
+            )}
 
+            <div className={styles.formGrid}>
               <label className={styles.fieldLabel}>
-                Optional genres
-                <input value={genres} onChange={(event) => { setGenres(event.target.value); clearPreview(); }} placeholder="rock, pop, synthwave" className={styles.input} />
+                Playlist name
+                <input value={playlistName} onChange={(event) => { setPlaylistName(event.target.value); clearPreview(); }} className={styles.input} />
               </label>
+              <label className={styles.fieldLabel}>
+                Track limit
+                <input type="number" min="1" value={limit} onChange={(event) => { setLimit(Number(event.target.value)); clearPreview(); }} className={styles.input} />
+              </label>
+              <label className={styles.fieldLabel}>
+                Server
+                <select value={serverId} onChange={(event) => { setServerId(event.target.value); setLibraryId(""); clearPreview(); }} className={styles.select}>
+                  <option value="">Any connected server</option>
+                  {servers.map((server) => (
+                    <option key={server.id} value={server.id}>{server.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.fieldLabel}>
+                Library
+                <select value={libraryId} onChange={(event) => { setLibraryId(event.target.value); clearPreview(); }} className={styles.select}>
+                  <option value="">Any music library</option>
+                  {availableLibraries.map((library) => (
+                    <option key={library.id} value={library.id}>{library.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
-              <MoodPresetPicker
-                selectedLabel={displayedMoodPreset}
-                selectedPresetId={moodPresetMetadata.moodPresetId}
-                selectedPreset={selectedMoodPreset}
-                onSelect={applyMoodPreset}
-                onClear={clearMoodPresetMetadata}
-                classes={{
-                  section: styles.moodPresetSection,
-                  header: styles.moodPresetHeader,
-                  grid: styles.moodPresetGrid,
-                  card: styles.moodPresetCard,
-                  activeCard: styles.moodPresetActive,
-                  badgeRow: styles.moodBadgeRow,
-                  footer: styles.moodPresetFooter,
-                  clearButton: styles.ghostButton,
-                }}
-              />
+            <label className={styles.fieldLabel}>
+              Optional genres
+              <input value={genres} onChange={(event) => { setGenres(event.target.value); clearPreview(); }} placeholder="rock, pop, synthwave" className={styles.input} />
+            </label>
 
-              <div className={styles.rangeGrid}>
-                <label className={styles.fieldLabel}>BPM min<input value={ranges.bpmMin} onChange={(event) => updateRange("bpmMin", event.target.value)} className={styles.input} /></label>
-                <label className={styles.fieldLabel}>BPM max<input value={ranges.bpmMax} onChange={(event) => updateRange("bpmMax", event.target.value)} className={styles.input} /></label>
-                <label className={styles.fieldLabel}>Energy min<input value={ranges.energyMin} onChange={(event) => updateRange("energyMin", event.target.value)} className={styles.input} /></label>
-                <label className={styles.fieldLabel}>Energy max<input value={ranges.energyMax} onChange={(event) => updateRange("energyMax", event.target.value)} className={styles.input} /></label>
-                <label className={styles.fieldLabel}>Mood min<input value={ranges.moodMin} onChange={(event) => updateRange("moodMin", event.target.value)} className={styles.input} /></label>
-                <label className={styles.fieldLabel}>Mood max<input value={ranges.moodMax} onChange={(event) => updateRange("moodMax", event.target.value)} className={styles.input} /></label>
-                <label className={styles.fieldLabel}>Popularity min<input value={ranges.popularityMin} onChange={(event) => updateRange("popularityMin", event.target.value)} className={styles.input} /></label>
-                <label className={styles.fieldLabel}>Popularity max<input value={ranges.popularityMax} onChange={(event) => updateRange("popularityMax", event.target.value)} className={styles.input} /></label>
-              </div>
+            <div className={styles.rangeGrid}>
+              <label className={styles.fieldLabel}>BPM min<input value={ranges.bpmMin} onChange={(event) => updateRange("bpmMin", event.target.value)} className={styles.input} /></label>
+              <label className={styles.fieldLabel}>BPM max<input value={ranges.bpmMax} onChange={(event) => updateRange("bpmMax", event.target.value)} className={styles.input} /></label>
+              <label className={styles.fieldLabel}>Energy min<input value={ranges.energyMin} onChange={(event) => updateRange("energyMin", event.target.value)} className={styles.input} /></label>
+              <label className={styles.fieldLabel}>Energy max<input value={ranges.energyMax} onChange={(event) => updateRange("energyMax", event.target.value)} className={styles.input} /></label>
+              <label className={styles.fieldLabel}>Mood min<input value={ranges.moodMin} onChange={(event) => updateRange("moodMin", event.target.value)} className={styles.input} /></label>
+              <label className={styles.fieldLabel}>Mood max<input value={ranges.moodMax} onChange={(event) => updateRange("moodMax", event.target.value)} className={styles.input} /></label>
+              <label className={styles.fieldLabel}>Popularity min<input value={ranges.popularityMin} onChange={(event) => updateRange("popularityMin", event.target.value)} className={styles.input} /></label>
+              <label className={styles.fieldLabel}>Popularity max<input value={ranges.popularityMax} onChange={(event) => updateRange("popularityMax", event.target.value)} className={styles.input} /></label>
+            </div>
             </div>
 
             <div className={styles.panel}>
@@ -578,15 +610,16 @@ export default function SmartBuilderPage() {
                 </div>
               </div>
               <div className={styles.actionRow}>
-                <button type="button" onClick={previewPlaylist} disabled={loading} className={styles.primaryButton}>
+                <button type="button" onClick={previewPlaylist} disabled={!canPreview} className={styles.primaryButton}>
                   {loading ? <RefreshCw size={16} className="animate-spin" /> : <Play size={16} />}
                   Preview Playlist
                 </button>
-                <button type="button" onClick={saveRecipe} disabled={savingRecipe} className={styles.secondaryButton}>
+                <button type="button" onClick={saveRecipe} disabled={!selectedPreset || savingRecipe} className={styles.secondaryButton}>
                   {savingRecipe ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
                   Save as Recipe
                 </button>
               </div>
+              {!selectedPreset && <p className={styles.helperText}>Select a playlist goal before previewing.</p>}
             </div>
           </div>
 
@@ -620,7 +653,7 @@ export default function SmartBuilderPage() {
               {playlistPreview && (
                 <>
                   <div className={styles.statsGrid}>
-                    <div><span>Smart preset</span><strong>{playlistPreview.summary.smartPresetName || selectedPreset.name}</strong></div>
+                    <div><span>Smart preset</span><strong>{playlistPreview.summary.smartPresetName || selectedPreset?.name || "None"}</strong></div>
                     {(playlistPreview.summary.moodPresetName || moodPresetMetadata.moodPresetName) && (
                       <div><span>Mood preset</span><strong>{moodPresetLabel(playlistPreview.summary.moodPresetName || moodPresetMetadata.moodPresetName, playlistPreview.summary.moodPresetModified ?? moodPresetMetadata.moodPresetModified)}</strong></div>
                     )}
@@ -700,7 +733,6 @@ export default function SmartBuilderPage() {
             </div>
           </div>
         </section>
-      )}
     </main>
   );
 }

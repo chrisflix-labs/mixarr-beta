@@ -43,6 +43,7 @@ export const releaseNotes: ReleaseNote[] = [
       "Added Mood Presets for quickly applying mood, energy, and BPM ranges.",
       "Added presets such as Happy, Chill, Hype, Dark, Emotional, Sad / Mellow, Relaxed, Focus, Upbeat, and Balanced.",
       "Moved Mood Presets into the Smart Builder flow where guided playlist features belong.",
+      "Fixed Mood Presets placement so they now appear directly in the Smart Builder flow.",
       "Playlist Preview now shows the selected mood preset and related warnings.",
       "Saved recipes now preserve mood preset metadata while keeping filter values as the source of truth.",
     ],

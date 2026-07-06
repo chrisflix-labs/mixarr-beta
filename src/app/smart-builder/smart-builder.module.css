@@ -107,6 +107,30 @@
   line-height: 1;
 }
 
+.selectionSummary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.9rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.selectionSummary strong {
+  color: var(--fg);
+}
+
+.selectionSummary p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--faint);
+  font-size: 0.76rem;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(320px, 0.8fr) minmax(420px, 1.2fr);
@@ -167,6 +191,16 @@
 
 .explanation strong {
   color: var(--fg);
+}
+
+.helperNotice {
+  padding: 0.75rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .moodPresetSection {
