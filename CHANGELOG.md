@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.7 - Navigation Cleanup
+
+- Cleaned up desktop sidebar navigation with grouped sections.
+- Grouped playlist tools, library tools, and activity pages.
+- Reduced mobile bottom navigation to the most-used items.
+- Added a mobile More menu for secondary pages.
+- Improved mobile spacing so navigation labels no longer overlap.
+- Moved mobile version/GitHub/Beta controls out of the crowded bottom area.
+
 ## v1.2.6 - Export/Import Mixarr Recipes
 
 - Added recipe export for individual recipes and all saved recipes.

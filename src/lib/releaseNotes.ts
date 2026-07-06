@@ -19,6 +19,8 @@ export type ReleaseNoteBadge =
   | "Library Health"
   | "Local Analysis"
   | "Mood"
+  | "Mobile"
+  | "Navigation"
   | "Playlists"
   | "Plex"
   | "Preview"
@@ -43,6 +45,19 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.2.7",
+    title: "Navigation Cleanup",
+    badges: ["UI", "Mobile", "Navigation", "Dashboard"],
+    changes: [
+      "Cleaned up desktop sidebar navigation with grouped sections.",
+      "Grouped playlist tools, library tools, and activity pages.",
+      "Reduced mobile bottom navigation to the most-used items.",
+      "Added a mobile More menu for secondary pages.",
+      "Improved mobile spacing so navigation labels no longer overlap.",
+      "Moved mobile version/GitHub/Beta controls out of the crowded bottom area.",
+    ],
+  },
   {
     version: "1.2.6",
     title: "Export/Import Mixarr Recipes",

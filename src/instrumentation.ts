@@ -1,6 +1,7 @@
 export async function register() {
   // Only run in the Node.js runtime (not Edge / browser builds).
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  if (process.env.NEXT_PHASE === "phase-production-build") return;
 
   // Optional: start a dedicated /metrics HTTP server on its own port so
   // Prometheus can scrape Mixarr. METRICS_PORT=0 (the default) disables

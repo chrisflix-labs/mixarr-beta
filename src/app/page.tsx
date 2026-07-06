@@ -17,7 +17,7 @@ const previewFeatures = [
     description: "Start with guided presets, tune mood and BPM, then export, import, and review recipe-backed playlists.",
     examples: ["Workout", "Mood Presets", "Recipe Import"],
     icon: SlidersHorizontal,
-    badge: "v1.2.6",
+    badge: "v1.2.7",
   },
   {
     title: "AI DJ Flow",
@@ -74,7 +74,7 @@ function MixarrVersionCard() {
 function RecentJobsCard({ summary }: { summary: Awaited<ReturnType<typeof getRecentJobSummary>> | null }) {
   const lastJob = summary?.lastJob;
   return (
-    <Link href="/jobs" className={`${styles.card} ${styles.recentJobsCard}`}>
+    <Link href="/job-history" className={`${styles.card} ${styles.recentJobsCard}`}>
       <History size={22} className={styles.cardIcon} />
       <h3>Recent Jobs</h3>
       <p>View recent syncs, retries, playlist runs, and analysis jobs.</p>

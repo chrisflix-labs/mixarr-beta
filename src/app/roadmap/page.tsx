@@ -11,7 +11,6 @@ export const metadata = {
 
 const nextFeatures = [
   "Recipe sharing gallery",
-  "Recipe marketplace/community presets",
   "Export playlist history",
   "Restore previous playlist version",
   "Advanced Smart Mix Engine",
@@ -23,6 +22,12 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "v1.2.7 completes Navigation Cleanup for desktop and mobile.",
+  "Desktop sidebar navigation is grouped into Playlists, Library, and Activity sections",
+  "Playlist tools, library tools, and activity pages are easier to scan",
+  "Mobile bottom navigation is reduced to Dashboard, Build, Smart, Recipes, and More",
+  "Secondary mobile pages now live in a grouped More menu",
+  "Mobile version, GitHub, and Beta controls moved out of the crowded bottom area",
   "v1.2.6 adds Export/Import Mixarr Recipes for backups, moves, and sharing.",
   "Export individual recipes or all saved recipes as stable Mixarr JSON files",
   "Import recipe files with validation and preview before saving",
@@ -95,7 +100,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release adds Export/Import Mixarr Recipes so saved recipe setups can be backed up, moved between installs, and shared safely.</p>
+          <p>This release cleans up navigation so desktop sections are easier to scan and mobile navigation no longer crowds long labels into the bottom bar.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -120,7 +125,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Recipe sharing gallery, recipe marketplace/community presets, playlist history export, restore previous version, mood blending, BPM transition/ramp tools, recently added automation, and deeper discovery tuning are planned for future releases.</p>
+        <p className={styles.futureNote}>Recipe sharing gallery, playlist history export, restore previous version, mood blending, BPM transition/ramp tools, recently added automation, and deeper discovery tuning are planned for future releases.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

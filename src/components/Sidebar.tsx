@@ -1,15 +1,85 @@
 "use client";
 
 import styles from "./Sidebar.module.css";
-import { AudioWaveform, BookMarked, ExternalLink, FlaskConical, Github, HeartPulse, History, LayoutDashboard, ListMusic, ListRestart, Map, ScrollText, Settings, Sparkles, Tags, Wand2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AudioWaveform, BookMarked, ChevronDown, ExternalLink, FlaskConical, Github, HeartPulse, History, LayoutDashboard, ListMusic, ListRestart, Map, MoreHorizontal, ScrollText, Settings, Sparkles, Tags, Wand2, X } from "lucide-react";
 import PlexLoginButton from "./PlexLoginButton";
 import LogoutButton from "./LogoutButton";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MIXARR_GITHUB_URL } from "@/lib/appInfo";
 
+const playlistLinks = [
+  { href: "/builder", label: "Build Playlist", shortLabel: "Build", icon: Wand2, isActive: (pathname: string) => pathname === "/builder" },
+  { href: "/smart-builder", label: "Smart Builder", shortLabel: "Smart", icon: Sparkles, isActive: (pathname: string) => pathname === "/smart-builder" },
+  { href: "/recipes", label: "Recipes", shortLabel: "Recipes", icon: BookMarked, isActive: (pathname: string) => pathname.startsWith("/recipes") },
+  { href: "/generated-playlists", label: "Generated Playlists", icon: ListRestart, isActive: (pathname: string) => pathname.startsWith("/generated-playlists") },
+  { href: "/playlist-history", label: "Playlist History", icon: History, isActive: (pathname: string) => pathname.startsWith("/playlist-history") },
+];
+
+const libraryLinks = [
+  { href: "/library", label: "Tracks", icon: ListMusic, isActive: (pathname: string) => pathname === "/library" },
+  { href: "/genres", label: "Genres", icon: Tags, isActive: (pathname: string) => pathname.startsWith("/genres") },
+  { href: "/library-health", label: "Library Health", icon: HeartPulse, isActive: (pathname: string) => pathname.startsWith("/library-health") },
+];
+
+const activityLinks = [
+  { href: "/job-history", label: "Job History", icon: History, isActive: (pathname: string) => pathname.startsWith("/job-history") || pathname.startsWith("/jobs") },
+  { href: "/release-notes", label: "Release Notes", icon: ScrollText, isActive: (pathname: string) => pathname.startsWith("/release-notes") },
+  { href: "/roadmap", label: "Roadmap", icon: Map, isActive: (pathname: string) => pathname.startsWith("/roadmap") },
+];
+
+const navGroups = [
+  { id: "playlists", label: "Playlists", icon: ListMusic, links: playlistLinks },
+  { id: "library", label: "Library", icon: ListMusic, links: libraryLinks },
+  { id: "activity", label: "Activity", icon: History, links: activityLinks },
+];
+
 export default function Sidebar({ user, appVersion }: { user: any; appVersion: string }) {
   const pathname = usePathname();
+  const activeGroupIds = useMemo(
+    () => navGroups.filter((group) => group.links.some((link) => link.isActive(pathname))).map((group) => group.id),
+    [pathname],
+  );
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(activeGroupIds.map((id) => [id, true])),
+  );
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+
+  useEffect(() => {
+    if (activeGroupIds.length === 0) return;
+    setOpenGroups((current) => ({
+      ...current,
+      ...Object.fromEntries(activeGroupIds.map((id) => [id, true])),
+    }));
+  }, [activeGroupIds]);
+
+  useEffect(() => {
+    setIsMoreOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isMoreOpen) return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsMoreOpen(false);
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [isMoreOpen]);
+
+  const isMoreActive = !(
+    pathname === "/" ||
+    pathname === "/builder" ||
+    pathname === "/smart-builder" ||
+    pathname.startsWith("/recipes")
+  );
+
+  function toggleGroup(groupId: string, isActive: boolean) {
+    setOpenGroups((current) => ({
+      ...current,
+      [groupId]: isActive ? true : !current[groupId],
+    }));
+  }
 
   return (
     <aside className={styles.sidebar}>
@@ -44,63 +114,131 @@ export default function Sidebar({ user, appVersion }: { user: any; appVersion: s
           </div>
         </div>
       </div>
-      <span className={styles.mobileVersionBadge} aria-label={`Beta Mixarr version ${appVersion}`} title="Beta build">
-        <FlaskConical size={12} />
-        Beta {appVersion}
-      </span>
-      <a
-        href={MIXARR_GITHUB_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Open Mixarr GitHub repository"
-        className={styles.mobileGithubLink}
-      >
-        <Github size={12} />
-        <span>GitHub</span>
-        <ExternalLink size={10} aria-hidden="true" />
-      </a>
 
-      <nav className={styles.nav}>
+      <nav className={styles.desktopNav} aria-label="Primary navigation">
         <Link href="/" className={`${styles.navItem} ${pathname === "/" ? styles.active : ""}`}>
           <LayoutDashboard size={18} /> Dashboard
         </Link>
-        <Link href="/builder" className={`${styles.navItem} ${pathname === "/builder" ? styles.active : ""}`}>
-          <Wand2 size={18} /> Build Playlist
-        </Link>
-        <Link href="/smart-builder" className={`${styles.navItem} ${pathname === "/smart-builder" ? styles.active : ""}`}>
-          <Sparkles size={18} /> Smart Builder
-        </Link>
-        <Link href="/recipes" className={`${styles.navItem} ${pathname.startsWith("/recipes") ? styles.active : ""}`}>
-          <BookMarked size={18} /> Recipes
-        </Link>
-        <Link href="/generated-playlists" className={`${styles.navItem} ${pathname.startsWith("/generated-playlists") ? styles.active : ""}`}>
-          <ListRestart size={18} /> Generated Playlists
-        </Link>
-        <Link href="/playlist-history" className={`${styles.navItem} ${pathname.startsWith("/playlist-history") ? styles.active : ""}`}>
-          <History size={18} /> Playlist History
-        </Link>
-        <Link href="/library" className={`${styles.navItem} ${pathname === "/library" ? styles.active : ""}`}>
-          <ListMusic size={18} /> Library
-        </Link>
-        <Link href="/genres" className={`${styles.navItem} ${pathname.startsWith("/genres") ? styles.active : ""}`}>
-          <Tags size={18} /> Genres
-        </Link>
-        <Link href="/jobs" className={`${styles.navItem} ${pathname.startsWith("/jobs") ? styles.active : ""}`}>
-          <History size={18} /> Job History
-        </Link>
-        <Link href="/library-health" className={`${styles.navItem} ${pathname.startsWith("/library-health") ? styles.active : ""}`}>
-          <HeartPulse size={18} /> Library Health
-        </Link>
-        <Link href="/release-notes" className={`${styles.navItem} ${pathname.startsWith("/release-notes") ? styles.active : ""}`}>
-          <ScrollText size={18} /> Release Notes
-        </Link>
-        <Link href="/roadmap" className={`${styles.navItem} ${pathname.startsWith("/roadmap") ? styles.active : ""}`}>
-          <Map size={18} /> Roadmap
-        </Link>
+        {navGroups.map((group) => {
+          const Icon = group.icon;
+          const isGroupActive = activeGroupIds.includes(group.id);
+          const isOpen = openGroups[group.id] || isGroupActive;
+          return (
+            <div key={group.id} className={styles.navGroup}>
+              <button
+                type="button"
+                className={`${styles.navItem} ${styles.groupButton} ${isGroupActive ? styles.groupActive : ""}`}
+                aria-expanded={isOpen}
+                aria-controls={`sidebar-${group.id}`}
+                aria-label={`${isOpen ? "Collapse" : "Expand"} ${group.label} navigation`}
+                onClick={() => toggleGroup(group.id, isGroupActive)}
+              >
+                <span className={styles.navItemLabel}>
+                  <Icon size={18} /> {group.label}
+                </span>
+                <ChevronDown size={16} className={`${styles.groupChevron} ${isOpen ? styles.groupChevronOpen : ""}`} aria-hidden="true" />
+              </button>
+              {isOpen && (
+                <div id={`sidebar-${group.id}`} className={styles.navChildren}>
+                  {group.links.map((link) => {
+                    const ChildIcon = link.icon;
+                    return (
+                      <Link key={link.href} href={link.href} className={`${styles.childNavItem} ${link.isActive(pathname) ? styles.active : ""}`}>
+                        <ChildIcon size={16} /> {link.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
         <Link href="/settings" className={`${styles.navItem} ${pathname.startsWith("/settings") ? styles.active : ""}`}>
           <Settings size={18} /> Settings
         </Link>
       </nav>
+
+      <nav className={styles.mobileNav} aria-label="Mobile primary navigation">
+        <Link href="/" className={`${styles.mobileNavItem} ${pathname === "/" ? styles.active : ""}`}>
+          <LayoutDashboard size={20} />
+          <span>Dashboard</span>
+        </Link>
+        {playlistLinks.slice(0, 3).map((link) => {
+          const Icon = link.icon;
+          return (
+            <Link key={link.href} href={link.href} className={`${styles.mobileNavItem} ${link.isActive(pathname) ? styles.active : ""}`}>
+              <Icon size={20} />
+              <span>{link.shortLabel || link.label}</span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          className={`${styles.mobileNavItem} ${styles.mobileMoreButton} ${isMoreActive || isMoreOpen ? styles.active : ""}`}
+          aria-expanded={isMoreOpen}
+          aria-controls="mobile-more-menu"
+          onClick={() => setIsMoreOpen(true)}
+        >
+          <MoreHorizontal size={20} />
+          <span>More</span>
+        </button>
+      </nav>
+
+      {isMoreOpen && (
+        <div className={styles.mobileMenuLayer}>
+          <button type="button" className={styles.mobileMenuBackdrop} aria-label="Close navigation menu" onClick={() => setIsMoreOpen(false)} />
+          <div id="mobile-more-menu" className={styles.mobileMenu} role="dialog" aria-modal="true" aria-label="More navigation">
+            <div className={styles.mobileMenuHeader}>
+              <div>
+                <h2>More</h2>
+                <p>Mixarr {appVersion}</p>
+              </div>
+              <button type="button" className={styles.closeButton} aria-label="Close navigation menu" onClick={() => setIsMoreOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className={styles.mobileBrandRow}>
+              <span className={styles.mobileMenuBadge} aria-label={`Beta Mixarr version ${appVersion}`} title="Beta build">
+                <FlaskConical size={12} />
+                Beta {appVersion}
+              </span>
+              <a href={MIXARR_GITHUB_URL} target="_blank" rel="noopener noreferrer" aria-label="Open Mixarr GitHub repository" className={styles.mobileMenuGithub}>
+                <Github size={12} />
+                <span>GitHub</span>
+                <ExternalLink size={10} aria-hidden="true" />
+              </a>
+            </div>
+
+            <div className={styles.mobileMenuSections}>
+              <MobileMenuSection title="Playlist Tools" links={playlistLinks.slice(3)} pathname={pathname} />
+              <MobileMenuSection title="Library" links={libraryLinks.map((link) => link.href === "/library" ? { ...link, label: "Library" } : link)} pathname={pathname} />
+              <MobileMenuSection title="Activity" links={activityLinks} pathname={pathname} />
+              <MobileMenuSection title="App" links={[{ href: "/settings", label: "Settings", icon: Settings, isActive: (currentPath: string) => currentPath.startsWith("/settings") }]} pathname={pathname} />
+            </div>
+
+            <div className={styles.mobileAuthStatus}>
+              {user ? (
+                <>
+                  <p className={styles.authStatusText}>Connected as</p>
+                  <div className={styles.mobileUserRow}>
+                    <div className={styles.mobileUserIdentity}>
+                      {user.thumb && <img src={user.thumb} alt="Avatar" />}
+                      <span>{user.username}</span>
+                    </div>
+                    <LogoutButton />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className={styles.authStatusText}>Not Connected</p>
+                  <PlexLoginButton />
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className={styles.authStatus}>
         {user ? (
@@ -122,5 +260,32 @@ export default function Sidebar({ user, appVersion }: { user: any; appVersion: s
         )}
       </div>
     </aside>
+  );
+}
+
+function MobileMenuSection({
+  title,
+  links,
+  pathname,
+}: {
+  title: string;
+  links: Array<{ href: string; label: string; icon: typeof LayoutDashboard; isActive: (pathname: string) => boolean }>;
+  pathname: string;
+}) {
+  return (
+    <section className={styles.mobileMenuSection} aria-labelledby={`mobile-menu-${title.toLowerCase().replace(/\s+/g, "-")}`}>
+      <h3 id={`mobile-menu-${title.toLowerCase().replace(/\s+/g, "-")}`}>{title}</h3>
+      <div>
+        {links.map((link) => {
+          const Icon = link.icon;
+          return (
+            <Link key={link.href} href={link.href} className={`${styles.mobileMenuLink} ${link.isActive(pathname) ? styles.active : ""}`}>
+              <Icon size={17} />
+              <span>{link.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
   );
 }

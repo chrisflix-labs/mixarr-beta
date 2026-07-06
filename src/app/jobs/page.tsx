@@ -102,7 +102,7 @@ export default async function JobHistoryPage({
               </select>
             </div>
             <button className={styles.filterButton} type="submit">Apply Filters</button>
-            <Link className={styles.secondaryButton} href="/jobs">Reset</Link>
+            <Link className={styles.secondaryButton} href="/job-history">Reset</Link>
           </form>
 
           {jobs.length === 0 ? (
