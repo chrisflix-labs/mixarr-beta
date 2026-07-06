@@ -12,6 +12,7 @@ export type ReleaseNoteBadge =
   | "Library"
   | "Library Health"
   | "Local Analysis"
+  | "Mood"
   | "Playlists"
   | "Plex"
   | "Preview"
@@ -34,6 +35,18 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.2.1",
+    title: "Mood Presets",
+    badges: ["Smart Builder", "Playlists", "Mood", "Recipes", "Preview"],
+    changes: [
+      "Added Mood Presets for quickly applying mood, energy, and BPM ranges.",
+      "Added presets such as Happy, Chill, Hype, Dark, Emotional, Sad / Mellow, Relaxed, Focus, Upbeat, and Balanced.",
+      "Moved Mood Presets into the Smart Builder flow where guided playlist features belong.",
+      "Playlist Preview now shows the selected mood preset and related warnings.",
+      "Saved recipes now preserve mood preset metadata while keeping filter values as the source of truth.",
+    ],
+  },
   {
     version: "1.2.0",
     title: "Smart Playlist Builder v1",

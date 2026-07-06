@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.1 - Mood Presets
+
+- Added Mood Presets for quickly applying mood, energy, and BPM ranges.
+- Added presets such as Happy, Chill, Hype, Dark, Emotional, Sad / Mellow, Relaxed, Focus, Upbeat, and Balanced.
+- Moved Mood Presets into the Smart Builder flow where guided playlist features belong.
+- Playlist Preview now shows the selected mood preset and related warnings.
+- Saved recipes now preserve mood preset metadata while keeping filter values as the source of truth.
+
 ## v1.2.0 - Smart Playlist Builder v1
 
 - Added Smart Playlist Builder v1 with guided playlist presets.

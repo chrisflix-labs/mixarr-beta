@@ -5,6 +5,7 @@ import axios from "axios";
 import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks, Ban, ShieldCheck, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
+import { isMoodPresetRuleField, moodPresetLabel } from "@/lib/moodPresets";
 import styles from "./builder.module.css";
 
 type Rule = {
@@ -47,6 +48,13 @@ type SmartPresetMetadata = {
   smartPresetVersion?: string;
 };
 
+type MoodPresetMetadata = {
+  moodPresetId?: string;
+  moodPresetName?: string;
+  moodPresetVersion?: string;
+  moodPresetModified?: boolean;
+};
+
 type SavedRule = {
   id: string;
   name: string;
@@ -74,6 +82,9 @@ type PlaylistPreviewSummary = {
   energyRange: string;
   moodRange: string;
   popularityRange: string;
+  smartPresetName?: string | null;
+  moodPresetName?: string | null;
+  moodPresetModified?: boolean;
   manualExclusionsRemoved?: number;
   safetyRulesApplied?: boolean;
   removedBySafetyRules?: number;
@@ -166,6 +177,7 @@ export default function BuilderPage() {
     minimumTrackCount: "10",
   });
   const [smartPresetMetadata, setSmartPresetMetadata] = useState<SmartPresetMetadata>({});
+  const [moodPresetMetadata, setMoodPresetMetadata] = useState<MoodPresetMetadata>({});
   const [pinnedTrackIds, setPinnedTrackIds] = useState<string[]>([]);
   const [excludedTrackIds, setExcludedTrackIds] = useState<string[]>([]);
   const [draggedTrackId, setDraggedTrackId] = useState("");
@@ -326,6 +338,21 @@ export default function BuilderPage() {
     })));
   };
 
+  const displayedMoodPreset = moodPresetLabel(moodPresetMetadata.moodPresetName, moodPresetMetadata.moodPresetModified);
+
+  const markMoodPresetModified = () => {
+    setMoodPresetMetadata((current) => (
+      current.moodPresetId && !current.moodPresetModified
+        ? { ...current, moodPresetModified: true }
+        : current
+    ));
+  };
+
+  const clearMoodPresetMetadata = () => {
+    setMoodPresetMetadata({});
+    clearPreview();
+  };
+
   const playlistPayload = (extra: Record<string, any> = {}) => ({
     rules,
     ruleTree: buildRuleTree(),
@@ -352,6 +379,7 @@ export default function BuilderPage() {
       minimumTrackCount: safetyRules.minimumTrackCount || undefined,
     },
     ...smartPresetMetadata,
+    ...moodPresetMetadata,
     ...extra,
   });
 
@@ -387,6 +415,10 @@ export default function BuilderPage() {
     smartPresetId: filters.smartPresetId,
     smartPresetName: filters.smartPresetName,
     smartPresetVersion: filters.smartPresetVersion,
+    moodPresetId: filters.moodPresetId,
+    moodPresetName: filters.moodPresetName,
+    moodPresetVersion: filters.moodPresetVersion,
+    moodPresetModified: filters.moodPresetModified || false,
     pinnedTrackIds: filters.pinnedTrackIds || [],
     excludedTrackIds: filters.excludedTrackIds || [],
   });
@@ -436,12 +468,15 @@ export default function BuilderPage() {
   };
 
   const removeRule = (index: number) => {
+    if (isMoodPresetRuleField(rules[index]?.field)) markMoodPresetModified();
     setRules(rules.filter((_, i) => i !== index));
     clearPreview();
   };
 
   const updateRule = (index: number, key: keyof Rule, val: string) => {
     const newRules = [...rules];
+    const existingField = newRules[index]?.field;
+    if (isMoodPresetRuleField(existingField) || (key === "field" && isMoodPresetRuleField(val))) markMoodPresetModified();
     newRules[index][key] = val;
     setRules(newRules);
     clearPreview();
@@ -461,6 +496,8 @@ export default function BuilderPage() {
     setRuleGroups(ruleGroups.map(group => {
       if (group.id !== groupId) return group;
       const nextRules = [...group.rules];
+      const existingField = nextRules[index]?.field;
+      if (isMoodPresetRuleField(existingField) || (key === "field" && isMoodPresetRuleField(val))) markMoodPresetModified();
       nextRules[index][key] = val;
       return { ...group, rules: nextRules };
     }));
@@ -473,6 +510,8 @@ export default function BuilderPage() {
   };
 
   const removeGroupRule = (groupId: string, index: number) => {
+    const group = ruleGroups.find((item) => item.id === groupId);
+    if (isMoodPresetRuleField(group?.rules[index]?.field)) markMoodPresetModified();
     setRuleGroups(ruleGroups.map(group => group.id === groupId ? { ...group, rules: group.rules.filter((_, i) => i !== index) } : group));
     clearPreview();
   };
@@ -484,6 +523,7 @@ export default function BuilderPage() {
     setRecipeBaselineSignature("");
     setRecipeNotice("");
     setSmartPresetMetadata({});
+    setMoodPresetMetadata({});
     if (!id) return;
 
     const savedRule = savedRules.find(rule => rule.id === id);
@@ -514,6 +554,12 @@ export default function BuilderPage() {
       smartPresetId: savedRule.options?.smartPresetId,
       smartPresetName: savedRule.options?.smartPresetName,
       smartPresetVersion: savedRule.options?.smartPresetVersion,
+    });
+    setMoodPresetMetadata({
+      moodPresetId: savedRule.options?.moodPresetId,
+      moodPresetName: savedRule.options?.moodPresetName,
+      moodPresetVersion: savedRule.options?.moodPresetVersion,
+      moodPresetModified: savedRule.options?.moodPresetModified || false,
     });
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
@@ -557,6 +603,12 @@ export default function BuilderPage() {
       smartPresetId: filters.smartPresetId,
       smartPresetName: filters.smartPresetName,
       smartPresetVersion: filters.smartPresetVersion,
+    });
+    setMoodPresetMetadata({
+      moodPresetId: filters.moodPresetId,
+      moodPresetName: filters.moodPresetName,
+      moodPresetVersion: filters.moodPresetVersion,
+      moodPresetModified: filters.moodPresetModified || false,
     });
     setPinnedTrackIds(filters.pinnedTrackIds || []);
     setExcludedTrackIds(filters.excludedTrackIds || []);
@@ -701,6 +753,7 @@ export default function BuilderPage() {
     setRecipeBaselineSignature("");
     setRecipeNotice("");
     setSmartPresetMetadata({});
+    setMoodPresetMetadata({});
     if (templateName === "deep_cuts") {
       setRules([{ field: "popularity", operator: "lt", value: "30" }]);
       setPlaylistName("Deep Cuts Discovered");
@@ -938,6 +991,15 @@ export default function BuilderPage() {
           <div className={styles.recipeNotice}>
             <span>Smart preset: {smartPresetMetadata.smartPresetName}</span>
             <button type="button" onClick={() => setSmartPresetMetadata({})} className={styles.btnIcon} aria-label="Clear smart preset metadata">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {moodPresetMetadata.moodPresetName && (
+          <div className={styles.recipeNotice}>
+            <span>Mood preset: {displayedMoodPreset}</span>
+            <button type="button" onClick={clearMoodPresetMetadata} className={styles.btnIcon} aria-label="Clear mood preset metadata">
               <X size={14} />
             </button>
           </div>

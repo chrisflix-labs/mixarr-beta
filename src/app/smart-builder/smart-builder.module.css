@@ -154,6 +154,8 @@
 }
 
 .explanation {
+  display: grid;
+  gap: 0.35rem;
   padding: 0.75rem;
   border: 1px solid rgba(53, 174, 234, 0.24);
   border-radius: var(--radius-md);
@@ -161,6 +163,103 @@
   background: rgba(53, 174, 234, 0.07);
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.explanation strong {
+  color: var(--fg);
+}
+
+.moodPresetSection {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.moodPresetHeader,
+.moodPresetFooter {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.moodPresetHeader h4 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.moodPresetHeader p,
+.moodPresetFooter p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.moodPresetHeader > span {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.moodPresetHeader strong {
+  color: var(--fg);
+}
+
+.moodPresetGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 0.5rem;
+}
+
+.moodPresetCard {
+  min-height: 106px;
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  padding: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.moodPresetCard:hover,
+.moodPresetActive {
+  border-color: var(--accent);
+  background: var(--panel-hover);
+}
+
+.moodPresetCard span:first-child {
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.moodPresetCard small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.moodBadgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.moodBadgeRow b {
+  padding: 0.17rem 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--faint);
+  font-size: 0.58rem;
+  line-height: 1;
 }
 
 .formGrid,
@@ -493,7 +592,9 @@
   .header,
   .panelHeader,
   .previewHeader,
-  .trackHeader {
+  .trackHeader,
+  .moodPresetHeader,
+  .moodPresetFooter {
     flex-direction: column;
   }
 

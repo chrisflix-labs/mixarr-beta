@@ -10,7 +10,6 @@ export const metadata = {
 };
 
 const nextFeatures = [
-  "Mood presets",
   "BPM range presets",
   "Playlist regeneration",
   "Playlist history improvements",
@@ -21,6 +20,10 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "Mood presets for the Smart Playlist Builder",
+  "Preset-generated mood, energy, and optional BPM ranges",
+  "Playlist Preview mood preset summaries and warnings",
+  "Saved recipe mood preset metadata",
   "Smart playlist builder",
   "Guided presets for Workout, Chill, Party, Focus, Driving, Discovery, Deep Cuts, Popular Favorites, and Balanced Mix",
   "Preset-generated BPM, energy, mood, popularity, and safety defaults",
@@ -64,7 +67,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release adds Smart Playlist Builder v1, a guided preset layer on top of the existing playlist builder, preview, recipes, and safety rules.</p>
+          <p>This release adds Mood Presets, a quick tuning layer for mood, energy, and BPM ranges in the Smart Playlist Builder.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -89,7 +92,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Mood presets, BPM presets, regeneration, recipe portability, and deeper discovery tuning are planned for future releases.</p>
+        <p className={styles.futureNote}>BPM presets, regeneration, recipe portability, mood blending, and deeper discovery tuning are planned for future releases.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

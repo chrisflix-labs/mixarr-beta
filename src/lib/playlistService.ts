@@ -93,6 +93,10 @@ export const playlistConfigSchema = z.object({
   smartPresetId: z.string().trim().max(80).optional(),
   smartPresetName: z.string().trim().max(120).optional(),
   smartPresetVersion: z.string().trim().max(40).optional(),
+  moodPresetId: z.string().trim().max(80).optional(),
+  moodPresetName: z.string().trim().max(120).optional(),
+  moodPresetVersion: z.string().trim().max(40).optional(),
+  moodPresetModified: z.boolean().default(false),
 }).merge(playlistOptionsSchema);
 
 export const savedPlaylistSchema = playlistConfigSchema.extend({
@@ -696,23 +700,35 @@ function buildPreviewWarnings({
   matchedTrackCount,
   requestedLimit,
   smartPresetName,
+  moodPresetName,
+  moodPresetModified,
 }: {
   tracks: any[];
   matchedTrackCount: number;
   requestedLimit: number;
   smartPresetName?: string;
+  moodPresetName?: string;
+  moodPresetModified?: boolean;
 }) {
   const warnings: string[] = [];
+  const moodPresetLabel = moodPresetName ? `${moodPresetName}${moodPresetModified ? " modified" : ""}` : "";
   if (matchedTrackCount === 0 || tracks.length === 0) {
-    warnings.push(smartPresetName
+    warnings.push(moodPresetLabel
+      ? `No tracks matched the ${moodPresetLabel} mood preset. Try widening BPM, energy, or mood ranges.`
+      : smartPresetName
       ? `No tracks matched the ${smartPresetName} preset. Try widening the BPM range, allowing more genres, or disabling popularity limits.`
       : "No tracks matched this playlist recipe. Adjust your filters and preview again.");
+    if (moodPresetName) {
+      warnings.push("This preset depends on mood and energy data. Run audio feature analysis or widen your filters if too few tracks match.");
+    }
     warnings.push("Some filters may be too restrictive. Try widening BPM, energy, mood, genre, or popularity filters.");
     return warnings;
   }
 
   if (matchedTrackCount < requestedLimit) {
-    warnings.push(smartPresetName
+    warnings.push(moodPresetLabel
+      ? `Only ${matchedTrackCount} tracks matched the ${moodPresetLabel} mood preset. Try widening BPM or energy ranges.`
+      : smartPresetName
       ? `Only ${matchedTrackCount} tracks matched the ${smartPresetName} preset. Try widening the BPM range, allowing more genres, or disabling popularity limits.`
       : `Only ${matchedTrackCount} tracks matched your filters. Try widening the BPM range, removing a genre filter, or allowing tracks with missing audio features.`);
   }
@@ -728,6 +744,9 @@ function buildPreviewWarnings({
   const missingAudio = tracks.filter((track) => !track.audioFeature || (track.audioFeature.energy == null && track.audioFeature.valence == null && track.audioFeature.effectiveEnergy == null && track.audioFeature.effectiveMood == null)).length;
   if (missingAudio >= Math.max(3, Math.ceil(tracks.length * 0.25))) {
     warnings.push(`Many tracks are missing audio features (${missingAudio} of ${tracks.length}).`);
+    if (moodPresetName) {
+      warnings.push("This preset depends on mood and energy data. Run audio feature analysis or widen your filters if too few tracks match.");
+    }
   }
 
   const artistCounts = new Map<string, number>();
@@ -791,6 +810,10 @@ export async function previewPlaylistTracks({
     smartPresetId: config.smartPresetId || null,
     smartPresetName: config.smartPresetName || null,
     smartPresetVersion: config.smartPresetVersion || null,
+    moodPresetId: config.moodPresetId || null,
+    moodPresetName: config.moodPresetName || null,
+    moodPresetVersion: config.moodPresetVersion || null,
+    moodPresetModified: config.moodPresetModified || false,
     artistLimitApplied: generation.safety.artistLimitApplied,
     albumLimitApplied: generation.safety.albumLimitApplied,
     artistSpacingApplied: generation.safety.artistSpacingApplied,
@@ -811,6 +834,7 @@ export async function previewPlaylistTracks({
 
   const filterSummary = [
     ...(config.smartPresetName ? [{ label: "Smart preset", value: config.smartPresetName }] : []),
+    ...(config.moodPresetName ? [{ label: "Mood preset", value: `${config.moodPresetName}${config.moodPresetModified ? " modified" : ""}` }] : []),
     { label: "Server", value: server?.name || (config.serverId ? "Selected server" : "Any connected server") },
     { label: "Library", value: library?.name || (config.libraryId ? "Selected library" : "Any music library") },
     { label: "Genres", value: summary.genreFilters },
@@ -828,7 +852,14 @@ export async function previewPlaylistTracks({
   ];
 
   const warnings = [
-    ...buildPreviewWarnings({ tracks: previewTracks, matchedTrackCount, requestedLimit: config.limit, smartPresetName: config.smartPresetName }),
+    ...buildPreviewWarnings({
+      tracks: previewTracks,
+      matchedTrackCount,
+      requestedLimit: config.limit,
+      smartPresetName: config.smartPresetName,
+      moodPresetName: config.moodPresetName,
+      moodPresetModified: config.moodPresetModified,
+    }),
     ...generation.safety.warnings,
   ].filter((warning, index, list) => list.indexOf(warning) === index);
 

@@ -59,6 +59,7 @@ export function summarizePlaylistRecipeFilters(filters: PlaylistConfigInput) {
   const genres = rules.filter((rule) => rule.field === "genre").map((rule) => rule.value);
   const parts: string[] = [];
   if (filters.smartPresetName) parts.push(`Preset: ${filters.smartPresetName}`);
+  if (filters.moodPresetName) parts.push(`Mood: ${filters.moodPresetName}${filters.moodPresetModified ? " modified" : ""}`);
   if (genres.length) parts.push(`Genres: ${genres.slice(0, 3).join(", ")}${genres.length > 3 ? "..." : ""}`);
 
   const bpm = numericRangeLabel(rules, "tempo");
@@ -67,7 +68,7 @@ export function summarizePlaylistRecipeFilters(filters: PlaylistConfigInput) {
   const popularity = numericRangeLabel(rules, "popularity");
   if (bpm) parts.push(`BPM: ${bpm}`);
   if (energy) parts.push(`Energy: ${energy}`);
-  if (mood) parts.push(`Mood: ${mood}`);
+  if (mood) parts.push(`${filters.moodPresetName ? "Mood range" : "Mood"}: ${mood}`);
   if (popularity) parts.push(`Popularity: ${popularity}`);
 
   const otherRules = rules.filter((rule) => !["genre", "tempo", "energy", "valence", "popularity"].includes(rule.field));

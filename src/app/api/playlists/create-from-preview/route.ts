@@ -60,6 +60,10 @@ export async function POST(req: Request) {
       : "";
     const smartPresetName = parsedOptions?.smartPresetName || null;
     const smartPresetSummary = smartPresetName ? ` from Smart Builder preset "${smartPresetName}"` : "";
+    const moodPresetName = parsedOptions?.moodPresetName || null;
+    const moodPresetDisplayName = moodPresetName ? `${moodPresetName}${parsedOptions?.moodPresetModified ? " modified" : ""}` : null;
+    const moodPresetSummary = moodPresetDisplayName ? ` with mood preset "${moodPresetDisplayName}"` : "";
+    const trackCountSummary = moodPresetSummary ? `${moodPresetSummary} and ${result.trackCount} tracks` : ` with ${result.trackCount} tracks`;
     await safeRecordJobHistory({
       userId,
       type: "playlist",
@@ -67,10 +71,10 @@ export async function POST(req: Request) {
       status: "success",
       trigger: "manual",
       summary: smartPresetName
-        ? `Created playlist "${trimmedName}"${smartPresetSummary} with ${result.trackCount} tracks.${exclusionSummary}${safetySummary}`
+        ? `Created playlist "${trimmedName}"${smartPresetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`
         : resolvedRecipeName
-        ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}" with ${result.trackCount} tracks.${exclusionSummary}${safetySummary}`
-        : `Created playlist "${trimmedName}" from preview with ${result.trackCount} tracks.${exclusionSummary}${safetySummary}`,
+        ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}"${trackCountSummary}.${exclusionSummary}${safetySummary}`
+        : `Created playlist "${trimmedName}" from preview${trackCountSummary}.${exclusionSummary}${safetySummary}`,
       counts: { attempted: trackIds.length, processed: result.trackCount, skipped: Math.max(0, trackIds.length - result.trackCount), failed: 0 },
       metadata: {
         savedRuleId: savedRuleId || null,
@@ -82,6 +86,10 @@ export async function POST(req: Request) {
         smartPresetId: parsedOptions?.smartPresetId || null,
         smartPresetName,
         smartPresetVersion: parsedOptions?.smartPresetVersion || null,
+        moodPresetId: parsedOptions?.moodPresetId || null,
+        moodPresetName,
+        moodPresetVersion: parsedOptions?.moodPresetVersion || null,
+        moodPresetModified: parsedOptions?.moodPresetModified || false,
         playlistName: trimmedName,
         trackCount: result.trackCount,
         manualExclusionsApplied: excludedTrackCount > 0,
