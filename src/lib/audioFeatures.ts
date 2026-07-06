@@ -82,6 +82,11 @@ export type AudioFeatureHealthGapAudit = AudioFeatureHealthGapAuditInput & {
   gapDetected: boolean;
 };
 
+export type MergedAudioFeatureHealthCounts = AudioFeatureHealthGapAuditInput & {
+  gapOnly: number;
+  audit: AudioFeatureHealthGapAudit;
+};
+
 const failedAudioFeatureStatuses = ["pending", "no_data", "extraction_failed", "analyzer_failed", "too_short"] as const;
 const audioFeatureFields = ["energy", "mood", "danceability", "acousticness"] as const;
 const invalidCompleteAudioFeatureStatuses = ["pending", "no_data", "extraction_failed", "analyzer_failed", "too_short"] as const;
@@ -329,9 +334,9 @@ export function auditAudioFeatureHealthGap(input: AudioFeatureHealthGapAuditInpu
   const tooShort = count(input.tooShort);
   const noAudioFeatureRecord = count(input.noAudioFeatureRecord);
   const incompleteExpected = Math.max(0, activeTracks - completeAudioFeatures);
-  const classifiedIncomplete = missing + partial + pending + noData + failed + tooShort;
+  const classifiedIncomplete = missing + partial + noData + failed + tooShort;
   const unclassifiedGap = Math.max(0, incompleteExpected - classifiedIncomplete);
-  const classifiedAsMissing = Math.max(noAudioFeatureRecord, unclassifiedGap);
+  const classifiedAsMissing = unclassifiedGap;
 
   return {
     activeTracks,
@@ -348,6 +353,34 @@ export function auditAudioFeatureHealthGap(input: AudioFeatureHealthGapAuditInpu
     unclassifiedGap,
     classifiedAsMissing,
     gapDetected: unclassifiedGap > 0 || noAudioFeatureRecord > 0,
+  };
+}
+
+export function mergeAudioFeatureHealthGapCounts(input: AudioFeatureHealthGapAuditInput): MergedAudioFeatureHealthCounts {
+  const audit = auditAudioFeatureHealthGap(input);
+  const visibleIncomplete = audit.missing + audit.partial + audit.noData + audit.failed + audit.tooShort;
+  const forcedGap = audit.incompleteExpected > 0 && visibleIncomplete === 0
+    ? audit.incompleteExpected
+    : audit.unclassifiedGap;
+  const gapOnly = Math.max(0, forcedGap);
+  const missing = audit.missing + gapOnly;
+  const pending = audit.pending + gapOnly;
+
+  return {
+    activeTracks: audit.activeTracks,
+    completeAudioFeatures: audit.completeAudioFeatures,
+    missing,
+    partial: audit.partial,
+    pending,
+    noData: audit.noData,
+    failed: audit.failed,
+    tooShort: audit.tooShort,
+    noAudioFeatureRecord: audit.noAudioFeatureRecord,
+    gapOnly,
+    audit: {
+      ...audit,
+      classifiedAsMissing: gapOnly,
+    },
   };
 }
 

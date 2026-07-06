@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { normalizeMetadataAnalysisScope, resolveMetadataProviderSettings } from "./syncSettings";
+import { metadataProviderModeKey, normalizeMetadataAnalysisScope, resolveMetadataProviderSettings } from "./syncSettings";
 
 const envKeys = [
   "ENABLE_API_BPM",
@@ -71,5 +71,6 @@ describe("metadata provider settings", () => {
     assert.equal(settings.audioFeatures.local, true);
     assert.equal(settings.audioFeatures.preferLocal, true);
     assert.equal(settings.audioFeatures.scope, "whole_track");
+    assert.equal(metadataProviderModeKey(settings.audioFeatures), "local_enabled_api_disabled");
   });
 });

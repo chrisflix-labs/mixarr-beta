@@ -12,7 +12,7 @@ import {
   serializeLibraryHealthDetailTrack,
   type LibraryHealthSort,
 } from "@/lib/libraryHealthDetails";
-import { getUserSyncSettings, metadataProviderModeLabel, resolveMetadataProviderSettings } from "@/lib/syncSettings";
+import { getUserSyncSettings, metadataProviderModeKey, resolveMetadataProviderSettings } from "@/lib/syncSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -66,7 +66,7 @@ export async function GET(request: Request) {
       prisma.track.count({ where }),
     ]);
 
-    const mode = metadataProviderModeLabel(audioFeatureSettings).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    const mode = metadataProviderModeKey(audioFeatureSettings);
     console.log(`[LibraryHealth] detail filter=${category} count=${total} mode=${mode}`);
 
     return NextResponse.json({

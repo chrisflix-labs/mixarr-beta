@@ -189,6 +189,13 @@ export function metadataProviderModeLabel(config: ReturnType<typeof resolveMetad
   return "Local enabled, API disabled";
 }
 
+export function metadataProviderModeKey(config: ReturnType<typeof resolveMetadataProviderSettings>["bpm" | "audioFeatures"]) {
+  if (!config.api && !config.local) return "disabled";
+  if (config.api && config.local) return `api_local_${config.preferLocal ? "local" : "api"}_preferred`;
+  if (config.api) return "api_enabled_local_disabled";
+  return "local_enabled_api_disabled";
+}
+
 export function logMetadataProviderSettings(options: SyncEngineOptions = {}) {
   const settings = resolveMetadataProviderSettings(options);
   console.log(

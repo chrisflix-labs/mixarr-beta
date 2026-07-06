@@ -41,6 +41,7 @@ type HealthLibrary = {
   audioFeaturesAnalyzerFailed: number;
   audioFeaturesTooShort: number;
   audioFeaturesNoRecord: number;
+  audioFeaturesGap: number;
   audioFeatureGapAudit?: {
     incompleteExpected: number;
     unclassifiedGap: number;

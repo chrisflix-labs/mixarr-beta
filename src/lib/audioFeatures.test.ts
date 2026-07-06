@@ -10,6 +10,7 @@ import {
   getEffectiveAudioFeatures,
   heuristicAudioFeatureTrackWhere,
   localEssentiaAudioFeatureSuccessTrackWhere,
+  mergeAudioFeatureHealthGapCounts,
   missingAudioFeatureTrackWhere,
   noAudioFeatureRecordTrackWhere,
   pendingAudioFeatureTrackWhere,
@@ -254,6 +255,26 @@ describe("audio feature health predicates", () => {
     assert.equal(audit.unclassifiedGap, 2);
     assert.equal(audit.classifiedAsMissing, 2);
     assert.equal(audit.gapDetected, true);
+  });
+
+  it("merges detected but unclassified audio gaps into visible missing counts", () => {
+    const merged = mergeAudioFeatureHealthGapCounts({
+      activeTracks: 10,
+      completeAudioFeatures: 8,
+      missing: 0,
+      partial: 0,
+      pending: 0,
+      noData: 0,
+      failed: 0,
+      tooShort: 0,
+      noAudioFeatureRecord: 2,
+    });
+
+    assert.equal(merged.audit.incompleteExpected, 2);
+    assert.equal(merged.audit.unclassifiedGap, 2);
+    assert.equal(merged.gapOnly, 2);
+    assert.equal(merged.missing, 2);
+    assert.equal(merged.pending, 2);
   });
 
   it("does not lose the remaining active track when one incomplete track is already classified", () => {

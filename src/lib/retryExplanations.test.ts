@@ -47,7 +47,7 @@ describe("retry explanations", () => {
       mode: "local_only",
     });
 
-    assert.match(result.message, /No audio-feature retry jobs were queued for filter partial_audio_features/);
+    assert.match(result.message, /Audio feature retry matched 12 tracks, queued 0, skipped 12/);
     assert.match(result.message, /already have complete audio features/);
     assert.match(result.message, /mode=local_only/);
   });

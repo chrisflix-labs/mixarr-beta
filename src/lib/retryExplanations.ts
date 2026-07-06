@@ -103,7 +103,9 @@ export function buildRetryExplanation(input: RetryExplanationInput): RetryExplan
     mode: input.mode,
     skipReasons: input.skipReasons,
   });
-  const summary = `No ${label} retry jobs were queued for filter ${input.filter}. ${counts}`;
+  const summary = input.retryType === "audio-feature" && matched > 0
+    ? `Audio feature retry matched ${matched} track${matched === 1 ? "" : "s"}, queued 0, skipped ${skipped}.`
+    : `No ${label} retry jobs were queued for filter ${input.filter}. ${counts}`;
   const reasonSuffix = reasonDetails ? ` Skip reasons: ${reasonDetails}.` : "";
   const message = `${summary} ${explanation}${nextStep({ ...input, matched, queued, skipped })}${reasonSuffix}${modeText}`;
   return {

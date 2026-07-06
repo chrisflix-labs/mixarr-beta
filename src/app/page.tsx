@@ -17,7 +17,7 @@ const previewFeatures = [
     description: "Start with guided presets, tune mood and BPM, then export, import, and review recipe-backed playlists.",
     examples: ["Workout", "Mood Presets", "Recipe Import"],
     icon: SlidersHorizontal,
-    badge: "v1.2.8-hotfix",
+    badge: "v1.2.8-hotfix.2",
   },
   {
     title: "AI DJ Flow",
@@ -253,7 +253,7 @@ export default async function Home() {
             return <>
               <Link href="/library-health" className={`glass-panel ${styles.healthWidget}`}>
                 <HeartPulse size={22} />
-                <div><strong>Library Health</strong><span>Active: {active.toLocaleString()} &middot; Missing: {missing.toLocaleString()} &middot; Last sync: {latest ? new Date(latest).toLocaleString() : "Never"} &middot; Updated: {healthUpdatedAt ? healthUpdatedAt.toLocaleString() : "Snapshot"}</span></div>
+                <div><strong>Library Health</strong><span>Active: {active.toLocaleString()} &middot; Missing: {missing.toLocaleString()} &middot; Audio incomplete: {audioIncomplete.toLocaleString()} &middot; Last sync: {latest ? new Date(latest).toLocaleString() : "Never"} &middot; Updated: {healthUpdatedAt ? healthUpdatedAt.toLocaleString() : "Snapshot"}</span></div>
                 <b data-status={status.toLowerCase()}>{status}</b>
               </Link>
               <div className={styles.cardsGrid} style={{ marginBottom: "1.5rem" }}>

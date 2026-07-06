@@ -11,6 +11,7 @@ import {
   completeAudioFeatureTrackWhere,
   type EffectiveAudioFeatureSettings,
   getEffectiveAudioFeatures,
+  mergeAudioFeatureHealthGapCounts,
   missingAudioFeatureTrackWhere,
   noAudioFeatureRecordTrackWhere,
   pendingAudioFeatureTrackWhere,
@@ -457,9 +458,25 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
     tooShort,
     noAudioFeatureRecord,
   });
+  const mergedAudioFeatureCounts = mergeAudioFeatureHealthGapCounts({
+    activeTracks: totalTracks,
+    completeAudioFeatures: categories.complete_audio_features,
+    missing: categories.missing_audio_features,
+    partial: categories.partial_audio_features,
+    pending: categories.pending_audio_features,
+    noData,
+    failed,
+    tooShort,
+    noAudioFeatureRecord,
+  });
+  categories.missing_audio_features = mergedAudioFeatureCounts.missing;
+  categories.pending_audio_features = mergedAudioFeatureCounts.pending;
   return {
     totalTracks,
     categories,
-    audioFeatureGapAudit,
+    audioFeatureGapAudit: {
+      ...audioFeatureGapAudit,
+      classifiedAsMissing: mergedAudioFeatureCounts.gapOnly,
+    },
   };
 }

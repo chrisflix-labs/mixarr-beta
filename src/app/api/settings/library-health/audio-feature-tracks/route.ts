@@ -9,7 +9,7 @@ import {
   MAX_AUDIO_FEATURE_PAGE_SIZE,
   serializeAudioFeatureHealthTrack,
 } from "@/lib/libraryHealth";
-import { getUserSyncSettings, metadataProviderModeLabel, resolveMetadataProviderSettings } from "@/lib/syncSettings";
+import { getUserSyncSettings, metadataProviderModeKey, resolveMetadataProviderSettings } from "@/lib/syncSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
       prisma.track.count({ where }),
       getAudioFeatureHealthSummary(userId, libraryId, audioFeatureSettings),
     ]);
-    const mode = metadataProviderModeLabel(audioFeatureSettings).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    const mode = metadataProviderModeKey(audioFeatureSettings);
     console.log(`[LibraryHealth] detail filter=${filter} count=${total} mode=${mode}`);
 
     return NextResponse.json({

@@ -46,6 +46,18 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.2.8-hotfix.2",
+    title: "Audio Gap Summary Merge Fix",
+    badges: ["Hotfix", "Library Health", "Audio Features", "Dashboard", "Retry"],
+    changes: [
+      "Fixed audio feature gap detection not being merged into Library Health summary counts.",
+      "Missing audio feature cards now include active tracks without audio feature records.",
+      "Fixed detail filters so gap tracks appear when clicking View tracks.",
+      "Improved audio feature retry targeting for gap-classified tracks.",
+      "Aligned audio feature provider mode logging with actual settings.",
+    ],
+  },
+  {
     version: "1.2.8-hotfix",
     title: "Audio Feature Gap Hotfix",
     badges: ["Hotfix", "Library Health", "Audio Features", "Dashboard", "Retry"],
@@ -400,6 +412,32 @@ function prereleaseRank(value?: string) {
   return 0;
 }
 
+function comparePrereleaseIdentifiers(left: string, right: string) {
+  const leftParts = left.split(".");
+  const rightParts = right.split(".");
+  const maxLength = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftPart = leftParts[index];
+    const rightPart = rightParts[index];
+    if (leftPart === undefined) return -1;
+    if (rightPart === undefined) return 1;
+
+    const leftNumber = /^\d+$/.test(leftPart) ? Number(leftPart) : null;
+    const rightNumber = /^\d+$/.test(rightPart) ? Number(rightPart) : null;
+    if (leftNumber !== null && rightNumber !== null) {
+      const difference = leftNumber - rightNumber;
+      if (difference !== 0) return difference;
+      continue;
+    }
+
+    const difference = leftPart.localeCompare(rightPart);
+    if (difference !== 0) return difference;
+  }
+
+  return 0;
+}
+
 export function compareSemanticVersions(left: string, right: string) {
   const [leftMain, leftPrerelease] = normalizeVersion(left).split("-", 2);
   const [rightMain, rightPrerelease] = normalizeVersion(right).split("-", 2);
@@ -414,7 +452,7 @@ export function compareSemanticVersions(left: string, right: string) {
 
   const rankDifference = prereleaseRank(leftPrerelease) - prereleaseRank(rightPrerelease);
   if (rankDifference !== 0) return rankDifference;
-  return (leftPrerelease || "").localeCompare(rightPrerelease || "");
+  return comparePrereleaseIdentifiers(leftPrerelease || "", rightPrerelease || "");
 }
 
 export function getReleaseNotesOldestFirst(notes: ReleaseNote[] = releaseNotes) {

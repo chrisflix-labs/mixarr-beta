@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.8-hotfix.2 - Audio Gap Summary Merge Fix
+
+- Fixed audio feature gap detection not being merged into Library Health summary counts.
+- Missing audio feature cards now include active tracks without audio feature records.
+- Fixed detail filters so gap tracks appear when clicking View tracks.
+- Improved audio feature retry targeting for gap-classified tracks.
+- Aligned audio feature provider mode logging with actual settings.
+
 ## v1.2.8-hotfix - Audio Feature Gap Hotfix
 
 - Fixed active tracks with no audio feature records being excluded from Library Health detail filters.

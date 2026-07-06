@@ -14,6 +14,7 @@ import {
   getEffectiveAudioFeatures,
   heuristicAudioFeatureTrackWhere,
   localAudioFeatureTrackWhere,
+  mergeAudioFeatureHealthGapCounts,
   missingAudioFeatureTrackWhere,
   noAudioFeatureRecordTrackWhere,
   pendingAudioFeatureTrackWhere,
@@ -37,7 +38,7 @@ import {
   pendingBpmBackfillTrackWhere,
   type BpmRetryProviderMode,
 } from "./bpm";
-import { getUserSyncSettings, metadataProviderModeLabel, resolveMetadataProviderSettings } from "./syncSettings";
+import { getUserSyncSettings, metadataProviderModeKey, metadataProviderModeLabel, resolveMetadataProviderSettings } from "./syncSettings";
 
 export const DEFAULT_CLEANUP_DAYS = 30;
 export const MAX_MISSING_PAGE_SIZE = 100;
@@ -569,16 +570,24 @@ export async function getAudioFeatureHealthSummary(userId: string, libraryId?: s
     tooShort,
     noAudioFeatureRecord,
   });
-  const mode = metadataProviderModeLabel({ api: settings?.api ?? true, local: settings?.local ?? true, preferLocal: settings?.preferLocal ?? settings?.preferLocalAudioFeatures ?? false } as any)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "");
+  const merged = mergeAudioFeatureHealthGapCounts({
+    activeTracks,
+    completeAudioFeatures: complete,
+    missing,
+    partial,
+    pending,
+    noData,
+    failed,
+    tooShort,
+    noAudioFeatureRecord,
+  });
+  const mode = metadataProviderModeKey({ api: settings?.api ?? true, local: settings?.local ?? true, preferLocal: settings?.preferLocal ?? settings?.preferLocalAudioFeatures ?? false } as any);
   console.log(`[LibraryHealth] audio gap audit active=${audit.activeTracks} complete=${audit.completeAudioFeatures} expectedIncomplete=${audit.incompleteExpected} classifiedIncomplete=${audit.classifiedIncomplete} unclassifiedGap=${audit.unclassifiedGap} mode=${mode}`);
-  if (audit.classifiedAsMissing > 0) {
-    console.log(`[LibraryHealth] classified unaccounted audio tracks as missing_audio_features count=${audit.classifiedAsMissing} reason=no_audio_feature_record`);
+  if (merged.gapOnly > 0) {
+    console.log(`[LibraryHealth] merged audio gap into missing_audio_features count=${merged.gapOnly}`);
   }
-  console.log(`[LibraryHealth] audio feature counts complete=${complete} partial=${partial} missing=${missing} pending=${pending} mode=${mode}`);
-  return { activeTracks, complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort, noAudioFeatureRecord, audit };
+  console.log(`[LibraryHealth] audio feature counts complete=${complete} partial=${partial} missing=${merged.missing} pending=${merged.pending} noData=${noData} failed=${failed} tooShort=${tooShort} gap=${merged.gapOnly} mode=${mode}`);
+  return { activeTracks, complete, missing: merged.missing, api, local, heuristic, partial, pending: merged.pending, noData, failed, extractionFailed, analyzerFailed, tooShort, noAudioFeatureRecord, gapOnly: merged.gapOnly, audit: merged.audit };
 }
 
 export function buildMissingTrackWhere(userId: string, filters: MissingTrackFilters = {}): Prisma.TrackWhereInput {
@@ -679,6 +688,7 @@ type LibraryHealthSnapshotPayload = {
   audioFeaturesAnalyzerFailed: number;
   audioFeaturesTooShort: number;
   audioFeaturesNoRecord: number;
+  audioFeaturesGap: number;
   audioFeatureGapAudit: AudioFeatureHealthGapAudit;
   bpmProviderMode: string;
   audioFeatureProviderMode: string;
@@ -858,7 +868,18 @@ async function getAudioFeatureHealthCounts(libraryId: string, settings?: Effecti
     tooShort,
     noAudioFeatureRecord,
   });
-  return { activeTracks, complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort, noAudioFeatureRecord, audit };
+  const merged = mergeAudioFeatureHealthGapCounts({
+    activeTracks,
+    completeAudioFeatures: complete,
+    missing,
+    partial,
+    pending,
+    noData,
+    failed,
+    tooShort,
+    noAudioFeatureRecord,
+  });
+  return { activeTracks, complete, missing: merged.missing, api, local, heuristic, partial, pending: merged.pending, noData, failed, extractionFailed, analyzerFailed, tooShort, noAudioFeatureRecord, gapOnly: merged.gapOnly, audit: merged.audit };
 }
 
 async function getGenreHealthCounts(libraryId: string) {
@@ -1025,6 +1046,7 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
     audioFeaturesAnalyzerFailed: audioFeatures.analyzerFailed,
     audioFeaturesTooShort: audioFeatures.tooShort,
     audioFeaturesNoRecord: audioFeatures.noAudioFeatureRecord,
+    audioFeaturesGap: audioFeatures.gapOnly,
     audioFeatureGapAudit: audioFeatures.audit,
     bpmProviderMode: modes.bpmProviderMode,
     audioFeatureProviderMode: modes.audioFeatureProviderMode,
@@ -1049,12 +1071,12 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
   };
   const durationMs = Date.now() - started;
   console.log(`[LibraryHealth] calculated library=${library.id} name=${JSON.stringify(library.name)} activeTracks=${base.activeTracks} durationMs=${durationMs} source=fresh`);
-  const mode = modes.audioFeatureProviderMode.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  const mode = metadataProviderModeKey(modes.audioFeatureSettings as any);
   console.log(`[LibraryHealth] audio gap audit active=${audioFeatures.audit.activeTracks} complete=${audioFeatures.audit.completeAudioFeatures} expectedIncomplete=${audioFeatures.audit.incompleteExpected} classifiedIncomplete=${audioFeatures.audit.classifiedIncomplete} unclassifiedGap=${audioFeatures.audit.unclassifiedGap} mode=${mode}`);
-  if (audioFeatures.audit.classifiedAsMissing > 0) {
-    console.log(`[LibraryHealth] classified unaccounted audio tracks as missing_audio_features count=${audioFeatures.audit.classifiedAsMissing} reason=no_audio_feature_record`);
+  if (audioFeatures.gapOnly > 0) {
+    console.log(`[LibraryHealth] merged audio gap into missing_audio_features count=${audioFeatures.gapOnly}`);
   }
-  console.log(`[LibraryHealth] audio feature counts complete=${audioFeatures.complete} partial=${audioFeatures.partial} missing=${audioFeatures.missing} pending=${audioFeatures.pending} mode=${mode}`);
+  console.log(`[LibraryHealth] audio feature counts complete=${audioFeatures.complete} partial=${audioFeatures.partial} missing=${audioFeatures.missing} pending=${audioFeatures.pending} noData=${audioFeatures.noData} failed=${audioFeatures.failed} tooShort=${audioFeatures.tooShort} gap=${audioFeatures.gapOnly} mode=${mode}`);
   return result;
 }
 

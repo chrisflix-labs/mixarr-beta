@@ -123,6 +123,17 @@ describe("library health", () => {
     assert.match(JSON.stringify(where), /"is":null/);
   });
 
+  it("merges detected audio feature gaps before returning summary counts", async () => {
+    const source = await readFile(path.join(process.cwd(), "src/lib/libraryHealth.ts"), "utf8");
+    const details = await readFile(path.join(process.cwd(), "src/lib/libraryHealthDetails.ts"), "utf8");
+
+    assert.match(source, /mergeAudioFeatureHealthGapCounts/);
+    assert.match(source, /missing: merged\.missing/);
+    assert.match(source, /pending: merged\.pending/);
+    assert.match(details, /categories\.missing_audio_features = mergedAudioFeatureCounts\.missing/);
+    assert.match(details, /categories\.pending_audio_features = mergedAudioFeatureCounts\.pending/);
+  });
+
   it("settings audio-feature retry uses the selected health filter before eligibility skips", async () => {
     const retryRoute = await readFile(path.join(process.cwd(), "src/app/api/settings/library-health/audio-feature-retry/route.ts"), "utf8");
 
