@@ -12,6 +12,7 @@ import {
   audioFeatureRetryEligibilityTrackWhere,
   audioFeatureTooShortTrackWhere,
   completeAudioFeatureTrackWhere,
+  type EffectiveAudioFeatureSettings,
   localEssentiaAudioFeatureSuccessTrackWhere,
   partialAudioFeatureTrackWhere,
 } from "@/lib/audioFeatures";
@@ -29,7 +30,7 @@ const requestSchema = z.object({
   message: "Provide trackIds or a filter",
 });
 
-async function countAudioFeatureSkipReasons(baseWhere: Prisma.TrackWhereInput, candidateWhere: Prisma.TrackWhereInput, analysisScope?: string | null) {
+async function countAudioFeatureSkipReasons(baseWhere: Prisma.TrackWhereInput, candidateWhere: Prisma.TrackWhereInput, analysisScope?: string | null, settings?: EffectiveAudioFeatureSettings) {
   const reasons: Record<string, number> = {};
   const exclusions: Prisma.TrackWhereInput[] = [candidateWhere];
   const countReason = async (name: string, reasonWhere: Prisma.TrackWhereInput) => {
@@ -38,17 +39,17 @@ async function countAudioFeatureSkipReasons(baseWhere: Prisma.TrackWhereInput, c
     exclusions.push(reasonWhere);
   };
 
-  await countReason("already_has_complete_audio_features", completeAudioFeatureTrackWhere());
+  await countReason("already_has_complete_audio_features", completeAudioFeatureTrackWhere(settings));
   await countReason("already_has_complete_local_audio_features", localEssentiaAudioFeatureSuccessTrackWhere(analysisScope));
-  await countReason("too_short", audioFeatureTooShortTrackWhere());
+  await countReason("too_short", audioFeatureTooShortTrackWhere(settings));
   await countReason("failed_previous_attempt", {
     OR: [
-      audioFeatureNoDataTrackWhere(),
-      audioFeatureExtractionFailedTrackWhere(),
-      audioFeatureAnalyzerFailedTrackWhere(),
+      audioFeatureNoDataTrackWhere(settings),
+      audioFeatureExtractionFailedTrackWhere(settings),
+      audioFeatureAnalyzerFailedTrackWhere(settings),
     ],
   });
-  await countReason("partial_but_not_eligible", partialAudioFeatureTrackWhere());
+  await countReason("partial_but_not_eligible", partialAudioFeatureTrackWhere(settings));
   return reasons;
 }
 
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
     }
     const targetWhere = trackIds?.length
       ? { id: { in: trackIds } }
-      : isAudioFeatureHealthFilter(filter) ? audioFeatureHealthFilterWhere(filter) : { id: "__invalid__" };
+      : isAudioFeatureHealthFilter(filter) ? audioFeatureHealthFilterWhere(filter, syncSettings) : { id: "__invalid__" };
 
     const targetScopedWhere = {
       AND: [
@@ -90,6 +91,7 @@ export async function POST(request: Request) {
           force,
           providerMode,
           analysisScope: syncSettings.scope,
+          settings: syncSettings,
         }),
       ],
     };
@@ -100,7 +102,7 @@ export async function POST(request: Request) {
     });
     const ids = matching.map((track) => track.id);
     const skippedAlreadyFixed = Math.max(0, originalCount - ids.length);
-    const skipReasons = skippedAlreadyFixed > 0 ? await countAudioFeatureSkipReasons(targetScopedWhere, where, syncSettings.scope) : {};
+    const skipReasons = skippedAlreadyFixed > 0 ? await countAudioFeatureSkipReasons(targetScopedWhere, where, syncSettings.scope, syncSettings) : {};
     const knownSkipped = Object.values(skipReasons).reduce((sum, value) => sum + value, 0);
     if (skippedAlreadyFixed > knownSkipped) skipReasons.not_eligible_for_mode = skippedAlreadyFixed - knownSkipped;
     const retryExplanation = buildRetryExplanation({

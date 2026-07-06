@@ -9,6 +9,7 @@ import {
   MAX_AUDIO_FEATURE_PAGE_SIZE,
   serializeAudioFeatureHealthTrack,
 } from "@/lib/libraryHealth";
+import { getUserSyncSettings, metadataProviderModeLabel, resolveMetadataProviderSettings } from "@/lib/syncSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -25,10 +26,12 @@ export async function GET(request: Request) {
   const page = Math.max(1, Number(params.get("page")) || 1);
   const pageSize = Math.min(MAX_AUDIO_FEATURE_PAGE_SIZE, Math.max(1, Number(params.get("pageSize")) || 50));
   const libraryId = params.get("libraryId") || undefined;
+  const audioFeatureSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId)).audioFeatures;
   const where = buildAudioFeatureTrackWhere(userId, {
     filter,
     libraryId,
     search: params.get("search")?.trim() || undefined,
+    settings: audioFeatureSettings,
   });
 
   try {
@@ -41,11 +44,13 @@ export async function GET(request: Request) {
         take: pageSize,
       }),
       prisma.track.count({ where }),
-      getAudioFeatureHealthSummary(userId, libraryId),
+      getAudioFeatureHealthSummary(userId, libraryId, audioFeatureSettings),
     ]);
+    const mode = metadataProviderModeLabel(audioFeatureSettings).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    console.log(`[LibraryHealth] detail filter=${filter} count=${total} mode=${mode}`);
 
     return NextResponse.json({
-      tracks: tracks.map(serializeAudioFeatureHealthTrack),
+      tracks: tracks.map((track) => serializeAudioFeatureHealthTrack(track, audioFeatureSettings)),
       total,
       page,
       pageSize,

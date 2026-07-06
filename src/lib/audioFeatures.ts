@@ -20,6 +20,10 @@ export type AudioFeatureFilterOptions = {
 };
 
 export type EffectiveAudioFeatureSettings = {
+  api?: boolean;
+  local?: boolean;
+  enableApiAudioFeatures?: boolean;
+  enableLocalAudioFeatures?: boolean;
   preferLocalAudioFeatures?: boolean;
   preferLocal?: boolean;
   allowEstimated?: boolean;
@@ -41,9 +45,45 @@ export type EffectiveAudioFeatures = {
   missingFields: string[];
 };
 
+export type AudioFeatureHealthStatus =
+  | "complete"
+  | "missing"
+  | "partial"
+  | "pending"
+  | "failed"
+  | "too_short"
+  | "no_data";
+
+export type AudioFeatureHealthClassification = {
+  status: AudioFeatureHealthStatus;
+  reason: string;
+  missingFields: string[];
+  complete: boolean;
+  partial: boolean;
+};
+
 const failedAudioFeatureStatuses = ["pending", "no_data", "extraction_failed", "analyzer_failed", "too_short"] as const;
 const audioFeatureFields = ["energy", "mood", "danceability", "acousticness"] as const;
 const invalidCompleteAudioFeatureStatuses = ["pending", "no_data", "extraction_failed", "analyzer_failed", "too_short"] as const;
+
+const defaultAudioFeatureHealthSettings = {
+  api: true,
+  local: true,
+  preferLocal: false,
+  allowEstimated: true,
+};
+
+function normalizeAudioFeatureHealthSettings(settings: EffectiveAudioFeatureSettings = {}) {
+  const api = settings.api ?? settings.enableApiAudioFeatures ?? true;
+  const local = settings.local ?? settings.enableLocalAudioFeatures ?? true;
+  return {
+    api,
+    local,
+    preferLocal: settings.preferLocalAudioFeatures ?? settings.preferLocal ?? false,
+    allowEstimated: settings.allowEstimated ?? true,
+    tempoRequired: settings.tempoRequired ?? true,
+  };
+}
 
 function validUnitValue(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
@@ -119,9 +159,10 @@ function chooseFirstValidUnit(...values: unknown[]) {
 
 export function getEffectiveAudioFeatures(trackOrFeature: any, settings: EffectiveAudioFeatureSettings = {}): EffectiveAudioFeatures {
   const feature = featureFromTrack(trackOrFeature);
-  const preferLocal = settings.preferLocalAudioFeatures ?? settings.preferLocal ?? false;
-  const allowEstimated = settings.allowEstimated ?? true;
-  const tempoRequired = settings.tempoRequired ?? true;
+  const normalizedSettings = normalizeAudioFeatureHealthSettings(settings);
+  const preferLocal = normalizedSettings.preferLocal;
+  const allowEstimated = normalizedSettings.allowEstimated;
+  const tempoRequired = normalizedSettings.tempoRequired;
   if (!feature) {
     const missingFields = tempoRequired ? [...audioFeatureFields, "tempo"] : [...audioFeatureFields];
     return {
@@ -148,9 +189,9 @@ export function getEffectiveAudioFeatures(trackOrFeature: any, settings: Effecti
     : null;
   const sourceUsable = !sourceIsPlaceholder(feature.source) || source !== null || status === "success";
   const statusUsable = statusAllowsFeatureValues(status);
-  const localUsable = statusUsable && isLocalEssentiaFeature(feature);
-  const apiUsable = statusUsable && sourceUsable && isApiFeature(feature);
-  const heuristicUsable = sourceUsable && isAllowedHeuristicFeature(feature, allowEstimated);
+  const localUsable = normalizedSettings.local && statusUsable && isLocalEssentiaFeature(feature);
+  const apiUsable = normalizedSettings.api && statusUsable && sourceUsable && isApiFeature(feature);
+  const heuristicUsable = normalizedSettings.local && sourceUsable && isAllowedHeuristicFeature(feature, allowEstimated);
 
   const local = {
     energy: localUsable ? validUnitValue(feature.localEnergy ?? (feature.energySource === "local_essentia" ? feature.energy : null)) : null,
@@ -173,7 +214,12 @@ export function getEffectiveAudioFeatures(trackOrFeature: any, settings: Effecti
     acousticness: heuristicUsable ? validUnitValue(feature.localAcousticness ?? feature.acousticness) : null,
     tempo: heuristicUsable ? validTempoValue(feature.tempo) : null,
   };
-  const final = statusUsable && sourceUsable ? {
+  const finalUsable = statusUsable && sourceUsable && (
+    (normalizedSettings.api && !isLocalEssentiaFeature(feature))
+    || (normalizedSettings.local && isLocalEssentiaFeature(feature))
+    || (normalizedSettings.api && normalizedSettings.local)
+  );
+  const final = finalUsable ? {
     energy: validUnitValue(feature.effectiveEnergy ?? feature.energy),
     mood: validUnitValue(feature.effectiveMood ?? feature.valence),
     danceability: validUnitValue(feature.effectiveDanceability ?? feature.danceability),
@@ -226,6 +272,139 @@ export function getEffectiveAudioFeatures(trackOrFeature: any, settings: Effecti
 
 export function hasCompleteEffectiveAudioFeatures(trackOrFeature: any, settings: EffectiveAudioFeatureSettings = {}) {
   return getEffectiveAudioFeatures(trackOrFeature, settings).complete;
+}
+
+function audioFeatureHasAnyData(feature: any) {
+  if (!feature) return false;
+  return [
+    feature.energy,
+    feature.valence,
+    feature.danceability,
+    feature.acousticness,
+    feature.tempo,
+    feature.localEnergy,
+    feature.localMood,
+    feature.localDanceability,
+    feature.localAcousticness,
+    feature.apiEnergy,
+    feature.apiMood,
+    feature.apiDanceability,
+    feature.apiAcousticness,
+  ].some((value) => value !== null && value !== undefined);
+}
+
+function completeLocalFeatureObject(feature: any, settings: EffectiveAudioFeatureSettings = {}) {
+  return hasCompleteEffectiveAudioFeatures({ audioFeature: feature }, {
+    ...settings,
+    api: false,
+    local: true,
+  });
+}
+
+function completeApiFeatureObject(feature: any, settings: EffectiveAudioFeatureSettings = {}) {
+  return hasCompleteEffectiveAudioFeatures({ audioFeature: feature }, {
+    ...settings,
+    api: true,
+    local: false,
+  });
+}
+
+export function getAudioFeatureHealthStatus(trackOrFeature: any, settings: EffectiveAudioFeatureSettings = {}): AudioFeatureHealthClassification {
+  const feature = featureFromTrack(trackOrFeature);
+  const effective = getEffectiveAudioFeatures(trackOrFeature, settings);
+  const normalizedSettings = normalizeAudioFeatureHealthSettings(settings);
+  const missingFields = effective.missingFields;
+
+  if (effective.complete) {
+    return {
+      status: "complete",
+      reason: "Complete audio features",
+      missingFields,
+      complete: true,
+      partial: false,
+    };
+  }
+
+  if (feature?.audioFeatureStatus === "too_short") {
+    return {
+      status: "too_short",
+      reason: "Too short for analysis",
+      missingFields,
+      complete: false,
+      partial: effective.partial,
+    };
+  }
+
+  if (feature?.audioFeatureStatus === "extraction_failed" || feature?.audioFeatureStatus === "analyzer_failed") {
+    return {
+      status: "failed",
+      reason: "Analysis failed",
+      missingFields,
+      complete: false,
+      partial: effective.partial,
+    };
+  }
+
+  if (feature?.audioFeatureStatus === "no_data") {
+    return {
+      status: "no_data",
+      reason: "No audio feature data",
+      missingFields,
+      complete: false,
+      partial: false,
+    };
+  }
+
+  if (!feature || !audioFeatureHasAnyData(feature)) {
+    return {
+      status: feature?.audioFeatureStatus === "pending" ? "pending" : "missing",
+      reason: feature?.audioFeatureStatus === "pending" ? "Pending local analysis" : "No audio feature data",
+      missingFields,
+      complete: false,
+      partial: false,
+    };
+  }
+
+  if (normalizedSettings.local && !normalizedSettings.api && completeApiFeatureObject(feature, settings) && !completeLocalFeatureObject(feature, settings)) {
+    return {
+      status: "partial",
+      reason: "API data only",
+      missingFields,
+      complete: false,
+      partial: true,
+    };
+  }
+
+  if (effective.partial || feature.audioFeatureStatus === "partial") {
+    const reason = normalizedSettings.local && !completeLocalFeatureObject(feature, settings)
+      ? "Partial local features"
+      : "Partial audio features";
+    return {
+      status: "partial",
+      reason,
+      missingFields,
+      complete: false,
+      partial: true,
+    };
+  }
+
+  if (feature.audioFeatureStatus === "pending") {
+    return {
+      status: "pending",
+      reason: normalizedSettings.local ? "Pending local analysis" : "Pending audio feature analysis",
+      missingFields,
+      complete: false,
+      partial: false,
+    };
+  }
+
+  return {
+    status: "missing",
+    reason: normalizedSettings.local && !normalizedSettings.api ? "Missing required local features" : "Unknown incomplete state",
+    missingFields,
+    complete: false,
+    partial: false,
+  };
 }
 
 export const placeholderAudioFeatureWhere: Prisma.AudioFeatureWhereInput = {
@@ -286,6 +465,31 @@ const validLocalAudioFeatureFieldsWhere: Prisma.AudioFeatureWhereInput = {
   ],
 };
 
+const validHeuristicAudioFeatureFieldsWhere: Prisma.AudioFeatureWhereInput = {
+  AND: [
+    { energy: { gte: 0, lte: 1 } },
+    {
+      OR: [
+        { localMood: { gte: 0, lte: 1 } },
+        { valence: { gte: 0, lte: 1 } },
+      ],
+    },
+    {
+      OR: [
+        { localDanceability: { gte: 0, lte: 1 } },
+        { danceability: { gte: 0, lte: 1 } },
+      ],
+    },
+    {
+      OR: [
+        { localAcousticness: { gte: 0, lte: 1 } },
+        { acousticness: { gte: 0, lte: 1 } },
+      ],
+    },
+    { tempo: { gt: 0 } },
+  ],
+};
+
 const localEssentiaAudioFeatureMarkerWhere: Prisma.AudioFeatureWhereInput = {
   OR: [
     { audioFeatureSource: { in: ["local_essentia", "mixed"] } },
@@ -314,40 +518,76 @@ const apiAudioFeatureMarkerWhere: Prisma.AudioFeatureWhereInput = {
   ],
 };
 
-export function completeAudioFeatureWhere(): Prisma.AudioFeatureWhereInput {
+const heuristicAudioFeatureCompleteWhere: Prisma.AudioFeatureWhereInput = {
+  AND: [
+    usableCompleteAudioFeatureStatusWhere,
+    { NOT: placeholderAudioFeatureWhere },
+    { audioFeatureConfidence: { gt: 0 } },
+    {
+      OR: [
+        { audioFeatureSource: "local_heuristic" },
+        { valenceSource: "local_heuristic" },
+        { danceabilitySource: "local_heuristic" },
+        { acousticnessSource: "local_heuristic" },
+      ],
+    },
+    validHeuristicAudioFeatureFieldsWhere,
+  ],
+};
+
+function audioFeatureCompletionCandidates(settings: EffectiveAudioFeatureSettings = {}) {
+  const normalizedSettings = normalizeAudioFeatureHealthSettings(settings);
+  const candidates: Prisma.AudioFeatureWhereInput[] = [];
+
+  if (normalizedSettings.local) {
+    candidates.push({ AND: [validLocalAudioFeatureFieldsWhere, localEssentiaAudioFeatureMarkerWhere] });
+    if (normalizedSettings.allowEstimated) candidates.push(heuristicAudioFeatureCompleteWhere);
+  }
+
+  if (normalizedSettings.api) {
+    candidates.push({ AND: [validApiAudioFeatureFieldsWhere, apiAudioFeatureMarkerWhere, { NOT: placeholderAudioFeatureWhere }] });
+    candidates.push({ AND: [validFinalAudioFeatureFieldsWhere, { NOT: placeholderAudioFeatureWhere }, { NOT: localEssentiaAudioFeatureMarkerWhere }] });
+  }
+
+  // When both providers are enabled, either complete provider can satisfy health.
+  // The prefer-local setting only changes displayed effective values, not whether a track is healthy.
+  if (normalizedSettings.api && normalizedSettings.local) {
+    candidates.push({ AND: [validFinalAudioFeatureFieldsWhere, { NOT: placeholderAudioFeatureWhere }] });
+  }
+
+  return candidates.length ? candidates : [{ id: "__no_audio_feature_provider_enabled__" }];
+}
+
+export function completeAudioFeatureWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.AudioFeatureWhereInput {
   return {
     AND: [
       usableCompleteAudioFeatureStatusWhere,
       {
-        OR: [
-          { AND: [validLocalAudioFeatureFieldsWhere, localEssentiaAudioFeatureMarkerWhere] },
-          { AND: [validApiAudioFeatureFieldsWhere, apiAudioFeatureMarkerWhere, { NOT: placeholderAudioFeatureWhere }] },
-          { AND: [validFinalAudioFeatureFieldsWhere, { NOT: placeholderAudioFeatureWhere }] },
-        ],
+        OR: audioFeatureCompletionCandidates(settings),
       },
     ],
   };
 }
 
-export function completeAudioFeatureTrackWhere(): Prisma.TrackWhereInput {
-  return { audioFeature: { is: completeAudioFeatureWhere() } };
+export function completeAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
+  return { audioFeature: { is: completeAudioFeatureWhere(settings) } };
 }
 
-export function missingAudioFeatureTrackWhere(): Prisma.TrackWhereInput {
+export function missingAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     OR: [
       { audioFeature: null },
-      { audioFeature: { is: { NOT: completeAudioFeatureWhere() } } },
+      { audioFeature: { is: { NOT: completeAudioFeatureWhere(settings) } } },
     ],
   };
 }
 
-export function apiAudioFeatureTrackWhere(): Prisma.TrackWhereInput {
+export function apiAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     audioFeature: {
       is: {
         AND: [
-          completeAudioFeatureWhere(),
+          completeAudioFeatureWhere(settings),
           {
             OR: [
               { audioFeatureSource: "api" },
@@ -369,12 +609,12 @@ export function apiAudioFeatureTrackWhere(): Prisma.TrackWhereInput {
   };
 }
 
-export function localAudioFeatureTrackWhere(): Prisma.TrackWhereInput {
+export function localAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     audioFeature: {
       is: {
         AND: [
-          completeAudioFeatureWhere(),
+          completeAudioFeatureWhere(settings),
           {
             OR: [
               { localEnergy: { not: null } },
@@ -408,11 +648,11 @@ export function heuristicAudioFeatureTrackWhere(): Prisma.TrackWhereInput {
   };
 }
 
-export function partialAudioFeatureTrackWhere(): Prisma.TrackWhereInput {
+export function partialAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
       { audioFeature: { isNot: null } },
-      { NOT: completeAudioFeatureTrackWhere() },
+      { NOT: completeAudioFeatureTrackWhere(settings) },
       {
         audioFeature: {
           is: {
@@ -442,7 +682,7 @@ export function partialAudioFeatureTrackWhere(): Prisma.TrackWhereInput {
 export function localEssentiaAudioFeatureSuccessWhere(analysisScope?: string | null): Prisma.AudioFeatureWhereInput {
   return {
     AND: [
-      completeAudioFeatureWhere(),
+      completeAudioFeatureWhere({ api: false, local: true }),
       { audioFeatureStatus: "success" },
       ...(analysisScope ? [{ audioFeatureAnalysisScope: analysisScope }] : []),
       localEssentiaAudioFeatureMarkerWhere,
@@ -458,64 +698,79 @@ export function audioFeatureRetryEligibilityTrackWhere(options: {
   force?: boolean;
   providerMode?: "configured" | "api_only" | "local_only" | "force_local";
   analysisScope?: string | null;
+  settings?: EffectiveAudioFeatureSettings;
 } = {}): Prisma.TrackWhereInput {
   if (options.force || options.providerMode === "force_local") return {};
+  const providerSettings = options.providerMode === "api_only"
+    ? { ...options.settings, api: true, local: false }
+    : options.providerMode === "local_only"
+      ? { ...options.settings, api: false, local: true }
+      : options.settings;
 
   return {
     AND: [
-      missingAudioFeatureTrackWhere(),
+      missingAudioFeatureTrackWhere(providerSettings),
       { NOT: localEssentiaAudioFeatureSuccessTrackWhere(options.analysisScope) },
-      { NOT: audioFeatureTooShortTrackWhere() },
+      { NOT: audioFeatureTooShortTrackWhere(providerSettings) },
     ],
   };
 }
 
-export function audioFeatureNoDataTrackWhere(): Prisma.TrackWhereInput {
+export function audioFeatureNoDataTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
-      missingAudioFeatureTrackWhere(),
+      missingAudioFeatureTrackWhere(settings),
       { audioFeature: { is: { audioFeatureStatus: "no_data" } } },
     ],
   };
 }
 
-export function audioFeatureExtractionFailedTrackWhere(): Prisma.TrackWhereInput {
+export function audioFeatureExtractionFailedTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
-      missingAudioFeatureTrackWhere(),
+      missingAudioFeatureTrackWhere(settings),
       { audioFeature: { is: { audioFeatureStatus: "extraction_failed" } } },
     ],
   };
 }
 
-export function audioFeatureAnalyzerFailedTrackWhere(): Prisma.TrackWhereInput {
+export function audioFeatureAnalyzerFailedTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
-      missingAudioFeatureTrackWhere(),
+      missingAudioFeatureTrackWhere(settings),
       { audioFeature: { is: { audioFeatureStatus: "analyzer_failed" } } },
     ],
   };
 }
 
-export function audioFeatureTooShortTrackWhere(): Prisma.TrackWhereInput {
+export function audioFeatureTooShortTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
-      missingAudioFeatureTrackWhere(),
+      missingAudioFeatureTrackWhere(settings),
       { audioFeature: { is: { audioFeatureStatus: "too_short" } } },
     ],
   };
 }
 
-export function audioFeatureFailedTrackWhere(): Prisma.TrackWhereInput {
+export function audioFeatureFailedTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
-      missingAudioFeatureTrackWhere(),
+      missingAudioFeatureTrackWhere(settings),
       {
         OR: [
-          audioFeatureExtractionFailedTrackWhere(),
-          audioFeatureAnalyzerFailedTrackWhere(),
+          audioFeatureExtractionFailedTrackWhere(settings),
+          audioFeatureAnalyzerFailedTrackWhere(settings),
         ],
       },
+    ],
+  };
+}
+
+export function pendingAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
+  return {
+    AND: [
+      missingAudioFeatureTrackWhere(settings),
+      { NOT: audioFeatureTooShortTrackWhere(settings) },
     ],
   };
 }

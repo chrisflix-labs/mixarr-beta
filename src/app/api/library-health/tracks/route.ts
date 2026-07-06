@@ -12,6 +12,7 @@ import {
   serializeLibraryHealthDetailTrack,
   type LibraryHealthSort,
 } from "@/lib/libraryHealthDetails";
+import { getUserSyncSettings, metadataProviderModeLabel, resolveMetadataProviderSettings } from "@/lib/syncSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,7 @@ export async function GET(request: Request) {
   const pageSize = Math.min(MAX_LIBRARY_HEALTH_PAGE_SIZE, Math.max(1, Number(params.get("pageSize")) || 50));
   const sort = sortFrom(params.get("sort"));
   const direction = directionFrom(params.get("direction"));
+  const audioFeatureSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId)).audioFeatures;
 
   const where = buildLibraryHealthTrackWhere(userId, {
     category,
@@ -49,6 +51,7 @@ export async function GET(request: Request) {
     localFileStatus: params.get("localFileStatus") || undefined,
     failedOnly: params.get("failedOnly") === "true",
     missingDataOnly: params.get("missingDataOnly") === "true",
+    settings: audioFeatureSettings,
   });
 
   try {
@@ -63,8 +66,11 @@ export async function GET(request: Request) {
       prisma.track.count({ where }),
     ]);
 
+    const mode = metadataProviderModeLabel(audioFeatureSettings).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    console.log(`[LibraryHealth] detail filter=${category} count=${total} mode=${mode}`);
+
     return NextResponse.json({
-      tracks: tracks.map((track) => serializeLibraryHealthDetailTrack(track, category)),
+      tracks: tracks.map((track) => serializeLibraryHealthDetailTrack(track, category, audioFeatureSettings)),
       total,
       page,
       pageSize,

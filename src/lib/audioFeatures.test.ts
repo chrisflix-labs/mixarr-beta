@@ -3,12 +3,14 @@ import { describe, it } from "node:test";
 import {
   apiAudioFeatureTrackWhere,
   audioFeatureFilterGuardWhere,
+  getAudioFeatureHealthStatus,
   audioFeatureRetryEligibilityTrackWhere,
   completeAudioFeatureTrackWhere,
   getEffectiveAudioFeatures,
   heuristicAudioFeatureTrackWhere,
   localEssentiaAudioFeatureSuccessTrackWhere,
   missingAudioFeatureTrackWhere,
+  pendingAudioFeatureTrackWhere,
   partialAudioFeatureTrackWhere,
 } from "./audioFeatures";
 
@@ -153,6 +155,30 @@ describe("audio feature health predicates", () => {
     assert.equal(getEffectiveAudioFeatures(track, { preferLocalAudioFeatures: false }).energy, 0.2);
   });
 
+  it("requires local or allowed estimated fields when API audio features are disabled", () => {
+    const apiOnlyTrack = {
+      audioFeature: {
+        apiEnergy: 0.2,
+        apiMood: 0.3,
+        apiDanceability: 0.4,
+        apiAcousticness: 0.5,
+        tempo: 120,
+        audioFeatureSource: "api",
+        audioFeatureStatus: "success",
+        source: "Spotify Audio Features",
+      },
+    };
+
+    const localOnly = getEffectiveAudioFeatures(apiOnlyTrack, { api: false, local: true, preferLocalAudioFeatures: true });
+    const apiEnabled = getEffectiveAudioFeatures(apiOnlyTrack, { api: true, local: false });
+    const classification = getAudioFeatureHealthStatus(apiOnlyTrack, { api: false, local: true, preferLocalAudioFeatures: true });
+
+    assert.equal(localOnly.complete, false);
+    assert.equal(apiEnabled.complete, true);
+    assert.equal(classification.status, "partial");
+    assert.equal(classification.reason, "API data only");
+  });
+
   it("does not count fake neutral placeholders as complete effective features", () => {
     const effective = getEffectiveAudioFeatures({
       audioFeature: {
@@ -185,5 +211,21 @@ describe("audio feature health predicates", () => {
     assert.match(retry, /too_short/);
     assert.match(localSuccess, /whole_track/);
     assert.match(localSuccess, /success/);
+  });
+
+  it("uses the same provider-aware predicate for missing, partial, pending, and retry filters", () => {
+    const settings = { api: false, local: true, preferLocalAudioFeatures: true };
+    const missing = JSON.stringify(missingAudioFeatureTrackWhere(settings));
+    const partial = JSON.stringify(partialAudioFeatureTrackWhere(settings));
+    const pending = JSON.stringify(pendingAudioFeatureTrackWhere(settings));
+    const retry = JSON.stringify(audioFeatureRetryEligibilityTrackWhere({ providerMode: "configured", settings, analysisScope: "whole_track" }));
+
+    assert.doesNotMatch(missing, /apiEnergy/);
+    assert.match(missing, /localEnergy/);
+    assert.match(partial, /apiEnergy/);
+    assert.equal(partial.includes(JSON.stringify(missingAudioFeatureTrackWhere())), false);
+    assert.match(pending, /too_short/);
+    assert.match(retry, /too_short/);
+    assert.match(retry, /local_essentia/);
   });
 });

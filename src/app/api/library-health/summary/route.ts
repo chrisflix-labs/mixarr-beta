@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
 import { getLibraryHealthDetailSummary } from "@/lib/libraryHealthDetails";
+import { getUserSyncSettings, resolveMetadataProviderSettings } from "@/lib/syncSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +14,9 @@ export async function GET(request: Request) {
   const libraryId = params.get("libraryId") || undefined;
 
   try {
+    const audioFeatureSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId)).audioFeatures;
     const [summary, libraries] = await Promise.all([
-      getLibraryHealthDetailSummary(userId, libraryId),
+      getLibraryHealthDetailSummary(userId, libraryId, audioFeatureSettings),
       prisma.library.findMany({
         where: { type: "artist", server: { userId } },
         select: { id: true, name: true, server: { select: { id: true, name: true } } },

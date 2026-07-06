@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.8 - Audio Feature Health Consistency Fix
+
+- Fixed mismatch where audio feature health summaries showed incomplete tracks but detail views returned none.
+- Aligned missing, partial, and pending audio feature filters with summary counts.
+- Improved audio feature completeness checks for current provider settings.
+- Added clearer incomplete-track reasons in Library Health details.
+- Improved retry targeting so audio feature retries use the same filters shown in the UI.
+- Improved dashboard wording when rounded percentages hide incomplete tracks.
+
 ## v1.2.7 - Navigation Cleanup
 
 - Cleaned up desktop sidebar navigation with grouped sections.

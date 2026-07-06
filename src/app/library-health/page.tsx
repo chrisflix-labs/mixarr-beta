@@ -12,6 +12,7 @@ type Category =
   | "local_bpm"
   | "missing_audio_features"
   | "partial_audio_features"
+  | "pending_audio_features"
   | "complete_audio_features"
   | "failed_analysis"
   | "failed_bpm_analysis"
@@ -51,6 +52,7 @@ const categoryLabels: Record<Category, string> = {
   local_bpm: "Local BPM Available",
   missing_audio_features: "Missing Audio Features",
   partial_audio_features: "Partial Audio Features",
+  pending_audio_features: "Pending Audio Features",
   complete_audio_features: "Complete Audio Features",
   failed_analysis: "Failed Analysis",
   failed_bpm_analysis: "Failed BPM Analysis",
@@ -66,8 +68,9 @@ const emptyMessages: Record<Category, string> = {
   missing_bpm: "No tracks are missing BPM. Nice!",
   api_bpm: "No tracks are relying on API-only BPM.",
   local_bpm: "No tracks have locally analyzed BPM yet.",
-  missing_audio_features: "No tracks are missing audio features.",
-  partial_audio_features: "No tracks have partial audio features.",
+  missing_audio_features: "No tracks are missing required audio features for the current provider mode.",
+  partial_audio_features: "No tracks have partial audio feature data.",
+  pending_audio_features: "No tracks are pending audio feature analysis.",
   complete_audio_features: "No tracks have complete audio features yet.",
   failed_analysis: "No failed analysis jobs found.",
   failed_bpm_analysis: "No failed BPM analysis jobs found.",
@@ -84,6 +87,7 @@ const categoryOrder: Category[] = [
   "api_bpm",
   "missing_audio_features",
   "partial_audio_features",
+  "pending_audio_features",
   "failed_analysis",
   "failed_bpm_analysis",
   "failed_audio_feature_analysis",
@@ -100,6 +104,7 @@ const actionableCategories: Category[] = [
   "api_bpm",
   "missing_audio_features",
   "partial_audio_features",
+  "pending_audio_features",
   "failed_bpm_analysis",
   "failed_audio_feature_analysis",
   "too_short",
@@ -144,7 +149,7 @@ function formatDecimal(value: number | null) {
 }
 
 function retryTypeFor(category: Category): "bpm" | "audio_features" {
-  return category === "missing_audio_features" || category === "partial_audio_features" || category === "failed_audio_feature_analysis"
+  return category === "missing_audio_features" || category === "partial_audio_features" || category === "pending_audio_features" || category === "failed_audio_feature_analysis"
     ? "audio_features"
     : "bpm";
 }
@@ -250,6 +255,7 @@ export default function LibraryHealthDetailsPage() {
       { key: "api_bpm", label: "API BPM Only", count: counts?.api_bpm || 0, category: "api_bpm" as Category },
       { key: "missing_audio_features", label: "Missing Audio Features", count: counts?.missing_audio_features || 0, category: "missing_audio_features" as Category },
       { key: "partial_audio_features", label: "Partial Audio Features", count: counts?.partial_audio_features || 0, category: "partial_audio_features" as Category },
+      { key: "pending_audio_features", label: "Pending Audio Features", count: counts?.pending_audio_features || 0, category: "pending_audio_features" as Category },
       { key: "failed", label: "Failed Analysis", count: counts?.failed_analysis || 0, category: "failed_analysis" as Category },
       { key: "missing_local_file", label: "Missing Local Files", count: counts?.missing_local_file || 0, category: "missing_local_file" as Category },
     ];

@@ -46,6 +46,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.2.8",
+    title: "Audio Feature Health Consistency Fix",
+    badges: ["Library Health", "Audio Features", "Bug Fix", "Retry", "Dashboard"],
+    changes: [
+      "Fixed mismatch where audio feature health summaries showed incomplete tracks but detail views returned none.",
+      "Aligned missing, partial, and pending audio feature filters with summary counts.",
+      "Improved audio feature completeness checks for current provider settings.",
+      "Added clearer incomplete-track reasons in Library Health details.",
+      "Improved retry targeting so audio feature retries use the same filters shown in the UI.",
+      "Improved dashboard wording when rounded percentages hide incomplete tracks.",
+    ],
+  },
+  {
     version: "1.2.7",
     title: "Navigation Cleanup",
     badges: ["UI", "Mobile", "Navigation", "Dashboard"],

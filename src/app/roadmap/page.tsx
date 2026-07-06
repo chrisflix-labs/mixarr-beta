@@ -22,6 +22,12 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "v1.2.8 completes the Audio Feature Health Consistency Fix.",
+  "Library Health audio feature summaries now match their track detail filters",
+  "Missing, partial, and pending audio feature views use the current provider mode",
+  "Incomplete audio feature rows now explain the missing or partial data",
+  "Audio feature retries target the same filters shown in Library Health",
+  "Dashboard audio feature wording now shows exact incomplete counts",
   "v1.2.7 completes Navigation Cleanup for desktop and mobile.",
   "Desktop sidebar navigation is grouped into Playlists, Library, and Activity sections",
   "Playlist tools, library tools, and activity pages are easier to scan",
@@ -100,7 +106,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release cleans up navigation so desktop sections are easier to scan and mobile navigation no longer crowds long labels into the bottom bar.</p>
+          <p>This release fixes audio feature health consistency so Library Health summaries, detail lists, retry actions, and dashboard counts agree.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>

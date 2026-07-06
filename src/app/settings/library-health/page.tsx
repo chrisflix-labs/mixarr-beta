@@ -34,6 +34,7 @@ type HealthLibrary = {
   audioFeaturesLocal: number;
   audioFeaturesHeuristic: number;
   audioFeaturesPartial: number;
+  audioFeaturesPending: number;
   audioFeaturesNoData: number;
   audioFeaturesFailed: number;
   audioFeaturesExtractionFailed: number;
@@ -126,6 +127,9 @@ type AudioFeatureTrack = {
   confidence: number | null;
   status: string;
   failureReason: string | null;
+  reason: string;
+  reasonDescription: string;
+  missingFields: string[];
   analyzedAt: string | null;
   syncStatus: string;
 };
@@ -221,17 +225,17 @@ const audioFilterLabels: Record<AudioFilter, string> = {
 };
 
 const audioEmptyMessages: Record<AudioFilter, string> = {
-  missing_audio_features: "Every active track has complete audio features.",
+  missing_audio_features: "No tracks are missing required audio features for the current provider mode.",
   api_audio_features: "No active tracks have API audio features yet.",
   local_audio_features: "No active tracks have local Essentia audio features yet.",
   heuristic_audio_features: "No active tracks are using estimated audio-feature fields.",
-  partial_audio_features: "No active tracks have partial audio features.",
+  partial_audio_features: "No tracks have partial audio feature data.",
   audio_feature_no_data: "No active tracks completed analysis without feature data.",
   audio_feature_failed: "No active tracks have terminal audio-feature failures.",
   extraction_failed: "No active tracks have audio extraction failures.",
   analyzer_failed: "No active tracks have Essentia analyzer failures.",
   too_short: "No active tracks are below the local audio-feature minimum duration.",
-  pending_audio_features: "No active tracks are waiting for audio-feature backfill.",
+  pending_audio_features: "No tracks are pending audio feature analysis.",
 };
 
 const genreFilterLabels: Record<GenreFilter, string> = {
@@ -823,7 +827,7 @@ export default function LibraryHealthPage() {
                 ["extraction_failed", library.audioFeaturesExtractionFailed],
                 ["analyzer_failed", library.audioFeaturesAnalyzerFailed],
                 ["too_short", library.audioFeaturesTooShort],
-                ["pending_audio_features", library.audioFeaturesMissing],
+                ["pending_audio_features", library.audioFeaturesPending ?? library.audioFeaturesMissing],
               ] as [AudioFilter, number][]).map(([filter, count]) => (
                 <button
                   type="button"
@@ -1023,7 +1027,7 @@ export default function LibraryHealthPage() {
         {audioLoading ? <div className={styles.loading}><Loader2 className="animate-spin" size={18} /> Loading {audioFilterLabels[audioFilter].toLowerCase()}...</div> : <>
           <div className={`${styles.tableWrap} ${styles.bpmTableWrap}`}>
             <table>
-              <thead><tr><th><input type="checkbox" aria-label="Select visible audio-feature tracks" checked={allVisibleAudioSelected} onChange={() => setAudioSelected(allVisibleAudioSelected ? new Set() : new Set(audioTracks.map((track) => track.id)))} /></th><th>Track</th><th>Artist</th><th>Album</th><th>Effective</th><th>API values</th><th>Local values</th><th>BPM</th><th>Source</th><th>Scope</th><th>Confidence</th><th>Status</th><th>Failure reason</th><th>Analyzed</th><th>Media path</th><th>Actions</th></tr></thead>
+              <thead><tr><th><input type="checkbox" aria-label="Select visible audio-feature tracks" checked={allVisibleAudioSelected} onChange={() => setAudioSelected(allVisibleAudioSelected ? new Set() : new Set(audioTracks.map((track) => track.id)))} /></th><th>Track</th><th>Artist</th><th>Album</th><th>Effective</th><th>API values</th><th>Local values</th><th>BPM</th><th>Source</th><th>Scope</th><th>Confidence</th><th>Status</th><th>Reason</th><th>Failure reason</th><th>Analyzed</th><th>Media path</th><th>Actions</th></tr></thead>
               <tbody>{audioTracks.map((track) => <tr key={track.id}>
                 <td><input type="checkbox" aria-label={`Select ${track.title}`} checked={audioSelected.has(track.id)} onChange={() => setAudioSelected((current) => { const next = new Set(current); next.has(track.id) ? next.delete(track.id) : next.add(track.id); return next; })} /></td>
                 <td data-label="Track"><strong>{track.title}</strong><small className={styles.trackMeta}>{track.library.name} | {formatDuration(track.duration)} | {track.ratingKey}</small></td>
@@ -1037,6 +1041,7 @@ export default function LibraryHealthPage() {
                 <td data-label="Scope">{track.analysisScope || "â€”"}</td>
                 <td data-label="Confidence">{track.confidence === null ? "â€”" : `${Math.round(track.confidence * 100)}%`}</td>
                 <td data-label="Status"><span className={styles.bpmBadge}>{track.status}</span></td>
+                <td data-label="Reason" className={styles.failureReason} title={track.reasonDescription}>{track.reason}{track.missingFields.length ? <small className={styles.trackMeta}>Missing: {track.missingFields.join(", ")}</small> : null}</td>
                 <td data-label="Failure reason" className={styles.failureReason} title={track.failureReason || ""}>{track.failureReason || "â€”"}</td>
                 <td data-label="Analyzed">{formatDate(track.analyzedAt)}</td>
                 <td data-label="Media path" className={styles.path} title={track.mediaPath || ""}>{track.mediaPath || "â€”"}</td>

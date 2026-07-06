@@ -5,13 +5,16 @@ import {
   audioFeatureAnalyzerFailedTrackWhere,
   audioFeatureExtractionFailedTrackWhere,
   audioFeatureFailedTrackWhere,
+  getAudioFeatureHealthStatus,
   audioFeatureNoDataTrackWhere,
   audioFeatureTooShortTrackWhere,
   completeAudioFeatureTrackWhere,
+  type EffectiveAudioFeatureSettings,
   getEffectiveAudioFeatures,
   heuristicAudioFeatureTrackWhere,
   localAudioFeatureTrackWhere,
   missingAudioFeatureTrackWhere,
+  pendingAudioFeatureTrackWhere,
   partialAudioFeatureTrackWhere,
 } from "./audioFeatures";
 import {
@@ -79,6 +82,9 @@ export const audioFeatureHealthFilters = [
   "local_audio_features",
   "heuristic_audio_features",
   "partial_audio_features",
+  "audio_no_data",
+  "audio_failed",
+  "audio_too_short",
   "audio_feature_no_data",
   "audio_feature_failed",
   "extraction_failed",
@@ -244,19 +250,22 @@ export function buildBpmRetryCandidateWhere(userId: string, options: {
   };
 }
 
-export function audioFeatureHealthFilterWhere(filter: AudioFeatureHealthFilter): Prisma.TrackWhereInput {
+export function audioFeatureHealthFilterWhere(filter: AudioFeatureHealthFilter, settings?: EffectiveAudioFeatureSettings): Prisma.TrackWhereInput {
   switch (filter) {
-    case "missing_audio_features": return missingAudioFeatureTrackWhere();
-    case "api_audio_features": return apiAudioFeatureTrackWhere();
-    case "local_audio_features": return localAudioFeatureTrackWhere();
+    case "missing_audio_features": return missingAudioFeatureTrackWhere(settings);
+    case "api_audio_features": return apiAudioFeatureTrackWhere(settings);
+    case "local_audio_features": return localAudioFeatureTrackWhere(settings);
     case "heuristic_audio_features": return heuristicAudioFeatureTrackWhere();
-    case "partial_audio_features": return partialAudioFeatureTrackWhere();
-    case "audio_feature_no_data": return audioFeatureNoDataTrackWhere();
-    case "audio_feature_failed": return audioFeatureFailedTrackWhere();
-    case "extraction_failed": return audioFeatureExtractionFailedTrackWhere();
-    case "analyzer_failed": return audioFeatureAnalyzerFailedTrackWhere();
-    case "too_short": return audioFeatureTooShortTrackWhere();
-    case "pending_audio_features": return missingAudioFeatureTrackWhere();
+    case "partial_audio_features": return partialAudioFeatureTrackWhere(settings);
+    case "audio_no_data": return audioFeatureNoDataTrackWhere(settings);
+    case "audio_failed": return audioFeatureFailedTrackWhere(settings);
+    case "audio_too_short": return audioFeatureTooShortTrackWhere(settings);
+    case "audio_feature_no_data": return audioFeatureNoDataTrackWhere(settings);
+    case "audio_feature_failed": return audioFeatureFailedTrackWhere(settings);
+    case "extraction_failed": return audioFeatureExtractionFailedTrackWhere(settings);
+    case "analyzer_failed": return audioFeatureAnalyzerFailedTrackWhere(settings);
+    case "too_short": return audioFeatureTooShortTrackWhere(settings);
+    case "pending_audio_features": return pendingAudioFeatureTrackWhere(settings);
   }
 }
 
@@ -415,6 +424,7 @@ export function buildAudioFeatureTrackWhere(userId: string, options: {
   filter: AudioFeatureHealthFilter;
   libraryId?: string;
   search?: string;
+  settings?: EffectiveAudioFeatureSettings;
 }): Prisma.TrackWhereInput {
   const and: Prisma.TrackWhereInput[] = [
     {
@@ -424,7 +434,7 @@ export function buildAudioFeatureTrackWhere(userId: string, options: {
         server: { userId },
       },
     },
-    audioFeatureHealthFilterWhere(options.filter),
+    audioFeatureHealthFilterWhere(options.filter, options.settings),
   ];
 
   if (options.search) {
@@ -524,25 +534,31 @@ export async function getMetadataHealthSummary(userId: string, section: Metadata
     : getPopularityHealthSummary(userId, libraryId);
 }
 
-export async function getAudioFeatureHealthSummary(userId: string, libraryId?: string) {
+export async function getAudioFeatureHealthSummary(userId: string, libraryId?: string, settings?: EffectiveAudioFeatureSettings) {
   const active: Prisma.TrackWhereInput = {
     syncStatus: "active",
     library: { ...(libraryId ? { id: libraryId } : {}), server: { userId } },
   };
-  const [complete, missing, api, local, heuristic, partial, noData, failed, extractionFailed, analyzerFailed, tooShort] = await Promise.all([
-    prisma.track.count({ where: { AND: [active, completeAudioFeatureTrackWhere()] } }),
-    prisma.track.count({ where: { AND: [active, missingAudioFeatureTrackWhere()] } }),
-    prisma.track.count({ where: { AND: [active, apiAudioFeatureTrackWhere()] } }),
-    prisma.track.count({ where: { AND: [active, localAudioFeatureTrackWhere()] } }),
+  const [complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort] = await Promise.all([
+    prisma.track.count({ where: { AND: [active, completeAudioFeatureTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, missingAudioFeatureTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, apiAudioFeatureTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, localAudioFeatureTrackWhere(settings)] } }),
     prisma.track.count({ where: { AND: [active, heuristicAudioFeatureTrackWhere()] } }),
-    prisma.track.count({ where: { AND: [active, partialAudioFeatureTrackWhere()] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureNoDataTrackWhere()] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureFailedTrackWhere()] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureExtractionFailedTrackWhere()] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureAnalyzerFailedTrackWhere()] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureTooShortTrackWhere()] } }),
+    prisma.track.count({ where: { AND: [active, partialAudioFeatureTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, pendingAudioFeatureTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureNoDataTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureFailedTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureExtractionFailedTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureAnalyzerFailedTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureTooShortTrackWhere(settings)] } }),
   ]);
-  return { complete, missing, api, local, heuristic, partial, noData, failed, extractionFailed, analyzerFailed, tooShort };
+  const mode = metadataProviderModeLabel({ api: settings?.api ?? true, local: settings?.local ?? true, preferLocal: settings?.preferLocal ?? settings?.preferLocalAudioFeatures ?? false } as any)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+  console.log(`[LibraryHealth] audio feature counts complete=${complete} partial=${partial} missing=${missing} pending=${pending} mode=${mode}`);
+  return { complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort };
 }
 
 export function buildMissingTrackWhere(userId: string, filters: MissingTrackFilters = {}): Prisma.TrackWhereInput {
@@ -636,6 +652,7 @@ type LibraryHealthSnapshotPayload = {
   audioFeaturesLocal: number;
   audioFeaturesHeuristic: number;
   audioFeaturesPartial: number;
+  audioFeaturesPending: number;
   audioFeaturesNoData: number;
   audioFeaturesFailed: number;
   audioFeaturesExtractionFailed: number;
@@ -787,159 +804,26 @@ async function getBpmHealthCounts(libraryId: string) {
   };
 }
 
-async function getAudioFeatureHealthCounts(libraryId: string) {
-  const rows = await prisma.$queryRaw<CountRow[]>`
-    WITH active_features AS (
-      SELECT
-        af.*,
-        COALESCE((
-          af."audioFeatureStatus" IS NULL
-          OR af."audioFeatureStatus" NOT IN ('pending', 'no_data', 'extraction_failed', 'analyzer_failed', 'too_short')
-        ), false) AS status_usable,
-        COALESCE((
-          af."source" IN ('not_found', 'estimated', 'Deezer BPM only')
-          OR (af."audioFeatureSource" = 'local_heuristic' AND COALESCE(af."audioFeatureConfidence", 0) <= 0)
-          OR (
-            af."energy" = 0.5
-            AND af."valence" = 0.5
-            AND af."danceability" = 0.5
-            AND (
-              LOWER(COALESCE(af."source", '')) LIKE '%unknown mood%'
-              OR af."source" = 'estimated'
-              OR af."audioFeatureStatus" = 'no_data'
-            )
-          )
-        ), false) AS placeholder,
-        COALESCE((
-          af."audioFeatureSource" IN ('local_essentia', 'mixed')
-          OR af."energySource" = 'local_essentia'
-          OR af."valenceSource" = 'local_essentia'
-          OR af."danceabilitySource" = 'local_essentia'
-          OR af."acousticnessSource" = 'local_essentia'
-          OR af."localEnergy" IS NOT NULL
-          OR af."localMood" IS NOT NULL
-          OR af."localDanceability" IS NOT NULL
-          OR af."localAcousticness" IS NOT NULL
-          OR LOWER(COALESCE(af."source", '')) LIKE '%essentia local%'
-          OR LOWER(COALESCE(af."tempoSource", '')) LIKE '%essentia local%'
-        ), false) AS local_marker,
-        COALESCE((
-          af."audioFeatureSource" IN ('api', 'mixed')
-          OR af."energySource" = 'api'
-          OR af."valenceSource" = 'api'
-          OR af."danceabilitySource" = 'api'
-          OR af."acousticnessSource" = 'api'
-          OR af."apiEnergy" IS NOT NULL
-          OR af."apiMood" IS NOT NULL
-          OR af."apiDanceability" IS NOT NULL
-          OR af."apiAcousticness" IS NOT NULL
-        ), false) AS api_marker,
-        COALESCE((
-          af."audioFeatureSource" = 'local_heuristic'
-          OR af."valenceSource" = 'local_heuristic'
-          OR af."acousticnessSource" = 'local_heuristic'
-          OR af."danceabilitySource" = 'local_heuristic'
-          OR af."localMood" IS NOT NULL
-          OR af."localDanceability" IS NOT NULL
-          OR af."localAcousticness" IS NOT NULL
-        ), false) AS heuristic_marker,
-        COALESCE((
-          af."localEnergy" BETWEEN 0 AND 1
-          AND af."localMood" BETWEEN 0 AND 1
-          AND af."localDanceability" BETWEEN 0 AND 1
-          AND af."localAcousticness" BETWEEN 0 AND 1
-          AND af."tempo" > 0
-        ), false) AS valid_local,
-        COALESCE((
-          af."apiEnergy" BETWEEN 0 AND 1
-          AND af."apiMood" BETWEEN 0 AND 1
-          AND af."apiDanceability" BETWEEN 0 AND 1
-          AND af."apiAcousticness" BETWEEN 0 AND 1
-          AND af."tempo" > 0
-        ), false) AS valid_api,
-        COALESCE((
-          af."energy" BETWEEN 0 AND 1
-          AND af."valence" BETWEEN 0 AND 1
-          AND af."danceability" BETWEEN 0 AND 1
-          AND af."acousticness" BETWEEN 0 AND 1
-          AND af."tempo" > 0
-        ), false) AS valid_final
-      FROM "Track" t
-      LEFT JOIN "AudioFeature" af ON af."trackId" = t."id"
-      WHERE t."libraryId" = ${libraryId}
-        AND t."syncStatus" = 'active'
-    ),
-    classified AS (
-      SELECT
-        *,
-        (
-          "id" IS NOT NULL
-          AND status_usable
-          AND (
-            (valid_local AND local_marker)
-            OR (valid_api AND api_marker AND NOT placeholder)
-            OR (valid_final AND NOT placeholder)
-          )
-        ) AS complete_feature
-      FROM active_features
-    )
-    SELECT
-      COUNT(*) FILTER (WHERE complete_feature) AS complete,
-      COUNT(*) FILTER (WHERE NOT complete_feature) AS missing,
-      COUNT(*) FILTER (
-        WHERE complete_feature
-          AND (
-            "audioFeatureSource" = 'api'
-            OR "apiEnergy" IS NOT NULL
-            OR "apiMood" IS NOT NULL
-            OR "apiDanceability" IS NOT NULL
-            OR "apiAcousticness" IS NOT NULL
-            OR ("audioFeatureSource" IS NULL AND "source" NOT IN ('not_found', 'estimated', 'local_not_found'))
-          )
-      ) AS api,
-      COUNT(*) FILTER (WHERE complete_feature AND local_marker) AS local,
-      COUNT(*) FILTER (WHERE "id" IS NOT NULL AND heuristic_marker) AS heuristic,
-      COUNT(*) FILTER (
-        WHERE "id" IS NOT NULL
-          AND NOT complete_feature
-          AND (
-            "audioFeatureStatus" = 'partial'
-            OR "energy" IS NOT NULL
-            OR "valence" IS NOT NULL
-            OR "danceability" IS NOT NULL
-            OR "acousticness" IS NOT NULL
-            OR "tempo" IS NOT NULL
-            OR "localEnergy" IS NOT NULL
-            OR "localMood" IS NOT NULL
-            OR "localDanceability" IS NOT NULL
-            OR "localAcousticness" IS NOT NULL
-            OR "apiEnergy" IS NOT NULL
-            OR "apiMood" IS NOT NULL
-            OR "apiDanceability" IS NOT NULL
-            OR "apiAcousticness" IS NOT NULL
-          )
-      ) AS partial,
-      COUNT(*) FILTER (WHERE NOT complete_feature AND "audioFeatureStatus" = 'no_data') AS no_data,
-      COUNT(*) FILTER (WHERE NOT complete_feature AND "audioFeatureStatus" IN ('extraction_failed', 'analyzer_failed')) AS failed,
-      COUNT(*) FILTER (WHERE NOT complete_feature AND "audioFeatureStatus" = 'extraction_failed') AS extraction_failed,
-      COUNT(*) FILTER (WHERE NOT complete_feature AND "audioFeatureStatus" = 'analyzer_failed') AS analyzer_failed,
-      COUNT(*) FILTER (WHERE NOT complete_feature AND "audioFeatureStatus" = 'too_short') AS too_short
-    FROM classified
-  `;
-  const row = rows[0];
-  return {
-    complete: countValue(row, "complete"),
-    missing: countValue(row, "missing"),
-    api: countValue(row, "api"),
-    local: countValue(row, "local"),
-    heuristic: countValue(row, "heuristic"),
-    partial: countValue(row, "partial"),
-    noData: countValue(row, "no_data"),
-    failed: countValue(row, "failed"),
-    extractionFailed: countValue(row, "extraction_failed"),
-    analyzerFailed: countValue(row, "analyzer_failed"),
-    tooShort: countValue(row, "too_short"),
+async function getAudioFeatureHealthCounts(libraryId: string, settings?: EffectiveAudioFeatureSettings) {
+  const active: Prisma.TrackWhereInput = {
+    syncStatus: "active",
+    libraryId,
   };
+  const [complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort] = await Promise.all([
+    prisma.track.count({ where: { AND: [active, completeAudioFeatureTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, missingAudioFeatureTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, apiAudioFeatureTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, localAudioFeatureTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, heuristicAudioFeatureTrackWhere()] } }),
+    prisma.track.count({ where: { AND: [active, partialAudioFeatureTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, pendingAudioFeatureTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureNoDataTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureFailedTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureExtractionFailedTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureAnalyzerFailedTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureTooShortTrackWhere(settings)] } }),
+  ]);
+  return { complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort };
 }
 
 async function getGenreHealthCounts(libraryId: string) {
@@ -1048,11 +932,12 @@ async function getPopularityHealthCounts(libraryId: string) {
 async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: {
   bpmProviderMode: string;
   audioFeatureProviderMode: string;
+  audioFeatureSettings: EffectiveAudioFeatureSettings;
 }): Promise<LibraryHealthSnapshotPayload> {
   const started = Date.now();
   const base = await timedHealthGroup(library, "base", () => getBaseHealthCounts(library.id));
   const bpm = await timedHealthGroup(library, "bpm", () => getBpmHealthCounts(library.id));
-  const audioFeatures = await timedHealthGroup(library, "audio_features", () => getAudioFeatureHealthCounts(library.id));
+  const audioFeatures = await timedHealthGroup(library, "audio_features", () => getAudioFeatureHealthCounts(library.id, modes.audioFeatureSettings));
   const genres = await timedHealthGroup(library, "genres", () => getGenreHealthCounts(library.id));
   const popularity = await timedHealthGroup(library, "popularity", () => getPopularityHealthCounts(library.id));
   const lastReconciliation = await timedHealthGroup(library, "reconciliation", () => prisma.syncLog.findFirst({
@@ -1098,6 +983,7 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
     audioFeaturesLocal: audioFeatures.local,
     audioFeaturesHeuristic: audioFeatures.heuristic,
     audioFeaturesPartial: audioFeatures.partial,
+    audioFeaturesPending: audioFeatures.pending,
     audioFeaturesNoData: audioFeatures.noData,
     audioFeaturesFailed: audioFeatures.failed,
     audioFeaturesExtractionFailed: audioFeatures.extractionFailed,
@@ -1126,6 +1012,8 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
   };
   const durationMs = Date.now() - started;
   console.log(`[LibraryHealth] calculated library=${library.id} name=${JSON.stringify(library.name)} activeTracks=${base.activeTracks} durationMs=${durationMs} source=fresh`);
+  const mode = modes.audioFeatureProviderMode.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  console.log(`[LibraryHealth] audio feature counts complete=${audioFeatures.complete} partial=${audioFeatures.partial} missing=${audioFeatures.missing} pending=${audioFeatures.pending} mode=${mode}`);
   return result;
 }
 
@@ -1181,7 +1069,11 @@ export async function getLibraryHealth(userId: string) {
 
   const results: LibraryHealthSnapshotPayload[] = [];
   for (const library of libraries) {
-    const result = await calculateLibraryHealthSnapshot(library, { bpmProviderMode, audioFeatureProviderMode });
+    const result = await calculateLibraryHealthSnapshot(library, {
+      bpmProviderMode,
+      audioFeatureProviderMode,
+      audioFeatureSettings: metadataSettings.audioFeatures,
+    });
     results.push(result);
     await saveLibraryHealthSnapshot(library.id, result);
   }
@@ -1376,9 +1268,28 @@ export function serializeMetadataHealthTrack(track: any) {
   };
 }
 
-export function serializeAudioFeatureHealthTrack(track: any) {
+function audioFeatureReasonDescription(classification: ReturnType<typeof getAudioFeatureHealthStatus>) {
+  if (classification.status === "complete") return "This track has complete audio features for the current provider mode.";
+  if (classification.reason === "API data only") return "API audio feature fields exist, but the current provider mode requires local or allowed estimated audio features.";
+  if (classification.reason === "Partial local features" || classification.reason === "Partial audio features") {
+    return classification.missingFields.length
+      ? `This track has some audio feature data, but required fields are missing for the current provider mode: ${classification.missingFields.join(", ")}.`
+      : "This track has some audio feature data, but one or more required fields are missing for the current provider mode.";
+  }
+  if (classification.status === "pending") {
+    return "This track is pending audio feature analysis because required audio feature fields are incomplete for the current provider mode.";
+  }
+  if (classification.status === "missing") return "This track is missing required audio features for the current provider mode.";
+  if (classification.status === "failed") return "Audio feature analysis failed during a previous attempt.";
+  if (classification.status === "too_short") return "This track is too short for audio feature analysis.";
+  if (classification.status === "no_data") return "Audio feature analysis completed without usable feature data.";
+  return "This track has an unknown incomplete audio feature state.";
+}
+
+export function serializeAudioFeatureHealthTrack(track: any, settings: EffectiveAudioFeatureSettings = {}) {
   const feature = track.audioFeature;
-  const effective = getEffectiveAudioFeatures(track, { preferLocalAudioFeatures: true, allowEstimated: true });
+  const effective = getEffectiveAudioFeatures(track, settings);
+  const classification = getAudioFeatureHealthStatus(track, settings);
   return {
     id: track.id,
     title: track.title,
@@ -1410,7 +1321,10 @@ export function serializeAudioFeatureHealthTrack(track: any) {
     source: effective.source || feature?.source || null,
     analysisScope: feature?.audioFeatureAnalysisScope || null,
     confidence: feature?.audioFeatureConfidence ?? feature?.confidence ?? null,
-    status: effective.complete ? "success" : feature?.audioFeatureStatus || (feature ? "partial" : "pending"),
+    status: classification.status === "complete" ? "success" : classification.status,
+    reason: classification.reason,
+    reasonDescription: audioFeatureReasonDescription(classification),
+    missingFields: classification.missingFields,
     failureReason: feature?.audioFeatureFailureReason || null,
     analyzedAt: feature?.audioFeatureAnalyzedAt || null,
     fieldSources: {

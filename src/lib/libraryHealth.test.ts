@@ -4,7 +4,9 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { bpmFailedTrackWhere, pendingBpmBackfillTrackWhere } from "./bpm";
 import {
+  audioFeatureHealthFilterWhere,
   bpmHealthFilterWhere,
+  buildAudioFeatureTrackWhere,
   buildBpmRetryBaseWhere,
   buildBpmRetryCandidateWhere,
   buildBpmTrackWhere,
@@ -84,6 +86,35 @@ describe("library health", () => {
     assert.match(JSON.stringify(where.AND[2]), /album/);
     assert.match(JSON.stringify(where.AND[2]), /mediaPath/);
     assert.match(JSON.stringify(where.AND[2]), /ratingKey/);
+  });
+
+  it("uses matching audio-feature predicates for summary filters and detail track queries", () => {
+    const settings = { api: false, local: true, preferLocalAudioFeatures: true };
+    const detailWhere = buildAudioFeatureTrackWhere("user-a", {
+      filter: "missing_audio_features",
+      libraryId: "library-a",
+      settings,
+    }) as any;
+
+    assert.deepEqual(detailWhere.AND[1], audioFeatureHealthFilterWhere("missing_audio_features", settings));
+    assert.deepEqual(
+      (buildAudioFeatureTrackWhere("user-a", { filter: "partial_audio_features", libraryId: "library-a", settings }) as any).AND[1],
+      audioFeatureHealthFilterWhere("partial_audio_features", settings),
+    );
+    assert.deepEqual(
+      (buildAudioFeatureTrackWhere("user-a", { filter: "pending_audio_features", libraryId: "library-a", settings }) as any).AND[1],
+      audioFeatureHealthFilterWhere("pending_audio_features", settings),
+    );
+    assert.match(JSON.stringify(audioFeatureHealthFilterWhere("pending_audio_features", settings)), /too_short/);
+  });
+
+  it("settings audio-feature retry uses the selected health filter before eligibility skips", async () => {
+    const retryRoute = await readFile(path.join(process.cwd(), "src/app/api/settings/library-health/audio-feature-retry/route.ts"), "utf8");
+
+    assert.match(retryRoute, /audioFeatureHealthFilterWhere\(filter, syncSettings\)/);
+    assert.match(retryRoute, /settings: syncSettings/);
+    assert.match(retryRoute, /matched: originalCount/);
+    assert.match(retryRoute, /queued: ids\.length/);
   });
 
   it("does not count placeholder popularity rows as completed metadata", () => {

@@ -25,6 +25,7 @@ import { getDatabasePoolPressureSnapshot } from "./databaseErrors";
 import { getEnrichmentJobStatuses } from "./enrichmentJobStatus";
 import { getJobDebugSnapshot } from "./jobLock";
 import { tracksWithGenresWhere, tracksWithPopularityWhere } from "./libraryHealth";
+import { getUserSyncSettings, resolveMetadataProviderSettings } from "./syncSettings";
 import { activeSyncStatusWhere } from "./syncStatus";
 
 type CacheEntry = {
@@ -80,6 +81,7 @@ export async function getSyncStatusPayload(userId: string, client: any = prisma)
 }
 
 export async function buildSyncStatusPayload(userId: string, client: any = prisma) {
+  const audioFeatureSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId)).audioFeatures;
   const userTrackScope = {
     ...activeSyncStatusWhere(),
     library: {
@@ -147,17 +149,17 @@ export async function buildSyncStatusPayload(userId: string, client: any = prism
         ],
       },
     }),
-    () => client.audioFeature.count({ where: { track: { AND: [userTrackScope, completeAudioFeatureTrackWhere()] } } }),
+    () => client.audioFeature.count({ where: { track: { AND: [userTrackScope, completeAudioFeatureTrackWhere(audioFeatureSettings)] } } }),
     () => client.audioFeature.count({ where: { track: userTrackScope } }),
-    () => client.track.count({ where: { AND: [userTrackScope, apiAudioFeatureTrackWhere()] } }),
-    () => client.track.count({ where: { AND: [userTrackScope, localAudioFeatureTrackWhere()] } }),
+    () => client.track.count({ where: { AND: [userTrackScope, apiAudioFeatureTrackWhere(audioFeatureSettings)] } }),
+    () => client.track.count({ where: { AND: [userTrackScope, localAudioFeatureTrackWhere(audioFeatureSettings)] } }),
     () => client.track.count({ where: { AND: [userTrackScope, heuristicAudioFeatureTrackWhere()] } }),
-    () => client.track.count({ where: { AND: [userTrackScope, partialAudioFeatureTrackWhere()] } }),
-    () => client.track.count({ where: { AND: [userTrackScope, audioFeatureNoDataTrackWhere()] } }),
-    () => client.track.count({ where: { AND: [userTrackScope, audioFeatureFailedTrackWhere()] } }),
-    () => client.track.count({ where: { AND: [userTrackScope, audioFeatureExtractionFailedTrackWhere()] } }),
-    () => client.track.count({ where: { AND: [userTrackScope, audioFeatureAnalyzerFailedTrackWhere()] } }),
-    () => client.track.count({ where: { AND: [userTrackScope, missingAudioFeatureTrackWhere()] } }),
+    () => client.track.count({ where: { AND: [userTrackScope, partialAudioFeatureTrackWhere(audioFeatureSettings)] } }),
+    () => client.track.count({ where: { AND: [userTrackScope, audioFeatureNoDataTrackWhere(audioFeatureSettings)] } }),
+    () => client.track.count({ where: { AND: [userTrackScope, audioFeatureFailedTrackWhere(audioFeatureSettings)] } }),
+    () => client.track.count({ where: { AND: [userTrackScope, audioFeatureExtractionFailedTrackWhere(audioFeatureSettings)] } }),
+    () => client.track.count({ where: { AND: [userTrackScope, audioFeatureAnalyzerFailedTrackWhere(audioFeatureSettings)] } }),
+    () => client.track.count({ where: { AND: [userTrackScope, missingAudioFeatureTrackWhere(audioFeatureSettings)] } }),
     () => client.track.count({ where: { AND: [userTrackScope, effectiveBpmTrackWhere()] } }),
     () => client.track.count({ where: { AND: [userTrackScope, bpmAnalysisAttemptedTrackWhere()] } }),
     () => client.track.count({ where: { AND: [userTrackScope, bpmAnalysisAttemptedTrackWhere(), effectiveBpmTrackWhere()] } }),

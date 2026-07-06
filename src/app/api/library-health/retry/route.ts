@@ -48,6 +48,7 @@ function bpmFilterFor(category: LibraryHealthDetailCategory | null, filter?: str
 function audioFilterFor(category: LibraryHealthDetailCategory | null, filter?: string): AudioFeatureHealthFilter {
   if (isAudioFeatureHealthFilter(filter)) return filter;
   if (category === "partial_audio_features") return "partial_audio_features";
+  if (category === "pending_audio_features") return "pending_audio_features";
   if (category === "failed_audio_feature_analysis") return "audio_feature_failed";
   if (category === "too_short") return "too_short";
   return "missing_audio_features";
@@ -55,7 +56,7 @@ function audioFilterFor(category: LibraryHealthDetailCategory | null, filter?: s
 
 function retryTypeFor(category: LibraryHealthDetailCategory | null, requested?: "bpm" | "audio_features") {
   if (requested) return requested;
-  if (category === "missing_audio_features" || category === "partial_audio_features" || category === "complete_audio_features" || category === "failed_audio_feature_analysis") {
+  if (category === "missing_audio_features" || category === "partial_audio_features" || category === "pending_audio_features" || category === "complete_audio_features" || category === "failed_audio_feature_analysis") {
     return "audio_features";
   }
   return "bpm";
@@ -159,7 +160,7 @@ async function runAudioRetry(userId: string, input: {
 }) {
   const filter = audioFilterFor(input.category, input.filter);
   const syncSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId)).audioFeatures;
-  const targetWhere = input.trackIds?.length ? { id: { in: input.trackIds } } : audioFeatureHealthFilterWhere(filter);
+  const targetWhere = input.trackIds?.length ? { id: { in: input.trackIds } } : audioFeatureHealthFilterWhere(filter, syncSettings);
   const baseWhere = {
     AND: [
       { syncStatus: "active", library: { ...(input.libraryId ? { id: input.libraryId } : {}), server: { userId } } },
@@ -173,6 +174,7 @@ async function runAudioRetry(userId: string, input: {
         providerMode: input.providerMode,
         force: input.force,
         analysisScope: syncSettings.scope,
+        settings: syncSettings,
       }),
     ],
   };
