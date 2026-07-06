@@ -17,6 +17,7 @@ import {
   partialAudioFeatureTrackWhere,
 } from "@/lib/audioFeatures";
 import { buildAudioFeatureHealthQuery, isAudioFeatureHealthFilter } from "@/lib/libraryHealth";
+import { resolveLibraryHealthTrackIds } from "@/lib/libraryHealthDetails";
 import { buildRetryExplanation } from "@/lib/retryExplanations";
 import { getUserSyncSettings, resolveMetadataProviderSettings } from "@/lib/syncSettings";
 
@@ -72,11 +73,32 @@ export async function POST(request: Request) {
       syncStatus: "active",
       library: { ...(libraryId ? { id: libraryId } : {}), server: { userId } },
     };
+    const resolved = !trackIds?.length && (
+      resolvedFilter === "missing_audio_features"
+      || resolvedFilter === "pending_audio_features"
+      || resolvedFilter === "partial_audio_features"
+    )
+      ? await resolveLibraryHealthTrackIds(userId, {
+        category: resolvedFilter,
+        libraryId,
+        settings: syncSettings,
+      })
+      : null;
     const targetQuery = trackIds?.length
       ? {
         where: { AND: [activeScope, { id: { in: trackIds } }] },
         gapTrackIds: [] as string[],
       }
+      : resolved
+        ? {
+          where: {
+            AND: [
+              activeScope,
+              resolved.trackIds.length ? { id: { in: resolved.trackIds } } : { id: "__library_health_empty_resolved_track_set__" },
+            ],
+          },
+          gapTrackIds: Object.keys(resolved.reasonByTrackId || {}),
+        }
       : await buildAudioFeatureHealthQuery(userId, {
         filter: resolvedFilter!,
         libraryId,

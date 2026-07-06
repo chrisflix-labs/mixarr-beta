@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.8-hotfix.4 - Library Health Card Detail Match Fix
+
+- Fixed Missing Audio Features cards showing 70 while the detail view returned 0 tracks.
+- Fixed Pending Audio Features cards showing 70 while the detail view returned 0 tracks.
+- Unified Library Health card counts and detail rows around shared track ID resolution.
+- Included audio feature gap tracks in detail views and retry candidate selection.
+- Added mismatch detection so health cards cannot silently disagree with detail tables.
+
 ## v1.2.8-hotfix.3 - Audio Gap Detail Query Fix
 
 - Fixed Missing Audio Features detail view returning zero rows when summary showed gap-classified tracks.

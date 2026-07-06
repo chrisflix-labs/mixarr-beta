@@ -15,6 +15,7 @@ import {
   partialAudioFeatureTrackWhere,
 } from "./audioFeatures";
 import {
+  type AudioFeatureHealthClassification,
   getAudioFeatureGapTrackIds,
   getAudioFeatureHealthClassification,
 } from "./audioFeatureHealthClassification";
@@ -182,6 +183,89 @@ export function libraryHealthCategoryWhere(category: LibraryHealthDetailCategory
   }
 }
 
+type ResolvableLibraryHealthCategory =
+  | LibraryHealthDetailCategory
+  | "api_bpm_only"
+  | "missing_local_files";
+
+export type LibraryHealthTrackIdResolution = {
+  trackIds: string[];
+  count: number;
+  reasonByTrackId?: Record<string, string>;
+  debug?: {
+    filter: string;
+    normal: number;
+    gap: number;
+    total: number;
+  };
+};
+
+function normalizeResolvableCategory(category: ResolvableLibraryHealthCategory): LibraryHealthDetailCategory {
+  if (category === "api_bpm_only") return "api_bpm";
+  if (category === "missing_local_files") return "missing_local_file";
+  return category;
+}
+
+function uniqueTrackIds(ids: string[]) {
+  return Array.from(new Set(ids.filter(Boolean)));
+}
+
+async function findTrackIds(where: Prisma.TrackWhereInput) {
+  const tracks = await prisma.track.findMany({
+    where,
+    select: { id: true },
+  });
+  return tracks.map((track) => track.id);
+}
+
+export async function resolveLibraryHealthTrackIds(userId: string, options: {
+  category: ResolvableLibraryHealthCategory;
+  libraryId?: string;
+  settings?: EffectiveAudioFeatureSettings;
+  audioFeatureClassification?: AudioFeatureHealthClassification;
+}): Promise<LibraryHealthTrackIdResolution> {
+  const category = normalizeResolvableCategory(options.category);
+  const active = activeUserTrackWhere(userId, options.libraryId);
+  const baseWhere = { AND: [active, libraryHealthCategoryWhere(category, options.settings)] };
+
+  if (category !== "missing_audio_features" && category !== "pending_audio_features") {
+    const trackIds = await findTrackIds(baseWhere);
+    return {
+      trackIds,
+      count: trackIds.length,
+      debug: { filter: category, normal: trackIds.length, gap: 0, total: trackIds.length },
+    };
+  }
+
+  const audioFeatureClassification = options.audioFeatureClassification
+    || await getAudioFeatureHealthClassification(userId, {
+      libraryId: options.libraryId,
+      settings: options.settings,
+    });
+  const normalTrackIds = await findTrackIds(baseWhere);
+  const trackIds = uniqueTrackIds([...normalTrackIds, ...audioFeatureClassification.gapTrackIds]);
+  const reasonByTrackId = Object.fromEntries(
+    audioFeatureClassification.gapTrackIds.map((trackId) => [trackId, "No audio feature record found"]),
+  );
+  const debug = {
+    filter: category,
+    normal: normalTrackIds.length,
+    gap: audioFeatureClassification.gapTrackIds.length,
+    total: trackIds.length,
+  };
+
+  console.log(
+    `[LibraryHealth] resolved filter=${category} trackIds=${trackIds.length} normal=${debug.normal} gap=${debug.gap}`,
+  );
+
+  return {
+    trackIds,
+    count: trackIds.length,
+    reasonByTrackId,
+    debug,
+  };
+}
+
 export function buildLibraryHealthTrackWhere(userId: string, options: {
   category: LibraryHealthDetailCategory;
   libraryId?: string;
@@ -195,16 +279,22 @@ export function buildLibraryHealthTrackWhere(userId: string, options: {
   missingDataOnly?: boolean;
   settings?: EffectiveAudioFeatureSettings;
   audioFeatureGapTrackIds?: string[];
+  resolvedTrackIds?: string[];
 }): Prisma.TrackWhereInput {
   const audioFeatureGapWhere: Prisma.TrackWhereInput | null = options.audioFeatureGapTrackIds?.length
     ? { id: { in: options.audioFeatureGapTrackIds } }
     : null;
-  const categoryWhere = (
+  const resolvedTrackWhere: Prisma.TrackWhereInput | null = options.resolvedTrackIds
+    ? options.resolvedTrackIds.length
+      ? { id: { in: options.resolvedTrackIds } }
+      : { id: "__library_health_empty_resolved_track_set__" }
+    : null;
+  const categoryWhere = resolvedTrackWhere || ((
     audioFeatureGapWhere
       && (options.category === "missing_audio_features" || options.category === "pending_audio_features")
   )
     ? { OR: [libraryHealthCategoryWhere(options.category, options.settings), audioFeatureGapWhere] }
-    : libraryHealthCategoryWhere(options.category, options.settings);
+    : libraryHealthCategoryWhere(options.category, options.settings));
   const and: Prisma.TrackWhereInput[] = [
     activeUserTrackWhere(userId, options.libraryId),
     categoryWhere,
@@ -452,8 +542,12 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
   const totalTracks = await prisma.track.count({ where: active });
   const categories = Object.fromEntries(entries) as Record<LibraryHealthDetailCategory, number>;
   const audioFeatureClassification = await getAudioFeatureHealthClassification(userId, { libraryId, settings });
-  categories.missing_audio_features = audioFeatureClassification.missing;
-  categories.pending_audio_features = audioFeatureClassification.pending;
+  const [missingAudioFeatureTracks, pendingAudioFeatureTracks] = await Promise.all([
+    resolveLibraryHealthTrackIds(userId, { category: "missing_audio_features", libraryId, settings, audioFeatureClassification }),
+    resolveLibraryHealthTrackIds(userId, { category: "pending_audio_features", libraryId, settings, audioFeatureClassification }),
+  ]);
+  categories.missing_audio_features = missingAudioFeatureTracks.count;
+  categories.pending_audio_features = pendingAudioFeatureTracks.count;
   return {
     totalTracks,
     categories,

@@ -10,6 +10,7 @@ import {
   isLibraryHealthDetailCategory,
   libraryHealthDetailTrackSelect,
   orderByForLibraryHealth,
+  resolveLibraryHealthTrackIds,
   serializeLibraryHealthDetailTrack,
   type LibraryHealthSort,
 } from "@/lib/libraryHealthDetails";
@@ -26,6 +27,29 @@ function sortFrom(value: string | null): LibraryHealthSort | null {
     return value;
   }
   return null;
+}
+
+function categoryUsesResolvedTrackIds(category: string) {
+  return category === "missing_audio_features"
+    || category === "pending_audio_features"
+    || category === "partial_audio_features"
+    || category === "missing_bpm"
+    || category === "api_bpm"
+    || category === "failed_analysis"
+    || category === "missing_local_file";
+}
+
+function hasAdditionalDetailFilters(params: URLSearchParams) {
+  return !!(
+    params.get("search")?.trim()
+    || params.get("artist")?.trim()
+    || params.get("album")?.trim()
+    || (params.get("bpmSource") && params.get("bpmSource") !== "all")
+    || (params.get("audioFeatureStatus") && params.get("audioFeatureStatus") !== "all")
+    || (params.get("localFileStatus") && params.get("localFileStatus") !== "all")
+    || params.get("failedOnly") === "true"
+    || params.get("missingDataOnly") === "true"
+  );
 }
 
 export async function GET(request: Request) {
@@ -51,6 +75,13 @@ export async function GET(request: Request) {
     audioFeatureStatus,
     missingDataOnly,
   });
+  const resolved = categoryUsesResolvedTrackIds(category)
+    ? await resolveLibraryHealthTrackIds(userId, {
+      category,
+      libraryId,
+      settings: audioFeatureSettings,
+    })
+    : null;
 
   const where = buildLibraryHealthTrackWhere(userId, {
     category,
@@ -65,6 +96,7 @@ export async function GET(request: Request) {
     missingDataOnly,
     settings: audioFeatureSettings,
     audioFeatureGapTrackIds,
+    resolvedTrackIds: resolved?.trackIds,
   });
 
   try {
@@ -80,11 +112,16 @@ export async function GET(request: Request) {
     ]);
 
     const mode = metadataProviderModeKey(audioFeatureSettings);
-    console.log(`[LibraryHealth] detail filter=${category} count=${total} gapCount=${audioFeatureGapTrackIds.length} mode=${mode}`);
+    const expectedTotal = resolved?.count ?? total;
+    if (resolved && resolved.count > 0 && total === 0 && !hasAdditionalDetailFilters(params)) {
+      console.error(`[LibraryHealth][ERROR] Count/detail mismatch filter=${category} cardCount=${resolved.count} detailCount=${total}`);
+    }
+    console.log(`[LibraryHealth] detail filter=${category} returned=${total} total=${expectedTotal} pageRows=${tracks.length} gapCount=${resolved?.debug?.gap ?? audioFeatureGapTrackIds.length} mode=${mode}`);
 
     return NextResponse.json({
       tracks: tracks.map((track) => serializeLibraryHealthDetailTrack(track, category, audioFeatureSettings)),
       total,
+      resolvedTotal: expectedTotal,
       page,
       pageSize,
       totalPages: Math.max(1, Math.ceil(total / pageSize)),

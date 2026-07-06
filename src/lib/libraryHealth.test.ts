@@ -132,8 +132,32 @@ describe("library health", () => {
     assert.match(classifier, /mergeAudioFeatureHealthGapCounts/);
     assert.match(classifier, /missing: merged\.missing/);
     assert.match(classifier, /pending: merged\.pending/);
-    assert.match(details, /categories\.missing_audio_features = audioFeatureClassification\.missing/);
-    assert.match(details, /categories\.pending_audio_features = audioFeatureClassification\.pending/);
+    assert.match(details, /categories\.missing_audio_features = missingAudioFeatureTracks\.count/);
+    assert.match(details, /categories\.pending_audio_features = pendingAudioFeatureTracks\.count/);
+  });
+
+  it("uses shared Library Health track ID resolution for card counts and detail rows", async () => {
+    const details = await readFile(path.join(process.cwd(), "src/lib/libraryHealthDetails.ts"), "utf8");
+    const detailRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/tracks/route.ts"), "utf8");
+
+    assert.match(details, /resolveLibraryHealthTrackIds/);
+    assert.match(details, /categories\.missing_audio_features = missingAudioFeatureTracks\.count/);
+    assert.match(details, /categories\.pending_audio_features = pendingAudioFeatureTracks\.count/);
+    assert.match(detailRoute, /resolveLibraryHealthTrackIds/);
+    assert.match(detailRoute, /resolvedTrackIds: resolved\?\.trackIds/);
+    assert.match(detailRoute, /Count\/detail mismatch/);
+  });
+
+  it("resolves audio feature gap IDs into missing and pending detail/retry sets", async () => {
+    const details = await readFile(path.join(process.cwd(), "src/lib/libraryHealthDetails.ts"), "utf8");
+    const retryRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/retry/route.ts"), "utf8");
+
+    assert.match(details, /normalTrackIds/);
+    assert.match(details, /audioFeatureClassification\.gapTrackIds/);
+    assert.match(details, /reasonByTrackId/);
+    assert.match(details, /No audio feature record found/);
+    assert.match(retryRoute, /resolveLibraryHealthTrackIds/);
+    assert.match(retryRoute, /retry filter=\$\{filter\} matched=\$\{matched\}/);
   });
 
   it("settings audio-feature retry uses the selected health filter before eligibility skips", async () => {

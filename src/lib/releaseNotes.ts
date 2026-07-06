@@ -46,6 +46,18 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.2.8-hotfix.4",
+    title: "Library Health Card Detail Match Fix",
+    badges: ["Hotfix", "Library Health", "Audio Features", "Retry"],
+    changes: [
+      "Fixed Missing Audio Features cards showing 70 while the detail view returned 0 tracks.",
+      "Fixed Pending Audio Features cards showing 70 while the detail view returned 0 tracks.",
+      "Unified Library Health card counts and detail rows around shared track ID resolution.",
+      "Included audio feature gap tracks in detail views and retry candidate selection.",
+      "Added mismatch detection so health cards cannot silently disagree with detail tables.",
+    ],
+  },
+  {
     version: "1.2.8-hotfix.3",
     title: "Audio Gap Detail Query Fix",
     badges: ["Hotfix", "Library Health", "Audio Features", "Retry"],

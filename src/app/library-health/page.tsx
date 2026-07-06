@@ -312,6 +312,18 @@ export default function LibraryHealthDetailsPage() {
   }
 
   const canRetry = actionableCategories.includes(category);
+  const activeCardCount = summary?.categories?.[category] ?? (category === "all_tracks" ? summary?.totalTracks ?? 0 : 0);
+  const hasNarrowingFilters = !!(
+    filters.search
+    || filters.artist
+    || filters.album
+    || filters.bpmSource !== "all"
+    || filters.audioFeatureStatus !== "all"
+    || filters.localFileStatus !== "all"
+    || filters.failedOnly
+    || filters.missingDataOnly
+  );
+  const detailMismatch = !tracksLoading && tracks.length === 0 && pagination.total === 0 && activeCardCount > 0 && !hasNarrowingFilters;
 
   if (loading) {
     return <main className={styles.page}><div className={`glass-panel ${styles.loading}`}><Loader2 className="animate-spin" size={18} /> Loading Library Health details...</div></main>;
@@ -465,6 +477,8 @@ export default function LibraryHealthDetailsPage() {
 
         {tracksLoading ? (
           <div className={styles.loading}><Loader2 className="animate-spin" size={18} /> Loading tracks...</div>
+        ) : detailMismatch ? (
+          <div className={styles.error}>Library Health count/detail mismatch detected. This category reports {formatNumber(activeCardCount)} tracks, but the detail query returned 0. Check logs.</div>
         ) : tracks.length === 0 ? (
           <div className={styles.empty}>{filters.search || filters.artist || filters.album ? "No tracks match this Library Health filter." : emptyMessages[category]}</div>
         ) : (

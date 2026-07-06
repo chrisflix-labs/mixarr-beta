@@ -16,6 +16,7 @@ import {
 import {
   isLibraryHealthDetailCategory,
   libraryHealthDetailLabels,
+  resolveLibraryHealthTrackIds,
   type LibraryHealthDetailCategory,
 } from "@/lib/libraryHealthDetails";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
@@ -161,6 +162,17 @@ async function runAudioRetry(userId: string, input: {
   const filter = audioFilterFor(input.category, input.filter);
   const syncSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId)).audioFeatures;
   const activeScope = { syncStatus: "active", library: { ...(input.libraryId ? { id: input.libraryId } : {}), server: { userId } } };
+  const resolved = !input.trackIds?.length && (
+    filter === "missing_audio_features"
+    || filter === "pending_audio_features"
+    || filter === "partial_audio_features"
+  )
+    ? await resolveLibraryHealthTrackIds(userId, {
+      category: filter,
+      libraryId: input.libraryId,
+      settings: syncSettings,
+    })
+    : null;
   const targetQuery = input.trackIds?.length
     ? {
       where: {
@@ -171,6 +183,16 @@ async function runAudioRetry(userId: string, input: {
       },
       gapTrackIds: [] as string[],
     }
+    : resolved
+      ? {
+        where: {
+          AND: [
+            activeScope,
+            resolved.trackIds.length ? { id: { in: resolved.trackIds } } : { id: "__library_health_empty_resolved_track_set__" },
+          ],
+        },
+        gapTrackIds: Object.keys(resolved.reasonByTrackId || {}),
+      }
     : await buildAudioFeatureHealthQuery(userId, {
       filter,
       libraryId: input.libraryId,
@@ -205,6 +227,7 @@ async function runAudioRetry(userId: string, input: {
     prisma.track.findMany({ where: candidateWhere, select: { id: true } }),
   ]);
   const ids = matching.map((track) => track.id);
+  console.log(`[LibraryHealth] retry filter=${filter} matched=${matched} queued=${ids.length}`);
   const skipped = Math.max(0, matched - ids.length);
   const explanation = buildRetryExplanation({
     retryType: "audio-feature",

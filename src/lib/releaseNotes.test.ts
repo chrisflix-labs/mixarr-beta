@@ -14,13 +14,13 @@ describe("release notes", () => {
   it("sorts release notes from oldest to newest", () => {
     const ordered = getReleaseNotesOldestFirst();
 
-    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2", "1.2.2-hotfix", "1.2.3", "1.2.4", "1.2.5", "1.2.6", "1.2.7", "1.2.8", "1.2.8-hotfix", "1.2.8-hotfix.2", "1.2.8-hotfix.3"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2", "1.2.2-hotfix", "1.2.3", "1.2.4", "1.2.5", "1.2.6", "1.2.7", "1.2.8", "1.2.8-hotfix", "1.2.8-hotfix.2", "1.2.8-hotfix.3", "1.2.8-hotfix.4"]);
   });
 
   it("sorts release notes from newest to oldest", () => {
     const ordered = getReleaseNotesNewestFirst();
 
-    assert.deepEqual(ordered.map((note) => note.version), ["1.2.8-hotfix.3", "1.2.8-hotfix.2", "1.2.8-hotfix", "1.2.8", "1.2.7", "1.2.6", "1.2.5", "1.2.4", "1.2.3", "1.2.2-hotfix", "1.2.2", "1.2.1", "1.2.0", "1.1.10", "1.1.9.1", "1.1.9", "1.1.8", "1.1.7", "1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["1.2.8-hotfix.4", "1.2.8-hotfix.3", "1.2.8-hotfix.2", "1.2.8-hotfix", "1.2.8", "1.2.7", "1.2.6", "1.2.5", "1.2.4", "1.2.3", "1.2.2-hotfix", "1.2.2", "1.2.1", "1.2.0", "1.1.10", "1.1.9.1", "1.1.9", "1.1.8", "1.1.7", "1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
   });
 
   it("sorts semantic versions newest first without string ordering", () => {
@@ -60,6 +60,7 @@ describe("release notes", () => {
     assert.equal(compareSemanticVersions("v1.2.8-hotfix", "v1.2.8") > 0, true);
     assert.equal(compareSemanticVersions("v1.2.8-hotfix.2", "v1.2.8-hotfix") > 0, true);
     assert.equal(compareSemanticVersions("v1.2.8-hotfix.3", "v1.2.8-hotfix.2") > 0, true);
+    assert.equal(compareSemanticVersions("v1.2.8-hotfix.4", "v1.2.8-hotfix.3") > 0, true);
     assert.equal(compareSemanticVersions("v1.2.8-hotfix.10", "v1.2.8-hotfix.2") > 0, true);
   });
 
@@ -136,6 +137,16 @@ describe("release notes", () => {
     assert.deepEqual(ordered.map((note) => note.version), ["v1.2.8-hotfix.3", "v1.2.8-hotfix.2", "v1.2.8-hotfix"]);
   });
 
+  it("places v1.2.8-hotfix.4 above v1.2.8-hotfix.3", () => {
+    const ordered = getReleaseNotesNewestFirst([
+      { version: "v1.2.8-hotfix.2", title: "Second hotfix", badges: ["Hotfix"], changes: ["Second hotfix"] },
+      { version: "v1.2.8-hotfix.4", title: "Fourth hotfix", badges: ["Hotfix"], changes: ["Fourth hotfix"] },
+      { version: "v1.2.8-hotfix.3", title: "Third hotfix", badges: ["Hotfix"], changes: ["Third hotfix"] },
+    ]);
+
+    assert.deepEqual(ordered.map((note) => note.version), ["v1.2.8-hotfix.4", "v1.2.8-hotfix.3", "v1.2.8-hotfix.2"]);
+  });
+
   it("keeps the beta Discord invite exact", () => {
     assert.equal(MIXARR_BETA_DISCORD_URL, "https://discord.com/invite/B7xMvAhaF");
   });
@@ -144,11 +155,11 @@ describe("release notes", () => {
     assert.equal(releaseNotes.every((note) => note.title && note.changes.length > 0), true);
   });
 
-  it("adds the v1.2.8-hotfix.3 release note at the top", () => {
+  it("adds the v1.2.8-hotfix.4 release note at the top", () => {
     const [latest] = getReleaseNotesNewestFirst();
 
-    assert.equal(latest.version, "1.2.8-hotfix.3");
-    assert.equal(latest.title, "Audio Gap Detail Query Fix");
+    assert.equal(latest.version, "1.2.8-hotfix.4");
+    assert.equal(latest.title, "Library Health Card Detail Match Fix");
     assert.deepEqual(latest.badges, ["Hotfix", "Library Health", "Audio Features", "Retry"]);
   });
 
