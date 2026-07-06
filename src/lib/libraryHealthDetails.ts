@@ -13,10 +13,11 @@ import {
   missingAudioFeatureTrackWhere,
   pendingAudioFeatureTrackWhere,
   partialAudioFeatureTrackWhere,
+  trackHasUsefulBpmMetadata,
 } from "./audioFeatures";
 import {
   type AudioFeatureHealthClassification,
-  getAudioFeatureGapTrackIds,
+  getAudioFeatureGapClassificationForScope,
   getAudioFeatureHealthClassification,
 } from "./audioFeatureHealthClassification";
 import {
@@ -228,7 +229,7 @@ export async function resolveLibraryHealthTrackIds(userId: string, options: {
   const active = activeUserTrackWhere(userId, options.libraryId);
   const baseWhere = { AND: [active, libraryHealthCategoryWhere(category, options.settings)] };
 
-  if (category !== "missing_audio_features" && category !== "pending_audio_features") {
+  if (category !== "missing_audio_features" && category !== "partial_audio_features" && category !== "pending_audio_features") {
     const trackIds = await findTrackIds(baseWhere);
     return {
       trackIds,
@@ -241,16 +242,26 @@ export async function resolveLibraryHealthTrackIds(userId: string, options: {
     || await getAudioFeatureHealthClassification(userId, {
       libraryId: options.libraryId,
       settings: options.settings,
-    });
+  });
   const normalTrackIds = await findTrackIds(baseWhere);
-  const trackIds = uniqueTrackIds([...normalTrackIds, ...audioFeatureClassification.gapTrackIds]);
+  const gapTrackIds = category === "missing_audio_features"
+    ? audioFeatureClassification.missingGapTrackIds
+    : category === "partial_audio_features"
+      ? audioFeatureClassification.partialGapTrackIds
+      : audioFeatureClassification.gapTrackIds;
+  const trackIds = uniqueTrackIds([...normalTrackIds, ...gapTrackIds]);
   const reasonByTrackId = Object.fromEntries(
-    audioFeatureClassification.gapTrackIds.map((trackId) => [trackId, "No audio feature record found"]),
+    gapTrackIds.map((trackId) => [
+      trackId,
+      category === "partial_audio_features" || audioFeatureClassification.partialGapTrackIds.includes(trackId)
+        ? "Track has BPM data but is missing required audio feature fields."
+        : "No audio feature record found",
+    ]),
   );
   const debug = {
     filter: category,
     normal: normalTrackIds.length,
-    gap: audioFeatureClassification.gapTrackIds.length,
+    gap: gapTrackIds.length,
     total: trackIds.length,
   };
 
@@ -440,6 +451,7 @@ export function reasonForLibraryHealthTrack(category: LibraryHealthDetailCategor
       if (audio.missingFields.length) return `Missing required audio feature fields for the current provider mode: ${audio.missingFields.join(", ")}.`;
       return "Missing required audio features for the current provider mode.";
     case "partial_audio_features":
+      if (trackHasUsefulBpmMetadata(track)) return "Track has BPM data but is missing required audio feature fields.";
       return audio.missingFields.length
         ? `This track has some audio feature data, but required fields are incomplete for the current provider mode: ${audio.missingFields.join(", ")}.`
         : "This track has some audio feature data, but one or more required fields are missing for the current provider mode.";
@@ -542,11 +554,13 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
   const totalTracks = await prisma.track.count({ where: active });
   const categories = Object.fromEntries(entries) as Record<LibraryHealthDetailCategory, number>;
   const audioFeatureClassification = await getAudioFeatureHealthClassification(userId, { libraryId, settings });
-  const [missingAudioFeatureTracks, pendingAudioFeatureTracks] = await Promise.all([
+  const [missingAudioFeatureTracks, partialAudioFeatureTracks, pendingAudioFeatureTracks] = await Promise.all([
     resolveLibraryHealthTrackIds(userId, { category: "missing_audio_features", libraryId, settings, audioFeatureClassification }),
+    resolveLibraryHealthTrackIds(userId, { category: "partial_audio_features", libraryId, settings, audioFeatureClassification }),
     resolveLibraryHealthTrackIds(userId, { category: "pending_audio_features", libraryId, settings, audioFeatureClassification }),
   ]);
   categories.missing_audio_features = missingAudioFeatureTracks.count;
+  categories.partial_audio_features = partialAudioFeatureTracks.count;
   categories.pending_audio_features = pendingAudioFeatureTracks.count;
   return {
     totalTracks,
@@ -564,14 +578,22 @@ export async function getLibraryHealthAudioFeatureGapTrackIds(userId: string, op
 }) {
   if (
     options.category !== "missing_audio_features"
+    && options.category !== "partial_audio_features"
     && options.category !== "pending_audio_features"
     && options.audioFeatureStatus !== "missing"
     && !options.missingDataOnly
   ) {
     return [];
   }
-  return getAudioFeatureGapTrackIds(userId, {
-    libraryId: options.libraryId,
-    settings: options.settings,
-  });
+  const gapClassification = await getAudioFeatureGapClassificationForScope(
+    activeUserTrackWhere(userId, options.libraryId),
+    options.settings,
+  );
+  if (options.category === "missing_audio_features" || options.audioFeatureStatus === "missing") {
+    return gapClassification.missingGapTrackIds;
+  }
+  if (options.category === "partial_audio_features") {
+    return gapClassification.partialGapTrackIds;
+  }
+  return gapClassification.gapTrackIds;
 }

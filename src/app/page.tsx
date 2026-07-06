@@ -17,7 +17,7 @@ const previewFeatures = [
     description: "Start with guided presets, tune mood and BPM, then export, import, and review recipe-backed playlists.",
     examples: ["Workout", "Mood Presets", "Recipe Import"],
     icon: SlidersHorizontal,
-    badge: "v1.2.8-hotfix.5",
+    badge: "v1.2.8-hotfix.6",
   },
   {
     title: "AI DJ Flow",

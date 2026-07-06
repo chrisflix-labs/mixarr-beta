@@ -8,6 +8,7 @@ import {
   audioFeatureNoDataTrackWhere,
   audioFeatureTooShortTrackWhere,
   completeAudioFeatureTrackWhere,
+  getAudioFeatureHealthStatus,
   heuristicAudioFeatureTrackWhere,
   localAudioFeatureTrackWhere,
   mergeAudioFeatureHealthGapCounts,
@@ -52,6 +53,8 @@ export type AudioFeatureHealthClassification = {
   noAudioFeatureRecord: number;
   gapOnly: number;
   gapTrackIds: string[];
+  partialGapTrackIds: string[];
+  missingGapTrackIds: string[];
   audit: AudioFeatureHealthGapAudit;
 };
 
@@ -122,12 +125,83 @@ export function audioFeatureGapTrackWhere(scopeWhere: Prisma.TrackWhereInput, se
   };
 }
 
-export async function getAudioFeatureGapTrackIdsForScope(scopeWhere: Prisma.TrackWhereInput, settings?: EffectiveAudioFeatureSettings) {
+const audioFeatureGapTrackSelect = {
+  id: true,
+  syncStatus: true,
+  bpm: true,
+  apiBpm: true,
+  localBpm: true,
+  effectiveBpm: true,
+  bpmSource: true,
+  audioFeature: {
+    select: {
+      energy: true,
+      valence: true,
+      danceability: true,
+      acousticness: true,
+      apiEnergy: true,
+      apiMood: true,
+      apiDanceability: true,
+      apiAcousticness: true,
+      apiLoudness: true,
+      localEnergy: true,
+      localMood: true,
+      localDanceability: true,
+      localAcousticness: true,
+      localLoudness: true,
+      effectiveEnergy: true,
+      effectiveMood: true,
+      effectiveDanceability: true,
+      effectiveAcousticness: true,
+      tempo: true,
+      loudness: true,
+      dynamicComplexity: true,
+      rhythmStability: true,
+      onsetRate: true,
+      replayGain: true,
+      source: true,
+      tempoSource: true,
+      audioFeatureSource: true,
+      audioFeatureStatus: true,
+      audioFeatureConfidence: true,
+      confidence: true,
+      energySource: true,
+      valenceSource: true,
+      danceabilitySource: true,
+      acousticnessSource: true,
+    },
+  },
+} satisfies Prisma.TrackSelect;
+
+export type AudioFeatureGapClassification = {
+  gapTrackIds: string[];
+  partialGapTrackIds: string[];
+  missingGapTrackIds: string[];
+};
+
+export async function getAudioFeatureGapClassificationForScope(scopeWhere: Prisma.TrackWhereInput, settings?: EffectiveAudioFeatureSettings): Promise<AudioFeatureGapClassification> {
   const tracks = await prisma.track.findMany({
     where: audioFeatureGapTrackWhere(scopeWhere, settings),
-    select: { id: true },
+    select: audioFeatureGapTrackSelect,
   });
-  return tracks.map((track) => track.id);
+  const partialGapTrackIds: string[] = [];
+  const missingGapTrackIds: string[] = [];
+
+  for (const track of tracks) {
+    const classification = getAudioFeatureHealthStatus(track, settings);
+    if (classification.status === "partial") partialGapTrackIds.push(track.id);
+    if (classification.status === "missing") missingGapTrackIds.push(track.id);
+  }
+
+  return {
+    gapTrackIds: tracks.map((track) => track.id),
+    partialGapTrackIds,
+    missingGapTrackIds,
+  };
+}
+
+export async function getAudioFeatureGapTrackIdsForScope(scopeWhere: Prisma.TrackWhereInput, settings?: EffectiveAudioFeatureSettings) {
+  return (await getAudioFeatureGapClassificationForScope(scopeWhere, settings)).gapTrackIds;
 }
 
 export async function getAudioFeatureGapTrackIds(userId: string, options: {
@@ -154,7 +228,7 @@ export async function getAudioFeatureHealthClassificationForScope(scopeWhere: Pr
     prisma.track.count({ where: countScope(scopeWhere, audioFeatureTooShortTrackWhere(settings)) }),
     prisma.track.count({ where: countScope(scopeWhere, noAudioFeatureRecordTrackWhere()) }),
   ]);
-  const merged = mergeAudioFeatureHealthGapCounts({
+  const rawMerged = mergeAudioFeatureHealthGapCounts({
     activeTracks,
     completeAudioFeatures: complete,
     missing,
@@ -165,9 +239,34 @@ export async function getAudioFeatureHealthClassificationForScope(scopeWhere: Pr
     tooShort,
     noAudioFeatureRecord,
   });
-  const gapTrackIds = merged.gapOnly > 0
-    ? await getAudioFeatureGapTrackIdsForScope(scopeWhere, settings)
-    : [];
+  const gapClassification = rawMerged.gapOnly > 0
+    ? await getAudioFeatureGapClassificationForScope(scopeWhere, settings)
+    : { gapTrackIds: [], partialGapTrackIds: [], missingGapTrackIds: [] };
+  const partialGapCount = gapClassification.partialGapTrackIds.length;
+  const missingGapCount = gapClassification.missingGapTrackIds.length;
+  const pendingGapCount = gapClassification.gapTrackIds.length
+    ? await prisma.track.count({
+      where: {
+        AND: [
+          scopeWhere,
+          { id: { in: gapClassification.gapTrackIds } },
+          { NOT: pendingAudioFeatureTrackWhere(settings) },
+          { NOT: audioFeatureTooShortTrackWhere(settings) },
+        ],
+      },
+    })
+    : 0;
+  const merged = {
+    ...rawMerged,
+    missing: missing + missingGapCount,
+    partial: partial + partialGapCount,
+    pending: pending + pendingGapCount,
+    gapOnly: gapClassification.gapTrackIds.length,
+    audit: {
+      ...rawMerged.audit,
+      classifiedAsMissing: missingGapCount,
+    },
+  };
 
   return {
     activeTracks,
@@ -185,7 +284,9 @@ export async function getAudioFeatureHealthClassificationForScope(scopeWhere: Pr
     tooShort,
     noAudioFeatureRecord,
     gapOnly: merged.gapOnly,
-    gapTrackIds,
+    gapTrackIds: gapClassification.gapTrackIds,
+    partialGapTrackIds: gapClassification.partialGapTrackIds,
+    missingGapTrackIds: gapClassification.missingGapTrackIds,
     audit: merged.audit,
   };
 }
@@ -205,10 +306,17 @@ export async function buildAudioFeatureHealthQuery(userId: string, options: {
 }) {
   const scopeWhere = activeAudioFeatureTrackScope(userId, options.libraryId);
   const baseFilterWhere = audioFeatureHealthFilterWhere(options.filter, options.settings);
-  const shouldIncludeGap = options.filter === "missing_audio_features" || options.filter === "pending_audio_features";
-  const gapTrackIds = shouldIncludeGap
-    ? await getAudioFeatureGapTrackIdsForScope(scopeWhere, options.settings)
-    : [];
+  const shouldIncludeGap = options.filter === "missing_audio_features"
+    || options.filter === "partial_audio_features"
+    || options.filter === "pending_audio_features";
+  const gapClassification = shouldIncludeGap
+    ? await getAudioFeatureGapClassificationForScope(scopeWhere, options.settings)
+    : { gapTrackIds: [], partialGapTrackIds: [], missingGapTrackIds: [] };
+  const gapTrackIds = options.filter === "missing_audio_features"
+    ? gapClassification.missingGapTrackIds
+    : options.filter === "partial_audio_features"
+      ? gapClassification.partialGapTrackIds
+      : gapClassification.gapTrackIds;
   const searchable = searchWhere(options.search);
   const filterWhere = gapTrackIds.length
     ? { OR: [baseFilterWhere, { id: { in: gapTrackIds } }] }

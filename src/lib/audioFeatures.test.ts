@@ -39,6 +39,7 @@ describe("audio feature health predicates", () => {
     assert.deepEqual(noAudioFeatureRecordTrackWhere(), { audioFeature: { is: null } });
     const missing = JSON.stringify(missingAudioFeatureTrackWhere());
     assert.match(missing, /bpmSource/);
+    assert.match(missing, /tempoSource/);
     assert.match(missing, /audioFeatureStatus/);
     assert.match(missing, /pending/);
     assert.match(missing, /no_data/);
@@ -238,6 +239,7 @@ describe("audio feature health predicates", () => {
     assert.match(missing, /audioFeatureStatus/);
     assert.match(partial, /apiEnergy/);
     assert.match(partial, /bpmSource/);
+    assert.match(partial, /tempoSource/);
     assert.equal(partial.includes(JSON.stringify(missingAudioFeatureTrackWhere())), false);
     assert.match(pending, /too_short/);
     assert.match(retry, /too_short/);
@@ -259,11 +261,11 @@ describe("audio feature health predicates", () => {
 
     assert.equal(audit.incompleteExpected, 2);
     assert.equal(audit.unclassifiedGap, 2);
-    assert.equal(audit.classifiedAsMissing, 2);
+    assert.equal(audit.classifiedAsMissing, 0);
     assert.equal(audit.gapDetected, true);
   });
 
-  it("merges detected but unclassified audio gaps into visible missing counts", () => {
+  it("leaves detected audio gaps unassigned until metadata inspection splits them", () => {
     const merged = mergeAudioFeatureHealthGapCounts({
       activeTracks: 10,
       completeAudioFeatures: 8,
@@ -279,8 +281,8 @@ describe("audio feature health predicates", () => {
     assert.equal(merged.audit.incompleteExpected, 2);
     assert.equal(merged.audit.unclassifiedGap, 2);
     assert.equal(merged.gapOnly, 2);
-    assert.equal(merged.missing, 2);
-    assert.equal(merged.pending, 2);
+    assert.equal(merged.missing, 0);
+    assert.equal(merged.pending, 0);
   });
 
   it("does not lose the remaining active track when one incomplete track is already classified", () => {
@@ -299,7 +301,7 @@ describe("audio feature health predicates", () => {
     assert.equal(audit.incompleteExpected, 2);
     assert.equal(audit.classifiedIncomplete, 1);
     assert.equal(audit.unclassifiedGap, 1);
-    assert.equal(audit.classifiedAsMissing, 1);
+    assert.equal(audit.classifiedAsMissing, 0);
   });
 
   it("classifies no-record audio gaps for matching summary, detail, and retry sets", () => {
@@ -379,6 +381,39 @@ describe("audio feature health predicates", () => {
     assert.equal(classified.counts.pending_audio_features, 2);
     assert.deepEqual(classified.matchingTrackIds.partial_audio_features, ["track-9", "track-10"]);
     assert.deepEqual(classified.matchingTrackIds.pending_audio_features, ["track-9", "track-10"]);
+  });
+
+  it("classifies audio-feature tempo-source-only rows as partial and pending, not missing", () => {
+    const track = {
+      id: "track-tempo-source",
+      syncStatus: "active",
+      bpm: null,
+      bpmSource: null,
+      audioFeature: {
+        tempo: 91.1,
+        tempoSource: "Deezer",
+        audioFeatureStatus: null,
+        energy: null,
+        valence: null,
+        danceability: null,
+        acousticness: null,
+        localEnergy: null,
+        localMood: null,
+        localDanceability: null,
+        localAcousticness: null,
+      },
+    };
+
+    const classified = classifyAudioFeatureTracks([track], {
+      api: false,
+      local: true,
+      preferLocalAudioFeatures: true,
+    });
+
+    assert.equal(getAudioFeatureHealthStatus(track, { api: false, local: true }).status, "partial");
+    assert.equal(classified.counts.partial_audio_features, 1);
+    assert.equal(classified.counts.missing_audio_features, 0);
+    assert.equal(classified.counts.pending_audio_features, 1);
   });
 
   it("keeps tracks with no audio metadata at all classified as missing audio features", () => {

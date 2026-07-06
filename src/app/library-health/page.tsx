@@ -345,7 +345,7 @@ export default function LibraryHealthDetailsPage() {
 
       {summary && summary.categories.partial_audio_features > 0 && summary.categories.pending_audio_features > 0 && (
         <div className={styles.message}>
-          Audio feature gap detected: {formatNumber(summary.categories.partial_audio_features)} active tracks have partial audio features and need local audio feature processing.
+          Audio feature gap detected: {formatNumber(summary.categories.partial_audio_features)} active tracks have partial audio feature data and need local audio feature processing.
         </div>
       )}
 

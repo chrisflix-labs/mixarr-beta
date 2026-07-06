@@ -523,7 +523,7 @@ export async function getAudioFeatureHealthSummary(userId: string, libraryId?: s
   } as any);
   console.log(`[LibraryHealth] audio gap audit active=${classification.audit.activeTracks} complete=${classification.audit.completeAudioFeatures} expectedIncomplete=${classification.audit.incompleteExpected} classifiedIncomplete=${classification.audit.classifiedIncomplete} unclassifiedGap=${classification.audit.unclassifiedGap} mode=${mode}`);
   if (classification.gapOnly > 0) {
-    console.log(`[LibraryHealth] merged audio gap into missing_audio_features count=${classification.gapOnly}`);
+    console.log(`[LibraryHealth] audio gap split count=${classification.gapOnly} partial=${classification.partialGapTrackIds.length} missing=${classification.missingGapTrackIds.length}`);
   }
   console.log(`[LibraryHealth] audio feature counts complete=${classification.complete} partial=${classification.partial} missing=${classification.missing} pending=${classification.pending} noData=${classification.noData} failed=${classification.failed} tooShort=${classification.tooShort} gap=${classification.gapOnly} mode=${mode}`);
   return classification;
@@ -971,7 +971,7 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
   const mode = metadataProviderModeKey(modes.audioFeatureSettings as any);
   console.log(`[LibraryHealth] audio gap audit active=${audioFeatures.audit.activeTracks} complete=${audioFeatures.audit.completeAudioFeatures} expectedIncomplete=${audioFeatures.audit.incompleteExpected} classifiedIncomplete=${audioFeatures.audit.classifiedIncomplete} unclassifiedGap=${audioFeatures.audit.unclassifiedGap} mode=${mode}`);
   if (audioFeatures.gapOnly > 0) {
-    console.log(`[LibraryHealth] merged audio gap into missing_audio_features count=${audioFeatures.gapOnly}`);
+    console.log(`[LibraryHealth] audio gap split count=${audioFeatures.gapOnly} partial=${audioFeatures.partialGapTrackIds.length} missing=${audioFeatures.missingGapTrackIds.length}`);
   }
   console.log(`[LibraryHealth] audio feature counts complete=${audioFeatures.complete} partial=${audioFeatures.partial} missing=${audioFeatures.missing} pending=${audioFeatures.pending} noData=${audioFeatures.noData} failed=${audioFeatures.failed} tooShort=${audioFeatures.tooShort} gap=${audioFeatures.gapOnly} mode=${mode}`);
   return result;
@@ -1230,6 +1230,7 @@ export function serializeMetadataHealthTrack(track: any) {
 
 function audioFeatureReasonDescription(classification: ReturnType<typeof getAudioFeatureHealthStatus>) {
   if (classification.status === "complete") return "This track has complete audio features for the current provider mode.";
+  if (classification.reason === "Track has BPM data but is missing required audio feature fields.") return "BPM exists, but energy, mood, danceability, or local Essentia values are incomplete.";
   if (classification.reason === "API data only") return "API audio feature fields exist, but the current provider mode requires local or allowed estimated audio features.";
   if (classification.reason === "Partial local features" || classification.reason === "Partial audio features") {
     return classification.missingFields.length

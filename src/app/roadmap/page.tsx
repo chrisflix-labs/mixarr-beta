@@ -22,7 +22,7 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
-  "v1.2.8-hotfix.5 fixes partial audio feature classification and local retry selection for BPM-only incomplete tracks.",
+  "v1.2.8-hotfix.6 fixes BPM-present incomplete tracks being classified as missing instead of partial audio features.",
   "v1.2.8-hotfix.4 fixes Library Health card/detail mismatches with shared track ID resolution for audio feature gaps.",
   "v1.2.8-hotfix.3 fixes audio gap detail queries so Missing and Pending Audio Features track lists match summary counts.",
   "v1.2.8-hotfix.2 merges detected audio feature gaps into visible Library Health summary counts.",

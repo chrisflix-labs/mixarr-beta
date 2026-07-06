@@ -353,6 +353,20 @@ function audioFeatureHasAnyData(feature: any) {
   ].some((value) => value !== null && value !== undefined);
 }
 
+function audioFeatureHasAnyMetadata(feature: any) {
+  if (!feature) return false;
+  if (audioFeatureHasAnyData(feature)) return true;
+  if (feature.audioFeatureStatus === "partial") return true;
+  return [
+    feature.audioFeatureSource,
+    feature.energySource,
+    feature.valenceSource,
+    feature.danceabilitySource,
+    feature.acousticnessSource,
+    feature.tempoSource,
+  ].some((source) => !sourceIsPlaceholder(source));
+}
+
 function validBpmMetadataValue(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0;
@@ -363,14 +377,18 @@ function meaningfulBpmSource(source: unknown) {
   return !!normalized && !["missing", "not_found", "local_not_found", "unknown", "none", "n/a", "na"].includes(normalized);
 }
 
-function trackHasUsefulBpmMetadata(trackOrFeature: any) {
+export function trackHasUsefulBpmMetadata(trackOrFeature: any) {
   if (!trackOrFeature || typeof trackOrFeature !== "object" || !("audioFeature" in trackOrFeature)) return false;
+  const feature = trackOrFeature.audioFeature;
   return [
     trackOrFeature.bpm,
     trackOrFeature.effectiveBpm,
     trackOrFeature.apiBpm,
     trackOrFeature.localBpm,
-  ].some(validBpmMetadataValue) || meaningfulBpmSource(trackOrFeature.bpmSource);
+    feature?.tempo,
+  ].some(validBpmMetadataValue)
+    || meaningfulBpmSource(trackOrFeature.bpmSource)
+    || meaningfulBpmSource(feature?.tempoSource);
 }
 
 function count(value: unknown) {
@@ -391,7 +409,7 @@ export function auditAudioFeatureHealthGap(input: AudioFeatureHealthGapAuditInpu
   const incompleteExpected = Math.max(0, activeTracks - completeAudioFeatures);
   const classifiedIncomplete = missing + partial + noData + failed + tooShort;
   const unclassifiedGap = Math.max(0, incompleteExpected - classifiedIncomplete);
-  const classifiedAsMissing = unclassifiedGap;
+  const classifiedAsMissing = 0;
 
   return {
     activeTracks,
@@ -418,15 +436,13 @@ export function mergeAudioFeatureHealthGapCounts(input: AudioFeatureHealthGapAud
     ? audit.incompleteExpected
     : audit.unclassifiedGap;
   const gapOnly = Math.max(0, forcedGap);
-  const missing = audit.missing + gapOnly;
-  const pending = audit.pending + gapOnly;
 
   return {
     activeTracks: audit.activeTracks,
     completeAudioFeatures: audit.completeAudioFeatures,
-    missing,
+    missing: audit.missing,
     partial: audit.partial,
-    pending,
+    pending: audit.pending,
     noData: audit.noData,
     failed: audit.failed,
     tooShort: audit.tooShort,
@@ -434,7 +450,7 @@ export function mergeAudioFeatureHealthGapCounts(input: AudioFeatureHealthGapAud
     gapOnly,
     audit: {
       ...audit,
-      classifiedAsMissing: gapOnly,
+      classifiedAsMissing: 0,
     },
   };
 }
@@ -532,7 +548,7 @@ export function getAudioFeatureHealthStatus(trackOrFeature: any, settings: Effec
     };
   }
 
-  if (!audioFeatureHasAnyData(feature) && !trackHasUsefulBpmMetadata(trackOrFeature)) {
+  if (!audioFeatureHasAnyMetadata(feature) && !trackHasUsefulBpmMetadata(trackOrFeature)) {
     return {
       status: feature.audioFeatureStatus === "pending" ? "pending" : "missing",
       reason: feature.audioFeatureStatus === "pending" ? "Pending local analysis" : "No audio feature data",
@@ -542,7 +558,7 @@ export function getAudioFeatureHealthStatus(trackOrFeature: any, settings: Effec
     };
   }
 
-  if (!audioFeatureHasAnyData(feature) && trackHasUsefulBpmMetadata(trackOrFeature)) {
+  if (!audioFeatureHasAnyMetadata(feature) && trackHasUsefulBpmMetadata(trackOrFeature)) {
     return {
       status: "partial",
       reason: "Track has BPM data but is missing required audio feature fields.",
@@ -569,6 +585,16 @@ export function getAudioFeatureHealthStatus(trackOrFeature: any, settings: Effec
     return {
       status: "partial",
       reason,
+      missingFields,
+      complete: false,
+      partial: true,
+    };
+  }
+
+  if (trackHasUsefulBpmMetadata(trackOrFeature)) {
+    return {
+      status: "partial",
+      reason: "Track has BPM data but is missing required audio feature fields.",
       missingFields,
       complete: false,
       partial: true,
@@ -747,18 +773,30 @@ const apiAudioFeatureMarkerWhere: Prisma.AudioFeatureWhereInput = {
   ],
 };
 
-const meaningfulBpmTrackWhere: Prisma.TrackWhereInput = {
+export const meaningfulBpmTrackWhere: Prisma.TrackWhereInput = {
   OR: [
     { bpm: { gt: 0 } },
     { effectiveBpm: { gt: 0 } },
     { apiBpm: { gt: 0 } },
     { localBpm: { gt: 0 } },
+    { audioFeature: { is: { tempo: { gt: 0 } } } },
     {
       AND: [
         { bpmSource: { not: null } },
         { bpmSource: { not: "" } },
         { bpmSource: { notIn: ["missing", "not_found", "local_not_found", "unknown", "none", "n/a", "na"] } },
       ],
+    },
+    {
+      audioFeature: {
+        is: {
+          AND: [
+            { tempoSource: { not: null } },
+            { tempoSource: { not: "" } },
+            { tempoSource: { notIn: ["missing", "not_found", "local_not_found", "unknown", "none", "n/a", "na"] } },
+          ],
+        },
+      },
     },
   ],
 };
@@ -792,6 +830,11 @@ const partialAudioFeatureDataWhere: Prisma.TrackWhereInput = {
         { effectiveMood: { not: null } },
         { effectiveDanceability: { not: null } },
         { effectiveAcousticness: { not: null } },
+        { audioFeatureSource: { in: ["api", "local_essentia", "local_heuristic", "mixed"] } },
+        { energySource: { in: ["api", "local_essentia", "local_heuristic"] } },
+        { valenceSource: { in: ["api", "local_essentia", "local_heuristic"] } },
+        { danceabilitySource: { in: ["api", "local_essentia", "local_heuristic"] } },
+        { acousticnessSource: { in: ["api", "local_essentia", "local_heuristic"] } },
       ],
     },
   },

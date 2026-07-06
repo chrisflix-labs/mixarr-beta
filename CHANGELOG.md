@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.8-hotfix.6 - BPM Partial Audio Feature Classification Fix
+
+- Fixed tracks with BPM data being incorrectly classified as missing audio features.
+- Tracks with BPM but missing energy, mood, danceability, or local Essentia values now count as partial audio features.
+- Partial Audio Features and Pending Audio Features now load the correct track sets.
+- Improved retry and local Essentia candidate selection for partial audio-feature tracks.
+- Aligned /settings/library-health and /library-health around the same classification rules.
+
 ## v1.2.8-hotfix.5 - Partial Audio Feature Classification Fix
 
 - Fixed tracks with BPM data but missing audio feature fields being classified as missing instead of partial.

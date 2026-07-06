@@ -46,6 +46,18 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.2.8-hotfix.6",
+    title: "BPM Partial Audio Feature Classification Fix",
+    badges: ["Hotfix", "Library Health", "Audio Features", "Retry", "Local Analysis"],
+    changes: [
+      "Fixed tracks with BPM data being incorrectly classified as missing audio features.",
+      "Tracks with BPM but missing energy, mood, danceability, or local Essentia values now count as partial audio features.",
+      "Partial Audio Features and Pending Audio Features now load the correct track sets.",
+      "Improved retry and local Essentia candidate selection for partial audio-feature tracks.",
+      "Aligned /settings/library-health and /library-health around the same classification rules.",
+    ],
+  },
+  {
     version: "1.2.8-hotfix.5",
     title: "Partial Audio Feature Classification Fix",
     badges: ["Hotfix", "Library Health", "Audio Features", "Retry", "Local Analysis"],

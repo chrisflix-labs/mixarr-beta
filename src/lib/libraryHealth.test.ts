@@ -123,16 +123,19 @@ describe("library health", () => {
     assert.match(JSON.stringify(where), /bpmSource/);
   });
 
-  it("merges detected audio feature gaps before returning summary counts", async () => {
+  it("splits detected audio feature gaps before returning summary counts", async () => {
     const source = await readFile(path.join(process.cwd(), "src/lib/libraryHealth.ts"), "utf8");
     const details = await readFile(path.join(process.cwd(), "src/lib/libraryHealthDetails.ts"), "utf8");
     const classifier = await readFile(path.join(process.cwd(), "src/lib/audioFeatureHealthClassification.ts"), "utf8");
 
     assert.match(source, /getAudioFeatureHealthClassification/);
     assert.match(classifier, /mergeAudioFeatureHealthGapCounts/);
+    assert.match(classifier, /partialGapTrackIds/);
+    assert.match(classifier, /missingGapTrackIds/);
     assert.match(classifier, /missing: merged\.missing/);
     assert.match(classifier, /pending: merged\.pending/);
     assert.match(details, /categories\.missing_audio_features = missingAudioFeatureTracks\.count/);
+    assert.match(details, /categories\.partial_audio_features = partialAudioFeatureTracks\.count/);
     assert.match(details, /categories\.pending_audio_features = pendingAudioFeatureTracks\.count/);
   });
 
@@ -148,14 +151,15 @@ describe("library health", () => {
     assert.match(detailRoute, /Count\/detail mismatch/);
   });
 
-  it("resolves audio feature gap IDs into missing and pending detail/retry sets", async () => {
+  it("resolves audio feature gap IDs into partial, missing, and pending detail/retry sets", async () => {
     const details = await readFile(path.join(process.cwd(), "src/lib/libraryHealthDetails.ts"), "utf8");
     const retryRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/retry/route.ts"), "utf8");
 
     assert.match(details, /normalTrackIds/);
-    assert.match(details, /audioFeatureClassification\.gapTrackIds/);
+    assert.match(details, /audioFeatureClassification\.partialGapTrackIds/);
+    assert.match(details, /audioFeatureClassification\.missingGapTrackIds/);
     assert.match(details, /reasonByTrackId/);
-    assert.match(details, /No audio feature record found/);
+    assert.match(details, /Track has BPM data but is missing required audio feature fields/);
     assert.match(retryRoute, /resolveLibraryHealthTrackIds/);
     assert.match(retryRoute, /retry filter=\$\{filter\} matched=\$\{matched\}/);
   });
@@ -178,7 +182,7 @@ describe("library health", () => {
 
     assert.match(summaryRoute, /getLibraryHealthDetailSummary/);
     assert.match(page, /Audio feature gap detected/);
-    assert.match(page, /have partial audio features and need local audio feature processing/);
+    assert.match(page, /have partial audio feature data and need local audio feature processing/);
     assert.match(page, /pagination\.total/);
   });
 
