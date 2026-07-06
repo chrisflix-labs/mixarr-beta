@@ -14,10 +14,10 @@ import { getPlaylistHistoryDashboardSummary } from "@/lib/playlistHistory";
 const previewFeatures = [
   {
     title: "Smart Playlist Builder",
-    description: "Start with guided presets, tune mood and BPM, then review created and regenerated versions in Playlist History.",
-    examples: ["Workout", "Mood Presets", "Playlist History"],
+    description: "Start with guided presets, tune mood and BPM, then export, import, and review recipe-backed playlists.",
+    examples: ["Workout", "Mood Presets", "Recipe Import"],
     icon: SlidersHorizontal,
-    badge: "v1.2.5",
+    badge: "v1.2.6",
   },
   {
     title: "AI DJ Flow",
@@ -103,7 +103,7 @@ function PlaylistRecipesCard({ count }: { count: number }) {
     <article className={styles.card}>
       <BookMarked size={22} className={styles.cardIcon} />
       <h3>Playlist Recipes</h3>
-      <p>Save and reuse your favorite playlist filter setups.</p>
+      <p>Save, reuse, export, and import playlist recipes.</p>
       <div className={styles.recipeCardActions}>
         <span>{count.toLocaleString()} saved recipe{count === 1 ? "" : "s"}</span>
         <div>

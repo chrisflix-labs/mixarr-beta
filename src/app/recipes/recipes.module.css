@@ -23,6 +23,17 @@
   font-size: 0.9rem;
 }
 
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.fileInput {
+  display: none;
+}
+
 .kicker {
   display: inline-flex;
   align-items: center;
@@ -53,6 +64,155 @@
   display: grid;
   gap: 1rem;
   padding: 1rem;
+}
+
+.importPanel {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.importPanelTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.importPanelTop h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.importStatus,
+.warningText,
+.errorText {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.importStatus {
+  color: var(--muted);
+}
+
+.importError,
+.importSuccess {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.importError {
+  border: 1px solid rgba(215, 91, 91, 0.28);
+  color: #ffc4c4;
+  background: rgba(215, 91, 91, 0.08);
+}
+
+.importSuccess {
+  border: 1px solid rgba(53, 174, 234, 0.26);
+  color: #b9e9ff;
+  background: rgba(53, 174, 234, 0.08);
+}
+
+.failureList {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.importStats,
+.previewBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.importStats span,
+.previewBadges span {
+  padding: 0.32rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 0.73rem;
+  font-weight: 800;
+}
+
+.conflictOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.conflictOptions label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--fg);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.previewList {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.previewRecipe {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.previewRecipe[data-invalid="true"] {
+  border-color: rgba(215, 91, 91, 0.34);
+}
+
+.previewRecipe h4 {
+  margin: 0 0 0.2rem;
+  font-size: 0.92rem;
+}
+
+.previewRecipe p,
+.previewRecipe small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.previewRecipe small {
+  color: #b9e9ff;
+  font-weight: 700;
+}
+
+.warningText {
+  color: #ffd89d;
+}
+
+.errorText {
+  color: #ffc4c4;
+  font-weight: 700;
+}
+
+.importActions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .cardTop {
@@ -210,8 +370,19 @@
     flex-direction: column;
   }
 
+  .headerActions,
+  .importPanelTop,
+  .importActions {
+    justify-content: stretch;
+  }
+
   .recipeGrid,
   .metaGrid {
     grid-template-columns: 1fr;
+  }
+
+  .headerActions > *,
+  .importActions > * {
+    width: 100%;
   }
 }

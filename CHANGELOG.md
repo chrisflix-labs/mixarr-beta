@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.6 - Export/Import Mixarr Recipes
+
+- Added recipe export for individual recipes and all saved recipes.
+- Added recipe import with validation and preview before saving.
+- Added duplicate-name handling with automatic rename or skip options.
+- Preserved recipe filters, Smart presets, Mood presets, BPM presets, and safety rules during export/import.
+- Added a stable Mixarr recipe JSON format for backups and sharing.
+
 ## v1.2.5 - Playlist History
 
 - Added Playlist History for created and regenerated Mixarr playlists.

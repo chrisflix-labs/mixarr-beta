@@ -3,6 +3,7 @@ export const MIXARR_BETA_DISCORD_URL = "https://discord.com/invite/B7xMvAhaF";
 export type ReleaseNoteBadge =
   | "Audio Features"
   | "Automation"
+  | "Backup"
   | "Beta"
   | "Bug Fix"
   | "BPM"
@@ -10,6 +11,8 @@ export type ReleaseNoteBadge =
   | "Debugging"
   | "Hotfix"
   | "History"
+  | "Import"
+  | "Export"
   | "Job History"
   | "Jobs"
   | "Library"
@@ -27,6 +30,7 @@ export type ReleaseNoteBadge =
   | "Safety Rules"
   | "Scheduler"
   | "Settings"
+  | "Sharing"
   | "Smart Builder"
   | "UI";
 
@@ -39,6 +43,18 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.2.6",
+    title: "Export/Import Mixarr Recipes",
+    badges: ["Recipes", "Import", "Export", "Backup", "Sharing"],
+    changes: [
+      "Added recipe export for individual recipes and all saved recipes.",
+      "Added recipe import with validation and preview before saving.",
+      "Added duplicate-name handling with automatic rename or skip options.",
+      "Preserved recipe filters, Smart presets, Mood presets, BPM presets, and safety rules during export/import.",
+      "Added a stable Mixarr recipe JSON format for backups and sharing.",
+    ],
+  },
   {
     version: "1.2.5",
     title: "Playlist History",
