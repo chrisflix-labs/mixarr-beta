@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.4 - Advanced Playlist Regeneration
+
+- Enabled Keep Some Existing Tracks regeneration mode.
+- Added 25% and 50% keep options for playlist regeneration.
+- Enabled Prefer Different Tracks Than Last Time using generated playlist snapshots.
+- Added regeneration comparison stats for kept, replaced, reused, and new tracks.
+- Added Remove from Generated Playlists action without deleting Plex playlists.
+- Improved regeneration preview safety before replacing Plex playlist contents.
+
 ## v1.2.3 - Playlist Regeneration
 
 - Added playlist regeneration for Mixarr-created playlists.

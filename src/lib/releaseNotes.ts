@@ -9,6 +9,7 @@ export type ReleaseNoteBadge =
   | "Dashboard"
   | "Debugging"
   | "Hotfix"
+  | "Job History"
   | "Jobs"
   | "Library"
   | "Library Health"
@@ -37,6 +38,19 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.2.4",
+    title: "Advanced Playlist Regeneration",
+    badges: ["Playlists", "Regeneration", "Plex", "Preview", "Job History"],
+    changes: [
+      "Enabled Keep Some Existing Tracks regeneration mode.",
+      "Added 25% and 50% keep options for playlist regeneration.",
+      "Enabled Prefer Different Tracks Than Last Time using generated playlist snapshots.",
+      "Added regeneration comparison stats for kept, replaced, reused, and new tracks.",
+      "Added Remove from Generated Playlists action without deleting Plex playlists.",
+      "Improved regeneration preview safety before replacing Plex playlist contents.",
+    ],
+  },
   {
     version: "1.2.3",
     title: "Playlist Regeneration",

@@ -24,6 +24,11 @@ const combinators = ["AND", "OR"] as const;
 const duplicateStrategies = ["allow", "song_artist"] as const;
 
 const maxPlaylistSize = Number(process.env.MAX_PLAYLIST_SIZE || 5000);
+const supportedRegenerationModes = ["replace_all", "keep_some"] as const;
+const supportedKeepPercents = [25, 50] as const;
+
+export type RegenerationMode = typeof supportedRegenerationModes[number];
+export type RegenerationKeepPercent = typeof supportedKeepPercents[number];
 
 export const playlistSafetyRulesSchema = z.object({
   avoidSameArtistBackToBack: z.boolean().default(true),
@@ -1000,6 +1005,74 @@ async function assertPlexPlaylistExists({
   }
 }
 
+async function fetchPlexPlaylistItemRatingKeys({
+  server,
+  playlistId,
+}: {
+  server: { uri: string; accessToken: string };
+  playlistId: string;
+}) {
+  try {
+    const response = await axios.get(`${server.uri}/playlists/${playlistId}/items`, {
+      headers: plexHeaders(server.accessToken),
+    });
+    const metadata = response.data?.MediaContainer?.Metadata;
+    if (!Array.isArray(metadata)) return [];
+    return metadata
+      .map((item: any) => String(item.ratingKey || item.key?.split("/").filter(Boolean).at(-1) || "").trim())
+      .filter(Boolean);
+  } catch {
+    throw new Error("Mixarr could not find the existing Plex playlist. Create a new playlist instead?");
+  }
+}
+
+async function fetchPlexPlaylistTracksInOrder({
+  userId,
+  server,
+  playlistId,
+}: {
+  userId: string;
+  server: { id: string; uri: string; accessToken: string };
+  playlistId: string;
+}) {
+  const ratingKeys = await fetchPlexPlaylistItemRatingKeys({ server, playlistId });
+  if (ratingKeys.length === 0) {
+    return { ratingKeys, tracks: [] as any[], missingTrackCount: 0 };
+  }
+
+  const tracks = await prisma.track.findMany({
+    where: {
+      syncStatus: "active",
+      library: { server: { id: server.id, userId } },
+      OR: [
+        { ratingKey: { in: ratingKeys } },
+        { plexId: { in: ratingKeys } },
+      ],
+    },
+    include: playlistTrackInclude,
+  });
+  const trackByPlexKey = new Map<string, any>();
+  for (const track of tracks) {
+    if (track.ratingKey) trackByPlexKey.set(track.ratingKey, track);
+    if (track.plexId) trackByPlexKey.set(track.plexId, track);
+  }
+
+  const seenTrackIds = new Set<string>();
+  const orderedTracks: any[] = [];
+  for (const ratingKey of ratingKeys) {
+    const track = trackByPlexKey.get(ratingKey);
+    if (!track || seenTrackIds.has(track.id)) continue;
+    seenTrackIds.add(track.id);
+    orderedTracks.push(track);
+  }
+
+  return {
+    ratingKeys,
+    tracks: orderedTracks,
+    missingTrackCount: Math.max(0, ratingKeys.length - orderedTracks.length),
+  };
+}
+
 export type GeneratedPlaylistSourceType = "manual_builder" | "recipe" | "smart_builder" | "unknown";
 
 function generatedPlaylistSourceType(config: Partial<PlaylistConfigInput>, fallback?: string | null): GeneratedPlaylistSourceType {
@@ -1098,15 +1171,217 @@ function uniqueTrackIds(ids: Array<string | null | undefined>) {
   return ids.filter((id): id is string => Boolean(id)).filter((id, index, list) => list.indexOf(id) === index);
 }
 
+function validateRegenerationMode(mode: string): RegenerationMode {
+  if (supportedRegenerationModes.includes(mode as RegenerationMode)) return mode as RegenerationMode;
+  throw new Error(`Unsupported regeneration mode: ${mode}`);
+}
+
+function validateKeepPercent(keepPercent: number): RegenerationKeepPercent {
+  if (supportedKeepPercents.includes(keepPercent as RegenerationKeepPercent)) return keepPercent as RegenerationKeepPercent;
+  throw new Error("Unsupported keep percentage. Choose 25 or 50.");
+}
+
+function uniqueTracksById(tracks: any[]) {
+  const seen = new Set<string>();
+  const uniqueTracks: any[] = [];
+  for (const track of tracks) {
+    if (!track?.id || seen.has(track.id)) continue;
+    seen.add(track.id);
+    uniqueTracks.push(track);
+  }
+  return uniqueTracks;
+}
+
+function combineSafetyMetadata(primary: any, secondary?: any) {
+  if (!secondary) return primary;
+  return {
+    ...primary,
+    manualExclusionsRemoved: (primary?.manualExclusionsRemoved || 0) + (secondary?.manualExclusionsRemoved || 0),
+    removedBySafetyRules: (primary?.removedBySafetyRules || 0) + (secondary?.removedBySafetyRules || 0),
+    rearrangedTrackCount: (primary?.rearrangedTrackCount || 0) + (secondary?.rearrangedTrackCount || 0),
+    warnings: [...(primary?.warnings || []), ...(secondary?.warnings || [])].filter((warning, index, list) => list.indexOf(warning) === index),
+    safetyRulesApplied: Boolean(primary?.safetyRulesApplied || secondary?.safetyRulesApplied),
+  };
+}
+
+async function resolveGeneratedPlaylistServer({
+  userId,
+  generatedPlaylist,
+  config,
+}: {
+  userId: string;
+  generatedPlaylist: { serverId?: string | null };
+  config: PlaylistConfigInput;
+}) {
+  if (generatedPlaylist.serverId) {
+    const server = await prisma.server.findFirst({ where: { id: generatedPlaylist.serverId, userId } });
+    if (server) return server;
+  }
+  if (config.serverId) {
+    const server = await prisma.server.findFirst({ where: { id: config.serverId, userId } });
+    if (server) return server;
+  }
+  return null;
+}
+
+async function filterCurrentTracksForKeep({
+  userId,
+  config,
+  tracks,
+}: {
+  userId: string;
+  config: PlaylistConfigInput;
+  tracks: any[];
+}) {
+  if (tracks.length === 0) {
+    return { tracks: [] as any[], manualExcludedCurrentTrackCount: 0 };
+  }
+
+  const { blockedTrackIds, manualExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
+  const currentTrackIds = tracks.map((track) => track.id);
+  const eligibleTracks = await prisma.track.findMany({
+    where: {
+      AND: [
+        { id: { in: currentTrackIds } },
+        buildTrackWhereClause(
+          userId,
+          config,
+          uniqueTrackIds([...(config.excludedTrackIds || []), ...blockedTrackIds, ...manualExcludedTrackIds]),
+          audioFeatureFilterOptions,
+        ),
+      ],
+    },
+    select: { id: true },
+  });
+  const eligibleTrackIds = new Set(eligibleTracks.map((track) => track.id));
+  const manualExcludedTrackIdSet = new Set(manualExcludedTrackIds);
+
+  return {
+    tracks: tracks.filter((track) => eligibleTrackIds.has(track.id)),
+    manualExcludedCurrentTrackCount: tracks.filter((track) => manualExcludedTrackIdSet.has(track.id)).length,
+  };
+}
+
+async function generateRegenerationReplacementTracks({
+  userId,
+  config,
+  targetCount,
+  omitTrackIds = [],
+  preferDifferentTrackIds = [],
+}: {
+  userId: string;
+  config: PlaylistConfigInput;
+  targetCount: number;
+  omitTrackIds?: string[];
+  preferDifferentTrackIds?: string[];
+}) {
+  if (targetCount <= 0) {
+    return {
+      tracks: [] as any[],
+      safety: {
+        ...applyPlaylistSafetyRules([], playlistConfigSchema.parse({ ...config, limit: 1 })).metadata,
+        manualExclusionsRemoved: 0,
+      },
+      preferredTracksAvoided: 0,
+    };
+  }
+
+  const preferredTrackIdSet = new Set(preferDifferentTrackIds);
+  const primaryConfig = playlistConfigSchema.parse({
+    ...config,
+    limit: targetCount,
+    pinnedTrackIds: [],
+    excludedTrackIds: uniqueTrackIds([...(config.excludedTrackIds || []), ...omitTrackIds, ...preferDifferentTrackIds]),
+  });
+  const primary = await generatePlaylistTracksWithStats({ userId, config: primaryConfig });
+  let selectedTracks = uniqueTracksById(primary.tracks).slice(0, targetCount);
+  let safety = primary.safety;
+
+  if (preferDifferentTrackIds.length > 0 && selectedTracks.length < targetCount) {
+    const fallbackConfig = playlistConfigSchema.parse({
+      ...config,
+      limit: targetCount - selectedTracks.length,
+      pinnedTrackIds: [],
+      excludedTrackIds: uniqueTrackIds([...(config.excludedTrackIds || []), ...omitTrackIds, ...selectedTracks.map((track) => track.id)]),
+    });
+    const fallback = await generatePlaylistTracksWithStats({ userId, config: fallbackConfig });
+    selectedTracks = uniqueTracksById([...selectedTracks, ...fallback.tracks]).slice(0, targetCount);
+    safety = combineSafetyMetadata(safety, fallback.safety);
+  }
+
+  const reusedPreferredTracks = selectedTracks.filter((track) => preferredTrackIdSet.has(track.id)).length;
+  return {
+    tracks: selectedTracks,
+    safety,
+    preferredTracksAvoided: Math.max(0, preferDifferentTrackIds.length - reusedPreferredTracks),
+  };
+}
+
+function buildRegenerationPreviewPayload({
+  tracks,
+  config,
+  warnings,
+  safety,
+  matchingTrackCount,
+  regeneration,
+}: {
+  tracks: any[];
+  config: PlaylistConfigInput;
+  warnings: string[];
+  safety: any;
+  matchingTrackCount: number;
+  regeneration: any;
+}) {
+  const previewTracks = tracks.slice(0, previewDisplayLimit);
+  const finalTrackCount = previewTracks.length;
+  const estimatedDurationMs = previewTracks.reduce((sum, track) => sum + (track.duration || 0), 0);
+  return {
+    previewId: Buffer.from(`${Date.now()}:${previewTracks.map((track) => track.id).join(",")}`).toString("base64url").slice(0, 48),
+    trackIds: previewTracks.map((track) => track.id),
+    tracks: previewTracks.map(publicPreviewTrack),
+    totalPreviewTrackCount: tracks.length,
+    summary: {
+      targetTrackCount: config.limit,
+      matchingTrackCount,
+      finalTrackCount,
+      displayedTrackCount: finalTrackCount,
+      estimatedDurationMs,
+      estimatedDurationMinutes: Math.round(estimatedDurationMs / 60000),
+      manualExclusionsRemoved: safety.manualExclusionsRemoved || 0,
+      safetyRulesApplied: safety.safetyRulesApplied,
+      removedBySafetyRules: safety.removedBySafetyRules || 0,
+      safetyRearrangedTrackCount: safety.rearrangedTrackCount || 0,
+      safetyRuleSummary: safety.summary || summarizePlaylistSafetyRules(config),
+    },
+    filterSummary: [
+      { label: "Limit", value: `${config.limit} tracks` },
+      { label: "Safety rules", value: safety.summary || summarizePlaylistSafetyRules(config) },
+    ],
+    manualExclusionsApplied: safety.manualExclusionsRemoved || 0,
+    safetyRulesApplied: safety.safetyRulesApplied,
+    removedBySafetyRules: safety.removedBySafetyRules || 0,
+    manualExclusionsRemoved: safety.manualExclusionsRemoved || 0,
+    warnings: warnings.filter((warning, index, list) => list.indexOf(warning) === index),
+    safety,
+    regeneration,
+  };
+}
+
 export async function previewGeneratedPlaylistRegeneration({
   userId,
   generatedPlaylistId,
+  mode = "replace_all",
+  keepPercent = 25,
   preferDifferentTracks = false,
 }: {
   userId: string;
   generatedPlaylistId: string;
+  mode?: string;
+  keepPercent?: number;
   preferDifferentTracks?: boolean;
 }) {
+  const regenerationMode = validateRegenerationMode(mode);
+  const normalizedKeepPercent = regenerationMode === "keep_some" ? validateKeepPercent(keepPercent) : 25;
   const generatedPlaylist = await prisma.generatedPlaylist.findFirst({
     where: { id: generatedPlaylistId, userId },
     include: { tracks: { orderBy: { position: "asc" } } },
@@ -1118,54 +1393,155 @@ export async function previewGeneratedPlaylistRegeneration({
 
   const savedConfig = normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson);
   const snapshotTrackIds = generatedPlaylist.tracks.map((track) => track.trackId).filter((trackId): trackId is string => Boolean(trackId));
-  const config = preferDifferentTracks && snapshotTrackIds.length > 0
-    ? playlistConfigSchema.parse({
-        ...savedConfig,
-        excludedTrackIds: uniqueTrackIds([...(savedConfig.excludedTrackIds || []), ...snapshotTrackIds]),
-        pinnedTrackIds: [],
-      })
-    : savedConfig;
-  const preview = await previewPlaylistTracks({ userId, config });
   const previousIds = new Set(snapshotTrackIds);
-  const nextIds = new Set(preview.trackIds);
-  const reused = preview.trackIds.filter((trackId) => previousIds.has(trackId)).length;
-  const removed = snapshotTrackIds.filter((trackId) => !nextIds.has(trackId)).length;
+  const server = await resolveGeneratedPlaylistServer({ userId, generatedPlaylist, config: savedConfig });
+  const currentPlaylist = generatedPlaylist.plexPlaylistRatingKey && server
+    ? await fetchPlexPlaylistTracksInOrder({ userId, server, playlistId: generatedPlaylist.plexPlaylistRatingKey })
+    : null;
+  const currentPlaylistTrackCount = currentPlaylist?.ratingKeys.length ?? generatedPlaylist.trackCount;
   const recipe = generatedPlaylist.recipeId
     ? await prisma.playlistRecipe.findFirst({ where: { id: generatedPlaylist.recipeId, userId, isArchived: false }, select: { id: true } })
     : null;
-  const regenerationWarnings = [
+
+  const baseRegenerationWarnings = [
     "This will replace the tracks in the existing Plex playlist after confirmation.",
     ...(generatedPlaylist.plexPlaylistRatingKey ? [] : ["The original Plex playlist could not be found because no Plex playlist identifier was saved."]),
     ...(snapshotTrackIds.length === 0 ? ["Original playlist snapshot is not available. Mixarr will regenerate using the saved filters."] : []),
-    ...(preferDifferentTracks && snapshotTrackIds.length === 0 ? ["Previous track snapshot is not available yet. Regeneration will use the saved filters normally."] : []),
+    ...(preferDifferentTracks && snapshotTrackIds.length === 0 ? ["Previous track snapshot is not available yet. Mixarr will save one after this regeneration."] : []),
     ...(generatedPlaylist.recipeId && !recipe ? ["Original recipe no longer exists. Using saved playlist settings from the last generation."] : []),
     ...(generatedPlaylist.recipeId && recipe ? ["This regeneration uses the settings saved when the playlist was created."] : []),
-    ...preview.warnings,
   ].filter((warning, index, list) => list.indexOf(warning) === index);
+
+  if (regenerationMode === "replace_all") {
+    const replacement = await generateRegenerationReplacementTracks({
+      userId,
+      config: savedConfig,
+      targetCount: savedConfig.limit,
+      preferDifferentTrackIds: preferDifferentTracks ? snapshotTrackIds : [],
+    });
+    const safetyResult = applyPlaylistSafetyRules(replacement.tracks, savedConfig);
+    const finalTracks = safetyResult.tracks;
+    const finalIds = new Set(finalTracks.map((track) => track.id));
+    const reused = finalTracks.filter((track) => previousIds.has(track.id)).length;
+    const removed = snapshotTrackIds.filter((trackId) => !finalIds.has(trackId)).length;
+    const warnings = [
+      ...baseRegenerationWarnings,
+      ...(replacement.tracks.length < savedConfig.limit
+        ? [`Only ${replacement.tracks.length} replacement tracks were available. The regenerated playlist may be shorter than expected.`]
+        : []),
+      ...replacement.safety.warnings,
+      ...safetyResult.metadata.warnings,
+    ];
+
+    return {
+      generatedPlaylist,
+      preview: buildRegenerationPreviewPayload({
+        tracks: finalTracks,
+        config: savedConfig,
+        warnings,
+        safety: combineSafetyMetadata(replacement.safety, safetyResult.metadata),
+        matchingTrackCount: replacement.tracks.length,
+        regeneration: {
+          mode: "replace_all",
+          currentPlaylistTrackCount,
+          previousSnapshotTrackCount: snapshotTrackIds.length,
+          newPreviewTrackCount: finalTracks.length,
+          tracksKept: 0,
+          tracksReplaced: currentPlaylistTrackCount,
+          tracksReused: reused,
+          newTracks: finalTracks.length - reused,
+          removedTracks: removed,
+          manualExclusionsApplied: (replacement.safety as any).manualExclusionsRemoved || 0,
+          safetyRulesApplied: safetyResult.metadata.safetyRulesApplied,
+          previousTracksAvoided: preferDifferentTracks && snapshotTrackIds.length > 0 ? replacement.preferredTracksAvoided : 0,
+          preferDifferentTracks,
+          keepPercent: null,
+          smartPresetName: generatedPlaylist.smartPresetName,
+          moodPresetName: generatedPlaylist.moodPresetName,
+          bpmPresetName: generatedPlaylist.bpmPresetName,
+          recipeName: generatedPlaylist.recipeName,
+          snapshotAvailable: snapshotTrackIds.length > 0,
+        },
+      }),
+    };
+  }
+
+  if (!generatedPlaylist.plexPlaylistRatingKey) {
+    throw new Error("Mixarr could not find the existing Plex playlist. Create a new playlist instead?");
+  }
+  if (!server) {
+    throw new Error("No Plex server was available for this playlist");
+  }
+
+  const currentTracks = currentPlaylist || await fetchPlexPlaylistTracksInOrder({ userId, server, playlistId: generatedPlaylist.plexPlaylistRatingKey });
+  const keepTarget = Math.floor(currentTracks.ratingKeys.length * (normalizedKeepPercent / 100));
+  const keepable = await filterCurrentTracksForKeep({ userId, config: savedConfig, tracks: currentTracks.tracks });
+  const keptTracks = uniqueTracksById(keepable.tracks).slice(0, keepTarget);
+  const replacementTarget = Math.max(0, savedConfig.limit - keptTracks.length);
+  const replacement = await generateRegenerationReplacementTracks({
+    userId,
+    config: savedConfig,
+    targetCount: replacementTarget,
+    omitTrackIds: keptTracks.map((track) => track.id),
+    preferDifferentTrackIds: preferDifferentTracks ? snapshotTrackIds.filter((trackId) => !keptTracks.some((track) => track.id === trackId)) : [],
+  });
+  const combinedTracks = uniqueTracksById([...keptTracks, ...replacement.tracks]);
+  const safetyResult = applyPlaylistSafetyRules(combinedTracks, savedConfig);
+  const finalTracks = safetyResult.tracks;
+  const finalTrackIds = new Set(finalTracks.map((track) => track.id));
+  const finalKeptTrackCount = keptTracks.filter((track) => finalTrackIds.has(track.id)).length;
+  const newTracksAdded = finalTracks.filter((track) => !keptTracks.some((keptTrack) => keptTrack.id === track.id)).length;
+  const replacedTrackCount = Math.max(0, currentTracks.ratingKeys.length - finalKeptTrackCount);
+  const reused = finalTracks.filter((track) => previousIds.has(track.id)).length;
+  const removed = snapshotTrackIds.filter((trackId) => !finalTrackIds.has(trackId)).length;
+  const totalManualExclusionsRemoved = ((replacement.safety as any).manualExclusionsRemoved || 0) + keepable.manualExcludedCurrentTrackCount;
+  const warnings = [
+    ...baseRegenerationWarnings,
+    ...(currentTracks.missingTrackCount > 0 ? [`${currentTracks.missingTrackCount} current Plex playlist track${currentTracks.missingTrackCount === 1 ? "" : "s"} could not be matched to active Mixarr tracks and will be replaced.`] : []),
+    ...(replacement.tracks.length < replacementTarget ? [`Only ${replacement.tracks.length} replacement tracks were available. The regenerated playlist may be shorter than expected.`] : []),
+    ...replacement.safety.warnings,
+    ...safetyResult.metadata.warnings,
+  ];
+  const safety = combineSafetyMetadata(
+    {
+      ...replacement.safety,
+      manualExclusionsRemoved: totalManualExclusionsRemoved,
+    },
+    safetyResult.metadata,
+  );
 
   return {
     generatedPlaylist,
-    preview: {
-      ...preview,
-      warnings: regenerationWarnings,
+    preview: buildRegenerationPreviewPayload({
+      tracks: finalTracks,
+      config: savedConfig,
+      warnings,
+      safety,
+      matchingTrackCount: replacement.tracks.length,
       regeneration: {
-        mode: "replace_all",
-        currentPlaylistTrackCount: generatedPlaylist.trackCount,
+        mode: "keep_some",
+        currentPlaylistTrackCount: currentTracks.ratingKeys.length,
         previousSnapshotTrackCount: snapshotTrackIds.length,
-        newPreviewTrackCount: preview.trackIds.length,
-        tracksKept: 0,
+        newPreviewTrackCount: finalTracks.length,
+        tracksKept: finalKeptTrackCount,
+        tracksReplaced: replacedTrackCount,
         tracksReused: reused,
-        newTracks: preview.trackIds.length - reused,
+        newTracks: newTracksAdded,
+        newTracksAdded,
         removedTracks: removed,
-        manualExclusionsApplied: preview.manualExclusionsApplied,
-        safetyRulesApplied: preview.safetyRulesApplied,
+        keepPercent: normalizedKeepPercent,
+        manualExclusionsApplied: totalManualExclusionsRemoved,
+        manualExclusionsRemoved: totalManualExclusionsRemoved,
+        safetyRulesApplied: safetyResult.metadata.safetyRulesApplied,
+        previousTracksAvoided: preferDifferentTracks && snapshotTrackIds.length > 0 ? replacement.preferredTracksAvoided : 0,
+        preferDifferentTracks,
         smartPresetName: generatedPlaylist.smartPresetName,
         moodPresetName: generatedPlaylist.moodPresetName,
         bpmPresetName: generatedPlaylist.bpmPresetName,
         recipeName: generatedPlaylist.recipeName,
         snapshotAvailable: snapshotTrackIds.length > 0,
       },
-    },
+    }),
   };
 }
 
@@ -1175,6 +1551,9 @@ export async function regenerateGeneratedPlaylistFromPreview({
   trackIds,
   previewId,
   mode = "replace_all",
+  keepPercent,
+  preferDifferentTracks = false,
+  regeneration,
   warnings = [],
 }: {
   userId: string;
@@ -1182,17 +1561,19 @@ export async function regenerateGeneratedPlaylistFromPreview({
   trackIds: string[];
   previewId?: string | null;
   mode?: string;
+  keepPercent?: number | null;
+  preferDifferentTracks?: boolean;
+  regeneration?: any;
   warnings?: string[];
 }) {
+  const regenerationMode = validateRegenerationMode(mode);
+  const normalizedKeepPercent = regenerationMode === "keep_some" ? validateKeepPercent(Number(keepPercent || regeneration?.keepPercent || 25)) : null;
   const generatedPlaylist = await prisma.generatedPlaylist.findFirst({
     where: { id: generatedPlaylistId, userId },
   });
 
   if (!generatedPlaylist) {
     throw new Error("Generated playlist not found");
-  }
-  if (mode !== "replace_all") {
-    throw new Error("Keep some existing tracks is coming later. Preview with Replace all tracks for v1.2.3.");
   }
   if (!generatedPlaylist.plexPlaylistRatingKey) {
     throw new Error("Mixarr could not find the existing Plex playlist. Create a new playlist instead?");
@@ -1251,6 +1632,15 @@ export async function regenerateGeneratedPlaylistFromPreview({
         status: "success",
       },
     });
+    const keptCount = Math.max(0, Number(regeneration?.tracksKept) || 0);
+    const replacedCount = Math.max(0, Number(regeneration?.tracksReplaced) || Math.max(0, trackIds.length - keptCount));
+    const avoidedCount = Math.max(0, Number(regeneration?.previousTracksAvoided) || 0);
+    const modeSummary = regenerationMode === "keep_some" && normalizedKeepPercent
+      ? `Regenerated playlist "${generatedPlaylist.plexPlaylistTitle}" keeping ${normalizedKeepPercent}% of existing tracks. Kept ${keptCount}, replaced ${replacedCount}.`
+      : `Regenerated playlist "${generatedPlaylist.plexPlaylistTitle}" using Replace All Tracks with ${tracks.length} tracks.`;
+    const preferDifferentSummary = preferDifferentTracks
+      ? ` Regenerated playlist "${generatedPlaylist.plexPlaylistTitle}" with Prefer Different enabled. Avoided ${avoidedCount} previous tracks.`
+      : "";
     await safeRecordJobHistory({
       userId,
       type: "playlist",
@@ -1258,13 +1648,18 @@ export async function regenerateGeneratedPlaylistFromPreview({
       status: "success",
       trigger: "manual",
       startedAt,
-      summary: `Regenerated playlist "${generatedPlaylist.plexPlaylistTitle}" with ${tracks.length} tracks using saved ${generatedPlaylist.smartPresetName ? "Smart Builder" : generatedPlaylist.recipeName ? "recipe" : "builder"} settings.`,
+      summary: `${modeSummary}${preferDifferentSummary}`,
       counts: { attempted: trackIds.length, processed: tracks.length, skipped: Math.max(0, trackIds.length - tracks.length), failed: 0 },
       metadata: {
         generatedPlaylistId,
         plexPlaylistRatingKey: generatedPlaylist.plexPlaylistRatingKey,
         playlistName: generatedPlaylist.plexPlaylistTitle,
-        mode,
+        mode: regenerationMode,
+        keepPercent: normalizedKeepPercent,
+        preferDifferentTracks,
+        tracksKept: keptCount,
+        tracksReplaced: replacedCount,
+        previousTracksAvoided: avoidedCount,
         sourceType: generatedPlaylist.sourceType,
         recipeId: generatedPlaylist.recipeId,
         recipeName: generatedPlaylist.recipeName,
@@ -1275,7 +1670,7 @@ export async function regenerateGeneratedPlaylistFromPreview({
         bpmPresetId: generatedPlaylist.bpmPresetId,
         bpmPresetName: generatedPlaylist.bpmPresetName,
         trackCount: tracks.length,
-        manualExclusionsRemoved: 0,
+        manualExclusionsRemoved: Math.max(0, Number(regeneration?.manualExclusionsRemoved ?? regeneration?.manualExclusionsApplied) || 0),
         safetyRules: config.safetyRules,
         warnings,
         previewId: previewId || null,
@@ -1317,7 +1712,9 @@ export async function regenerateGeneratedPlaylistFromPreview({
         generatedPlaylistId,
         plexPlaylistRatingKey: generatedPlaylist.plexPlaylistRatingKey,
         playlistName: generatedPlaylist.plexPlaylistTitle,
-        mode,
+        mode: regenerationMode,
+        keepPercent: normalizedKeepPercent,
+        preferDifferentTracks,
         sourceType: generatedPlaylist.sourceType,
         recipeId: generatedPlaylist.recipeId,
         recipeName: generatedPlaylist.recipeName,

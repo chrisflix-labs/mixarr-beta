@@ -42,7 +42,8 @@
 
 .primaryButton,
 .secondaryButton,
-.dangerButton {
+.dangerButton,
+.secondaryDangerButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -87,14 +88,25 @@
   background: rgba(215, 91, 91, 0.2);
 }
 
+.secondaryDangerButton {
+  border: 1px solid rgba(215, 91, 91, 0.28);
+  color: #ffd6d6;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.secondaryDangerButton:hover:not(:disabled) {
+  border-color: rgba(215, 91, 91, 0.5);
+  background: rgba(215, 91, 91, 0.12);
+}
+
 .primaryButton:disabled,
 .secondaryButton:disabled,
-.dangerButton:disabled {
+.dangerButton:disabled,
+.secondaryDangerButton:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
-.controls,
 .previewPanel,
 .statePanel,
 .emptyState {
@@ -107,18 +119,22 @@
 .controls {
   display: grid;
   gap: 0.85rem;
-  margin-bottom: 1rem;
-  padding: 1rem;
+  margin-bottom: 0.9rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.018);
 }
 
 .modeGroup {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 0.75rem;
 }
 
 .radioOption,
-.checkOption {
+.checkOption,
+.selectOption {
   display: flex;
   align-items: flex-start;
   gap: 0.55rem;
@@ -135,12 +151,14 @@
 
 .radioOption strong,
 .radioOption small,
-.checkOption span {
+.checkOption span,
+.selectOption span {
   display: block;
 }
 
 .radioOption strong,
-.checkOption span {
+.checkOption span,
+.selectOption span {
   color: var(--fg);
   font-size: 0.84rem;
   font-weight: 800;
@@ -155,6 +173,21 @@
 
 .disabledOption {
   opacity: 0.62;
+}
+
+.selectOption {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.selectOption select {
+  min-width: 92px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  background: rgba(10, 15, 24, 0.92);
+  font-weight: 800;
 }
 
 .successNotice,
@@ -333,6 +366,14 @@
   margin-bottom: 0.9rem;
 }
 
+.previewSummary {
+  margin: 0 0 0.9rem;
+  color: var(--fg);
+  font-size: 0.84rem;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
 .warningPanel {
   margin-bottom: 1rem;
   padding: 0.85rem;
@@ -482,7 +523,8 @@
 
   .primaryButton,
   .secondaryButton,
-  .dangerButton {
+  .dangerButton,
+  .secondaryDangerButton {
     width: 100%;
   }
 }

@@ -20,7 +20,12 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
-  "v1.2.3 adds Playlist Regeneration for Mixarr-created playlists.",
+  "v1.2.4 adds Advanced Playlist Regeneration controls for Mixarr-created playlists.",
+  "Keep Some Existing Tracks regeneration with 25% and 50% keep amounts",
+  "Prefer Different Tracks Than Last Time using generated playlist snapshots",
+  "Regeneration comparison stats for kept, replaced, reused, avoided, and new tracks",
+  "Remove from Generated Playlists without deleting Plex playlists",
+  "v1.2.3 added Playlist Regeneration for Mixarr-created playlists.",
   "Generated Playlists page for viewing tracked playlist metadata",
   "Regeneration preview before replacing tracks in Plex",
   "Saved generation metadata for builder, Smart Builder, and recipe-created playlists",
@@ -47,7 +52,6 @@ const v2Ideas = [
   "Smart Mix Engine",
   "Guided playlist creation",
   "Built-in mood and activity presets",
-  "Advanced playlist regeneration",
   "Artist variety controls",
   "Deep cut / discovery mode",
   "Better local audio analysis tools",
@@ -78,7 +82,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release adds Playlist Regeneration for Mixarr-created playlists, with preview-before-replace safety.</p>
+          <p>This release adds Advanced Playlist Regeneration with keep-some controls, prefer-different snapshots, comparison stats, and non-destructive tracking removal.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>

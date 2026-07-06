@@ -22,13 +22,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       trackIds,
       previewId: body.previewId || null,
       mode: body.mode || "replace_all",
+      keepPercent: body.keepPercent == null ? null : Number(body.keepPercent),
+      preferDifferentTracks: Boolean(body.preferDifferentTracks),
+      regeneration: body.regeneration || null,
       warnings: Array.isArray(body.warnings) ? body.warnings : [],
     });
 
     return NextResponse.json(result);
   } catch (error: any) {
     const message = error.message || "Failed to regenerate playlist";
-    const status = message.includes("not found") || message.includes("could not find") ? 404 : message.includes("coming later") || message.includes("must include") || message.includes("manually excluded") ? 400 : 500;
+    const status = message.includes("not found") || message.includes("could not find")
+      ? 404
+      : message.includes("Unsupported") || message.includes("must include") || message.includes("manually excluded")
+      ? 400
+      : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }
