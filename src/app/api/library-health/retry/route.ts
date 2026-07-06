@@ -196,10 +196,16 @@ async function runAudioRetry(userId: string, input: {
 
   for (let offset = 0; offset < ids.length; offset += 5_000) {
     const chunk = ids.slice(offset, offset + 5_000);
-    await prisma.audioFeature.updateMany({
-      where: { trackId: { in: chunk } },
-      data: { audioFeatureStatus: "pending", audioFeatureFailureReason: null },
-    });
+    await prisma.$transaction([
+      prisma.audioFeature.createMany({
+        data: chunk.map((trackId) => ({ trackId, audioFeatureStatus: "pending" })),
+        skipDuplicates: true,
+      }),
+      prisma.audioFeature.updateMany({
+        where: { trackId: { in: chunk } },
+        data: { audioFeatureStatus: "pending", audioFeatureFailureReason: null },
+      }),
+    ]);
   }
 
   const categoryLabel = input.category ? libraryHealthDetailLabels[input.category] : filter;

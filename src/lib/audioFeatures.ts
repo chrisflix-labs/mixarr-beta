@@ -62,6 +62,26 @@ export type AudioFeatureHealthClassification = {
   partial: boolean;
 };
 
+export type AudioFeatureHealthGapAuditInput = {
+  activeTracks: number;
+  completeAudioFeatures: number;
+  missing: number;
+  partial: number;
+  pending: number;
+  noData: number;
+  failed: number;
+  tooShort: number;
+  noAudioFeatureRecord?: number;
+};
+
+export type AudioFeatureHealthGapAudit = AudioFeatureHealthGapAuditInput & {
+  incompleteExpected: number;
+  classifiedIncomplete: number;
+  unclassifiedGap: number;
+  classifiedAsMissing: number;
+  gapDetected: boolean;
+};
+
 const failedAudioFeatureStatuses = ["pending", "no_data", "extraction_failed", "analyzer_failed", "too_short"] as const;
 const audioFeatureFields = ["energy", "mood", "danceability", "acousticness"] as const;
 const invalidCompleteAudioFeatureStatuses = ["pending", "no_data", "extraction_failed", "analyzer_failed", "too_short"] as const;
@@ -293,6 +313,44 @@ function audioFeatureHasAnyData(feature: any) {
   ].some((value) => value !== null && value !== undefined);
 }
 
+function count(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, number) : 0;
+}
+
+export function auditAudioFeatureHealthGap(input: AudioFeatureHealthGapAuditInput): AudioFeatureHealthGapAudit {
+  const activeTracks = count(input.activeTracks);
+  const completeAudioFeatures = count(input.completeAudioFeatures);
+  const missing = count(input.missing);
+  const partial = count(input.partial);
+  const pending = count(input.pending);
+  const noData = count(input.noData);
+  const failed = count(input.failed);
+  const tooShort = count(input.tooShort);
+  const noAudioFeatureRecord = count(input.noAudioFeatureRecord);
+  const incompleteExpected = Math.max(0, activeTracks - completeAudioFeatures);
+  const classifiedIncomplete = missing + partial + pending + noData + failed + tooShort;
+  const unclassifiedGap = Math.max(0, incompleteExpected - classifiedIncomplete);
+  const classifiedAsMissing = Math.max(noAudioFeatureRecord, unclassifiedGap);
+
+  return {
+    activeTracks,
+    completeAudioFeatures,
+    missing,
+    partial,
+    pending,
+    noData,
+    failed,
+    tooShort,
+    noAudioFeatureRecord,
+    incompleteExpected,
+    classifiedIncomplete,
+    unclassifiedGap,
+    classifiedAsMissing,
+    gapDetected: unclassifiedGap > 0 || noAudioFeatureRecord > 0,
+  };
+}
+
 function completeLocalFeatureObject(feature: any, settings: EffectiveAudioFeatureSettings = {}) {
   return hasCompleteEffectiveAudioFeatures({ audioFeature: feature }, {
     ...settings,
@@ -355,10 +413,20 @@ export function getAudioFeatureHealthStatus(trackOrFeature: any, settings: Effec
     };
   }
 
-  if (!feature || !audioFeatureHasAnyData(feature)) {
+  if (!feature) {
     return {
-      status: feature?.audioFeatureStatus === "pending" ? "pending" : "missing",
-      reason: feature?.audioFeatureStatus === "pending" ? "Pending local analysis" : "No audio feature data",
+      status: "missing",
+      reason: "No audio feature record found",
+      missingFields,
+      complete: false,
+      partial: false,
+    };
+  }
+
+  if (!audioFeatureHasAnyData(feature)) {
+    return {
+      status: feature.audioFeatureStatus === "pending" ? "pending" : "missing",
+      reason: feature.audioFeatureStatus === "pending" ? "Pending local analysis" : "No audio feature data",
       missingFields,
       complete: false,
       partial: false,
@@ -573,10 +641,14 @@ export function completeAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSe
   return { audioFeature: { is: completeAudioFeatureWhere(settings) } };
 }
 
+export function noAudioFeatureRecordTrackWhere(): Prisma.TrackWhereInput {
+  return { audioFeature: { is: null } };
+}
+
 export function missingAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     OR: [
-      { audioFeature: null },
+      noAudioFeatureRecordTrackWhere(),
       { audioFeature: { is: { NOT: completeAudioFeatureWhere(settings) } } },
     ],
   };

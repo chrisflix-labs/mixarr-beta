@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import prisma from "./prisma";
 import {
+  auditAudioFeatureHealthGap,
   apiAudioFeatureTrackWhere,
   audioFeatureAnalyzerFailedTrackWhere,
   audioFeatureExtractionFailedTrackWhere,
@@ -14,8 +15,10 @@ import {
   heuristicAudioFeatureTrackWhere,
   localAudioFeatureTrackWhere,
   missingAudioFeatureTrackWhere,
+  noAudioFeatureRecordTrackWhere,
   pendingAudioFeatureTrackWhere,
   partialAudioFeatureTrackWhere,
+  type AudioFeatureHealthGapAudit,
 } from "./audioFeatures";
 import {
   apiBpmTrackWhere,
@@ -539,7 +542,8 @@ export async function getAudioFeatureHealthSummary(userId: string, libraryId?: s
     syncStatus: "active",
     library: { ...(libraryId ? { id: libraryId } : {}), server: { userId } },
   };
-  const [complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort] = await Promise.all([
+  const [activeTracks, complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort, noAudioFeatureRecord] = await Promise.all([
+    prisma.track.count({ where: active }),
     prisma.track.count({ where: { AND: [active, completeAudioFeatureTrackWhere(settings)] } }),
     prisma.track.count({ where: { AND: [active, missingAudioFeatureTrackWhere(settings)] } }),
     prisma.track.count({ where: { AND: [active, apiAudioFeatureTrackWhere(settings)] } }),
@@ -552,13 +556,29 @@ export async function getAudioFeatureHealthSummary(userId: string, libraryId?: s
     prisma.track.count({ where: { AND: [active, audioFeatureExtractionFailedTrackWhere(settings)] } }),
     prisma.track.count({ where: { AND: [active, audioFeatureAnalyzerFailedTrackWhere(settings)] } }),
     prisma.track.count({ where: { AND: [active, audioFeatureTooShortTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, noAudioFeatureRecordTrackWhere()] } }),
   ]);
+  const audit = auditAudioFeatureHealthGap({
+    activeTracks,
+    completeAudioFeatures: complete,
+    missing,
+    partial,
+    pending,
+    noData,
+    failed,
+    tooShort,
+    noAudioFeatureRecord,
+  });
   const mode = metadataProviderModeLabel({ api: settings?.api ?? true, local: settings?.local ?? true, preferLocal: settings?.preferLocal ?? settings?.preferLocalAudioFeatures ?? false } as any)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
+  console.log(`[LibraryHealth] audio gap audit active=${audit.activeTracks} complete=${audit.completeAudioFeatures} expectedIncomplete=${audit.incompleteExpected} classifiedIncomplete=${audit.classifiedIncomplete} unclassifiedGap=${audit.unclassifiedGap} mode=${mode}`);
+  if (audit.classifiedAsMissing > 0) {
+    console.log(`[LibraryHealth] classified unaccounted audio tracks as missing_audio_features count=${audit.classifiedAsMissing} reason=no_audio_feature_record`);
+  }
   console.log(`[LibraryHealth] audio feature counts complete=${complete} partial=${partial} missing=${missing} pending=${pending} mode=${mode}`);
-  return { complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort };
+  return { activeTracks, complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort, noAudioFeatureRecord, audit };
 }
 
 export function buildMissingTrackWhere(userId: string, filters: MissingTrackFilters = {}): Prisma.TrackWhereInput {
@@ -658,6 +678,8 @@ type LibraryHealthSnapshotPayload = {
   audioFeaturesExtractionFailed: number;
   audioFeaturesAnalyzerFailed: number;
   audioFeaturesTooShort: number;
+  audioFeaturesNoRecord: number;
+  audioFeatureGapAudit: AudioFeatureHealthGapAudit;
   bpmProviderMode: string;
   audioFeatureProviderMode: string;
   tracksWithGenres: number;
@@ -809,7 +831,8 @@ async function getAudioFeatureHealthCounts(libraryId: string, settings?: Effecti
     syncStatus: "active",
     libraryId,
   };
-  const [complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort] = await Promise.all([
+  const [activeTracks, complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort, noAudioFeatureRecord] = await Promise.all([
+    prisma.track.count({ where: active }),
     prisma.track.count({ where: { AND: [active, completeAudioFeatureTrackWhere(settings)] } }),
     prisma.track.count({ where: { AND: [active, missingAudioFeatureTrackWhere(settings)] } }),
     prisma.track.count({ where: { AND: [active, apiAudioFeatureTrackWhere(settings)] } }),
@@ -822,8 +845,20 @@ async function getAudioFeatureHealthCounts(libraryId: string, settings?: Effecti
     prisma.track.count({ where: { AND: [active, audioFeatureExtractionFailedTrackWhere(settings)] } }),
     prisma.track.count({ where: { AND: [active, audioFeatureAnalyzerFailedTrackWhere(settings)] } }),
     prisma.track.count({ where: { AND: [active, audioFeatureTooShortTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, noAudioFeatureRecordTrackWhere()] } }),
   ]);
-  return { complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort };
+  const audit = auditAudioFeatureHealthGap({
+    activeTracks,
+    completeAudioFeatures: complete,
+    missing,
+    partial,
+    pending,
+    noData,
+    failed,
+    tooShort,
+    noAudioFeatureRecord,
+  });
+  return { activeTracks, complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort, noAudioFeatureRecord, audit };
 }
 
 async function getGenreHealthCounts(libraryId: string) {
@@ -989,6 +1024,8 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
     audioFeaturesExtractionFailed: audioFeatures.extractionFailed,
     audioFeaturesAnalyzerFailed: audioFeatures.analyzerFailed,
     audioFeaturesTooShort: audioFeatures.tooShort,
+    audioFeaturesNoRecord: audioFeatures.noAudioFeatureRecord,
+    audioFeatureGapAudit: audioFeatures.audit,
     bpmProviderMode: modes.bpmProviderMode,
     audioFeatureProviderMode: modes.audioFeatureProviderMode,
     tracksWithGenres: genres.tracksWithGenres,
@@ -1013,6 +1050,10 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
   const durationMs = Date.now() - started;
   console.log(`[LibraryHealth] calculated library=${library.id} name=${JSON.stringify(library.name)} activeTracks=${base.activeTracks} durationMs=${durationMs} source=fresh`);
   const mode = modes.audioFeatureProviderMode.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  console.log(`[LibraryHealth] audio gap audit active=${audioFeatures.audit.activeTracks} complete=${audioFeatures.audit.completeAudioFeatures} expectedIncomplete=${audioFeatures.audit.incompleteExpected} classifiedIncomplete=${audioFeatures.audit.classifiedIncomplete} unclassifiedGap=${audioFeatures.audit.unclassifiedGap} mode=${mode}`);
+  if (audioFeatures.audit.classifiedAsMissing > 0) {
+    console.log(`[LibraryHealth] classified unaccounted audio tracks as missing_audio_features count=${audioFeatures.audit.classifiedAsMissing} reason=no_audio_feature_record`);
+  }
   console.log(`[LibraryHealth] audio feature counts complete=${audioFeatures.complete} partial=${audioFeatures.partial} missing=${audioFeatures.missing} pending=${audioFeatures.pending} mode=${mode}`);
   return result;
 }
@@ -1279,6 +1320,7 @@ function audioFeatureReasonDescription(classification: ReturnType<typeof getAudi
   if (classification.status === "pending") {
     return "This track is pending audio feature analysis because required audio feature fields are incomplete for the current provider mode.";
   }
+  if (classification.reason === "No audio feature record found") return "Active track is not represented in the audio feature table.";
   if (classification.status === "missing") return "This track is missing required audio features for the current provider mode.";
   if (classification.status === "failed") return "Audio feature analysis failed during a previous attempt.";
   if (classification.status === "too_short") return "This track is too short for audio feature analysis.";

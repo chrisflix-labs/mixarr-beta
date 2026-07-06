@@ -1,15 +1,18 @@
 import prisma from "./prisma";
 import {
+  auditAudioFeatureHealthGap,
   apiAudioFeatureTrackWhere,
   audioFeatureAnalyzerFailedTrackWhere,
   audioFeatureExtractionFailedTrackWhere,
   audioFeatureFailedTrackWhere,
   audioFeatureNoDataTrackWhere,
+  audioFeatureTooShortTrackWhere,
   completeAudioFeatureTrackWhere,
   heuristicAudioFeatureTrackWhere,
   localAudioFeatureTrackWhere,
   partialAudioFeatureTrackWhere,
   missingAudioFeatureTrackWhere,
+  noAudioFeatureRecordTrackWhere,
 } from "./audioFeatures";
 import {
   bpmAnalyzerFailedTrackWhere,
@@ -126,6 +129,8 @@ export async function buildSyncStatusPayload(userId: string, client: any = prism
     audioFeaturesExtractionFailed,
     audioFeaturesAnalyzerFailed,
     audioFeaturesMissing,
+    audioFeaturesTooShort,
+    audioFeaturesNoRecord,
     bpmWithData,
     bpmAttempted,
     bpmSuccess,
@@ -149,7 +154,7 @@ export async function buildSyncStatusPayload(userId: string, client: any = prism
         ],
       },
     }),
-    () => client.audioFeature.count({ where: { track: { AND: [userTrackScope, completeAudioFeatureTrackWhere(audioFeatureSettings)] } } }),
+    () => client.track.count({ where: { AND: [userTrackScope, completeAudioFeatureTrackWhere(audioFeatureSettings)] } }),
     () => client.audioFeature.count({ where: { track: userTrackScope } }),
     () => client.track.count({ where: { AND: [userTrackScope, apiAudioFeatureTrackWhere(audioFeatureSettings)] } }),
     () => client.track.count({ where: { AND: [userTrackScope, localAudioFeatureTrackWhere(audioFeatureSettings)] } }),
@@ -160,6 +165,8 @@ export async function buildSyncStatusPayload(userId: string, client: any = prism
     () => client.track.count({ where: { AND: [userTrackScope, audioFeatureExtractionFailedTrackWhere(audioFeatureSettings)] } }),
     () => client.track.count({ where: { AND: [userTrackScope, audioFeatureAnalyzerFailedTrackWhere(audioFeatureSettings)] } }),
     () => client.track.count({ where: { AND: [userTrackScope, missingAudioFeatureTrackWhere(audioFeatureSettings)] } }),
+    () => client.track.count({ where: { AND: [userTrackScope, audioFeatureTooShortTrackWhere(audioFeatureSettings)] } }),
+    () => client.track.count({ where: { AND: [userTrackScope, noAudioFeatureRecordTrackWhere()] } }),
     () => client.track.count({ where: { AND: [userTrackScope, effectiveBpmTrackWhere()] } }),
     () => client.track.count({ where: { AND: [userTrackScope, bpmAnalysisAttemptedTrackWhere()] } }),
     () => client.track.count({ where: { AND: [userTrackScope, bpmAnalysisAttemptedTrackWhere(), effectiveBpmTrackWhere()] } }),
@@ -192,6 +199,18 @@ export async function buildSyncStatusPayload(userId: string, client: any = prism
     : null;
   const percentage = (processed: number) =>
     totalTracks > 0 ? Math.round((processed / totalTracks) * 100) : 0;
+  const audioFeatureAudit = auditAudioFeatureHealthGap({
+    activeTracks: totalTracks,
+    completeAudioFeatures: audioFeaturesWithData,
+    missing: audioFeaturesMissing,
+    partial: audioFeaturesPartial,
+    pending: Math.max(0, totalTracks - audioFeaturesWithData - audioFeaturesTooShort),
+    noData: audioFeaturesNoData,
+    failed: audioFeaturesFailed,
+    tooShort: audioFeaturesTooShort,
+    noAudioFeatureRecord: audioFeaturesNoRecord,
+  });
+  const audioIncomplete = audioFeatureAudit.incompleteExpected;
   const jobs = getEnrichmentJobStatuses();
   const jobDebug = getJobDebugSnapshot();
   const isSyncing = activeSyncs.length > 0 || Boolean(jobDebug.activeJob);
@@ -219,7 +238,11 @@ export async function buildSyncStatusPayload(userId: string, client: any = prism
       failed: audioFeaturesFailed,
       extractionFailed: audioFeaturesExtractionFailed,
       analyzerFailed: audioFeaturesAnalyzerFailed,
+      tooShort: audioFeaturesTooShort,
       missing: audioFeaturesMissing,
+      noRecord: audioFeaturesNoRecord,
+      incomplete: audioIncomplete,
+      audit: audioFeatureAudit,
       percentage: percentage(audioFeaturesWithData),
       isComplete: totalTracks > 0 && audioFeaturesWithData >= totalTracks,
       lastRun: jobs.audio,

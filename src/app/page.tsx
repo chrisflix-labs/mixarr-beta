@@ -17,7 +17,7 @@ const previewFeatures = [
     description: "Start with guided presets, tune mood and BPM, then export, import, and review recipe-backed playlists.",
     examples: ["Workout", "Mood Presets", "Recipe Import"],
     icon: SlidersHorizontal,
-    badge: "v1.2.8",
+    badge: "v1.2.8-hotfix",
   },
   {
     title: "AI DJ Flow",
@@ -242,7 +242,7 @@ export default async function Home() {
             const audioFailed = health.reduce((sum, library) => sum + library.audioFeaturesFailed, 0);
             const audioIncomplete = Math.max(0, active - audioComplete);
             const audioPercent = active > 0 ? (audioComplete / active) * 100 : 0;
-            const audioPercentLabel = audioIncomplete > 0 && Math.round(audioPercent) >= 100
+            const audioPercentLabel = audioIncomplete > 0
               ? `${audioPercent.toFixed(1)}%`
               : `${Math.round(audioPercent)}%`;
             const status = health.some((library) => library.status === "error") ? "Error" : health.some((library) => library.status === "warning") ? "Warning" : "Healthy";
@@ -272,7 +272,7 @@ export default async function Home() {
                 <article className={styles.card}>
                   <h3>Audio Features</h3>
                   <p>{audioComplete.toLocaleString()} / {active.toLocaleString()} complete</p>
-                  <p>{audioPercentLabel} complete{audioIncomplete > 0 ? ` · ${audioIncomplete.toLocaleString()} pending or incomplete` : ""}</p>
+                  <p>{audioPercentLabel} complete{audioIncomplete > 0 ? ` - ${audioIncomplete.toLocaleString()} incomplete` : ""}</p>
                   <p>API: {audioApi.toLocaleString()} &middot; Local Essentia: {audioLocal.toLocaleString()}</p>
                   <p>Estimated: {audioEstimated.toLocaleString()} &middot; Partial: {audioPartial.toLocaleString()} &middot; Missing: {audioMissing.toLocaleString()} &middot; Failed: {audioFailed.toLocaleString()}</p>
                   <p>Mode: {audioMode}</p>

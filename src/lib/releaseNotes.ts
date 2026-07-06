@@ -46,6 +46,18 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.2.8-hotfix",
+    title: "Audio Feature Gap Hotfix",
+    badges: ["Hotfix", "Library Health", "Audio Features", "Dashboard", "Retry"],
+    changes: [
+      "Fixed active tracks with no audio feature records being excluded from Library Health detail filters.",
+      "Added audio feature gap detection between dashboard complete counts and Library Health categories.",
+      "Classified unaccounted incomplete tracks as missing audio features instead of hiding them.",
+      "Improved dashboard wording to show exact incomplete audio feature counts.",
+      "Improved retry targeting for missing audio feature tracks.",
+    ],
+  },
+  {
     version: "1.2.8",
     title: "Audio Feature Health Consistency Fix",
     badges: ["Library Health", "Audio Features", "Bug Fix", "Retry", "Dashboard"],

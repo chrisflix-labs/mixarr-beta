@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.8-hotfix - Audio Feature Gap Hotfix
+
+- Fixed active tracks with no audio feature records being excluded from Library Health detail filters.
+- Added audio feature gap detection between dashboard complete counts and Library Health categories.
+- Classified unaccounted incomplete tracks as missing audio features instead of hiding them.
+- Improved dashboard wording to show exact incomplete audio feature counts.
+- Improved retry targeting for missing audio feature tracks.
+
 ## v1.2.8 - Audio Feature Health Consistency Fix
 
 - Fixed mismatch where audio feature health summaries showed incomplete tracks but detail views returned none.

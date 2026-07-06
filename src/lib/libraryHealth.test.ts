@@ -21,6 +21,7 @@ import {
   toCsv,
   tracksWithPopularityWhere,
 } from "./libraryHealth";
+import { buildLibraryHealthTrackWhere } from "./libraryHealthDetails";
 
 describe("library health", () => {
   const now = new Date("2026-06-22T12:00:00Z");
@@ -108,6 +109,20 @@ describe("library health", () => {
     assert.match(JSON.stringify(audioFeatureHealthFilterWhere("pending_audio_features", settings)), /too_short/);
   });
 
+  it("uses the same missing audio-feature predicate for detail counts and click-through tracks", () => {
+    const settings = { api: false, local: true, preferLocalAudioFeatures: true };
+    const where = buildLibraryHealthTrackWhere("user-a", {
+      category: "missing_audio_features",
+      libraryId: "library-a",
+      settings,
+    }) as any;
+
+    assert.equal(where.AND[0].syncStatus, "active");
+    assert.equal(where.AND[0].library.id, "library-a");
+    assert.deepEqual(where.AND[1], audioFeatureHealthFilterWhere("missing_audio_features", settings));
+    assert.match(JSON.stringify(where), /"is":null/);
+  });
+
   it("settings audio-feature retry uses the selected health filter before eligibility skips", async () => {
     const retryRoute = await readFile(path.join(process.cwd(), "src/app/api/settings/library-health/audio-feature-retry/route.ts"), "utf8");
 
@@ -115,6 +130,29 @@ describe("library health", () => {
     assert.match(retryRoute, /settings: syncSettings/);
     assert.match(retryRoute, /matched: originalCount/);
     assert.match(retryRoute, /queued: ids\.length/);
+    assert.match(retryRoute, /audioFeature\.createMany/);
+    assert.match(retryRoute, /skipDuplicates: true/);
+  });
+
+  it("Library Health details expose the audio feature gap diagnostic and avoid a hidden empty state", async () => {
+    const page = await readFile(path.join(process.cwd(), "src/app/library-health/page.tsx"), "utf8");
+    const summaryRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/summary/route.ts"), "utf8");
+
+    assert.match(summaryRoute, /getLibraryHealthDetailSummary/);
+    assert.match(page, /Audio feature gap detected/);
+    assert.match(page, /classified as missing audio features/);
+    assert.match(page, /pagination\.total/);
+  });
+
+  it("dashboard audio-feature progress shows incomplete counts without rounded 100 percent hiding gaps", async () => {
+    const dashboard = await readFile(path.join(process.cwd(), "src/app/page.tsx"), "utf8");
+    const syncProgress = await readFile(path.join(process.cwd(), "src/components/SyncProgress.tsx"), "utf8");
+
+    assert.match(dashboard, /audioPercent\.toFixed\(1\)/);
+    assert.match(dashboard, /incomplete/);
+    assert.doesNotMatch(dashboard, /pending or incomplete/);
+    assert.match(syncProgress, /formatProgressPercent/);
+    assert.match(syncProgress, /incomplete/);
   });
 
   it("does not count placeholder popularity rows as completed metadata", () => {

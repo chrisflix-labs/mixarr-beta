@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "./prisma";
 import {
+  auditAudioFeatureHealthGap,
   audioFeatureAnalyzerFailedTrackWhere,
   audioFeatureExtractionFailedTrackWhere,
   audioFeatureFailedTrackWhere,
@@ -11,8 +12,10 @@ import {
   type EffectiveAudioFeatureSettings,
   getEffectiveAudioFeatures,
   missingAudioFeatureTrackWhere,
+  noAudioFeatureRecordTrackWhere,
   pendingAudioFeatureTrackWhere,
   partialAudioFeatureTrackWhere,
+  type AudioFeatureHealthGapAudit,
 } from "./audioFeatures";
 import {
   bpmAnalyzerFailedTrackWhere,
@@ -331,6 +334,7 @@ export function reasonForLibraryHealthTrack(category: LibraryHealthDetailCategor
     case "local_bpm":
       return "This track has BPM from local analysis.";
     case "missing_audio_features":
+      if (!track.audioFeature) return "No audio feature record found.";
       if (audio.reason === "API data only") return "API data only. The current provider mode requires local or allowed estimated audio features.";
       if (audio.missingFields.length) return `Missing required audio feature fields for the current provider mode: ${audio.missingFields.join(", ")}.`;
       return "Missing required audio features for the current provider mode.";
@@ -435,8 +439,27 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
     await prisma.track.count({ where: { AND: [active, libraryHealthCategoryWhere(category, settings)] } }),
   ] as const));
   const totalTracks = await prisma.track.count({ where: active });
+  const categories = Object.fromEntries(entries) as Record<LibraryHealthDetailCategory, number>;
+  const [noAudioFeatureRecord, noData, failed, tooShort] = await Promise.all([
+    prisma.track.count({ where: { AND: [active, noAudioFeatureRecordTrackWhere()] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureNoDataTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureFailedTrackWhere(settings)] } }),
+    prisma.track.count({ where: { AND: [active, audioFeatureTooShortTrackWhere(settings)] } }),
+  ]);
+  const audioFeatureGapAudit: AudioFeatureHealthGapAudit = auditAudioFeatureHealthGap({
+    activeTracks: totalTracks,
+    completeAudioFeatures: categories.complete_audio_features,
+    missing: categories.missing_audio_features,
+    partial: categories.partial_audio_features,
+    pending: categories.pending_audio_features,
+    noData,
+    failed,
+    tooShort,
+    noAudioFeatureRecord,
+  });
   return {
     totalTracks,
-    categories: Object.fromEntries(entries) as Record<LibraryHealthDetailCategory, number>,
+    categories,
+    audioFeatureGapAudit,
   };
 }

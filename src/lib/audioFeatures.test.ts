@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  auditAudioFeatureHealthGap,
   apiAudioFeatureTrackWhere,
   audioFeatureFilterGuardWhere,
   getAudioFeatureHealthStatus,
@@ -10,6 +11,7 @@ import {
   heuristicAudioFeatureTrackWhere,
   localEssentiaAudioFeatureSuccessTrackWhere,
   missingAudioFeatureTrackWhere,
+  noAudioFeatureRecordTrackWhere,
   pendingAudioFeatureTrackWhere,
   partialAudioFeatureTrackWhere,
 } from "./audioFeatures";
@@ -28,6 +30,12 @@ describe("audio feature health predicates", () => {
     const missing = JSON.stringify(missingAudioFeatureTrackWhere());
     assert.match(missing, /NOT/);
     assert.match(missing, /audioFeature/);
+    assert.match(missing, /"is":null/);
+  });
+
+  it("uses an explicit missing relation predicate for active tracks with no audio feature row", () => {
+    assert.deepEqual(noAudioFeatureRecordTrackWhere(), { audioFeature: { is: null } });
+    assert.deepEqual((missingAudioFeatureTrackWhere() as any).OR[0], noAudioFeatureRecordTrackWhere());
   });
 
   it("separates API, local, and heuristic feature sources", () => {
@@ -227,5 +235,43 @@ describe("audio feature health predicates", () => {
     assert.match(pending, /too_short/);
     assert.match(retry, /too_short/);
     assert.match(retry, /local_essentia/);
+  });
+
+  it("audits active complete and classified audio feature gaps", () => {
+    const audit = auditAudioFeatureHealthGap({
+      activeTracks: 10,
+      completeAudioFeatures: 8,
+      missing: 0,
+      partial: 0,
+      pending: 0,
+      noData: 0,
+      failed: 0,
+      tooShort: 0,
+      noAudioFeatureRecord: 2,
+    });
+
+    assert.equal(audit.incompleteExpected, 2);
+    assert.equal(audit.unclassifiedGap, 2);
+    assert.equal(audit.classifiedAsMissing, 2);
+    assert.equal(audit.gapDetected, true);
+  });
+
+  it("does not lose the remaining active track when one incomplete track is already classified", () => {
+    const audit = auditAudioFeatureHealthGap({
+      activeTracks: 10,
+      completeAudioFeatures: 8,
+      missing: 0,
+      partial: 1,
+      pending: 0,
+      noData: 0,
+      failed: 0,
+      tooShort: 0,
+      noAudioFeatureRecord: 1,
+    });
+
+    assert.equal(audit.incompleteExpected, 2);
+    assert.equal(audit.classifiedIncomplete, 1);
+    assert.equal(audit.unclassifiedGap, 1);
+    assert.equal(audit.classifiedAsMissing, 1);
   });
 });

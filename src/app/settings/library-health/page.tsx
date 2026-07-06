@@ -40,6 +40,14 @@ type HealthLibrary = {
   audioFeaturesExtractionFailed: number;
   audioFeaturesAnalyzerFailed: number;
   audioFeaturesTooShort: number;
+  audioFeaturesNoRecord: number;
+  audioFeatureGapAudit?: {
+    incompleteExpected: number;
+    unclassifiedGap: number;
+    classifiedAsMissing: number;
+    noAudioFeatureRecord: number;
+    gapDetected: boolean;
+  };
   bpmProviderMode: string;
   audioFeatureProviderMode: string;
   tracksWithGenres: number;
@@ -815,6 +823,11 @@ export default function LibraryHealthPage() {
             </div>
             <h4 className={styles.healthGroupTitle}>Audio Feature Health</h4>
             <p className={styles.healthGroupCopy}>Mode: {library.audioFeatureProviderMode}</p>
+            {library.audioFeatureGapAudit?.gapDetected && library.audioFeatureGapAudit.classifiedAsMissing > 0 && (
+              <p className={styles.healthGroupCopy}>
+                Audio feature gap detected: {formatNumber(library.audioFeatureGapAudit.classifiedAsMissing)} active tracks are not complete and were classified as missing audio features.
+              </p>
+            )}
             <div className={styles.bpmGrid} aria-label="Audio feature health">
               {([
                 ["api_audio_features", library.audioFeaturesApi],

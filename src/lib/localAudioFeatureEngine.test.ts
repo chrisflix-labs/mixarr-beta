@@ -227,7 +227,7 @@ describe("LocalAudioFeatureEngine backfill predicates", () => {
     const where = JSON.stringify(localAudioFeatureWhere(true));
     assert.match(where, /local_essentia/);
     assert.match(where, /local_heuristic/);
-    assert.match(where, /"audioFeature":null/);
+    assert.match(where, /"audioFeature":\{"is":null\}/);
   });
 
   it("blocks duplicate local backfill jobs before expensive analysis starts", async () => {

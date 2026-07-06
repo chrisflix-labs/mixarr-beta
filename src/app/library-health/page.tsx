@@ -23,7 +23,14 @@ type Category =
   | "healthy_tracks";
 
 type LibraryOption = { id: string; name: string; server: { id: string; name: string } };
-type Summary = { totalTracks: number; categories: Record<Category, number>; libraries: LibraryOption[] };
+type AudioFeatureGapAudit = {
+  incompleteExpected: number;
+  unclassifiedGap: number;
+  classifiedAsMissing: number;
+  noAudioFeatureRecord: number;
+  gapDetected: boolean;
+};
+type Summary = { totalTracks: number; categories: Record<Category, number>; libraries: LibraryOption[]; audioFeatureGapAudit?: AudioFeatureGapAudit };
 type Track = {
   id: string;
   title: string;
@@ -322,6 +329,12 @@ export default function LibraryHealthDetailsPage() {
 
       {summary && summary.totalTracks === 0 && (
         <div className={`glass-panel ${styles.empty}`}>Library Health data is not available yet. Run a library sync or audio analysis job first.</div>
+      )}
+
+      {summary?.audioFeatureGapAudit?.gapDetected && summary.audioFeatureGapAudit.classifiedAsMissing > 0 && (
+        <div className={styles.message}>
+          Audio feature gap detected: {formatNumber(summary.audioFeatureGapAudit.classifiedAsMissing)} active tracks are not complete and were classified as missing audio features.
+        </div>
       )}
 
       <section className={styles.summaryGrid} aria-label="Library Health summary">

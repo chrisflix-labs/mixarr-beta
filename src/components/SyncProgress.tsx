@@ -11,6 +11,14 @@ const metadataPromptDismissedKey = "mixarr_initial_metadata_sync_prompt_library"
 const enrichmentPromptDismissedKey = "mixarr_initial_sync_prompt_fingerprint";
 const pendingEnrichmentPromptKey = "mixarr_pending_initial_enrichment_prompt_library";
 
+function formatProgressPercent(processed: number, total: number) {
+  if (total <= 0) return "0%";
+  const incomplete = Math.max(0, total - processed);
+  const percentage = (processed / total) * 100;
+  if (incomplete > 0) return `${percentage.toFixed(1)}%`;
+  return `${Math.round(percentage)}%`;
+}
+
 export default function SyncProgress() {
   const [status, setStatus] = useState<any>(null);
   const [starting, setStarting] = useState<string | null>(null);
@@ -370,12 +378,19 @@ function ProgressBar({ progress, color }: { progress: any, color: string }) {
   const isAudioFeatureProgress = typeof progress.complete === "number" || typeof progress.api === "number" || typeof progress.local === "number";
   const showAttempted = attempted !== undefined && noData > 0;
   const lastRun = progress.lastRun;
+  const incomplete = typeof progress.incomplete === "number"
+    ? progress.incomplete
+    : Math.max(0, progress.total - progress.processed);
+  const percentLabel = formatProgressPercent(progress.processed, progress.total);
+  const progressCountLabel = isAudioFeatureProgress && incomplete > 0
+    ? `${progress.processed.toLocaleString()} / ${progress.total.toLocaleString()} complete | ${incomplete.toLocaleString()} incomplete`
+    : `${progress.processed.toLocaleString()} / ${progress.total.toLocaleString()}`;
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem", fontSize: "0.75rem", color: "var(--text-secondary)" }}>
-        <span>{progress.percentage}%</span>
-        <span>{progress.processed.toLocaleString()} / {progress.total.toLocaleString()}</span>
+        <span>{percentLabel}</span>
+        <span>{progressCountLabel}</span>
       </div>
       <div style={{ width: "100%", height: "6px", background: "rgba(255,255,255,0.1)", borderRadius: "3px", overflow: "hidden" }}>
         <div 
@@ -399,6 +414,8 @@ function ProgressBar({ progress, color }: { progress: any, color: string }) {
           {typeof progress.partial === "number" && progress.partial > 0 ? ` | ${progress.partial.toLocaleString()} partial` : ""}
           {typeof progress.noData === "number" && progress.noData > 0 ? ` | ${progress.noData.toLocaleString()} no data` : ""}
           {typeof progress.failed === "number" && progress.failed > 0 ? ` | ${progress.failed.toLocaleString()} failed` : ""}
+          {typeof progress.noRecord === "number" && progress.noRecord > 0 ? ` | ${progress.noRecord.toLocaleString()} missing records` : ""}
+          {incomplete > 0 ? ` | ${incomplete.toLocaleString()} incomplete` : ""}
         </div>
       ) : isBpmProgress ? (
         <div

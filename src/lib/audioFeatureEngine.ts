@@ -17,7 +17,7 @@ import {
 } from "./metrics";
 import { safeTrackBatchIterator, type EnrichmentRunSummary } from "./safeTrackBatch";
 import { sanitizeRequiredMetadataString } from "./metadataSanitizer";
-import { completeAudioFeatureWhere, getEffectiveAudioFeatures } from "./audioFeatures";
+import { completeAudioFeatureWhere, getEffectiveAudioFeatures, noAudioFeatureRecordTrackWhere } from "./audioFeatures";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -103,7 +103,7 @@ export const runAudioFeatureEngine = async (options: SyncEngineOptions = {}): Pr
     const where = {
       syncStatus: "active",
       OR: [
-        { audioFeature: null },
+        noAudioFeatureRecordTrackWhere(),
         {
           audioFeature: {
             is: {
