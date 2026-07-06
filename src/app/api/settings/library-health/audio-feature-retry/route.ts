@@ -16,7 +16,7 @@ import {
   localEssentiaAudioFeatureSuccessTrackWhere,
   partialAudioFeatureTrackWhere,
 } from "@/lib/audioFeatures";
-import { audioFeatureHealthFilterWhere, isAudioFeatureHealthFilter } from "@/lib/libraryHealth";
+import { buildAudioFeatureHealthQuery, isAudioFeatureHealthFilter } from "@/lib/libraryHealth";
 import { buildRetryExplanation } from "@/lib/retryExplanations";
 import { getUserSyncSettings, resolveMetadataProviderSettings } from "@/lib/syncSettings";
 
@@ -64,35 +64,44 @@ export async function POST(request: Request) {
     }
     const { trackIds, filter, libraryId, force, providerMode } = parsed.data;
     const syncSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId)).audioFeatures;
-    if (!trackIds?.length && !isAudioFeatureHealthFilter(filter)) {
+    const resolvedFilter = isAudioFeatureHealthFilter(filter) ? filter : null;
+    if (!trackIds?.length && !resolvedFilter) {
       return NextResponse.json({ error: "A valid audio-feature health filter is required" }, { status: 400 });
     }
-    const targetWhere = trackIds?.length
-      ? { id: { in: trackIds } }
-      : isAudioFeatureHealthFilter(filter) ? audioFeatureHealthFilterWhere(filter, syncSettings) : { id: "__invalid__" };
-
-    const targetScopedWhere = {
-      AND: [
-        {
-          syncStatus: "active",
-          library: { ...(libraryId ? { id: libraryId } : {}), server: { userId } },
-        },
-        targetWhere,
-      ],
+    const activeScope = {
+      syncStatus: "active",
+      library: { ...(libraryId ? { id: libraryId } : {}), server: { userId } },
     };
+    const targetQuery = trackIds?.length
+      ? {
+        where: { AND: [activeScope, { id: { in: trackIds } }] },
+        gapTrackIds: [] as string[],
+      }
+      : await buildAudioFeatureHealthQuery(userId, {
+        filter: resolvedFilter!,
+        libraryId,
+        settings: syncSettings,
+      });
+    const targetScopedWhere = targetQuery.where;
+    const gapRetryWhere: Prisma.TrackWhereInput | null = targetQuery.gapTrackIds.length
+      ? { id: { in: targetQuery.gapTrackIds } }
+      : null;
     const where = {
       AND: [
-        {
-          syncStatus: "active",
-          library: { ...(libraryId ? { id: libraryId } : {}), server: { userId } },
-        },
-        targetWhere,
-        audioFeatureRetryEligibilityTrackWhere({
-          force,
-          providerMode,
-          analysisScope: syncSettings.scope,
-          settings: syncSettings,
-        }),
+        targetScopedWhere,
+        force || providerMode === "force_local"
+          ? {}
+          : {
+            OR: [
+              audioFeatureRetryEligibilityTrackWhere({
+                force,
+                providerMode,
+                analysisScope: syncSettings.scope,
+                settings: syncSettings,
+              }),
+              ...(gapRetryWhere ? [gapRetryWhere] : []),
+            ],
+          },
       ],
     };
     const originalCount = await prisma.track.count({ where: targetScopedWhere });

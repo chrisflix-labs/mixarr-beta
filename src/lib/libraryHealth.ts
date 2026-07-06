@@ -1,26 +1,19 @@
 import { Prisma } from "@prisma/client";
 import prisma from "./prisma";
 import {
-  auditAudioFeatureHealthGap,
-  apiAudioFeatureTrackWhere,
-  audioFeatureAnalyzerFailedTrackWhere,
-  audioFeatureExtractionFailedTrackWhere,
-  audioFeatureFailedTrackWhere,
   getAudioFeatureHealthStatus,
-  audioFeatureNoDataTrackWhere,
-  audioFeatureTooShortTrackWhere,
-  completeAudioFeatureTrackWhere,
   type EffectiveAudioFeatureSettings,
   getEffectiveAudioFeatures,
-  heuristicAudioFeatureTrackWhere,
-  localAudioFeatureTrackWhere,
-  mergeAudioFeatureHealthGapCounts,
-  missingAudioFeatureTrackWhere,
-  noAudioFeatureRecordTrackWhere,
-  pendingAudioFeatureTrackWhere,
   partialAudioFeatureTrackWhere,
   type AudioFeatureHealthGapAudit,
 } from "./audioFeatures";
+import {
+  audioFeatureHealthFilterWhere,
+  buildAudioFeatureHealthQuery,
+  getAudioFeatureHealthClassification,
+  getAudioFeatureHealthClassificationForScope,
+  getAudioFeatureGapTrackIds,
+} from "./audioFeatureHealthClassification";
 import {
   apiBpmTrackWhere,
   bpmAnalyzerFailedTrackWhere,
@@ -254,24 +247,7 @@ export function buildBpmRetryCandidateWhere(userId: string, options: {
   };
 }
 
-export function audioFeatureHealthFilterWhere(filter: AudioFeatureHealthFilter, settings?: EffectiveAudioFeatureSettings): Prisma.TrackWhereInput {
-  switch (filter) {
-    case "missing_audio_features": return missingAudioFeatureTrackWhere(settings);
-    case "api_audio_features": return apiAudioFeatureTrackWhere(settings);
-    case "local_audio_features": return localAudioFeatureTrackWhere(settings);
-    case "heuristic_audio_features": return heuristicAudioFeatureTrackWhere();
-    case "partial_audio_features": return partialAudioFeatureTrackWhere(settings);
-    case "audio_no_data": return audioFeatureNoDataTrackWhere(settings);
-    case "audio_failed": return audioFeatureFailedTrackWhere(settings);
-    case "audio_too_short": return audioFeatureTooShortTrackWhere(settings);
-    case "audio_feature_no_data": return audioFeatureNoDataTrackWhere(settings);
-    case "audio_feature_failed": return audioFeatureFailedTrackWhere(settings);
-    case "extraction_failed": return audioFeatureExtractionFailedTrackWhere(settings);
-    case "analyzer_failed": return audioFeatureAnalyzerFailedTrackWhere(settings);
-    case "too_short": return audioFeatureTooShortTrackWhere(settings);
-    case "pending_audio_features": return pendingAudioFeatureTrackWhere(settings);
-  }
-}
+export { audioFeatureHealthFilterWhere, buildAudioFeatureHealthQuery, getAudioFeatureGapTrackIds };
 
 export function tracksWithGenresWhere(): Prisma.TrackWhereInput {
   return { tags: { some: usableGenreTagWhere } };
@@ -539,55 +515,18 @@ export async function getMetadataHealthSummary(userId: string, section: Metadata
 }
 
 export async function getAudioFeatureHealthSummary(userId: string, libraryId?: string, settings?: EffectiveAudioFeatureSettings) {
-  const active: Prisma.TrackWhereInput = {
-    syncStatus: "active",
-    library: { ...(libraryId ? { id: libraryId } : {}), server: { userId } },
-  };
-  const [activeTracks, complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort, noAudioFeatureRecord] = await Promise.all([
-    prisma.track.count({ where: active }),
-    prisma.track.count({ where: { AND: [active, completeAudioFeatureTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, missingAudioFeatureTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, apiAudioFeatureTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, localAudioFeatureTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, heuristicAudioFeatureTrackWhere()] } }),
-    prisma.track.count({ where: { AND: [active, partialAudioFeatureTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, pendingAudioFeatureTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureNoDataTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureFailedTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureExtractionFailedTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureAnalyzerFailedTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureTooShortTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, noAudioFeatureRecordTrackWhere()] } }),
-  ]);
-  const audit = auditAudioFeatureHealthGap({
-    activeTracks,
-    completeAudioFeatures: complete,
-    missing,
-    partial,
-    pending,
-    noData,
-    failed,
-    tooShort,
-    noAudioFeatureRecord,
-  });
-  const merged = mergeAudioFeatureHealthGapCounts({
-    activeTracks,
-    completeAudioFeatures: complete,
-    missing,
-    partial,
-    pending,
-    noData,
-    failed,
-    tooShort,
-    noAudioFeatureRecord,
-  });
-  const mode = metadataProviderModeKey({ api: settings?.api ?? true, local: settings?.local ?? true, preferLocal: settings?.preferLocal ?? settings?.preferLocalAudioFeatures ?? false } as any);
-  console.log(`[LibraryHealth] audio gap audit active=${audit.activeTracks} complete=${audit.completeAudioFeatures} expectedIncomplete=${audit.incompleteExpected} classifiedIncomplete=${audit.classifiedIncomplete} unclassifiedGap=${audit.unclassifiedGap} mode=${mode}`);
-  if (merged.gapOnly > 0) {
-    console.log(`[LibraryHealth] merged audio gap into missing_audio_features count=${merged.gapOnly}`);
+  const classification = await getAudioFeatureHealthClassification(userId, { libraryId, settings });
+  const mode = metadataProviderModeKey({
+    api: settings?.api ?? settings?.enableApiAudioFeatures ?? true,
+    local: settings?.local ?? settings?.enableLocalAudioFeatures ?? true,
+    preferLocal: settings?.preferLocal ?? settings?.preferLocalAudioFeatures ?? false,
+  } as any);
+  console.log(`[LibraryHealth] audio gap audit active=${classification.audit.activeTracks} complete=${classification.audit.completeAudioFeatures} expectedIncomplete=${classification.audit.incompleteExpected} classifiedIncomplete=${classification.audit.classifiedIncomplete} unclassifiedGap=${classification.audit.unclassifiedGap} mode=${mode}`);
+  if (classification.gapOnly > 0) {
+    console.log(`[LibraryHealth] merged audio gap into missing_audio_features count=${classification.gapOnly}`);
   }
-  console.log(`[LibraryHealth] audio feature counts complete=${complete} partial=${partial} missing=${merged.missing} pending=${merged.pending} noData=${noData} failed=${failed} tooShort=${tooShort} gap=${merged.gapOnly} mode=${mode}`);
-  return { activeTracks, complete, missing: merged.missing, api, local, heuristic, partial, pending: merged.pending, noData, failed, extractionFailed, analyzerFailed, tooShort, noAudioFeatureRecord, gapOnly: merged.gapOnly, audit: merged.audit };
+  console.log(`[LibraryHealth] audio feature counts complete=${classification.complete} partial=${classification.partial} missing=${classification.missing} pending=${classification.pending} noData=${classification.noData} failed=${classification.failed} tooShort=${classification.tooShort} gap=${classification.gapOnly} mode=${mode}`);
+  return classification;
 }
 
 export function buildMissingTrackWhere(userId: string, filters: MissingTrackFilters = {}): Prisma.TrackWhereInput {
@@ -837,49 +776,7 @@ async function getBpmHealthCounts(libraryId: string) {
 }
 
 async function getAudioFeatureHealthCounts(libraryId: string, settings?: EffectiveAudioFeatureSettings) {
-  const active: Prisma.TrackWhereInput = {
-    syncStatus: "active",
-    libraryId,
-  };
-  const [activeTracks, complete, missing, api, local, heuristic, partial, pending, noData, failed, extractionFailed, analyzerFailed, tooShort, noAudioFeatureRecord] = await Promise.all([
-    prisma.track.count({ where: active }),
-    prisma.track.count({ where: { AND: [active, completeAudioFeatureTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, missingAudioFeatureTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, apiAudioFeatureTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, localAudioFeatureTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, heuristicAudioFeatureTrackWhere()] } }),
-    prisma.track.count({ where: { AND: [active, partialAudioFeatureTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, pendingAudioFeatureTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureNoDataTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureFailedTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureExtractionFailedTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureAnalyzerFailedTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, audioFeatureTooShortTrackWhere(settings)] } }),
-    prisma.track.count({ where: { AND: [active, noAudioFeatureRecordTrackWhere()] } }),
-  ]);
-  const audit = auditAudioFeatureHealthGap({
-    activeTracks,
-    completeAudioFeatures: complete,
-    missing,
-    partial,
-    pending,
-    noData,
-    failed,
-    tooShort,
-    noAudioFeatureRecord,
-  });
-  const merged = mergeAudioFeatureHealthGapCounts({
-    activeTracks,
-    completeAudioFeatures: complete,
-    missing,
-    partial,
-    pending,
-    noData,
-    failed,
-    tooShort,
-    noAudioFeatureRecord,
-  });
-  return { activeTracks, complete, missing: merged.missing, api, local, heuristic, partial, pending: merged.pending, noData, failed, extractionFailed, analyzerFailed, tooShort, noAudioFeatureRecord, gapOnly: merged.gapOnly, audit: merged.audit };
+  return getAudioFeatureHealthClassificationForScope({ syncStatus: "active", libraryId }, settings);
 }
 
 async function getGenreHealthCounts(libraryId: string) {

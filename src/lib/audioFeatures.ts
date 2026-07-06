@@ -62,6 +62,27 @@ export type AudioFeatureHealthClassification = {
   partial: boolean;
 };
 
+export type AudioFeatureTrackClassification = {
+  counts: {
+    complete: number;
+    missing_audio_features: number;
+    pending_audio_features: number;
+    partial_audio_features: number;
+    audio_no_data: number;
+    audio_failed: number;
+    audio_too_short: number;
+  };
+  matchingTrackIds: {
+    complete: string[];
+    missing_audio_features: string[];
+    pending_audio_features: string[];
+    partial_audio_features: string[];
+    audio_no_data: string[];
+    audio_failed: string[];
+    audio_too_short: string[];
+  };
+};
+
 export type AudioFeatureHealthGapAuditInput = {
   activeTracks: number;
   completeAudioFeatures: number;
@@ -505,6 +526,48 @@ export function getAudioFeatureHealthStatus(trackOrFeature: any, settings: Effec
     missingFields,
     complete: false,
     partial: false,
+  };
+}
+
+export function classifyAudioFeatureTracks(tracks: any[], settings: EffectiveAudioFeatureSettings = {}): AudioFeatureTrackClassification {
+  const matchingTrackIds: AudioFeatureTrackClassification["matchingTrackIds"] = {
+    complete: [],
+    missing_audio_features: [],
+    pending_audio_features: [],
+    partial_audio_features: [],
+    audio_no_data: [],
+    audio_failed: [],
+    audio_too_short: [],
+  };
+
+  for (const track of tracks) {
+    if (track?.syncStatus && track.syncStatus !== "active") continue;
+    const id = String(track?.id || "");
+    if (!id) continue;
+    const classification = getAudioFeatureHealthStatus(track, settings);
+    if (classification.status === "complete") {
+      matchingTrackIds.complete.push(id);
+      continue;
+    }
+    matchingTrackIds.missing_audio_features.push(id);
+    if (classification.status !== "too_short") matchingTrackIds.pending_audio_features.push(id);
+    if (classification.status === "partial") matchingTrackIds.partial_audio_features.push(id);
+    if (classification.status === "no_data") matchingTrackIds.audio_no_data.push(id);
+    if (classification.status === "failed") matchingTrackIds.audio_failed.push(id);
+    if (classification.status === "too_short") matchingTrackIds.audio_too_short.push(id);
+  }
+
+  return {
+    matchingTrackIds,
+    counts: {
+      complete: matchingTrackIds.complete.length,
+      missing_audio_features: matchingTrackIds.missing_audio_features.length,
+      pending_audio_features: matchingTrackIds.pending_audio_features.length,
+      partial_audio_features: matchingTrackIds.partial_audio_features.length,
+      audio_no_data: matchingTrackIds.audio_no_data.length,
+      audio_failed: matchingTrackIds.audio_failed.length,
+      audio_too_short: matchingTrackIds.audio_too_short.length,
+    },
   };
 }
 

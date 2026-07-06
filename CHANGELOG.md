@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.8-hotfix.3 - Audio Gap Detail Query Fix
+
+- Fixed Missing Audio Features detail view returning zero rows when summary showed gap-classified tracks.
+- Fixed Pending Audio Features detail view to include gap-classified tracks.
+- Added shared audio feature gap track ID logic for summary, details, and retry actions.
+- Improved retry candidate selection for active tracks without audio feature records.
+- Improved debug logging for audio feature summary/detail count matching.
+
 ## v1.2.8-hotfix.2 - Audio Gap Summary Merge Fix
 
 - Fixed audio feature gap detection not being merged into Library Health summary counts.

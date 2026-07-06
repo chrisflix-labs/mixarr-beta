@@ -4,6 +4,7 @@ import {
   auditAudioFeatureHealthGap,
   apiAudioFeatureTrackWhere,
   audioFeatureFilterGuardWhere,
+  classifyAudioFeatureTracks,
   getAudioFeatureHealthStatus,
   audioFeatureRetryEligibilityTrackWhere,
   completeAudioFeatureTrackWhere,
@@ -294,5 +295,39 @@ describe("audio feature health predicates", () => {
     assert.equal(audit.classifiedIncomplete, 1);
     assert.equal(audit.unclassifiedGap, 1);
     assert.equal(audit.classifiedAsMissing, 1);
+  });
+
+  it("classifies no-record audio gaps for matching summary, detail, and retry sets", () => {
+    const completeFeature = {
+      localEnergy: 0.7,
+      localMood: 0.6,
+      localDanceability: 0.5,
+      localAcousticness: 0.4,
+      tempo: 120,
+      audioFeatureSource: "local_essentia",
+      audioFeatureStatus: "success",
+      energySource: "local_essentia",
+      valenceSource: "local_essentia",
+      danceabilitySource: "local_essentia",
+      acousticnessSource: "local_essentia",
+    };
+    const tracks = Array.from({ length: 10 }, (_, index) => ({
+      id: `track-${index + 1}`,
+      syncStatus: "active",
+      audioFeature: index < 8 ? completeFeature : null,
+    }));
+
+    const classified = classifyAudioFeatureTracks(tracks, {
+      api: false,
+      local: true,
+      preferLocalAudioFeatures: true,
+    });
+
+    assert.equal(classified.counts.complete, 8);
+    assert.equal(classified.counts.missing_audio_features, 2);
+    assert.equal(classified.counts.pending_audio_features, 2);
+    assert.deepEqual(classified.matchingTrackIds.missing_audio_features, ["track-9", "track-10"]);
+    assert.deepEqual(classified.matchingTrackIds.pending_audio_features, ["track-9", "track-10"]);
+    assert.equal(classified.matchingTrackIds.pending_audio_features.length, 2);
   });
 });

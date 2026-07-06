@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
 import {
   audioFeatureHealthTrackSelect,
-  buildAudioFeatureTrackWhere,
+  buildAudioFeatureHealthQuery,
   getAudioFeatureHealthSummary,
   isAudioFeatureHealthFilter,
   MAX_AUDIO_FEATURE_PAGE_SIZE,
@@ -27,27 +27,29 @@ export async function GET(request: Request) {
   const pageSize = Math.min(MAX_AUDIO_FEATURE_PAGE_SIZE, Math.max(1, Number(params.get("pageSize")) || 50));
   const libraryId = params.get("libraryId") || undefined;
   const audioFeatureSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId)).audioFeatures;
-  const where = buildAudioFeatureTrackWhere(userId, {
-    filter,
-    libraryId,
-    search: params.get("search")?.trim() || undefined,
-    settings: audioFeatureSettings,
-  });
 
   try {
-    const [tracks, total, summary] = await Promise.all([
+    const query = await buildAudioFeatureHealthQuery(userId, {
+      filter,
+      libraryId,
+      search: params.get("search")?.trim() || undefined,
+      settings: audioFeatureSettings,
+    });
+    const [tracks, total, baseCount, gapCount, summary] = await Promise.all([
       prisma.track.findMany({
-        where,
+        where: query.where,
         select: audioFeatureHealthTrackSelect,
         orderBy: [{ artist: { title: "asc" } }, { album: { title: "asc" } }, { title: "asc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      prisma.track.count({ where }),
+      prisma.track.count({ where: query.where }),
+      prisma.track.count({ where: query.baseWhere }),
+      prisma.track.count({ where: query.gapWhere }),
       getAudioFeatureHealthSummary(userId, libraryId, audioFeatureSettings),
     ]);
     const mode = metadataProviderModeKey(audioFeatureSettings);
-    console.log(`[LibraryHealth] detail filter=${filter} count=${total} mode=${mode}`);
+    console.log(`[LibraryHealth] detail filter=${filter} baseCount=${baseCount} gapCount=${gapCount} total=${total} mode=${mode}`);
 
     return NextResponse.json({
       tracks: tracks.map((track) => serializeAudioFeatureHealthTrack(track, audioFeatureSettings)),

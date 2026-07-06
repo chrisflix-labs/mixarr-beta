@@ -5,7 +5,7 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { audioFeatureRetryEligibilityTrackWhere } from "@/lib/audioFeatures";
 import {
-  audioFeatureHealthFilterWhere,
+  buildAudioFeatureHealthQuery,
   buildBpmRetryBaseWhere,
   buildBpmRetryCandidateWhere,
   isAudioFeatureHealthFilter,
@@ -160,22 +160,44 @@ async function runAudioRetry(userId: string, input: {
 }) {
   const filter = audioFilterFor(input.category, input.filter);
   const syncSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId)).audioFeatures;
-  const targetWhere = input.trackIds?.length ? { id: { in: input.trackIds } } : audioFeatureHealthFilterWhere(filter, syncSettings);
+  const activeScope = { syncStatus: "active", library: { ...(input.libraryId ? { id: input.libraryId } : {}), server: { userId } } };
+  const targetQuery = input.trackIds?.length
+    ? {
+      where: {
+        AND: [
+          activeScope,
+          { id: { in: input.trackIds } },
+        ],
+      },
+      gapTrackIds: [] as string[],
+    }
+    : await buildAudioFeatureHealthQuery(userId, {
+      filter,
+      libraryId: input.libraryId,
+      settings: syncSettings,
+    });
   const baseWhere = {
     AND: [
-      { syncStatus: "active", library: { ...(input.libraryId ? { id: input.libraryId } : {}), server: { userId } } },
-      targetWhere,
+      targetQuery.where,
     ],
   };
+  const gapRetryWhere = targetQuery.gapTrackIds.length ? { id: { in: targetQuery.gapTrackIds } } : null;
   const candidateWhere = {
     AND: [
       baseWhere,
-      audioFeatureRetryEligibilityTrackWhere({
-        providerMode: input.providerMode,
-        force: input.force,
-        analysisScope: syncSettings.scope,
-        settings: syncSettings,
-      }),
+      input.force || input.providerMode === "force_local"
+        ? {}
+        : {
+          OR: [
+            audioFeatureRetryEligibilityTrackWhere({
+              providerMode: input.providerMode,
+              force: input.force,
+              analysisScope: syncSettings.scope,
+              settings: syncSettings,
+            }),
+            ...(gapRetryWhere ? [gapRetryWhere] : []),
+          ],
+        },
     ],
   };
   const [matched, matching] = await Promise.all([

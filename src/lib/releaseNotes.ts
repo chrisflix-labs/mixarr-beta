@@ -46,6 +46,18 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.2.8-hotfix.3",
+    title: "Audio Gap Detail Query Fix",
+    badges: ["Hotfix", "Library Health", "Audio Features", "Retry"],
+    changes: [
+      "Fixed Missing Audio Features detail view returning zero rows when summary showed gap-classified tracks.",
+      "Fixed Pending Audio Features detail view to include gap-classified tracks.",
+      "Added shared audio feature gap track ID logic for summary, details, and retry actions.",
+      "Improved retry candidate selection for active tracks without audio feature records.",
+      "Improved debug logging for audio feature summary/detail count matching.",
+    ],
+  },
+  {
     version: "1.2.8-hotfix.2",
     title: "Audio Gap Summary Merge Fix",
     badges: ["Hotfix", "Library Health", "Audio Features", "Dashboard", "Retry"],
