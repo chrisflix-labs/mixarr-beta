@@ -57,6 +57,7 @@ type PlaylistPreviewSummary = {
   moodPresetName?: string | null;
   moodPresetModified?: boolean;
   bpmPresetName?: string | null;
+  bpmPresetModified?: boolean;
   bpmRange: string;
   energyRange: string;
   moodRange: string;
@@ -74,6 +75,7 @@ type BpmPresetMetadata = {
   bpmPresetId?: string;
   bpmPresetName?: string;
   bpmPresetVersion?: string;
+  bpmPresetModified?: boolean;
 };
 
 type PlaylistPreviewState = {
@@ -162,20 +164,11 @@ function presetRangeValues(range?: [number, number] | null) {
   };
 }
 
-function rangesWithMoodPreset(baseRanges: RangeState, preset?: MoodPreset | null): RangeState {
-  if (!preset) return baseRanges;
-  const bpm = presetRangeValues(preset.bpmRange);
-  const energy = presetRangeValues(preset.energyRange);
-  const mood = presetRangeValues(preset.moodRange);
-  return {
-    ...baseRanges,
-    bpmMin: bpm.min,
-    bpmMax: bpm.max,
-    energyMin: energy.min,
-    energyMax: energy.max,
-    moodMin: mood.min,
-    moodMax: mood.max,
-  };
+function bpmRangeMatchesPreset(ranges: RangeState, preset?: BpmPreset | null) {
+  if (!preset) return true;
+  const min = preset.minBpm == null ? "" : String(preset.minBpm);
+  const max = preset.maxBpm == null ? "" : String(preset.maxBpm);
+  return ranges.bpmMin === min && ranges.bpmMax === max;
 }
 
 export default function SmartBuilderPage() {
@@ -234,13 +227,12 @@ export default function SmartBuilderPage() {
 
   const selectPreset = (preset: SmartPlaylistPreset) => {
     const config = buildSmartPresetConfig(preset);
-    const currentMoodPreset = getMoodPreset(moodPresetMetadata.moodPresetId);
     setSelectedPresetId(preset.id);
     setPlaylistName(preset.suggestedPlaylistName);
     setLimit(config.limit);
     setGenres("");
-    setRanges(rangesWithMoodPreset(rangesFromPreset(preset), currentMoodPreset));
-    setBpmPresetMetadata({});
+    setRanges(rangesFromPreset(preset));
+    setMoodPresetMetadata((current) => current.moodPresetId ? { ...current, moodPresetModified: true } : current);
     setSafetyRules(safetyFromPreset(preset));
     clearPreview();
   };
@@ -248,9 +240,13 @@ export default function SmartBuilderPage() {
   const selectedMoodPreset = getMoodPreset(moodPresetMetadata.moodPresetId);
   const displayedMoodPreset = moodPresetLabel(moodPresetMetadata.moodPresetName, moodPresetMetadata.moodPresetModified);
   const selectedBpmPreset = getBpmPreset(bpmPresetMetadata.bpmPresetId);
-  const displayedBpmPreset = selectedBpmPreset
+  const bpmPresetModified = !bpmRangeMatchesPreset(ranges, selectedBpmPreset);
+  const displayedBpmPresetBase = selectedBpmPreset
     ? `${bpmPresetLabel(bpmPresetMetadata.bpmPresetName)} · ${bpmPresetRangeLabel(selectedBpmPreset)}`
     : "Custom";
+  const displayedBpmPreset = selectedBpmPreset && bpmPresetModified
+    ? `${bpmPresetLabel(bpmPresetMetadata.bpmPresetName)} modified`
+    : displayedBpmPresetBase;
 
   const markMoodPresetModified = () => {
     setMoodPresetMetadata((current) => (
@@ -278,14 +274,13 @@ export default function SmartBuilderPage() {
       moodMin: mood.min,
       moodMax: mood.max,
     }));
-    setBpmPresetMetadata({});
     setMoodPresetMetadata({
       moodPresetId: preset.id,
       moodPresetName: preset.name,
       moodPresetVersion: MOOD_PRESET_VERSION,
       moodPresetModified: false,
     });
-    if (!playlistName.trim() && selectedPreset) setPlaylistName(`${preset.name} ${selectedPreset.name} Mix`);
+    if (!playlistName.trim()) setPlaylistName(selectedPreset ? `${preset.name} ${selectedPreset.name} Mix` : `${preset.name} Mix`);
     clearPreview();
   };
 
@@ -304,7 +299,9 @@ export default function SmartBuilderPage() {
       bpmPresetId: preset.id,
       bpmPresetName: preset.name,
       bpmPresetVersion: BPM_PRESET_VERSION,
+      bpmPresetModified: false,
     });
+    if (!playlistName.trim()) setPlaylistName(`${preset.name} Mix`);
     clearPreview();
   };
 
@@ -340,8 +337,14 @@ export default function SmartBuilderPage() {
     return { type: "group", combinator: "AND", children };
   };
 
+  const selectedPresetDetails = [
+    ...(selectedPreset ? [`Smart Builder preset: ${selectedPreset.name}`] : []),
+    ...(moodPresetMetadata.moodPresetName ? [`Mood preset: ${displayedMoodPreset}`] : []),
+    ...(bpmPresetMetadata.bpmPresetName ? [`BPM preset: ${displayedBpmPreset}`] : []),
+  ];
+  const selectedPresetDescription = selectedPresetDetails.join("; ");
+
   const playlistPayload = () => {
-    if (!selectedPreset) return null;
     const rules = [...buildRules(), ...buildGenreRules()];
     return {
       rules,
@@ -368,11 +371,16 @@ export default function SmartBuilderPage() {
         warnIfFewerThan: safetyRules.warnIfFewerThan,
         minimumTrackCount: safetyRules.minimumTrackCount || undefined,
       },
-      smartPresetId: selectedPreset.id,
-      smartPresetName: selectedPreset.name,
-      smartPresetVersion: SMART_PRESET_VERSION,
+      ...(selectedPreset
+        ? {
+            smartPresetId: selectedPreset.id,
+            smartPresetName: selectedPreset.name,
+            smartPresetVersion: SMART_PRESET_VERSION,
+          }
+        : {}),
       ...moodPresetMetadata,
       ...bpmPresetMetadata,
+      ...(bpmPresetMetadata.bpmPresetId ? { bpmPresetModified } : {}),
       pinnedTrackIds: [],
       excludedTrackIds: [],
     };
@@ -381,7 +389,7 @@ export default function SmartBuilderPage() {
   const previewSignature = () => JSON.stringify(playlistPayload());
   const isPreviewCurrent = Boolean(playlistPreview && playlistPreview.signature === previewSignature());
   const playlistNameReady = playlistName.trim().length > 0;
-  const canPreview = Boolean(selectedPreset) && !loading;
+  const canPreview = !loading;
   const canCreate = Boolean(playlistNameReady && playlistPreview && isPreviewCurrent && tracks.length > 0);
 
   const updateRange = (key: keyof RangeState, value: string) => {
@@ -426,7 +434,7 @@ export default function SmartBuilderPage() {
   const saveRecipe = async () => {
     const payload = playlistPayload();
     if (!payload || !playlistName.trim()) {
-      alert("Choose a preset and enter a playlist name before saving a recipe.");
+      alert("Enter a playlist name before saving a recipe.");
       return;
     }
 
@@ -434,9 +442,7 @@ export default function SmartBuilderPage() {
     try {
       await axios.post("/api/playlist-recipes", {
         name: playlistName.trim(),
-        description: selectedPreset
-          ? `Smart Builder preset: ${selectedPreset.name}${moodPresetMetadata.moodPresetName ? `; Mood preset: ${displayedMoodPreset}` : ""}${bpmPresetMetadata.bpmPresetName ? `; BPM preset: ${bpmPresetMetadata.bpmPresetName}` : ""}`
-          : "",
+        description: selectedPresetDescription || "Smart Builder custom setup",
         filters: payload,
       });
       setNotice(`Saved "${playlistName.trim()}" as a playlist recipe.`);
@@ -472,7 +478,7 @@ export default function SmartBuilderPage() {
         removedBySafetyRules: playlistPreview.summary.removedBySafetyRules || 0,
         safetyRulesApplied: Boolean(playlistPreview.summary.safetyRuleSummary && playlistPreview.summary.safetyRuleSummary !== "Safety: off"),
       });
-      setNotice(`Created "${playlistName.trim()}" in Plex from ${selectedPreset?.name}${moodPresetMetadata.moodPresetName ? ` with ${displayedMoodPreset}` : ""}${bpmPresetMetadata.bpmPresetName ? ` and ${bpmPresetMetadata.bpmPresetName}` : ""}.`);
+      setNotice(`Created "${playlistName.trim()}" in Plex${selectedPresetDetails.length ? ` with ${selectedPresetDetails.join(", ")}` : ""}.`);
     } catch (error: any) {
       console.error(error);
       alert(error.response?.data?.error || "Failed to create playlist in Plex");
@@ -559,10 +565,11 @@ export default function SmartBuilderPage() {
       />
 
       <section className={styles.selectionSummary} aria-label="Selected Smart Builder setup">
-        <span>Smart preset: <strong>{selectedPreset?.name || "None"}</strong></span>
-        <span>Mood preset: <strong>{displayedMoodPreset}</strong></span>
-        <span>BPM preset: <strong>{displayedBpmPreset}</strong></span>
-        {!selectedPreset && <p>Choose a playlist goal to start building.</p>}
+        {selectedPreset && <span>Smart preset: <strong>{selectedPreset.name}</strong></span>}
+        {moodPresetMetadata.moodPresetName && <span>Mood preset: <strong>{displayedMoodPreset}</strong></span>}
+        {bpmPresetMetadata.bpmPresetName && <span>BPM preset: <strong>{displayedBpmPreset}</strong></span>}
+        {selectedPresetDetails.length === 0 && <span>Selected: <strong>None</strong></span>}
+        <p>Choose any Smart, Mood, or BPM preset, or adjust filters manually before previewing.</p>
       </section>
 
       <section className={styles.workspace}>
@@ -586,7 +593,7 @@ export default function SmartBuilderPage() {
               </div>
             ) : (
               <div className={styles.helperNotice}>
-                Select a playlist goal above, then choose a mood.
+                Smart presets are optional. Choose a Mood preset, BPM preset, Smart preset, or adjust filters manually.
               </div>
             )}
 
@@ -670,12 +677,12 @@ export default function SmartBuilderPage() {
                   {loading ? <RefreshCw size={16} className="animate-spin" /> : <Play size={16} />}
                   Preview Playlist
                 </button>
-                <button type="button" onClick={saveRecipe} disabled={!selectedPreset || savingRecipe} className={styles.secondaryButton}>
+                <button type="button" onClick={saveRecipe} disabled={!playlistNameReady || savingRecipe} className={styles.secondaryButton}>
                   {savingRecipe ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
                   Save as Recipe
                 </button>
               </div>
-              {!selectedPreset && <p className={styles.helperText}>Select a playlist goal before previewing.</p>}
+              {!playlistNameReady && <p className={styles.helperText}>Preview can run now. Add a playlist name before saving or creating.</p>}
             </div>
           </div>
 
@@ -709,12 +716,14 @@ export default function SmartBuilderPage() {
               {playlistPreview && (
                 <>
                   <div className={styles.statsGrid}>
-                    <div><span>Smart preset</span><strong>{playlistPreview.summary.smartPresetName || selectedPreset?.name || "None"}</strong></div>
+                    {(playlistPreview.summary.smartPresetName || selectedPreset?.name) && (
+                      <div><span>Smart preset</span><strong>{playlistPreview.summary.smartPresetName || selectedPreset?.name}</strong></div>
+                    )}
                     {(playlistPreview.summary.moodPresetName || moodPresetMetadata.moodPresetName) && (
                       <div><span>Mood preset</span><strong>{moodPresetLabel(playlistPreview.summary.moodPresetName || moodPresetMetadata.moodPresetName, playlistPreview.summary.moodPresetModified ?? moodPresetMetadata.moodPresetModified)}</strong></div>
                     )}
                     {(playlistPreview.summary.bpmPresetName || bpmPresetMetadata.bpmPresetName) && (
-                      <div><span>BPM preset</span><strong>{playlistPreview.summary.bpmPresetName || bpmPresetMetadata.bpmPresetName}</strong></div>
+                      <div><span>BPM preset</span><strong>{playlistPreview.summary.bpmPresetName === bpmPresetMetadata.bpmPresetName ? displayedBpmPreset : (playlistPreview.summary.bpmPresetName ? bpmPresetLabel(playlistPreview.summary.bpmPresetName, playlistPreview.summary.bpmPresetModified) : displayedBpmPreset)}</strong></div>
                     )}
                     <div><span>Target</span><strong>{playlistPreview.summary.targetTrackCount}</strong></div>
                     <div><span>Matched</span><strong>{playlistPreview.summary.matchingTrackCount}</strong></div>
@@ -742,7 +751,7 @@ export default function SmartBuilderPage() {
                 ) : previewError ? (
                   <div className={styles.errorPreview}>{previewError}</div>
                 ) : tracks.length === 0 ? (
-                  <div className={styles.emptyPreview}>Choose a preset and preview it before creating anything in Plex.</div>
+                  <div className={styles.emptyPreview}>Choose presets or filters, then preview before creating anything in Plex.</div>
                 ) : (
                   <div className={styles.trackList}>
                     {tracks.map((track, index) => (

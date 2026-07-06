@@ -59,6 +59,7 @@ type BpmPresetMetadata = {
   bpmPresetId?: string;
   bpmPresetName?: string;
   bpmPresetVersion?: string;
+  bpmPresetModified?: boolean;
 };
 
 type SavedRule = {
@@ -92,6 +93,7 @@ type PlaylistPreviewSummary = {
   moodPresetName?: string | null;
   moodPresetModified?: boolean;
   bpmPresetName?: string | null;
+  bpmPresetModified?: boolean;
   manualExclusionsRemoved?: number;
   safetyRulesApplied?: boolean;
   removedBySafetyRules?: number;
@@ -435,6 +437,7 @@ export default function BuilderPage() {
     bpmPresetId: filters.bpmPresetId,
     bpmPresetName: filters.bpmPresetName,
     bpmPresetVersion: filters.bpmPresetVersion,
+    bpmPresetModified: filters.bpmPresetModified || false,
     pinnedTrackIds: filters.pinnedTrackIds || [],
     excludedTrackIds: filters.excludedTrackIds || [],
   });
@@ -586,6 +589,7 @@ export default function BuilderPage() {
       bpmPresetId: savedRule.options?.bpmPresetId,
       bpmPresetName: savedRule.options?.bpmPresetName,
       bpmPresetVersion: savedRule.options?.bpmPresetVersion,
+      bpmPresetModified: savedRule.options?.bpmPresetModified || false,
     });
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
@@ -640,6 +644,7 @@ export default function BuilderPage() {
       bpmPresetId: filters.bpmPresetId,
       bpmPresetName: filters.bpmPresetName,
       bpmPresetVersion: filters.bpmPresetVersion,
+      bpmPresetModified: filters.bpmPresetModified || false,
     });
     setPinnedTrackIds(filters.pinnedTrackIds || []);
     setExcludedTrackIds(filters.excludedTrackIds || []);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   BPM_PRESET_VERSION,
+  bpmPresetLabel,
   bpmPresetRangeLabel,
   buildBpmPresetRules,
   getBpmPreset,
@@ -37,6 +38,12 @@ describe("BPM range presets", () => {
     assert.equal(bpmPresetRangeLabel(getBpmPreset("wide-open")), "Any BPM");
   });
 
+  it("formats BPM preset names", () => {
+    assert.equal(bpmPresetLabel("Dance"), "Dance");
+    assert.equal(bpmPresetLabel("Dance", true), "Dance modified");
+    assert.equal(bpmPresetLabel(null), "Custom");
+  });
+
   it("accepts BPM preset metadata in playlist configs", () => {
     const dance = getBpmPreset("dance");
     assert.ok(dance);
@@ -51,10 +58,12 @@ describe("BPM range presets", () => {
       bpmPresetId: "dance",
       bpmPresetName: "Dance",
       bpmPresetVersion: BPM_PRESET_VERSION,
+      bpmPresetModified: true,
     });
 
     assert.equal(parsed.bpmPresetId, "dance");
     assert.equal(parsed.bpmPresetName, "Dance");
     assert.equal(parsed.bpmPresetVersion, BPM_PRESET_VERSION);
+    assert.equal(parsed.bpmPresetModified, true);
   });
 });

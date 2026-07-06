@@ -8,6 +8,7 @@ export type ReleaseNoteBadge =
   | "BPM"
   | "Dashboard"
   | "Debugging"
+  | "Hotfix"
   | "Jobs"
   | "Library"
   | "Library Health"
@@ -35,6 +36,18 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.2.2-hotfix",
+    title: "Smart Builder Preset Hotfix",
+    badges: ["Hotfix", "Smart Builder", "Mood", "BPM", "Beta"],
+    changes: [
+      "Fixed Smart Builder so Mood Presets can be selected without first choosing a Smart Preset.",
+      "Fixed Smart Builder so BPM Presets can be selected without first choosing a Smart Preset.",
+      "Allowed Smart, Mood, and BPM presets to be combined independently.",
+      "Improved Smart Builder preview metadata for partial preset selections.",
+      "Changed the app status badge from Official to Beta.",
+    ],
+  },
   {
     version: "1.2.2",
     title: "BPM Range Presets",
@@ -284,9 +297,11 @@ function normalizeVersion(version: string) {
 }
 
 function prereleaseRank(value?: string) {
-  if (!value) return 0;
-  if (value.startsWith("hotfix")) return 1;
-  return -1;
+  if (!value) return 3;
+  if (value.startsWith("hotfix")) return 4;
+  if (value.startsWith("rc")) return 2;
+  if (value.startsWith("beta")) return 1;
+  return 0;
 }
 
 export function compareSemanticVersions(left: string, right: string) {

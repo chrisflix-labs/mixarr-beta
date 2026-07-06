@@ -16,7 +16,7 @@ const previewFeatures = [
     description: "Start with guided presets for workout, chill, party, focus, driving, discovery, deep cuts, favorites, or balanced mixes. Now with Mood and BPM Presets.",
     examples: ["Workout", "Mood Presets", "BPM Presets"],
     icon: SlidersHorizontal,
-    badge: "v1.2.2",
+    badge: "v1.2.2-hotfix",
   },
   {
     title: "AI DJ Flow",

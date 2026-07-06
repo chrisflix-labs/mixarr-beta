@@ -21,6 +21,7 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "v1.2.2-hotfix improved independent Smart Builder preset selection and changed the app badge to Beta.",
   "BPM range presets for the Smart Playlist Builder",
   "Slow, Medium, Upbeat, Dance, High Energy, and Wide Open tempo presets",
   "Playlist Preview BPM preset summaries and low-match warnings",
@@ -72,7 +73,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release adds BPM Range Presets, a quick tempo tuning layer for the Smart Playlist Builder.</p>
+          <p>This release adds BPM Range Presets and a hotfix for independent Smart, Mood, and BPM preset selection.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>

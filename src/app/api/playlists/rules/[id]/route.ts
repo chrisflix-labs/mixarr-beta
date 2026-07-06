@@ -57,6 +57,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
           bpmPresetId: parsed.bpmPresetId,
           bpmPresetName: parsed.bpmPresetName,
           bpmPresetVersion: parsed.bpmPresetVersion,
+          bpmPresetModified: parsed.bpmPresetModified,
         }),
         limit: parsed.limit,
         autoRefresh: parsed.autoRefresh,

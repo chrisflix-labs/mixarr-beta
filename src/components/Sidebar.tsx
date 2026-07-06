@@ -1,7 +1,7 @@
 "use client";
 
 import styles from "./Sidebar.module.css";
-import { AudioWaveform, BadgeCheck, BookMarked, ExternalLink, Github, HeartPulse, History, LayoutDashboard, ListMusic, Map, ScrollText, Settings, Sparkles, Tags, Wand2 } from "lucide-react";
+import { AudioWaveform, BookMarked, ExternalLink, FlaskConical, Github, HeartPulse, History, LayoutDashboard, ListMusic, Map, ScrollText, Settings, Sparkles, Tags, Wand2 } from "lucide-react";
 import PlexLoginButton from "./PlexLoginButton";
 import LogoutButton from "./LogoutButton";
 import Link from "next/link";
@@ -20,9 +20,9 @@ export default function Sidebar({ user, appVersion }: { user: any; appVersion: s
         <div className={styles.logoCopy}>
           <div className={styles.logoTitleRow}>
             <h1 className={styles.logoTitle}>Mixarr</h1>
-            <span className={styles.officialBadge} aria-label="Official Mixarr build">
-              <BadgeCheck size={12} />
-              Official
+            <span className={styles.statusBadge} aria-label="Beta Mixarr build" title="Beta build">
+              <FlaskConical size={12} />
+              Beta
             </span>
           </div>
           <p className={styles.logoSubtitle}>Smart Playlist Engine</p>
@@ -44,9 +44,9 @@ export default function Sidebar({ user, appVersion }: { user: any; appVersion: s
           </div>
         </div>
       </div>
-      <span className={styles.mobileVersionBadge} aria-label={`Official Mixarr version ${appVersion}`}>
-        <BadgeCheck size={12} />
-        Official {appVersion}
+      <span className={styles.mobileVersionBadge} aria-label={`Beta Mixarr version ${appVersion}`} title="Beta build">
+        <FlaskConical size={12} />
+        Beta {appVersion}
       </span>
       <a
         href={MIXARR_GITHUB_URL}

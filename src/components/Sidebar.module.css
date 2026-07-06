@@ -78,7 +78,7 @@
   margin: 0;
 }
 
-.officialBadge,
+.statusBadge,
 .versionBadge,
 .mobileVersionBadge {
   border-radius: 999px;
@@ -88,7 +88,7 @@
   white-space: nowrap;
 }
 
-.officialBadge {
+.statusBadge {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;

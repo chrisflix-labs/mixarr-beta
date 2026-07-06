@@ -60,14 +60,14 @@ export function summarizePlaylistRecipeFilters(filters: PlaylistConfigInput) {
   const parts: string[] = [];
   if (filters.smartPresetName) parts.push(`Preset: ${filters.smartPresetName}`);
   if (filters.moodPresetName) parts.push(`Mood: ${filters.moodPresetName}${filters.moodPresetModified ? " modified" : ""}`);
-  if (filters.bpmPresetName) parts.push(`BPM: ${filters.bpmPresetName}`);
+  if (filters.bpmPresetName) parts.push(`BPM: ${filters.bpmPresetName}${filters.bpmPresetModified ? " modified" : ""}`);
   if (genres.length) parts.push(`Genres: ${genres.slice(0, 3).join(", ")}${genres.length > 3 ? "..." : ""}`);
 
   const bpm = numericRangeLabel(rules, "tempo");
   const energy = numericRangeLabel(rules, "energy");
   const mood = numericRangeLabel(rules, "valence");
   const popularity = numericRangeLabel(rules, "popularity");
-  if (bpm && !filters.bpmPresetName) parts.push(`BPM: ${bpm}`);
+  if (bpm && (!filters.bpmPresetName || filters.bpmPresetModified)) parts.push(`${filters.bpmPresetName ? "BPM range" : "BPM"}: ${bpm}`);
   if (energy) parts.push(`Energy: ${energy}`);
   if (mood) parts.push(`${filters.moodPresetName ? "Mood range" : "Mood"}: ${mood}`);
   if (popularity) parts.push(`Popularity: ${popularity}`);

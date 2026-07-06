@@ -82,8 +82,9 @@ export function bpmPresetRangeLabel(preset?: Pick<BpmPreset, "minBpm" | "maxBpm"
   return `Up to ${preset.maxBpm} BPM`;
 }
 
-export function bpmPresetLabel(name?: string | null) {
-  return name || "Custom";
+export function bpmPresetLabel(name?: string | null, modified?: boolean | null) {
+  if (!name) return "Custom";
+  return modified ? `${name} modified` : name;
 }
 
 export function buildBpmPresetRules(preset: BpmPreset): PlaylistRuleInput[] {

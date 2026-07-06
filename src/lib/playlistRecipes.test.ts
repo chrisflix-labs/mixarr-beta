@@ -61,6 +61,69 @@ describe("playlist recipes", () => {
     assert.doesNotMatch(summary, /BPM: 120–140/);
   });
 
+  it("preserves Mood and BPM preset metadata without Smart preset metadata", () => {
+    const parsed = playlistRecipeSchema.parse({
+      name: "Hype Dance Mix",
+      description: "",
+      filters: {
+        rules: [
+          { field: "tempo", operator: "gte", value: "120" },
+          { field: "tempo", operator: "lte", value: "140" },
+          { field: "energy", operator: "gte", value: "0.75" },
+          { field: "valence", operator: "gte", value: "0.65" },
+        ],
+        limit: 50,
+        duplicateStrategy: "song_artist",
+        preferNonLive: true,
+        excludeRemasters: false,
+        negativeFilters: {},
+        safetyRules: {},
+        moodPresetId: "hype",
+        moodPresetName: "Hype",
+        moodPresetVersion: "v1",
+        bpmPresetId: "dance",
+        bpmPresetName: "Dance",
+        bpmPresetVersion: "v1",
+      },
+    });
+
+    const summary = summarizePlaylistRecipeFilters(parsed.filters);
+
+    assert.equal(parsed.filters.smartPresetName, undefined);
+    assert.equal(parsed.filters.moodPresetName, "Hype");
+    assert.equal(parsed.filters.bpmPresetName, "Dance");
+    assert.match(summary, /Mood: Hype/);
+    assert.match(summary, /BPM: Dance/);
+  });
+
+  it("summarizes modified BPM preset metadata with the active BPM range", () => {
+    const parsed = playlistRecipeSchema.parse({
+      name: "Modified Dance Mix",
+      description: "",
+      filters: {
+        rules: [
+          { field: "tempo", operator: "gte", value: "115" },
+          { field: "tempo", operator: "lte", value: "160" },
+        ],
+        limit: 50,
+        duplicateStrategy: "song_artist",
+        preferNonLive: true,
+        excludeRemasters: false,
+        negativeFilters: {},
+        safetyRules: {},
+        bpmPresetId: "dance",
+        bpmPresetName: "Dance",
+        bpmPresetVersion: "v1",
+        bpmPresetModified: true,
+      },
+    });
+
+    const summary = summarizePlaylistRecipeFilters(parsed.filters);
+
+    assert.match(summary, /BPM: Dance modified/);
+    assert.match(summary, /BPM range: 115/);
+  });
+
   it("keeps existing recipes without BPM preset metadata valid", () => {
     const parsed = playlistRecipeSchema.parse({
       name: "Manual Mix",

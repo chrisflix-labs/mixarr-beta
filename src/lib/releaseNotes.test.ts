@@ -14,13 +14,13 @@ describe("release notes", () => {
   it("sorts release notes from oldest to newest", () => {
     const ordered = getReleaseNotesOldestFirst();
 
-    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2", "1.2.2-hotfix"]);
   });
 
   it("sorts release notes from newest to oldest", () => {
     const ordered = getReleaseNotesNewestFirst();
 
-    assert.deepEqual(ordered.map((note) => note.version), ["1.2.2", "1.2.1", "1.2.0", "1.1.10", "1.1.9.1", "1.1.9", "1.1.8", "1.1.7", "1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["1.2.2-hotfix", "1.2.2", "1.2.1", "1.2.0", "1.1.10", "1.1.9.1", "1.1.9", "1.1.8", "1.1.7", "1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
   });
 
   it("sorts semantic versions newest first without string ordering", () => {
@@ -48,10 +48,14 @@ describe("release notes", () => {
     assert.equal(compareSemanticVersions("v1.2.0", "v1.1.10") > 0, true);
     assert.equal(compareSemanticVersions("v1.2.1", "v1.2.0") > 0, true);
     assert.equal(compareSemanticVersions("v1.2.2", "v1.2.1") > 0, true);
+    assert.equal(compareSemanticVersions("v1.2.2-hotfix", "v1.2.2") > 0, true);
+    assert.equal(compareSemanticVersions("v1.2.2", "v1.2.2-rc") > 0, true);
+    assert.equal(compareSemanticVersions("v1.2.2-rc", "v1.2.2-beta") > 0, true);
   });
 
-  it("places v1.2.2 above v1.2.1, v1.2.0, v1.1.10, and v1.1.9.1", () => {
+  it("places v1.2.2-hotfix above v1.2.2 and prior releases", () => {
     const ordered = getReleaseNotesNewestFirst([
+      { version: "v1.2.2-hotfix", title: "Hotfix", badges: ["Beta"], changes: ["Hotfix"] },
       { version: "v1.1.9.1", title: "One", badges: ["Beta"], changes: ["One"] },
       { version: "v1.2.0", title: "Two", badges: ["Beta"], changes: ["Two"] },
       { version: "v1.1.10", title: "Three", badges: ["Beta"], changes: ["Three"] },
@@ -59,7 +63,19 @@ describe("release notes", () => {
       { version: "v1.2.2", title: "Five", badges: ["Beta"], changes: ["Five"] },
     ]);
 
-    assert.deepEqual(ordered.map((note) => note.version), ["v1.2.2", "v1.2.1", "v1.2.0", "v1.1.10", "v1.1.9.1"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["v1.2.2-hotfix", "v1.2.2", "v1.2.1", "v1.2.0", "v1.1.10", "v1.1.9.1"]);
+  });
+
+  it("keeps hotfix versions above matching final versions without string sorting", () => {
+    const ordered = getReleaseNotesNewestFirst([
+      { version: "v1.1.10", title: "One", badges: ["Beta"], changes: ["One"] },
+      { version: "v1.2.0", title: "Two", badges: ["Beta"], changes: ["Two"] },
+      { version: "v1.2.1", title: "Three", badges: ["Beta"], changes: ["Three"] },
+      { version: "v1.2.2", title: "Four", badges: ["Beta"], changes: ["Four"] },
+      { version: "v1.2.2-hotfix", title: "Five", badges: ["Beta"], changes: ["Five"] },
+    ]);
+
+    assert.deepEqual(ordered.map((note) => note.version), ["v1.2.2-hotfix", "v1.2.2", "v1.2.1", "v1.2.0", "v1.1.10"]);
   });
 
   it("keeps the beta Discord invite exact", () => {

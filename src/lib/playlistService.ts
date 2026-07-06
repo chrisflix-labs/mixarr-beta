@@ -100,6 +100,7 @@ export const playlistConfigSchema = z.object({
   bpmPresetId: z.string().trim().max(80).optional(),
   bpmPresetName: z.string().trim().max(120).optional(),
   bpmPresetVersion: z.string().trim().max(40).optional(),
+  bpmPresetModified: z.boolean().default(false),
 }).merge(playlistOptionsSchema);
 
 export const savedPlaylistSchema = playlistConfigSchema.extend({
@@ -706,6 +707,7 @@ function buildPreviewWarnings({
   moodPresetName,
   moodPresetModified,
   bpmPresetName,
+  bpmPresetModified,
 }: {
   tracks: any[];
   matchedTrackCount: number;
@@ -714,12 +716,14 @@ function buildPreviewWarnings({
   moodPresetName?: string;
   moodPresetModified?: boolean;
   bpmPresetName?: string;
+  bpmPresetModified?: boolean;
 }) {
   const warnings: string[] = [];
   const moodPresetLabel = moodPresetName ? `${moodPresetName}${moodPresetModified ? " modified" : ""}` : "";
+  const bpmPresetLabel = bpmPresetName ? `${bpmPresetName}${bpmPresetModified ? " modified" : ""}` : "";
   if (matchedTrackCount === 0 || tracks.length === 0) {
     warnings.push(bpmPresetName
-      ? `No tracks matched the ${bpmPresetName} BPM preset. Try choosing Medium, Wide Open, or widening the BPM range.`
+      ? `No tracks matched the ${bpmPresetLabel} BPM preset. Try choosing Medium, Wide Open, or widening the BPM range.`
       : moodPresetLabel
       ? `No tracks matched the ${moodPresetLabel} mood preset. Try widening BPM, energy, or mood ranges.`
       : smartPresetName
@@ -737,7 +741,7 @@ function buildPreviewWarnings({
 
   if (matchedTrackCount < requestedLimit) {
     warnings.push(bpmPresetName
-      ? `Only ${matchedTrackCount} tracks matched the ${bpmPresetName} BPM preset. Try choosing Medium, Wide Open, or widening the BPM range.`
+      ? `Only ${matchedTrackCount} tracks matched the ${bpmPresetLabel} BPM preset. Try choosing Medium, Wide Open, or widening the BPM range.`
       : moodPresetLabel
       ? `Only ${matchedTrackCount} tracks matched the ${moodPresetLabel} mood preset. Try widening BPM or energy ranges.`
       : smartPresetName
@@ -832,6 +836,7 @@ export async function previewPlaylistTracks({
     bpmPresetId: config.bpmPresetId || null,
     bpmPresetName: config.bpmPresetName || null,
     bpmPresetVersion: config.bpmPresetVersion || null,
+    bpmPresetModified: config.bpmPresetModified || false,
     artistLimitApplied: generation.safety.artistLimitApplied,
     albumLimitApplied: generation.safety.albumLimitApplied,
     artistSpacingApplied: generation.safety.artistSpacingApplied,
@@ -853,7 +858,7 @@ export async function previewPlaylistTracks({
   const filterSummary = [
     ...(config.smartPresetName ? [{ label: "Smart preset", value: config.smartPresetName }] : []),
     ...(config.moodPresetName ? [{ label: "Mood preset", value: `${config.moodPresetName}${config.moodPresetModified ? " modified" : ""}` }] : []),
-    ...(config.bpmPresetName ? [{ label: "BPM preset", value: config.bpmPresetName }] : []),
+    ...(config.bpmPresetName ? [{ label: "BPM preset", value: `${config.bpmPresetName}${config.bpmPresetModified ? " modified" : ""}` }] : []),
     { label: "Server", value: server?.name || (config.serverId ? "Selected server" : "Any connected server") },
     { label: "Library", value: library?.name || (config.libraryId ? "Selected library" : "Any music library") },
     { label: "Genres", value: summary.genreFilters },
@@ -879,6 +884,7 @@ export async function previewPlaylistTracks({
       moodPresetName: config.moodPresetName,
       moodPresetModified: config.moodPresetModified,
       bpmPresetName: config.bpmPresetName,
+      bpmPresetModified: config.bpmPresetModified,
     }),
     ...generation.safety.warnings,
   ].filter((warning, index, list) => list.indexOf(warning) === index);

@@ -66,6 +66,7 @@ export async function POST(req: Request) {
           bpmPresetId: parsed.bpmPresetId,
           bpmPresetName: parsed.bpmPresetName,
           bpmPresetVersion: parsed.bpmPresetVersion,
+          bpmPresetModified: parsed.bpmPresetModified,
         }),
         limit: parsed.limit,
         autoRefresh: parsed.autoRefresh,

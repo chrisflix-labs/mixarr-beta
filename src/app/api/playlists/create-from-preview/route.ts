@@ -79,9 +79,10 @@ export async function POST(req: Request) {
     const moodPresetName = parsedOptions?.moodPresetName || null;
     const moodPresetDisplayName = moodPresetName ? `${moodPresetName}${parsedOptions?.moodPresetModified ? " modified" : ""}` : null;
     const bpmPresetName = parsedOptions?.bpmPresetName || null;
+    const bpmPresetDisplayName = bpmPresetName ? `${bpmPresetName}${parsedOptions?.bpmPresetModified ? " modified" : ""}` : null;
     const presetSummaries = [
       ...(moodPresetDisplayName ? [`mood preset "${moodPresetDisplayName}"`] : []),
-      ...(bpmPresetName ? [`BPM preset "${bpmPresetName}"`] : []),
+      ...(bpmPresetDisplayName ? [`BPM preset "${bpmPresetDisplayName}"`] : []),
     ];
     const presetSummary = presetSummaries.length ? ` with ${presetSummaries.join(" and ")}` : "";
     const trackCountSummary = presetSummary ? ` and ${result.trackCount} tracks` : ` with ${result.trackCount} tracks`;
@@ -96,7 +97,7 @@ export async function POST(req: Request) {
         ? `Created playlist "${trimmedName}"${smartPresetSummary}${presetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`
         : resolvedRecipeName
         ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}"${presetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`
-        : `Created playlist "${trimmedName}" from preview${trackCountSummary}.${exclusionSummary}${safetySummary}`,
+        : `Created playlist "${trimmedName}" from preview${presetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`,
       counts: { attempted: trackIds.length, processed: result.trackCount, skipped: Math.max(0, trackIds.length - result.trackCount), failed: 0 },
       metadata: {
         savedRuleId: savedRuleId || null,
@@ -115,6 +116,7 @@ export async function POST(req: Request) {
         bpmPresetId: parsedOptions?.bpmPresetId || null,
         bpmPresetName,
         bpmPresetVersion: parsedOptions?.bpmPresetVersion || null,
+        bpmPresetModified: parsedOptions?.bpmPresetModified || false,
         bpmMin: bpmRange.bpmMin,
         bpmMax: bpmRange.bpmMax,
         playlistName: trimmedName,

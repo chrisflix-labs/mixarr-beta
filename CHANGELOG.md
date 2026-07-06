@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.2-hotfix - Smart Builder Preset Hotfix
+
+- Fixed Smart Builder so Mood Presets can be selected without first choosing a Smart Preset.
+- Fixed Smart Builder so BPM Presets can be selected without first choosing a Smart Preset.
+- Allowed Smart, Mood, and BPM presets to be combined independently.
+- Improved Smart Builder preview metadata for partial preset selections.
+- Changed the app status badge from Official to Beta.
+
 ## v1.2.2 - BPM Range Presets
 
 - Added BPM Range Presets to Smart Builder.
