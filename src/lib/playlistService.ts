@@ -97,6 +97,9 @@ export const playlistConfigSchema = z.object({
   moodPresetName: z.string().trim().max(120).optional(),
   moodPresetVersion: z.string().trim().max(40).optional(),
   moodPresetModified: z.boolean().default(false),
+  bpmPresetId: z.string().trim().max(80).optional(),
+  bpmPresetName: z.string().trim().max(120).optional(),
+  bpmPresetVersion: z.string().trim().max(40).optional(),
 }).merge(playlistOptionsSchema);
 
 export const savedPlaylistSchema = playlistConfigSchema.extend({
@@ -671,7 +674,7 @@ function numericRangeLabel(rules: PlaylistRuleInput[], field: string, emptyLabel
   const lower = relevant.find((rule) => rule.operator === "gte" || rule.operator === "gt");
   const upper = relevant.find((rule) => rule.operator === "lte" || rule.operator === "lt");
   if (lower || upper) {
-    return `${lower ? `${lower.operator === "gt" ? ">" : ""}${lower.value}` : "Any"}-${upper ? `${upper.operator === "lt" ? "<" : ""}${upper.value}` : "Any"}`;
+    return `${lower ? `${lower.operator === "gt" ? ">" : ""}${lower.value}` : "Any"}–${upper ? `${upper.operator === "lt" ? "<" : ""}${upper.value}` : "Any"}`;
   }
   return relevant.map(readableRule).join(", ");
 }
@@ -702,6 +705,7 @@ function buildPreviewWarnings({
   smartPresetName,
   moodPresetName,
   moodPresetModified,
+  bpmPresetName,
 }: {
   tracks: any[];
   matchedTrackCount: number;
@@ -709,15 +713,21 @@ function buildPreviewWarnings({
   smartPresetName?: string;
   moodPresetName?: string;
   moodPresetModified?: boolean;
+  bpmPresetName?: string;
 }) {
   const warnings: string[] = [];
   const moodPresetLabel = moodPresetName ? `${moodPresetName}${moodPresetModified ? " modified" : ""}` : "";
   if (matchedTrackCount === 0 || tracks.length === 0) {
-    warnings.push(moodPresetLabel
+    warnings.push(bpmPresetName
+      ? `No tracks matched the ${bpmPresetName} BPM preset. Try choosing Medium, Wide Open, or widening the BPM range.`
+      : moodPresetLabel
       ? `No tracks matched the ${moodPresetLabel} mood preset. Try widening BPM, energy, or mood ranges.`
       : smartPresetName
       ? `No tracks matched the ${smartPresetName} preset. Try widening the BPM range, allowing more genres, or disabling popularity limits.`
       : "No tracks matched this playlist recipe. Adjust your filters and preview again.");
+    if (bpmPresetName) {
+      warnings.push("This BPM preset depends on BPM data. Run BPM analysis or choose Wide Open if too few tracks match.");
+    }
     if (moodPresetName) {
       warnings.push("This preset depends on mood and energy data. Run audio feature analysis or widen your filters if too few tracks match.");
     }
@@ -726,7 +736,9 @@ function buildPreviewWarnings({
   }
 
   if (matchedTrackCount < requestedLimit) {
-    warnings.push(moodPresetLabel
+    warnings.push(bpmPresetName
+      ? `Only ${matchedTrackCount} tracks matched the ${bpmPresetName} BPM preset. Try choosing Medium, Wide Open, or widening the BPM range.`
+      : moodPresetLabel
       ? `Only ${matchedTrackCount} tracks matched the ${moodPresetLabel} mood preset. Try widening BPM or energy ranges.`
       : smartPresetName
       ? `Only ${matchedTrackCount} tracks matched the ${smartPresetName} preset. Try widening the BPM range, allowing more genres, or disabling popularity limits.`
@@ -739,6 +751,9 @@ function buildPreviewWarnings({
   const missingBpm = tracks.filter((track) => !track.effectiveBpm && !track.bpm && !track.audioFeature?.tempo).length;
   if (missingBpm >= Math.max(3, Math.ceil(tracks.length * 0.25))) {
     warnings.push(`Many tracks are missing BPM data (${missingBpm} of ${tracks.length}).`);
+    if (bpmPresetName) {
+      warnings.push("This BPM preset depends on BPM data. Run BPM analysis or choose Wide Open if too few tracks match.");
+    }
   }
 
   const missingAudio = tracks.filter((track) => !track.audioFeature || (track.audioFeature.energy == null && track.audioFeature.valence == null && track.audioFeature.effectiveEnergy == null && track.audioFeature.effectiveMood == null)).length;
@@ -814,6 +829,9 @@ export async function previewPlaylistTracks({
     moodPresetName: config.moodPresetName || null,
     moodPresetVersion: config.moodPresetVersion || null,
     moodPresetModified: config.moodPresetModified || false,
+    bpmPresetId: config.bpmPresetId || null,
+    bpmPresetName: config.bpmPresetName || null,
+    bpmPresetVersion: config.bpmPresetVersion || null,
     artistLimitApplied: generation.safety.artistLimitApplied,
     albumLimitApplied: generation.safety.albumLimitApplied,
     artistSpacingApplied: generation.safety.artistSpacingApplied,
@@ -835,10 +853,11 @@ export async function previewPlaylistTracks({
   const filterSummary = [
     ...(config.smartPresetName ? [{ label: "Smart preset", value: config.smartPresetName }] : []),
     ...(config.moodPresetName ? [{ label: "Mood preset", value: `${config.moodPresetName}${config.moodPresetModified ? " modified" : ""}` }] : []),
+    ...(config.bpmPresetName ? [{ label: "BPM preset", value: config.bpmPresetName }] : []),
     { label: "Server", value: server?.name || (config.serverId ? "Selected server" : "Any connected server") },
     { label: "Library", value: library?.name || (config.libraryId ? "Selected library" : "Any music library") },
     { label: "Genres", value: summary.genreFilters },
-    { label: "BPM", value: summary.bpmRange },
+    { label: config.bpmPresetName ? "BPM range" : "BPM", value: summary.bpmRange },
     { label: "Energy", value: summary.energyRange },
     { label: "Mood", value: summary.moodRange },
     { label: "Popularity", value: summary.popularityRange },
@@ -859,6 +878,7 @@ export async function previewPlaylistTracks({
       smartPresetName: config.smartPresetName,
       moodPresetName: config.moodPresetName,
       moodPresetModified: config.moodPresetModified,
+      bpmPresetName: config.bpmPresetName,
     }),
     ...generation.safety.warnings,
   ].filter((warning, index, list) => list.indexOf(warning) === index);

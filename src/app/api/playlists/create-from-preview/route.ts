@@ -5,6 +5,22 @@ import { safeRecordJobHistory } from "@/lib/jobHistory";
 import prisma from "@/lib/prisma";
 import { markPlaylistRecipeUsed } from "@/lib/playlistRecipes";
 
+function collectRules(node: any, fallbackRules: any[] = []): any[] {
+  if (!node) return fallbackRules;
+  if (node.type !== "group") return [node];
+  return (node.children || []).flatMap((child: any) => collectRules(child, []));
+}
+
+function tempoRangeFromOptions(options: any) {
+  const rules = collectRules(options?.ruleTree, options?.rules || []);
+  const lower = rules.find((rule) => rule.field === "tempo" && (rule.operator === "gte" || rule.operator === "gt"));
+  const upper = rules.find((rule) => rule.field === "tempo" && (rule.operator === "lte" || rule.operator === "lt"));
+  return {
+    bpmMin: lower?.value ? Number(lower.value) : null,
+    bpmMax: upper?.value ? Number(upper.value) : null,
+  };
+}
+
 export async function POST(req: Request) {
   const cookieStore = cookies();
   const userId = cookieStore.get("mixarr_session")?.value;
@@ -62,8 +78,14 @@ export async function POST(req: Request) {
     const smartPresetSummary = smartPresetName ? ` from Smart Builder preset "${smartPresetName}"` : "";
     const moodPresetName = parsedOptions?.moodPresetName || null;
     const moodPresetDisplayName = moodPresetName ? `${moodPresetName}${parsedOptions?.moodPresetModified ? " modified" : ""}` : null;
-    const moodPresetSummary = moodPresetDisplayName ? ` with mood preset "${moodPresetDisplayName}"` : "";
-    const trackCountSummary = moodPresetSummary ? `${moodPresetSummary} and ${result.trackCount} tracks` : ` with ${result.trackCount} tracks`;
+    const bpmPresetName = parsedOptions?.bpmPresetName || null;
+    const presetSummaries = [
+      ...(moodPresetDisplayName ? [`mood preset "${moodPresetDisplayName}"`] : []),
+      ...(bpmPresetName ? [`BPM preset "${bpmPresetName}"`] : []),
+    ];
+    const presetSummary = presetSummaries.length ? ` with ${presetSummaries.join(" and ")}` : "";
+    const trackCountSummary = presetSummary ? ` and ${result.trackCount} tracks` : ` with ${result.trackCount} tracks`;
+    const bpmRange = tempoRangeFromOptions(parsedOptions);
     await safeRecordJobHistory({
       userId,
       type: "playlist",
@@ -71,9 +93,9 @@ export async function POST(req: Request) {
       status: "success",
       trigger: "manual",
       summary: smartPresetName
-        ? `Created playlist "${trimmedName}"${smartPresetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`
+        ? `Created playlist "${trimmedName}"${smartPresetSummary}${presetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`
         : resolvedRecipeName
-        ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}"${trackCountSummary}.${exclusionSummary}${safetySummary}`
+        ? `Created playlist "${trimmedName}" from recipe "${resolvedRecipeName}"${presetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`
         : `Created playlist "${trimmedName}" from preview${trackCountSummary}.${exclusionSummary}${safetySummary}`,
       counts: { attempted: trackIds.length, processed: result.trackCount, skipped: Math.max(0, trackIds.length - result.trackCount), failed: 0 },
       metadata: {
@@ -90,6 +112,11 @@ export async function POST(req: Request) {
         moodPresetName,
         moodPresetVersion: parsedOptions?.moodPresetVersion || null,
         moodPresetModified: parsedOptions?.moodPresetModified || false,
+        bpmPresetId: parsedOptions?.bpmPresetId || null,
+        bpmPresetName,
+        bpmPresetVersion: parsedOptions?.bpmPresetVersion || null,
+        bpmMin: bpmRange.bpmMin,
+        bpmMax: bpmRange.bpmMax,
         playlistName: trimmedName,
         trackCount: result.trackCount,
         manualExclusionsApplied: excludedTrackCount > 0,

@@ -34,7 +34,7 @@ function numericRangeLabel(rules: PlaylistRuleInput[], field: string) {
   if (lower || upper) {
     const low = lower ? `${lower.operator === "gt" ? ">" : ""}${lower.value}` : "";
     const high = upper ? `${upper.operator === "lt" ? "<" : ""}${upper.value}` : "";
-    return low && high ? `${low}-${high}` : low || high;
+    return low && high ? `${low}–${high}` : low || high;
   }
   return relevant.map((rule) => `${rule.field} ${rule.operator} ${rule.value}`).join(", ");
 }
@@ -60,13 +60,14 @@ export function summarizePlaylistRecipeFilters(filters: PlaylistConfigInput) {
   const parts: string[] = [];
   if (filters.smartPresetName) parts.push(`Preset: ${filters.smartPresetName}`);
   if (filters.moodPresetName) parts.push(`Mood: ${filters.moodPresetName}${filters.moodPresetModified ? " modified" : ""}`);
+  if (filters.bpmPresetName) parts.push(`BPM: ${filters.bpmPresetName}`);
   if (genres.length) parts.push(`Genres: ${genres.slice(0, 3).join(", ")}${genres.length > 3 ? "..." : ""}`);
 
   const bpm = numericRangeLabel(rules, "tempo");
   const energy = numericRangeLabel(rules, "energy");
   const mood = numericRangeLabel(rules, "valence");
   const popularity = numericRangeLabel(rules, "popularity");
-  if (bpm) parts.push(`BPM: ${bpm}`);
+  if (bpm && !filters.bpmPresetName) parts.push(`BPM: ${bpm}`);
   if (energy) parts.push(`Energy: ${energy}`);
   if (mood) parts.push(`${filters.moodPresetName ? "Mood range" : "Mood"}: ${mood}`);
   if (popularity) parts.push(`Popularity: ${popularity}`);

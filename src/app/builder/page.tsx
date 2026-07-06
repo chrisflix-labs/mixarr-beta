@@ -55,6 +55,12 @@ type MoodPresetMetadata = {
   moodPresetModified?: boolean;
 };
 
+type BpmPresetMetadata = {
+  bpmPresetId?: string;
+  bpmPresetName?: string;
+  bpmPresetVersion?: string;
+};
+
 type SavedRule = {
   id: string;
   name: string;
@@ -85,6 +91,7 @@ type PlaylistPreviewSummary = {
   smartPresetName?: string | null;
   moodPresetName?: string | null;
   moodPresetModified?: boolean;
+  bpmPresetName?: string | null;
   manualExclusionsRemoved?: number;
   safetyRulesApplied?: boolean;
   removedBySafetyRules?: number;
@@ -178,6 +185,7 @@ export default function BuilderPage() {
   });
   const [smartPresetMetadata, setSmartPresetMetadata] = useState<SmartPresetMetadata>({});
   const [moodPresetMetadata, setMoodPresetMetadata] = useState<MoodPresetMetadata>({});
+  const [bpmPresetMetadata, setBpmPresetMetadata] = useState<BpmPresetMetadata>({});
   const [pinnedTrackIds, setPinnedTrackIds] = useState<string[]>([]);
   const [excludedTrackIds, setExcludedTrackIds] = useState<string[]>([]);
   const [draggedTrackId, setDraggedTrackId] = useState("");
@@ -353,6 +361,10 @@ export default function BuilderPage() {
     clearPreview();
   };
 
+  const clearBpmPresetMetadata = () => {
+    setBpmPresetMetadata({});
+  };
+
   const playlistPayload = (extra: Record<string, any> = {}) => ({
     rules,
     ruleTree: buildRuleTree(),
@@ -380,6 +392,7 @@ export default function BuilderPage() {
     },
     ...smartPresetMetadata,
     ...moodPresetMetadata,
+    ...bpmPresetMetadata,
     ...extra,
   });
 
@@ -419,6 +432,9 @@ export default function BuilderPage() {
     moodPresetName: filters.moodPresetName,
     moodPresetVersion: filters.moodPresetVersion,
     moodPresetModified: filters.moodPresetModified || false,
+    bpmPresetId: filters.bpmPresetId,
+    bpmPresetName: filters.bpmPresetName,
+    bpmPresetVersion: filters.bpmPresetVersion,
     pinnedTrackIds: filters.pinnedTrackIds || [],
     excludedTrackIds: filters.excludedTrackIds || [],
   });
@@ -469,6 +485,7 @@ export default function BuilderPage() {
 
   const removeRule = (index: number) => {
     if (isMoodPresetRuleField(rules[index]?.field)) markMoodPresetModified();
+    if (rules[index]?.field === "tempo") clearBpmPresetMetadata();
     setRules(rules.filter((_, i) => i !== index));
     clearPreview();
   };
@@ -477,6 +494,7 @@ export default function BuilderPage() {
     const newRules = [...rules];
     const existingField = newRules[index]?.field;
     if (isMoodPresetRuleField(existingField) || (key === "field" && isMoodPresetRuleField(val))) markMoodPresetModified();
+    if (existingField === "tempo" || (key === "field" && val === "tempo")) clearBpmPresetMetadata();
     newRules[index][key] = val;
     setRules(newRules);
     clearPreview();
@@ -498,6 +516,7 @@ export default function BuilderPage() {
       const nextRules = [...group.rules];
       const existingField = nextRules[index]?.field;
       if (isMoodPresetRuleField(existingField) || (key === "field" && isMoodPresetRuleField(val))) markMoodPresetModified();
+      if (existingField === "tempo" || (key === "field" && val === "tempo")) clearBpmPresetMetadata();
       nextRules[index][key] = val;
       return { ...group, rules: nextRules };
     }));
@@ -512,6 +531,7 @@ export default function BuilderPage() {
   const removeGroupRule = (groupId: string, index: number) => {
     const group = ruleGroups.find((item) => item.id === groupId);
     if (isMoodPresetRuleField(group?.rules[index]?.field)) markMoodPresetModified();
+    if (group?.rules[index]?.field === "tempo") clearBpmPresetMetadata();
     setRuleGroups(ruleGroups.map(group => group.id === groupId ? { ...group, rules: group.rules.filter((_, i) => i !== index) } : group));
     clearPreview();
   };
@@ -524,6 +544,7 @@ export default function BuilderPage() {
     setRecipeNotice("");
     setSmartPresetMetadata({});
     setMoodPresetMetadata({});
+    setBpmPresetMetadata({});
     if (!id) return;
 
     const savedRule = savedRules.find(rule => rule.id === id);
@@ -560,6 +581,11 @@ export default function BuilderPage() {
       moodPresetName: savedRule.options?.moodPresetName,
       moodPresetVersion: savedRule.options?.moodPresetVersion,
       moodPresetModified: savedRule.options?.moodPresetModified || false,
+    });
+    setBpmPresetMetadata({
+      bpmPresetId: savedRule.options?.bpmPresetId,
+      bpmPresetName: savedRule.options?.bpmPresetName,
+      bpmPresetVersion: savedRule.options?.bpmPresetVersion,
     });
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
@@ -609,6 +635,11 @@ export default function BuilderPage() {
       moodPresetName: filters.moodPresetName,
       moodPresetVersion: filters.moodPresetVersion,
       moodPresetModified: filters.moodPresetModified || false,
+    });
+    setBpmPresetMetadata({
+      bpmPresetId: filters.bpmPresetId,
+      bpmPresetName: filters.bpmPresetName,
+      bpmPresetVersion: filters.bpmPresetVersion,
     });
     setPinnedTrackIds(filters.pinnedTrackIds || []);
     setExcludedTrackIds(filters.excludedTrackIds || []);
@@ -754,6 +785,7 @@ export default function BuilderPage() {
     setRecipeNotice("");
     setSmartPresetMetadata({});
     setMoodPresetMetadata({});
+    setBpmPresetMetadata({});
     if (templateName === "deep_cuts") {
       setRules([{ field: "popularity", operator: "lt", value: "30" }]);
       setPlaylistName("Deep Cuts Discovered");

@@ -13,10 +13,10 @@ import { getRecentJobSummary } from "@/lib/jobHistory";
 const previewFeatures = [
   {
     title: "Smart Playlist Builder",
-    description: "Start with guided presets for workout, chill, party, focus, driving, discovery, deep cuts, favorites, or balanced mixes. Now with Mood Presets.",
-    examples: ["Workout", "Discovery", "Mood Presets"],
+    description: "Start with guided presets for workout, chill, party, focus, driving, discovery, deep cuts, favorites, or balanced mixes. Now with Mood and BPM Presets.",
+    examples: ["Workout", "Mood Presets", "BPM Presets"],
     icon: SlidersHorizontal,
-    badge: "v1.2.1",
+    badge: "v1.2.2",
   },
   {
     title: "AI DJ Flow",
@@ -119,7 +119,7 @@ function SmartBuilderCard() {
     <article className={styles.card}>
       <Sparkles size={22} className={styles.cardIcon} />
       <h3>Smart Playlist Builder</h3>
-      <p>Choose a goal like Workout, Chill, Party, Focus, or Discovery, then tune the vibe with Mood Presets.</p>
+      <p>Choose a goal like Workout, Chill, Party, Focus, or Discovery, then tune the vibe with Mood and BPM Presets.</p>
       <div className={styles.versionCardActions}>
         <Link href="/smart-builder" className={styles.cardAction}>Open Smart Builder</Link>
         <Link href="/recipes" className={`${styles.cardAction} ${styles.secondaryCardAction}`}>View Recipes</Link>

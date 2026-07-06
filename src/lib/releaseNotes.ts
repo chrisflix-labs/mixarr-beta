@@ -36,6 +36,18 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.2.2",
+    title: "BPM Range Presets",
+    badges: ["Smart Builder", "Playlists", "BPM", "Recipes", "Preview"],
+    changes: [
+      "Added BPM Range Presets to Smart Builder.",
+      "Added Slow, Medium, Upbeat, Dance, High Energy, and Wide Open tempo presets.",
+      "BPM Presets now tune playlist tempo without manually entering ranges.",
+      "Playlist Preview now shows selected BPM preset metadata and helpful low-match warnings.",
+      "Saved recipes now preserve BPM preset metadata while keeping filter values as the source of truth.",
+    ],
+  },
+  {
     version: "1.2.1",
     title: "Mood Presets",
     badges: ["Smart Builder", "Playlists", "Mood", "Recipes", "Preview"],

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.2 - BPM Range Presets
+
+- Added BPM Range Presets to Smart Builder.
+- Added Slow, Medium, Upbeat, Dance, High Energy, and Wide Open tempo presets.
+- BPM Presets now tune playlist tempo without manually entering ranges.
+- Playlist Preview now shows selected BPM preset metadata and helpful low-match warnings.
+- Saved recipes now preserve BPM preset metadata while keeping filter values as the source of truth.
+
 ## v1.2.1 - Mood Presets
 
 - Added Mood Presets for quickly applying mood, energy, and BPM ranges.

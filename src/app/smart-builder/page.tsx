@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, Ban, BookMarked, CheckCircle2, ListChecks, Play, RefreshCw, Save, Sparkles, Upload } from "lucide-react";
+import BpmPresetPicker from "@/components/BpmPresetPicker";
 import MoodPresetPicker from "@/components/MoodPresetPicker";
+import { BPM_PRESET_VERSION, bpmPresetLabel, bpmPresetRangeLabel, getBpmPreset, type BpmPreset } from "@/lib/bpmPresets";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import { getMoodPreset, moodPresetLabel, MOOD_PRESET_VERSION, type MoodPreset } from "@/lib/moodPresets";
 import { buildSmartPresetConfig, SMART_PRESET_VERSION, smartPlaylistPresets, type SmartPlaylistPreset } from "@/lib/smartPlaylistPresets";
@@ -54,6 +56,7 @@ type PlaylistPreviewSummary = {
   smartPresetName?: string | null;
   moodPresetName?: string | null;
   moodPresetModified?: boolean;
+  bpmPresetName?: string | null;
   bpmRange: string;
   energyRange: string;
   moodRange: string;
@@ -65,6 +68,12 @@ type MoodPresetMetadata = {
   moodPresetName?: string;
   moodPresetVersion?: string;
   moodPresetModified?: boolean;
+};
+
+type BpmPresetMetadata = {
+  bpmPresetId?: string;
+  bpmPresetName?: string;
+  bpmPresetVersion?: string;
 };
 
 type PlaylistPreviewState = {
@@ -180,6 +189,7 @@ export default function SmartBuilderPage() {
   const [genres, setGenres] = useState("");
   const [ranges, setRanges] = useState<RangeState>(emptyRanges);
   const [moodPresetMetadata, setMoodPresetMetadata] = useState<MoodPresetMetadata>({});
+  const [bpmPresetMetadata, setBpmPresetMetadata] = useState<BpmPresetMetadata>({});
   const [safetyRules, setSafetyRules] = useState<SafetyRules>({
     avoidSameArtistBackToBack: true,
     limitTracksPerArtist: true,
@@ -230,12 +240,17 @@ export default function SmartBuilderPage() {
     setLimit(config.limit);
     setGenres("");
     setRanges(rangesWithMoodPreset(rangesFromPreset(preset), currentMoodPreset));
+    setBpmPresetMetadata({});
     setSafetyRules(safetyFromPreset(preset));
     clearPreview();
   };
 
   const selectedMoodPreset = getMoodPreset(moodPresetMetadata.moodPresetId);
   const displayedMoodPreset = moodPresetLabel(moodPresetMetadata.moodPresetName, moodPresetMetadata.moodPresetModified);
+  const selectedBpmPreset = getBpmPreset(bpmPresetMetadata.bpmPresetId);
+  const displayedBpmPreset = selectedBpmPreset
+    ? `${bpmPresetLabel(bpmPresetMetadata.bpmPresetName)} · ${bpmPresetRangeLabel(selectedBpmPreset)}`
+    : "Custom";
 
   const markMoodPresetModified = () => {
     setMoodPresetMetadata((current) => (
@@ -263,6 +278,7 @@ export default function SmartBuilderPage() {
       moodMin: mood.min,
       moodMax: mood.max,
     }));
+    setBpmPresetMetadata({});
     setMoodPresetMetadata({
       moodPresetId: preset.id,
       moodPresetName: preset.name,
@@ -270,6 +286,25 @@ export default function SmartBuilderPage() {
       moodPresetModified: false,
     });
     if (!playlistName.trim() && selectedPreset) setPlaylistName(`${preset.name} ${selectedPreset.name} Mix`);
+    clearPreview();
+  };
+
+  const clearBpmPresetMetadata = () => {
+    setBpmPresetMetadata({});
+    clearPreview();
+  };
+
+  const applyBpmPreset = (preset: BpmPreset) => {
+    setRanges((current) => ({
+      ...current,
+      bpmMin: preset.minBpm == null ? "" : String(preset.minBpm),
+      bpmMax: preset.maxBpm == null ? "" : String(preset.maxBpm),
+    }));
+    setBpmPresetMetadata({
+      bpmPresetId: preset.id,
+      bpmPresetName: preset.name,
+      bpmPresetVersion: BPM_PRESET_VERSION,
+    });
     clearPreview();
   };
 
@@ -337,6 +372,7 @@ export default function SmartBuilderPage() {
       smartPresetName: selectedPreset.name,
       smartPresetVersion: SMART_PRESET_VERSION,
       ...moodPresetMetadata,
+      ...bpmPresetMetadata,
       pinnedTrackIds: [],
       excludedTrackIds: [],
     };
@@ -350,6 +386,7 @@ export default function SmartBuilderPage() {
 
   const updateRange = (key: keyof RangeState, value: string) => {
     if (key.startsWith("bpm") || key.startsWith("energy") || key.startsWith("mood")) markMoodPresetModified();
+    if (key.startsWith("bpm")) setBpmPresetMetadata({});
     setRanges((current) => ({ ...current, [key]: value }));
     clearPreview();
   };
@@ -398,7 +435,7 @@ export default function SmartBuilderPage() {
       await axios.post("/api/playlist-recipes", {
         name: playlistName.trim(),
         description: selectedPreset
-          ? `Smart Builder preset: ${selectedPreset.name}${moodPresetMetadata.moodPresetName ? `; Mood preset: ${displayedMoodPreset}` : ""}`
+          ? `Smart Builder preset: ${selectedPreset.name}${moodPresetMetadata.moodPresetName ? `; Mood preset: ${displayedMoodPreset}` : ""}${bpmPresetMetadata.bpmPresetName ? `; BPM preset: ${bpmPresetMetadata.bpmPresetName}` : ""}`
           : "",
         filters: payload,
       });
@@ -435,7 +472,7 @@ export default function SmartBuilderPage() {
         removedBySafetyRules: playlistPreview.summary.removedBySafetyRules || 0,
         safetyRulesApplied: Boolean(playlistPreview.summary.safetyRuleSummary && playlistPreview.summary.safetyRuleSummary !== "Safety: off"),
       });
-      setNotice(`Created "${playlistName.trim()}" in Plex from ${selectedPreset?.name}${moodPresetMetadata.moodPresetName ? ` with ${displayedMoodPreset}` : ""}.`);
+      setNotice(`Created "${playlistName.trim()}" in Plex from ${selectedPreset?.name}${moodPresetMetadata.moodPresetName ? ` with ${displayedMoodPreset}` : ""}${bpmPresetMetadata.bpmPresetName ? ` and ${bpmPresetMetadata.bpmPresetName}` : ""}.`);
     } catch (error: any) {
       console.error(error);
       alert(error.response?.data?.error || "Failed to create playlist in Plex");
@@ -503,9 +540,28 @@ export default function SmartBuilderPage() {
         }}
       />
 
+      <BpmPresetPicker
+        selectedLabel={displayedBpmPreset}
+        selectedPresetId={bpmPresetMetadata.bpmPresetId}
+        selectedPreset={selectedBpmPreset}
+        onSelect={applyBpmPreset}
+        onClear={clearBpmPresetMetadata}
+        classes={{
+          section: styles.moodPresetSection,
+          header: styles.moodPresetHeader,
+          grid: styles.moodPresetGrid,
+          card: styles.moodPresetCard,
+          activeCard: styles.moodPresetActive,
+          badgeRow: styles.moodBadgeRow,
+          footer: styles.moodPresetFooter,
+          clearButton: styles.ghostButton,
+        }}
+      />
+
       <section className={styles.selectionSummary} aria-label="Selected Smart Builder setup">
         <span>Smart preset: <strong>{selectedPreset?.name || "None"}</strong></span>
         <span>Mood preset: <strong>{displayedMoodPreset}</strong></span>
+        <span>BPM preset: <strong>{displayedBpmPreset}</strong></span>
         {!selectedPreset && <p>Choose a playlist goal to start building.</p>}
       </section>
 
@@ -656,6 +712,9 @@ export default function SmartBuilderPage() {
                     <div><span>Smart preset</span><strong>{playlistPreview.summary.smartPresetName || selectedPreset?.name || "None"}</strong></div>
                     {(playlistPreview.summary.moodPresetName || moodPresetMetadata.moodPresetName) && (
                       <div><span>Mood preset</span><strong>{moodPresetLabel(playlistPreview.summary.moodPresetName || moodPresetMetadata.moodPresetName, playlistPreview.summary.moodPresetModified ?? moodPresetMetadata.moodPresetModified)}</strong></div>
+                    )}
+                    {(playlistPreview.summary.bpmPresetName || bpmPresetMetadata.bpmPresetName) && (
+                      <div><span>BPM preset</span><strong>{playlistPreview.summary.bpmPresetName || bpmPresetMetadata.bpmPresetName}</strong></div>
                     )}
                     <div><span>Target</span><strong>{playlistPreview.summary.targetTrackCount}</strong></div>
                     <div><span>Matched</span><strong>{playlistPreview.summary.matchingTrackCount}</strong></div>
