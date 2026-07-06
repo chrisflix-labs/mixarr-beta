@@ -343,9 +343,9 @@ export default function LibraryHealthDetailsPage() {
         <div className={`glass-panel ${styles.empty}`}>Library Health data is not available yet. Run a library sync or audio analysis job first.</div>
       )}
 
-      {summary?.audioFeatureGapAudit?.gapDetected && summary.audioFeatureGapAudit.classifiedAsMissing > 0 && (
+      {summary && summary.categories.partial_audio_features > 0 && summary.categories.pending_audio_features > 0 && (
         <div className={styles.message}>
-          Audio feature gap detected: {formatNumber(summary.audioFeatureGapAudit.classifiedAsMissing)} active tracks are not complete and were classified as missing audio features.
+          Audio feature gap detected: {formatNumber(summary.categories.partial_audio_features)} active tracks have partial audio features and need local audio feature processing.
         </div>
       )}
 

@@ -227,7 +227,6 @@ async function runAudioRetry(userId: string, input: {
     prisma.track.findMany({ where: candidateWhere, select: { id: true } }),
   ]);
   const ids = matching.map((track) => track.id);
-  console.log(`[LibraryHealth] retry filter=${filter} matched=${matched} queued=${ids.length}`);
   const skipped = Math.max(0, matched - ids.length);
   const explanation = buildRetryExplanation({
     retryType: "audio-feature",
@@ -238,6 +237,7 @@ async function runAudioRetry(userId: string, input: {
     skipReasons: skipped ? { not_eligible_for_mode: skipped } : {},
     mode: input.providerMode,
   });
+  console.log(`[LibraryHealth] retry filter=${filter} matched=${matched} queued=${ids.length} skipped=${skipped}${skipped ? ` reason=${explanation.logReason}` : ""}`);
 
   for (let offset = 0; offset < ids.length; offset += 5_000) {
     const chunk = ids.slice(offset, offset + 5_000);

@@ -18,8 +18,8 @@ import {
 import {
   completeAudioFeatureWhere,
   getEffectiveAudioFeatures,
+  incompleteAudioFeatureTrackWhere,
   localEssentiaAudioFeatureSuccessTrackWhere,
-  missingAudioFeatureTrackWhere,
   type AudioFeatureStatus,
 } from "./audioFeatures";
 import {
@@ -1025,7 +1025,7 @@ export function localAudioFeatureWhere(reprocessLocal: boolean, reprocessApiWith
         { syncStatus: "active" },
         {
           OR: [
-            missingAudioFeatureTrackWhere(),
+            incompleteAudioFeatureTrackWhere(),
             localAudioFeatureReprocessWhere(),
             ...(reprocessApiWithLocal ? [apiAudioFeatureReprocessWhere()] : []),
           ],
@@ -1041,7 +1041,7 @@ export function localAudioFeatureWhere(reprocessLocal: boolean, reprocessApiWith
         OR: [
           {
             AND: [
-              missingAudioFeatureTrackWhere(),
+              incompleteAudioFeatureTrackWhere(),
               { NOT: { audioFeature: { is: terminalLocalAttemptedAudioFeatureWhere() } } },
             ],
           },

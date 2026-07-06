@@ -120,7 +120,7 @@ describe("library health", () => {
     assert.equal(where.AND[0].syncStatus, "active");
     assert.equal(where.AND[0].library.id, "library-a");
     assert.deepEqual(where.AND[1], audioFeatureHealthFilterWhere("missing_audio_features", settings));
-    assert.match(JSON.stringify(where), /"is":null/);
+    assert.match(JSON.stringify(where), /bpmSource/);
   });
 
   it("merges detected audio feature gaps before returning summary counts", async () => {
@@ -178,7 +178,7 @@ describe("library health", () => {
 
     assert.match(summaryRoute, /getLibraryHealthDetailSummary/);
     assert.match(page, /Audio feature gap detected/);
-    assert.match(page, /classified as missing audio features/);
+    assert.match(page, /have partial audio features and need local audio feature processing/);
     assert.match(page, /pagination\.total/);
   });
 

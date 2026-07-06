@@ -62,6 +62,7 @@ function countScope(scopeWhere: Prisma.TrackWhereInput, filterWhere: Prisma.Trac
 function audioFeatureClassifiedIncompleteTrackWhere(settings?: EffectiveAudioFeatureSettings): Prisma.TrackWhereInput {
   return {
     OR: [
+      missingAudioFeatureTrackWhere(settings),
       partialAudioFeatureTrackWhere(settings),
       audioFeatureNoDataTrackWhere(settings),
       audioFeatureFailedTrackWhere(settings),
@@ -228,4 +229,3 @@ export async function buildAudioFeatureHealthQuery(userId: string, options: {
     gapTrackIds,
   };
 }
-

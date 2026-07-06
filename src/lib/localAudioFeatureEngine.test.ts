@@ -214,7 +214,8 @@ describe("LocalAudioFeatureEngine backfill predicates", () => {
 
   it("uses terminal local-attempt exclusion in the missing query so restarts resume remaining tracks", () => {
     const where = JSON.stringify(localAudioFeatureWhere(false, false, "whole_track"));
-    assert.match(where, /missingAudioFeature|audioFeature|NOT/);
+    assert.match(where, /audioFeature|NOT/);
+    assert.match(where, /localEnergy/);
     assert.match(where, /audioFeatureAnalyzedAt/);
     assert.match(where, /no_data/);
     assert.match(where, /too_short/);
@@ -227,7 +228,8 @@ describe("LocalAudioFeatureEngine backfill predicates", () => {
     const where = JSON.stringify(localAudioFeatureWhere(true));
     assert.match(where, /local_essentia/);
     assert.match(where, /local_heuristic/);
-    assert.match(where, /"audioFeature":\{"is":null\}/);
+    assert.match(where, /NOT/);
+    assert.match(where, /localEnergy/);
   });
 
   it("blocks duplicate local backfill jobs before expensive analysis starts", async () => {

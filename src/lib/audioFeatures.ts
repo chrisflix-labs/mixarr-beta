@@ -144,7 +144,10 @@ function validTempoValue(value: unknown) {
 }
 
 function featureFromTrack(trackOrFeature: any) {
-  return trackOrFeature?.audioFeature ?? trackOrFeature ?? null;
+  if (trackOrFeature && typeof trackOrFeature === "object" && "audioFeature" in trackOrFeature) {
+    return trackOrFeature.audioFeature ?? null;
+  }
+  return trackOrFeature ?? null;
 }
 
 function sourceIsPlaceholder(source: unknown) {
@@ -332,11 +335,42 @@ function audioFeatureHasAnyData(feature: any) {
     feature.localMood,
     feature.localDanceability,
     feature.localAcousticness,
+    feature.localLoudness,
     feature.apiEnergy,
     feature.apiMood,
     feature.apiDanceability,
     feature.apiAcousticness,
+    feature.apiLoudness,
+    feature.effectiveEnergy,
+    feature.effectiveMood,
+    feature.effectiveDanceability,
+    feature.effectiveAcousticness,
+    feature.loudness,
+    feature.dynamicComplexity,
+    feature.rhythmStability,
+    feature.onsetRate,
+    feature.replayGain,
   ].some((value) => value !== null && value !== undefined);
+}
+
+function validBpmMetadataValue(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0;
+}
+
+function meaningfulBpmSource(source: unknown) {
+  const normalized = String(source || "").trim().toLowerCase();
+  return !!normalized && !["missing", "not_found", "local_not_found", "unknown", "none", "n/a", "na"].includes(normalized);
+}
+
+function trackHasUsefulBpmMetadata(trackOrFeature: any) {
+  if (!trackOrFeature || typeof trackOrFeature !== "object" || !("audioFeature" in trackOrFeature)) return false;
+  return [
+    trackOrFeature.bpm,
+    trackOrFeature.effectiveBpm,
+    trackOrFeature.apiBpm,
+    trackOrFeature.localBpm,
+  ].some(validBpmMetadataValue) || meaningfulBpmSource(trackOrFeature.bpmSource);
 }
 
 function count(value: unknown) {
@@ -468,6 +502,15 @@ export function getAudioFeatureHealthStatus(trackOrFeature: any, settings: Effec
   }
 
   if (!feature) {
+    if (trackHasUsefulBpmMetadata(trackOrFeature)) {
+      return {
+        status: "partial",
+        reason: "Track has BPM data but is missing required audio feature fields.",
+        missingFields,
+        complete: false,
+        partial: true,
+      };
+    }
     return {
       status: "missing",
       reason: "No audio feature record found",
@@ -477,13 +520,35 @@ export function getAudioFeatureHealthStatus(trackOrFeature: any, settings: Effec
     };
   }
 
-  if (!audioFeatureHasAnyData(feature)) {
+  if (feature.audioFeatureStatus === "partial") {
+    return {
+      status: "partial",
+      reason: trackHasUsefulBpmMetadata(trackOrFeature)
+        ? "Track has BPM data but is missing required audio feature fields."
+        : "Partial audio features",
+      missingFields,
+      complete: false,
+      partial: true,
+    };
+  }
+
+  if (!audioFeatureHasAnyData(feature) && !trackHasUsefulBpmMetadata(trackOrFeature)) {
     return {
       status: feature.audioFeatureStatus === "pending" ? "pending" : "missing",
       reason: feature.audioFeatureStatus === "pending" ? "Pending local analysis" : "No audio feature data",
       missingFields,
       complete: false,
       partial: false,
+    };
+  }
+
+  if (!audioFeatureHasAnyData(feature) && trackHasUsefulBpmMetadata(trackOrFeature)) {
+    return {
+      status: "partial",
+      reason: "Track has BPM data but is missing required audio feature fields.",
+      missingFields,
+      complete: false,
+      partial: true,
     };
   }
 
@@ -549,7 +614,7 @@ export function classifyAudioFeatureTracks(tracks: any[], settings: EffectiveAud
       matchingTrackIds.complete.push(id);
       continue;
     }
-    matchingTrackIds.missing_audio_features.push(id);
+    if (classification.status === "missing") matchingTrackIds.missing_audio_features.push(id);
     if (classification.status !== "too_short") matchingTrackIds.pending_audio_features.push(id);
     if (classification.status === "partial") matchingTrackIds.partial_audio_features.push(id);
     if (classification.status === "no_data") matchingTrackIds.audio_no_data.push(id);
@@ -682,6 +747,60 @@ const apiAudioFeatureMarkerWhere: Prisma.AudioFeatureWhereInput = {
   ],
 };
 
+const meaningfulBpmTrackWhere: Prisma.TrackWhereInput = {
+  OR: [
+    { bpm: { gt: 0 } },
+    { effectiveBpm: { gt: 0 } },
+    { apiBpm: { gt: 0 } },
+    { localBpm: { gt: 0 } },
+    {
+      AND: [
+        { bpmSource: { not: null } },
+        { bpmSource: { not: "" } },
+        { bpmSource: { notIn: ["missing", "not_found", "local_not_found", "unknown", "none", "n/a", "na"] } },
+      ],
+    },
+  ],
+};
+
+const partialAudioFeatureDataWhere: Prisma.TrackWhereInput = {
+  audioFeature: {
+    is: {
+      OR: [
+        { audioFeatureStatus: "partial" },
+        { energy: { not: null } },
+        { valence: { not: null } },
+        { danceability: { not: null } },
+        { acousticness: { not: null } },
+        { tempo: { not: null } },
+        { loudness: { not: null } },
+        { dynamicComplexity: { not: null } },
+        { rhythmStability: { not: null } },
+        { onsetRate: { not: null } },
+        { replayGain: { not: null } },
+        { localEnergy: { not: null } },
+        { localMood: { not: null } },
+        { localDanceability: { not: null } },
+        { localAcousticness: { not: null } },
+        { localLoudness: { not: null } },
+        { apiEnergy: { not: null } },
+        { apiMood: { not: null } },
+        { apiDanceability: { not: null } },
+        { apiAcousticness: { not: null } },
+        { apiLoudness: { not: null } },
+        { effectiveEnergy: { not: null } },
+        { effectiveMood: { not: null } },
+        { effectiveDanceability: { not: null } },
+        { effectiveAcousticness: { not: null } },
+      ],
+    },
+  },
+};
+
+const terminalAudioFeatureTrackWhere = (statuses: string[]): Prisma.TrackWhereInput => ({
+  audioFeature: { is: { audioFeatureStatus: { in: statuses } } },
+});
+
 const heuristicAudioFeatureCompleteWhere: Prisma.AudioFeatureWhereInput = {
   AND: [
     usableCompleteAudioFeatureStatusWhere,
@@ -743,11 +862,17 @@ export function noAudioFeatureRecordTrackWhere(): Prisma.TrackWhereInput {
 
 export function missingAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
-    OR: [
-      noAudioFeatureRecordTrackWhere(),
-      { audioFeature: { is: { NOT: completeAudioFeatureWhere(settings) } } },
+    AND: [
+      { NOT: completeAudioFeatureTrackWhere(settings) },
+      { NOT: partialAudioFeatureDataWhere },
+      { NOT: meaningfulBpmTrackWhere },
+      { NOT: terminalAudioFeatureTrackWhere(["pending", "no_data", "extraction_failed", "analyzer_failed", "too_short"]) },
     ],
   };
+}
+
+export function incompleteAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
+  return { NOT: completeAudioFeatureTrackWhere(settings) };
 }
 
 export function apiAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
@@ -819,30 +944,9 @@ export function heuristicAudioFeatureTrackWhere(): Prisma.TrackWhereInput {
 export function partialAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
-      { audioFeature: { isNot: null } },
       { NOT: completeAudioFeatureTrackWhere(settings) },
-      {
-        audioFeature: {
-          is: {
-            OR: [
-              { audioFeatureStatus: "partial" },
-              { energy: { not: null } },
-              { valence: { not: null } },
-              { danceability: { not: null } },
-              { acousticness: { not: null } },
-              { tempo: { not: null } },
-              { localEnergy: { not: null } },
-              { localMood: { not: null } },
-              { localDanceability: { not: null } },
-              { localAcousticness: { not: null } },
-              { apiEnergy: { not: null } },
-              { apiMood: { not: null } },
-              { apiDanceability: { not: null } },
-              { apiAcousticness: { not: null } },
-            ],
-          },
-        },
-      },
+      { NOT: terminalAudioFeatureTrackWhere(["no_data", "extraction_failed", "analyzer_failed", "too_short"]) },
+      { OR: [partialAudioFeatureDataWhere, meaningfulBpmTrackWhere] },
     ],
   };
 }
@@ -877,7 +981,7 @@ export function audioFeatureRetryEligibilityTrackWhere(options: {
 
   return {
     AND: [
-      missingAudioFeatureTrackWhere(providerSettings),
+      incompleteAudioFeatureTrackWhere(providerSettings),
       { NOT: localEssentiaAudioFeatureSuccessTrackWhere(options.analysisScope) },
       { NOT: audioFeatureTooShortTrackWhere(providerSettings) },
     ],
@@ -887,7 +991,7 @@ export function audioFeatureRetryEligibilityTrackWhere(options: {
 export function audioFeatureNoDataTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
-      missingAudioFeatureTrackWhere(settings),
+      incompleteAudioFeatureTrackWhere(settings),
       { audioFeature: { is: { audioFeatureStatus: "no_data" } } },
     ],
   };
@@ -896,7 +1000,7 @@ export function audioFeatureNoDataTrackWhere(settings: EffectiveAudioFeatureSett
 export function audioFeatureExtractionFailedTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
-      missingAudioFeatureTrackWhere(settings),
+      incompleteAudioFeatureTrackWhere(settings),
       { audioFeature: { is: { audioFeatureStatus: "extraction_failed" } } },
     ],
   };
@@ -905,7 +1009,7 @@ export function audioFeatureExtractionFailedTrackWhere(settings: EffectiveAudioF
 export function audioFeatureAnalyzerFailedTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
-      missingAudioFeatureTrackWhere(settings),
+      incompleteAudioFeatureTrackWhere(settings),
       { audioFeature: { is: { audioFeatureStatus: "analyzer_failed" } } },
     ],
   };
@@ -914,7 +1018,7 @@ export function audioFeatureAnalyzerFailedTrackWhere(settings: EffectiveAudioFea
 export function audioFeatureTooShortTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
-      missingAudioFeatureTrackWhere(settings),
+      incompleteAudioFeatureTrackWhere(settings),
       { audioFeature: { is: { audioFeatureStatus: "too_short" } } },
     ],
   };
@@ -923,7 +1027,7 @@ export function audioFeatureTooShortTrackWhere(settings: EffectiveAudioFeatureSe
 export function audioFeatureFailedTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
-      missingAudioFeatureTrackWhere(settings),
+      incompleteAudioFeatureTrackWhere(settings),
       {
         OR: [
           audioFeatureExtractionFailedTrackWhere(settings),
@@ -937,7 +1041,7 @@ export function audioFeatureFailedTrackWhere(settings: EffectiveAudioFeatureSett
 export function pendingAudioFeatureTrackWhere(settings: EffectiveAudioFeatureSettings = defaultAudioFeatureHealthSettings): Prisma.TrackWhereInput {
   return {
     AND: [
-      missingAudioFeatureTrackWhere(settings),
+      incompleteAudioFeatureTrackWhere(settings),
       { NOT: audioFeatureTooShortTrackWhere(settings) },
     ],
   };

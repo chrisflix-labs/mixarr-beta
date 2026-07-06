@@ -32,12 +32,16 @@ describe("audio feature health predicates", () => {
     const missing = JSON.stringify(missingAudioFeatureTrackWhere());
     assert.match(missing, /NOT/);
     assert.match(missing, /audioFeature/);
-    assert.match(missing, /"is":null/);
+    assert.match(missing, /bpmSource/);
   });
 
   it("uses an explicit missing relation predicate for active tracks with no audio feature row", () => {
     assert.deepEqual(noAudioFeatureRecordTrackWhere(), { audioFeature: { is: null } });
-    assert.deepEqual((missingAudioFeatureTrackWhere() as any).OR[0], noAudioFeatureRecordTrackWhere());
+    const missing = JSON.stringify(missingAudioFeatureTrackWhere());
+    assert.match(missing, /bpmSource/);
+    assert.match(missing, /audioFeatureStatus/);
+    assert.match(missing, /pending/);
+    assert.match(missing, /no_data/);
   });
 
   it("separates API, local, and heuristic feature sources", () => {
@@ -230,9 +234,10 @@ describe("audio feature health predicates", () => {
     const pending = JSON.stringify(pendingAudioFeatureTrackWhere(settings));
     const retry = JSON.stringify(audioFeatureRetryEligibilityTrackWhere({ providerMode: "configured", settings, analysisScope: "whole_track" }));
 
-    assert.doesNotMatch(missing, /apiEnergy/);
-    assert.match(missing, /localEnergy/);
+    assert.match(missing, /bpmSource/);
+    assert.match(missing, /audioFeatureStatus/);
     assert.match(partial, /apiEnergy/);
+    assert.match(partial, /bpmSource/);
     assert.equal(partial.includes(JSON.stringify(missingAudioFeatureTrackWhere())), false);
     assert.match(pending, /too_short/);
     assert.match(retry, /too_short/);
@@ -329,5 +334,69 @@ describe("audio feature health predicates", () => {
     assert.deepEqual(classified.matchingTrackIds.missing_audio_features, ["track-9", "track-10"]);
     assert.deepEqual(classified.matchingTrackIds.pending_audio_features, ["track-9", "track-10"]);
     assert.equal(classified.matchingTrackIds.pending_audio_features.length, 2);
+  });
+
+  it("classifies BPM-only incomplete audio feature rows as partial and pending, not missing", () => {
+    const completeFeature = {
+      localEnergy: 0.7,
+      localMood: 0.6,
+      localDanceability: 0.5,
+      localAcousticness: 0.4,
+      tempo: 120,
+      audioFeatureSource: "local_essentia",
+      audioFeatureStatus: "success",
+      energySource: "local_essentia",
+      valenceSource: "local_essentia",
+      danceabilitySource: "local_essentia",
+      acousticnessSource: "local_essentia",
+    };
+    const tracks = Array.from({ length: 10 }, (_, index) => ({
+      id: `track-${index + 1}`,
+      syncStatus: "active",
+      bpm: index >= 8 ? 124 : null,
+      bpmSource: index >= 8 ? "Deezer" : null,
+      mediaPath: index >= 8 ? "C:/Music/song.flac" : null,
+      audioFeature: index < 8 ? completeFeature : {
+        audioFeatureStatus: "partial",
+        audioFeatureSource: null,
+        localEnergy: null,
+        localMood: null,
+        localDanceability: null,
+        localAcousticness: null,
+        tempo: null,
+      },
+    }));
+
+    const classified = classifyAudioFeatureTracks(tracks, {
+      api: false,
+      local: true,
+      preferLocalAudioFeatures: true,
+    });
+
+    assert.equal(classified.counts.complete, 8);
+    assert.equal(classified.counts.partial_audio_features, 2);
+    assert.equal(classified.counts.missing_audio_features, 0);
+    assert.equal(classified.counts.pending_audio_features, 2);
+    assert.deepEqual(classified.matchingTrackIds.partial_audio_features, ["track-9", "track-10"]);
+    assert.deepEqual(classified.matchingTrackIds.pending_audio_features, ["track-9", "track-10"]);
+  });
+
+  it("keeps tracks with no audio metadata at all classified as missing audio features", () => {
+    const classified = classifyAudioFeatureTracks([{
+      id: "track-missing",
+      syncStatus: "active",
+      bpm: null,
+      bpmSource: null,
+      audioFeature: null,
+    }], {
+      api: false,
+      local: true,
+      preferLocalAudioFeatures: true,
+    });
+
+    assert.equal(classified.counts.complete, 0);
+    assert.equal(classified.counts.partial_audio_features, 0);
+    assert.equal(classified.counts.missing_audio_features, 1);
+    assert.equal(classified.counts.pending_audio_features, 1);
   });
 });
