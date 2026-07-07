@@ -32,6 +32,29 @@ export async function GET(request: Request) {
   });
 
   try {
+    if (filter === "low_confidence_bpm" || filter === "bpm_source_conflict") {
+      const allTracks = await prisma.track.findMany({
+        where,
+        select: bpmHealthTrackSelect,
+        orderBy: [{ artist: { title: "asc" } }, { album: { title: "asc" } }, { title: "asc" }],
+      });
+      const serialized = allTracks.map(serializeBpmHealthTrack).filter((track) => (
+        filter === "low_confidence_bpm"
+          ? track.bpmConfidence === "Low"
+          : track.bpmConflictStatus !== "none"
+      ));
+      const total = serialized.length;
+      return NextResponse.json({
+        tracks: serialized.slice((page - 1) * pageSize, page * pageSize),
+        total,
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
+        filter,
+        summary: await getBpmHealthSummary(userId, libraryId),
+      });
+    }
+
     const [tracks, total, summary] = await Promise.all([
       prisma.track.findMany({
         where,

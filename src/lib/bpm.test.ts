@@ -7,6 +7,10 @@ import {
   buildBpmSourceWhereClause,
   classifyBpmSource,
   explainBpmBackfillEligibility,
+  getBpmConfidenceLevel,
+  getBpmDisplayMetadata,
+  getBpmSourceConflict,
+  getBpmSourceLabel,
   hasEffectiveBpm,
   hasLocalEssentiaBpmSuccess,
   localEssentiaBpmSuccessTrackWhere,
@@ -224,5 +228,55 @@ describe("BPM eligibility", () => {
     assert.match(localSuccessWhere, /localBpm/);
     assert.match(localSuccessWhere, /bpmAnalysisStatus/);
     assert.match(localSuccessWhere, /tempoSource/);
+  });
+
+  it("normalizes BPM source labels for local, API, imported, and unknown values", () => {
+    assert.equal(getBpmSourceLabel("local_essentia"), "Local Essentia");
+    assert.equal(getBpmSourceLabel("api"), "API");
+    assert.equal(getBpmSourceLabel("deezer"), "Deezer");
+    assert.equal(getBpmSourceLabel("imported"), "Imported");
+    assert.equal(getBpmSourceLabel(null), "Unknown");
+  });
+
+  it("maps BPM confidence from local, imported/API, conflicting, and missing values", () => {
+    assert.equal(getBpmConfidenceLevel({
+      localBpm: 112,
+      bpmSource: "local_essentia",
+      bpmAnalysisStatus: "success",
+    }), "High");
+    assert.equal(getBpmConfidenceLevel({ bpm: 112, apiBpm: 112, bpmSource: "api" }), "Medium");
+    assert.equal(getBpmConfidenceLevel({ bpm: 90, localBpm: 90, apiBpm: 123, bpmSource: "local_essentia", bpmAnalysisStatus: "success" }), "Low");
+    assert.equal(getBpmConfidenceLevel({ bpm: null }), "Unknown");
+    assert.equal(getBpmConfidenceLevel({ bpm: 120, bpmConfidence: 0.81 }), "High");
+    assert.equal(getBpmConfidenceLevel({ bpm: 120, bpmConfidence: 0.5 }), "Medium");
+    assert.equal(getBpmConfidenceLevel({ bpm: 120, bpmConfidence: 0.49 }), "Low");
+  });
+
+  it("detects BPM conflicts and half-time/double-time matches", () => {
+    const halfDouble = getBpmSourceConflict({ localBpm: 90, apiBpm: 180, bpmSource: "local_essentia", bpmAnalysisStatus: "success" });
+    const conflict = getBpmSourceConflict({ localBpm: 90, apiBpm: 123, bpmSource: "local_essentia", bpmAnalysisStatus: "success" });
+    const close = getBpmSourceConflict({ localBpm: 120, apiBpm: 124, bpmSource: "local_essentia", bpmAnalysisStatus: "success" });
+
+    assert.equal(halfDouble.status, "half_double");
+    assert.match(halfDouble.reason || "", /half-time or double-time/);
+    assert.equal(conflict.status, "conflict");
+    assert.equal(close.status, "none");
+  });
+
+  it("explains effective BPM source, confidence, and other source values", () => {
+    const metadata = getBpmDisplayMetadata({
+      bpm: 112,
+      apiBpm: 111,
+      localBpm: 112.4,
+      bpmSource: "local_essentia",
+      bpmAnalysisStatus: "success",
+      bpmConfidence: 0.86,
+    });
+
+    assert.equal(metadata.effectiveBpm, 112);
+    assert.equal(metadata.sourceLabel, "Local Essentia");
+    assert.equal(metadata.confidence, "High");
+    assert.equal(metadata.reason, "Local BPM preferred.");
+    assert.equal(metadata.hasConflict, false);
   });
 });

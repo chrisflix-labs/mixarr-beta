@@ -10,6 +10,7 @@ import {
   isLibraryHealthDetailCategory,
   libraryHealthDetailTrackSelect,
   orderByForLibraryHealth,
+  resolveBpmMetadataFilteredTrackIds,
   resolveLibraryHealthTrackIds,
   serializeLibraryHealthDetailTrack,
   type LibraryHealthSort,
@@ -35,6 +36,11 @@ function categoryUsesResolvedTrackIds(category: string) {
     || category === "partial_audio_features"
     || category === "missing_bpm"
     || category === "api_bpm"
+    || category === "local_bpm"
+    || category === "imported_bpm"
+    || category === "pending_bpm"
+    || category === "low_confidence_bpm"
+    || category === "bpm_source_conflict"
     || category === "failed_analysis"
     || category === "missing_local_file";
 }
@@ -45,6 +51,10 @@ function hasAdditionalDetailFilters(params: URLSearchParams) {
     || params.get("artist")?.trim()
     || params.get("album")?.trim()
     || (params.get("bpmSource") && params.get("bpmSource") !== "all")
+    || (params.get("bpmConfidence") && params.get("bpmConfidence") !== "all")
+    || (params.get("bpmConflict") && params.get("bpmConflict") !== "all")
+    || params.get("apiImportedOnly") === "true"
+    || params.get("noLocalBpm") === "true"
     || (params.get("audioFeatureStatus") && params.get("audioFeatureStatus") !== "all")
     || (params.get("localFileStatus") && params.get("localFileStatus") !== "all")
     || params.get("failedOnly") === "true"
@@ -82,6 +92,26 @@ export async function GET(request: Request) {
       settings: audioFeatureSettings,
     })
     : null;
+  const needsBpmMetadataFilter = !!(
+    (params.get("bpmSource") && params.get("bpmSource") !== "all")
+    || (params.get("bpmConfidence") && params.get("bpmConfidence") !== "all")
+    || (params.get("bpmConflict") && params.get("bpmConflict") !== "all")
+    || params.get("apiImportedOnly") === "true"
+    || params.get("noLocalBpm") === "true"
+  );
+  const bpmMetadataTrackIds = needsBpmMetadataFilter
+    ? await resolveBpmMetadataFilteredTrackIds(userId, {
+      category,
+      libraryId,
+      settings: audioFeatureSettings,
+      bpmSource: params.get("bpmSource") || "all",
+      bpmConfidence: params.get("bpmConfidence") || "all",
+      bpmConflict: params.get("bpmConflict") || "all",
+      apiImportedOnly: params.get("apiImportedOnly") === "true",
+      noLocalBpm: params.get("noLocalBpm") === "true",
+      resolvedTrackIds: resolved?.trackIds,
+    })
+    : null;
 
   const where = buildLibraryHealthTrackWhere(userId, {
     category,
@@ -89,14 +119,18 @@ export async function GET(request: Request) {
     search: params.get("search")?.trim() || undefined,
     artist: params.get("artist")?.trim() || undefined,
     album: params.get("album")?.trim() || undefined,
-    bpmSource: params.get("bpmSource") || undefined,
+    bpmSource: needsBpmMetadataFilter ? undefined : params.get("bpmSource") || undefined,
+    bpmConfidence: needsBpmMetadataFilter ? undefined : params.get("bpmConfidence") || undefined,
+    bpmConflict: needsBpmMetadataFilter ? undefined : params.get("bpmConflict") || undefined,
+    apiImportedOnly: needsBpmMetadataFilter ? undefined : params.get("apiImportedOnly") === "true",
+    noLocalBpm: needsBpmMetadataFilter ? undefined : params.get("noLocalBpm") === "true",
     audioFeatureStatus,
     localFileStatus: params.get("localFileStatus") || undefined,
     failedOnly: params.get("failedOnly") === "true",
     missingDataOnly,
     settings: audioFeatureSettings,
     audioFeatureGapTrackIds,
-    resolvedTrackIds: resolved?.trackIds,
+    resolvedTrackIds: bpmMetadataTrackIds ?? resolved?.trackIds,
   });
 
   try {

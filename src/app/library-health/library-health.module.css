@@ -39,7 +39,7 @@
 .badText { color: #ffb0b0; }
 .loading, .empty { display: flex; align-items: center; justify-content: center; gap: .5rem; min-height: 140px; color: var(--muted); text-align: center; }
 .tableWrap { overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-md); }
-.tableWrap table { width: 100%; min-width: 1320px; border-collapse: collapse; }
+.tableWrap table { width: 100%; min-width: 1580px; border-collapse: collapse; }
 .tableWrap th, .tableWrap td { padding: .62rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: .74rem; }
 .tableWrap th { position: sticky; top: 0; background: rgba(0,0,0,.22); color: var(--muted); font-weight: 750; }
 .trackCell strong { display: block; font-size: .8rem; }

@@ -19,9 +19,16 @@ const nextFeatures = [
   "Restore previous playlist version",
   "Recently added automation",
   "Beta experimental features",
+  "Manual BPM correction",
 ];
 
 const currentReleaseFeatures = [
+  "v1.3.4 completes BPM Confidence & Source Improvements.",
+  "BPM values now show clearer local, API, imported, estimated, manual, and unknown source labels.",
+  "Library Health BPM detail views now include effective BPM, source, confidence, source values, and reason text.",
+  "Low-confidence BPM values and BPM source conflicts are easier to find from Library Health and Data Enrichment.",
+  "Dashboard and Data Enrichment now summarize local/API/imported BPM coverage, low confidence values, and possible conflicts.",
+  "Playlist previews include compact BPM source and confidence context.",
   "v1.3.3 completes Data Enrichment Cleanup.",
   "Data Enrichment now has clear BPM, Audio Features, Genres, Popularity, and Local Audio Analysis sections.",
   "Enrichment actions now show provider mode, preflight matched/eligible/skipped counts, no-op explanations, and Library Health detail links.",
@@ -142,7 +149,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>v1.3.3 delivers Data Enrichment Cleanup, organizing BPM, audio features, genres, popularity, local analysis, preflights, and Library Health links in one clear place.</p>
+          <p>v1.3.4 delivers BPM Confidence &amp; Source Improvements, making tempo values easier to trust across Library Health, Data Enrichment, Dashboard, diagnostics, and playlist previews.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -167,7 +174,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Data Enrichment Cleanup is complete in v1.3.3. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood and BPM tools, restore/version workflows, recently added automation, and beta experiments.</p>
+        <p className={styles.futureNote}>BPM Confidence &amp; Source Improvements are complete in v1.3.4. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood and BPM transition tools, restore/version workflows, recently added automation, beta experiments, and manual BPM correction.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

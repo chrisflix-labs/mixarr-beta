@@ -8,6 +8,7 @@ import styles from "./data-enrichment.module.css";
 type Action =
   | "sync_bpm"
   | "retry_missing_bpm"
+  | "analyze_local_bpm"
   | "force_local_bpm_reprocess"
   | "sync_audio_features"
   | "retry_partial_audio_features"
@@ -343,12 +344,17 @@ export default function DataEnrichmentPage() {
             <Metric label="API BPM" value={summary.bpm.apiBpm} />
             <Metric label="Local BPM" value={summary.bpm.localBpm} />
             <Metric label="Imported BPM" value={summary.bpm.importedBpm} />
+            <Metric label="Low confidence" value={summary.bpm.lowConfidenceBpm} />
+            <Metric label="Conflicts" value={summary.bpm.bpmSourceConflicts} />
             <Metric label="Failed" value={summary.bpm.bpmFailed} />
           </div>
           <p className={styles.helperText}>Provider mode: {summary.providerModes.bpm}</p>
           <div className={styles.linkRow}>
             <Link href="/library-health?filter=missing_bpm">View missing BPM</Link>
             <Link href="/library-health?filter=api_bpm">View API BPM only</Link>
+            <Link href="/library-health?filter=local_bpm">View local BPM</Link>
+            <Link href="/library-health?filter=low_confidence_bpm">View low confidence</Link>
+            <Link href="/library-health?filter=bpm_source_conflict">View conflicts</Link>
             <Link href="/library-health?filter=failed_bpm_analysis">View failed BPM</Link>
           </div>
           <div className={styles.actions}>
@@ -358,7 +364,10 @@ export default function DataEnrichmentPage() {
             </div>
             <div className={styles.actionSection}>
               <span className={styles.sectionLabel}>Retry incomplete</span>
-              <div className={styles.actionGroup}><ActionButton action="retry_missing_bpm" label="Retry missing BPM" disabled={!!working} onRun={runAction} /></div>
+              <div className={styles.actionGroup}>
+                <ActionButton action="retry_missing_bpm" label="Retry missing BPM" disabled={!!working} onRun={runAction} />
+                <ActionButton action="analyze_local_bpm" label="Analyze local BPM" disabled={!!working} onRun={runAction} />
+              </div>
             </div>
             <div className={styles.actionSection}>
               <span className={styles.sectionLabel}>Advanced actions</span>

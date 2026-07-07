@@ -28,6 +28,15 @@ export async function GET(request: Request) {
       summaryCounts: {
         totalTracks: summary.totalTracks,
         categories: summary.categories,
+        bpm: {
+          lowConfidence: summary.categories.low_confidence_bpm,
+          sourceConflicts: summary.categories.bpm_source_conflict,
+          local: summary.categories.local_bpm,
+          api: summary.categories.api_bpm,
+          imported: summary.categories.imported_bpm,
+          pending: summary.categories.pending_bpm,
+          missing: summary.categories.missing_bpm,
+        },
       },
       invariantResults: summary.diagnostics.invariants,
       mismatchResults: summary.diagnostics.mismatches,

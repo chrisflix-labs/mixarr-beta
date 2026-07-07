@@ -28,6 +28,8 @@ type HealthLibrary = {
   bpmAnalyzerFailed: number;
   bpmTooShort: number;
   bpmPendingBackfill: number;
+  bpmLowConfidence: number;
+  bpmSourceConflicts: number;
   audioFeaturesComplete: number;
   audioFeaturesMissing: number;
   audioFeaturesApi: number;
@@ -94,7 +96,7 @@ type MissingTrack = {
   album: { title: string };
 };
 
-type BpmFilter = "tracks_with_bpm" | "api_bpm" | "local_bpm" | "imported_bpm" | "missing_bpm" | "bpm_no_data" | "bpm_failed" | "extraction_failed" | "analyzer_failed" | "too_short" | "pending_backfill" | "pending_bpm";
+type BpmFilter = "tracks_with_bpm" | "api_bpm" | "local_bpm" | "imported_bpm" | "missing_bpm" | "bpm_no_data" | "bpm_failed" | "low_confidence_bpm" | "bpm_source_conflict" | "extraction_failed" | "analyzer_failed" | "too_short" | "pending_backfill" | "pending_bpm";
 type AudioFilter = "missing_audio_features" | "api_audio_features" | "local_audio_features" | "heuristic_audio_features" | "partial_audio_features" | "audio_feature_no_data" | "audio_feature_failed" | "extraction_failed" | "analyzer_failed" | "too_short" | "pending_audio_features";
 type RetryProviderMode = "configured" | "api_only" | "local_only" | "force_local";
 type MetadataSection = "genres" | "popularity";
@@ -114,8 +116,14 @@ type BpmTrack = {
   effectiveBpm: number | null;
   apiBpm: number | null;
   localBpm: number | null;
+  importedBpm: number | null;
   bpmSource: string | null;
-  bpmConfidence: number | null;
+  bpmSourceKey?: string | null;
+  bpmConfidence: string | null;
+  bpmConfidenceValue?: number | null;
+  bpmConflictStatus?: string | null;
+  bpmConflictReason?: string | null;
+  bpmReason?: string | null;
   bpmAnalysisScope: string | null;
   bpmAnalysisStatus: string;
   bpmFailureReason: string | null;
@@ -206,6 +214,8 @@ const bpmFilterLabels: Record<BpmFilter, string> = {
   missing_bpm: "Missing BPM",
   bpm_no_data: "BPM no data",
   bpm_failed: "BPM failed",
+  low_confidence_bpm: "Low confidence BPM",
+  bpm_source_conflict: "BPM source conflicts",
   extraction_failed: "Extraction failed",
   analyzer_failed: "Analyzer failed",
   too_short: "BPM too short",
@@ -221,6 +231,8 @@ const bpmEmptyMessages: Record<BpmFilter, string> = {
   missing_bpm: "Every active track has a valid BPM.",
   bpm_no_data: "No active tracks completed analysis without finding a BPM.",
   bpm_failed: "No active tracks have a terminal BPM failure.",
+  low_confidence_bpm: "No active tracks have low-confidence BPM.",
+  bpm_source_conflict: "No active tracks have BPM source conflicts.",
   extraction_failed: "No active tracks have an extraction failure.",
   analyzer_failed: "No active tracks have an analyzer failure.",
   too_short: "No active tracks are below the local BPM minimum duration.",
@@ -814,6 +826,8 @@ export default function LibraryHealthPage() {
                 ["missing_bpm", library.missingBpm],
                 ["bpm_no_data", library.bpmNoData],
                 ["bpm_failed", library.bpmFailed],
+                ["low_confidence_bpm", library.bpmLowConfidence || 0],
+                ["bpm_source_conflict", library.bpmSourceConflicts || 0],
                 ["extraction_failed", library.bpmExtractionFailed],
                 ["analyzer_failed", library.bpmAnalyzerFailed],
                 ["too_short", library.bpmTooShort],
@@ -1143,18 +1157,21 @@ export default function LibraryHealthPage() {
         {bpmLoading ? <div className={styles.loading}><Loader2 className="animate-spin" size={18} /> Loading {bpmFilterLabels[bpmFilter].toLowerCase()}â€¦</div> : <>
           <div className={`${styles.tableWrap} ${styles.bpmTableWrap}`}>
             <table>
-              <thead><tr><th><input type="checkbox" aria-label="Select visible BPM tracks" checked={allVisibleBpmSelected} onChange={() => setBpmSelected(allVisibleBpmSelected ? new Set() : new Set(bpmTracks.map((track) => track.id)))} /></th><th>Track</th><th>Artist</th><th>Album</th><th>Effective BPM</th><th>API BPM</th><th>Local BPM</th><th>Source</th><th>Scope</th><th>Status</th><th>Failure reason</th><th>Last analyzed</th><th>Media path</th><th>Actions</th></tr></thead>
+              <thead><tr><th><input type="checkbox" aria-label="Select visible BPM tracks" checked={allVisibleBpmSelected} onChange={() => setBpmSelected(allVisibleBpmSelected ? new Set() : new Set(bpmTracks.map((track) => track.id)))} /></th><th>Track</th><th>Artist</th><th>Album</th><th>Effective BPM</th><th>Source</th><th>Confidence</th><th>API BPM</th><th>Imported BPM</th><th>Local BPM</th><th>Scope</th><th>Status</th><th>Reason</th><th>Failure reason</th><th>Last analyzed</th><th>Media path</th><th>Actions</th></tr></thead>
               <tbody>{bpmTracks.map((track) => <tr key={track.id}>
                 <td><input type="checkbox" aria-label={`Select ${track.title}`} checked={bpmSelected.has(track.id)} onChange={() => setBpmSelected((current) => { const next = new Set(current); next.has(track.id) ? next.delete(track.id) : next.add(track.id); return next; })} /></td>
                 <td data-label="Track"><strong>{track.title}</strong><small className={styles.trackMeta}>{track.library.name} | {formatDuration(track.duration)} | {track.ratingKey}</small></td>
                 <td data-label="Artist">{track.artist}</td>
                 <td data-label="Album">{track.album}</td>
                 <td data-label="BPM">{track.effectiveBpm === null ? "â€”" : Math.round(track.effectiveBpm * 10) / 10}</td>
+                <td data-label="Source"><span className={styles.bpmBadge}>{track.bpmSource || "Unknown"}</span></td>
+                <td data-label="Confidence"><span className={styles.bpmBadge}>{track.bpmConfidence || "Unknown"}</span>{track.bpmConfidenceValue !== null && track.bpmConfidenceValue !== undefined && <small className={styles.trackMeta}>{Math.round(track.bpmConfidenceValue * 100)}% raw</small>}</td>
                 <td data-label="API BPM">{track.apiBpm === null ? "â€”" : Math.round(track.apiBpm * 10) / 10}</td>
+                <td data-label="Imported BPM">{track.importedBpm === null ? "â€”" : Math.round(track.importedBpm * 10) / 10}</td>
                 <td data-label="Local BPM">{track.localBpm === null ? "â€”" : Math.round(track.localBpm * 10) / 10}</td>
-                <td data-label="BPM source">{track.bpmSource || "â€”"}{track.bpmConfidence !== null && <small className={styles.trackMeta}>{Math.round(track.bpmConfidence * 100)}% confidence</small>}</td>
                 <td data-label="Scope">{track.bpmAnalysisScope || "â€”"}</td>
                 <td data-label="BPM status"><span className={styles.bpmBadge}>{labelBpm(track.bpmAnalysisStatus)}</span></td>
+                <td data-label="Reason" className={styles.failureReason} title={track.bpmConflictReason || track.bpmReason || ""}>{track.bpmConflictReason || track.bpmReason || "â€”"}</td>
                 <td data-label="Failure reason" className={styles.failureReason} title={track.bpmFailureReason || ""}>{track.bpmFailureReason || "â€”"}</td>
                 <td data-label="Last analyzed">{formatDate(track.bpmAnalyzedAt)}</td>
                 <td data-label="Media path" className={styles.path} title={track.mediaPath || ""}>{track.mediaPath || "â€”"}</td>

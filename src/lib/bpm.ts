@@ -6,6 +6,9 @@ export type BpmRetryProviderMode = "configured" | "api_only" | "local_only" | "f
 export const bpmBackfillFilters = ["missing_bpm", "api_bpm", "imported_legacy_bpm", "all_active", "failed", "tracks_with_bpm", "local_bpm"] as const;
 export type BpmBackfillFilter = typeof bpmBackfillFilters[number];
 export type BpmSourceType = "api_bpm" | "local_bpm" | "imported_bpm";
+export type BpmDisplaySource = "local" | "api" | "imported" | "deezer" | "plex" | "manual" | "estimated" | "unknown";
+export type BpmConfidenceLevel = "High" | "Medium" | "Low" | "Unknown";
+export type BpmConflictStatus = "none" | "conflict" | "half_double";
 
 export type TrackWithBpmSources = {
   bpm?: unknown;
@@ -13,6 +16,7 @@ export type TrackWithBpmSources = {
   localBpm?: unknown;
   effectiveBpm?: unknown;
   bpmSource?: unknown;
+  bpmConfidence?: unknown;
   bpmAnalysisStatus?: unknown;
   bpmAnalyzedAt?: unknown;
   tempo?: unknown;
@@ -21,11 +25,13 @@ export type TrackWithBpmSources = {
     bpm?: unknown;
     tempo?: unknown;
     tempoSource?: unknown;
+    tempoConfidence?: unknown;
   } | null;
   audioFeatures?: {
     bpm?: unknown;
     tempo?: unknown;
     tempoSource?: unknown;
+    tempoConfidence?: unknown;
   } | null;
   analysis?: {
     bpm?: unknown;
@@ -36,6 +42,11 @@ export type TrackWithBpmSources = {
 export function getValidBpm(value: unknown) {
   const bpm = Number(value);
   return Number.isFinite(bpm) && bpm > 0 ? bpm : null;
+}
+
+function getValidConfidence(value: unknown) {
+  const confidence = Number(value);
+  return Number.isFinite(confidence) && confidence >= 0 ? confidence : null;
 }
 
 function isLocalBpmSource(source: unknown) {
@@ -53,6 +64,52 @@ function isApiBpmSource(source: unknown) {
 function isAubioBpmSource(source: unknown) {
   const normalized = String(source || "").trim().toLowerCase();
   return normalized === "aubio" || normalized.startsWith("aubio");
+}
+
+function isEstimatedBpmSource(source: unknown) {
+  const normalized = String(source || "").trim().toLowerCase();
+  return normalized.includes("estimated")
+    || normalized.includes("heuristic")
+    || normalized === "aubio"
+    || normalized.startsWith("aubio");
+}
+
+function isManualBpmSource(source: unknown) {
+  const normalized = String(source || "").trim().toLowerCase();
+  return normalized === "manual" || normalized.includes("manual");
+}
+
+function isPlexBpmSource(source: unknown) {
+  const normalized = String(source || "").trim().toLowerCase();
+  return normalized === "plex" || normalized.includes("plex");
+}
+
+export function normalizeBpmSource(source: unknown): BpmDisplaySource {
+  const normalized = String(source || "").trim().toLowerCase();
+  if (!normalized || normalized === "missing") return "unknown";
+  if (isManualBpmSource(normalized)) return "manual";
+  if (normalized === "local") return "local";
+  if (isLocalBpmSource(normalized)) return "local";
+  if (normalized === "api") return "api";
+  if (normalized === "deezer" || normalized.includes("deezer")) return "deezer";
+  if (isApiBpmSource(normalized)) return "api";
+  if (isPlexBpmSource(normalized)) return "plex";
+  if (normalized === "imported" || normalized === "legacy" || normalized.includes("import")) return "imported";
+  if (isEstimatedBpmSource(normalized)) return "estimated";
+  return "unknown";
+}
+
+export function getBpmSourceLabel(source: unknown) {
+  switch (normalizeBpmSource(source)) {
+    case "local": return "Local Essentia";
+    case "api": return "API";
+    case "imported": return "Imported";
+    case "deezer": return "Deezer";
+    case "plex": return "Plex";
+    case "manual": return "Manual";
+    case "estimated": return "Estimated";
+    case "unknown": return "Unknown";
+  }
 }
 
 export function getEffectiveBpm(track: TrackWithBpmSources) {
@@ -77,6 +134,175 @@ export function getEffectiveBpm(track: TrackWithBpmSources) {
   }
 
   return null;
+}
+
+function roughlySameBpm(left: number | null, right: number | null) {
+  return left !== null && right !== null && Math.abs(left - right) <= 0.5;
+}
+
+type BpmSourceValue = {
+  key: "local" | "api" | "imported" | "audio";
+  source: BpmDisplaySource;
+  label: string;
+  value: number;
+};
+
+function bpmSourceValues(track: TrackWithBpmSources): BpmSourceValue[] {
+  const values: BpmSourceValue[] = [];
+  const local = getValidBpm(track.localBpm);
+  const api = getValidBpm(track.apiBpm);
+  const imported = getValidBpm(track.bpm);
+  const audioTempo = getValidBpm(track.audioFeature?.tempo ?? track.audioFeatures?.tempo);
+  const audioSource = track.audioFeature?.tempoSource ?? track.audioFeatures?.tempoSource;
+
+  if (local !== null) values.push({ key: "local", source: "local", label: "Local Essentia", value: local });
+  if (api !== null) values.push({ key: "api", source: normalizeBpmSource(track.bpmSource) === "deezer" ? "deezer" : "api", label: getBpmSourceLabel(normalizeBpmSource(track.bpmSource) === "deezer" ? "deezer" : "api"), value: api });
+  if (
+    imported !== null
+    && !roughlySameBpm(imported, local)
+    && !roughlySameBpm(imported, api)
+  ) {
+    const source = normalizeBpmSource(track.bpmSource);
+    values.push({
+      key: "imported",
+      source: source === "manual" || source === "plex" || source === "estimated" ? source : "imported",
+      label: getBpmSourceLabel(source === "manual" || source === "plex" || source === "estimated" ? source : "imported"),
+      value: imported,
+    });
+  }
+  if (
+    audioTempo !== null
+    && !roughlySameBpm(audioTempo, local)
+    && !roughlySameBpm(audioTempo, api)
+    && !roughlySameBpm(audioTempo, imported)
+  ) {
+    const source = normalizeBpmSource(audioSource);
+    values.push({
+      key: "audio",
+      source: source === "local" ? "local" : source === "unknown" ? "estimated" : source,
+      label: getBpmSourceLabel(source === "local" ? "local" : source === "unknown" ? "estimated" : source),
+      value: audioTempo,
+    });
+  }
+
+  return values;
+}
+
+export function getEffectiveBpmSource(track: TrackWithBpmSources): BpmDisplaySource {
+  const effectiveBpm = getEffectiveBpm(track);
+  if (effectiveBpm === null) return "unknown";
+  const rawSource = normalizeBpmSource(track.bpmSource);
+  if (rawSource === "manual") return "manual";
+  if (roughlySameBpm(effectiveBpm, getValidBpm(track.localBpm)) || hasLocalEssentiaBpmSuccess(track)) return "local";
+  if (roughlySameBpm(effectiveBpm, getValidBpm(track.apiBpm)) || rawSource === "api" || rawSource === "deezer") return rawSource === "deezer" ? "deezer" : "api";
+  if (roughlySameBpm(effectiveBpm, getValidBpm(track.bpm))) return rawSource === "plex" || rawSource === "estimated" ? rawSource : "imported";
+  const tempoSource = normalizeBpmSource(track.audioFeature?.tempoSource ?? track.audioFeatures?.tempoSource);
+  if (roughlySameBpm(effectiveBpm, getValidBpm(track.audioFeature?.tempo ?? track.audioFeatures?.tempo))) {
+    return tempoSource === "local" ? "local" : tempoSource === "unknown" ? "estimated" : tempoSource;
+  }
+  return rawSource === "unknown" ? "unknown" : rawSource;
+}
+
+function isHalfDoublePair(left: number, right: number) {
+  const low = Math.min(left, right);
+  const high = Math.max(left, right);
+  return Math.abs(high - (low * 2)) <= 4;
+}
+
+export function getBpmSourceConflict(track: TrackWithBpmSources) {
+  const sources = bpmSourceValues(track);
+  let largestDifference = 0;
+  let conflictingPair: [BpmSourceValue, BpmSourceValue] | null = null;
+  let halfDoublePair: [BpmSourceValue, BpmSourceValue] | null = null;
+
+  for (let leftIndex = 0; leftIndex < sources.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < sources.length; rightIndex += 1) {
+      const left = sources[leftIndex];
+      const right = sources[rightIndex];
+      const difference = Math.abs(left.value - right.value);
+      if (difference > largestDifference) largestDifference = difference;
+      if (difference > 10 && !conflictingPair) conflictingPair = [left, right];
+      if (difference > 10 && isHalfDoublePair(left.value, right.value) && !halfDoublePair) halfDoublePair = [left, right];
+    }
+  }
+
+  const pair = halfDoublePair || conflictingPair;
+  const status: BpmConflictStatus = halfDoublePair ? "half_double" : conflictingPair ? "conflict" : "none";
+  const reason = !pair
+    ? null
+    : status === "half_double"
+      ? `${pair[0].label} BPM ${Math.round(pair[0].value * 10) / 10} differs from ${pair[1].label} BPM ${Math.round(pair[1].value * 10) / 10}. This may be half-time or double-time detection.`
+      : `${pair[0].label} BPM ${Math.round(pair[0].value * 10) / 10} differs from ${pair[1].label} BPM ${Math.round(pair[1].value * 10) / 10}.`;
+
+  return {
+    status,
+    hasConflict: status !== "none",
+    largestDifference,
+    reason,
+    sources,
+  };
+}
+
+export function getBpmConfidenceLevel(track: TrackWithBpmSources): BpmConfidenceLevel {
+  if (getEffectiveBpm(track) === null) return "Unknown";
+  if (getBpmSourceConflict(track).hasConflict) return "Low";
+  const numericConfidence = getValidConfidence(track.bpmConfidence ?? track.audioFeature?.tempoConfidence ?? track.audioFeatures?.tempoConfidence);
+  if (numericConfidence !== null) {
+    if (numericConfidence >= 0.8) return "High";
+    if (numericConfidence >= 0.5) return "Medium";
+    return "Low";
+  }
+  const source = getEffectiveBpmSource(track);
+  if (source === "local" && hasLocalEssentiaBpmSuccess(track)) return "High";
+  if (source === "api" || source === "deezer" || source === "imported" || source === "plex") return "Medium";
+  if (source === "estimated") return "Low";
+  return "Unknown";
+}
+
+export function getBpmDisplayMetadata(track: TrackWithBpmSources) {
+  const effectiveBpm = getEffectiveBpm(track);
+  const effectiveSource = getEffectiveBpmSource(track);
+  const conflict = getBpmSourceConflict(track);
+  const confidence = getBpmConfidenceLevel(track);
+  const rawSource = normalizeBpmSource(track.bpmSource);
+  const otherSources = conflict.sources
+    .filter((source) => !roughlySameBpm(source.value, effectiveBpm))
+    .map((source) => ({ label: source.label, value: source.value }));
+  const originalSource = rawSource === "manual"
+    ? conflict.sources.find((source) => source.source !== "manual") || null
+    : null;
+  const reason = rawSource === "manual"
+    ? "Manual BPM override is used."
+    : conflict.status === "half_double"
+      ? "BPM source conflict. This may be a half-time or double-time detection difference."
+      : conflict.status === "conflict"
+        ? "BPM source conflict."
+        : confidence === "Low"
+          ? "Low confidence BPM. BPM came from estimated or conflicting metadata."
+          : effectiveSource === "local"
+            ? "Local BPM preferred."
+            : effectiveSource === "api" || effectiveSource === "deezer" || effectiveSource === "imported" || effectiveSource === "plex"
+              ? "No local BPM has been calculated yet."
+              : effectiveBpm === null
+                ? "No BPM value is available."
+                : "BPM source is unknown.";
+
+  return {
+    effectiveBpm,
+    source: effectiveSource,
+    sourceLabel: rawSource === "manual" ? "Manual override" : getBpmSourceLabel(effectiveSource),
+    confidence,
+    confidenceValue: getValidConfidence(track.bpmConfidence ?? track.audioFeature?.tempoConfidence ?? track.audioFeatures?.tempoConfidence),
+    localBpm: getValidBpm(track.localBpm),
+    apiBpm: getValidBpm(track.apiBpm),
+    importedBpm: getValidBpm(track.bpm),
+    conflictStatus: conflict.status,
+    conflictReason: conflict.reason,
+    hasConflict: conflict.hasConflict,
+    otherSources,
+    originalSource,
+    reason,
+  };
 }
 
 export function hasEffectiveBpm(track: TrackWithBpmSources) {

@@ -82,7 +82,7 @@
 .path { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .failureReason { max-width: 220px; }
 .trackMeta { display: block; margin-top: .2rem; color: var(--muted); font-size: .65rem; white-space: nowrap; }
-.bpmTableWrap table { min-width: 1450px; }
+.bpmTableWrap table { min-width: 1650px; }
 .bpmBadge { white-space: nowrap; border: 1px solid var(--line); border-radius: 99px; padding: .2rem .42rem; }
 .tableAction { background: transparent; color: var(--accent); border: 1px solid var(--line); white-space: nowrap; }
 .pagination { margin-top: .8rem; color: var(--muted); font-size: .76rem; }

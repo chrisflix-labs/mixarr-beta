@@ -24,6 +24,7 @@ import {
   bpmTooShortTrackWhere,
   buildBpmSourceWhereClause,
   effectiveBpmTrackWhere,
+  getBpmDisplayMetadata,
   getEffectiveBpm,
   importedBpmTrackWhere,
   localBpmSourceTrackWhere,
@@ -65,6 +66,8 @@ export const bpmHealthFilters = [
   "missing_bpm",
   "bpm_no_data",
   "bpm_failed",
+  "low_confidence_bpm",
+  "bpm_source_conflict",
   "extraction_failed",
   "analyzer_failed",
   "too_short",
@@ -182,6 +185,8 @@ export function bpmHealthFilterWhere(filter: BpmHealthFilter): Prisma.TrackWhere
     case "missing_bpm": return missingEffectiveBpmTrackWhere();
     case "bpm_no_data": return bpmNoDataTrackWhere();
     case "bpm_failed": return bpmFailedTrackWhere();
+    case "low_confidence_bpm": return effectiveBpmTrackWhere();
+    case "bpm_source_conflict": return effectiveBpmTrackWhere();
     case "extraction_failed": return bpmExtractionFailedTrackWhere();
     case "analyzer_failed": return bpmAnalyzerFailedTrackWhere();
     case "too_short": return bpmTooShortTrackWhere();
@@ -199,6 +204,8 @@ export function bpmHealthFilterClassification(filter: BpmHealthFilter) {
     case "missing_bpm": return "source=missing_bpm";
     case "bpm_no_data": return "status=no_data";
     case "bpm_failed": return "status=failed";
+    case "low_confidence_bpm": return "confidence=low";
+    case "bpm_source_conflict": return "status=source_conflict";
     case "extraction_failed": return "status=extraction_failed";
     case "analyzer_failed": return "status=analyzer_failed";
     case "too_short": return "status=too_short";
@@ -457,12 +464,25 @@ export function buildMetadataTrackWhere(userId: string, options: {
   return { AND: and };
 }
 
+async function countBpmDisplayMetadata(active: Prisma.TrackWhereInput) {
+  const tracks = await prisma.track.findMany({
+    where: { AND: [active, effectiveBpmTrackWhere()] },
+    select: bpmHealthTrackSelect,
+  });
+  return tracks.reduce((counts, track) => {
+    const metadata = getBpmDisplayMetadata(track);
+    if (metadata.confidence === "Low") counts.lowConfidenceBpm += 1;
+    if (metadata.hasConflict) counts.bpmSourceConflicts += 1;
+    return counts;
+  }, { lowConfidenceBpm: 0, bpmSourceConflicts: 0 });
+}
+
 export async function getBpmHealthSummary(userId: string, libraryId?: string) {
   const active: Prisma.TrackWhereInput = {
     syncStatus: "active",
     library: { ...(libraryId ? { id: libraryId } : {}), server: { userId } },
   };
-  const [tracksWithBpm, apiBpm, localBpm, importedBpm, missingBpm, bpmNoData, bpmFailed, extractionFailed, analyzerFailed, tooShort, pendingBackfill] = await Promise.all([
+  const [tracksWithBpm, apiBpm, localBpm, importedBpm, missingBpm, bpmNoData, bpmFailed, extractionFailed, analyzerFailed, tooShort, pendingBackfill, displayCounts] = await Promise.all([
     prisma.track.count({ where: { AND: [active, bpmHealthFilterWhere("tracks_with_bpm")] } }),
     prisma.track.count({ where: { AND: [active, bpmHealthFilterWhere("api_bpm")] } }),
     prisma.track.count({ where: { AND: [active, bpmHealthFilterWhere("local_bpm")] } }),
@@ -474,8 +494,9 @@ export async function getBpmHealthSummary(userId: string, libraryId?: string) {
     prisma.track.count({ where: { AND: [active, bpmHealthFilterWhere("analyzer_failed")] } }),
     prisma.track.count({ where: { AND: [active, bpmHealthFilterWhere("too_short")] } }),
     prisma.track.count({ where: { AND: [active, bpmHealthFilterWhere("pending_bpm")] } }),
+    countBpmDisplayMetadata(active),
   ]);
-  return { tracksWithBpm, apiBpm, localBpm, importedBpm, missingBpm, bpmNoData, bpmFailed, extractionFailed, analyzerFailed, tooShort, pendingBackfill };
+  return { tracksWithBpm, apiBpm, localBpm, importedBpm, missingBpm, bpmNoData, bpmFailed, extractionFailed, analyzerFailed, tooShort, pendingBackfill, ...displayCounts };
 }
 
 export async function getGenreHealthSummary(userId: string, libraryId?: string) {
@@ -614,6 +635,8 @@ type LibraryHealthSnapshotPayload = {
   bpmAnalyzerFailed: number;
   bpmTooShort: number;
   bpmPendingBackfill: number;
+  bpmLowConfidence: number;
+  bpmSourceConflicts: number;
   audioFeaturesComplete: number;
   audioFeaturesMissing: number;
   audioFeaturesApi: number;
@@ -747,9 +770,11 @@ async function getBpmHealthCounts(libraryId: string) {
         t."localBpm",
         t."effectiveBpm",
         t."bpmSource",
+        t."bpmConfidence",
         t."bpmAnalysisStatus",
         af."tempo" AS af_tempo,
-        af."tempoSource" AS af_tempo_source
+        af."tempoSource" AS af_tempo_source,
+        af."tempoConfidence" AS af_tempo_confidence
       FROM "Track" t
       LEFT JOIN "AudioFeature" af ON af."trackId" = t."id"
       WHERE t."libraryId" = ${libraryId}
@@ -801,6 +826,25 @@ async function getBpmHealthCounts(libraryId: string) {
       COUNT(*) FILTER (WHERE missing_effective_bpm AND analyzer_failed_marker) AS bpm_analyzer_failed,
       COUNT(*) FILTER (WHERE missing_effective_bpm AND too_short_marker) AS bpm_too_short,
       COUNT(*) FILTER (
+        WHERE has_effective_bpm
+          AND (
+            COALESCE("bpmConfidence", af_tempo_confidence) < 0.5
+            OR "bpmSource" ILIKE '%estimated%'
+            OR "bpmSource" ILIKE '%heuristic%'
+            OR (
+              COALESCE("localBpm", 0) > 0
+              AND COALESCE("apiBpm", 0) > 0
+              AND ABS("localBpm" - "apiBpm") > 10
+            )
+          )
+      ) AS bpm_low_confidence,
+      COUNT(*) FILTER (
+        WHERE has_effective_bpm
+          AND COALESCE("localBpm", 0) > 0
+          AND COALESCE("apiBpm", 0) > 0
+          AND ABS("localBpm" - "apiBpm") > 10
+      ) AS bpm_source_conflicts,
+      COUNT(*) FILTER (
         WHERE missing_effective_bpm
           AND ("bpmAnalysisStatus" IS NULL OR "bpmAnalysisStatus" NOT IN ('success', 'no_data', 'failed', 'extraction_failed', 'analyzer_failed', 'too_short'))
           AND NOT no_data_marker
@@ -823,6 +867,8 @@ async function getBpmHealthCounts(libraryId: string) {
     bpmExtractionFailed: countValue(row, "bpm_extraction_failed"),
     bpmAnalyzerFailed: countValue(row, "bpm_analyzer_failed"),
     bpmTooShort: countValue(row, "bpm_too_short"),
+    bpmLowConfidence: countValue(row, "bpm_low_confidence"),
+    bpmSourceConflicts: countValue(row, "bpm_source_conflicts"),
     bpmPendingBackfill: countValue(row, "bpm_pending_backfill"),
   };
 }
@@ -990,6 +1036,8 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
     bpmAnalyzerFailed: bpm.bpmAnalyzerFailed,
     bpmTooShort: bpm.bpmTooShort,
     bpmPendingBackfill: bpm.bpmPendingBackfill,
+    bpmLowConfidence: bpm.bpmLowConfidence,
+    bpmSourceConflicts: bpm.bpmSourceConflicts,
     audioFeaturesComplete: audioFeatures.complete,
     audioFeaturesMissing: audioFeatures.missing,
     audioFeaturesApi: audioFeatures.api,
@@ -1273,6 +1321,7 @@ export const metadataHealthTrackSelect = {
 
 export function serializeBpmHealthTrack(track: any) {
   const effectiveBpm = getEffectiveBpm(track);
+  const bpmDisplay = getBpmDisplayMetadata(track);
   return {
     id: track.id,
     title: track.title,
@@ -1285,8 +1334,15 @@ export function serializeBpmHealthTrack(track: any) {
     effectiveBpm,
     apiBpm: track.apiBpm ?? null,
     localBpm: track.localBpm ?? null,
-    bpmSource: track.bpmSource || track.audioFeature?.tempoSource || null,
-    bpmConfidence: track.bpmConfidence ?? track.audioFeature?.tempoConfidence ?? null,
+    importedBpm: track.bpm ?? null,
+    bpmSource: bpmDisplay.sourceLabel,
+    bpmSourceKey: bpmDisplay.source,
+    bpmConfidence: bpmDisplay.confidence,
+    bpmConfidenceValue: bpmDisplay.confidenceValue,
+    bpmConflictStatus: bpmDisplay.conflictStatus,
+    bpmConflictReason: bpmDisplay.conflictReason,
+    bpmOtherSources: bpmDisplay.otherSources,
+    bpmReason: bpmDisplay.reason,
     bpmAnalysisScope: track.bpmAnalysisScope || null,
     bpmAnalysisStatus: effectiveBpm !== null ? "success" : missingTrackBpmStatus(track),
     bpmFailureReason: track.bpmFailureReason,

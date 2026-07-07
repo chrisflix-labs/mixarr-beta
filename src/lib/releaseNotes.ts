@@ -54,6 +54,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.3.4",
+    title: "BPM Confidence & Source Improvements",
+    badges: ["BPM", "Library Health", "Data Enrichment", "Diagnostics", "Playlists"],
+    changes: [
+      "Added clearer BPM source labels for local, API, imported, estimated, and manual values.",
+      "Added BPM confidence levels to make tempo data easier to trust.",
+      "Added BPM source conflict detection for significantly different provider values.",
+      "Improved Library Health BPM detail views with source, confidence, and reason information.",
+      "Added BPM source/confidence filters and source breakdowns where available.",
+      "Improved Dashboard and Data Enrichment BPM summaries.",
+    ],
+  },
+  {
     version: "1.3.3",
     title: "Data Enrichment Cleanup",
     badges: ["Data Enrichment", "Library Health", "BPM", "Audio Features", "Genres", "Popularity", "Job History"],

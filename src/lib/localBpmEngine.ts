@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { Prisma } from "@prisma/client";
 import { existsSync } from "fs";
 import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "fs/promises";
 import os from "os";
@@ -1530,6 +1531,8 @@ async function logInitialBpmCandidateReasons(
 
 export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
   let summary: EnrichmentRunSummary = { attempted: 0, processed: 0, skipped: 0, failed: 0 };
+  let localBpmAdded = 0;
+  let importedApiBpmAdded = 0;
 
   try {
     const metadataSettings = logMetadataProviderSettings(options).bpm;
@@ -1663,6 +1666,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
             preferLocal: metadataSettings.preferLocal,
             analysisScope: localAnalysisScope,
           });
+          importedApiBpmAdded += 1;
           console.log(`[LocalBpmEngine] ${track.artist.title} - ${track.title} -> ${tempo} BPM (Deezer)`);
           return "processed";
         }
@@ -1674,6 +1678,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
             preferLocal: metadataSettings.preferLocal,
             analysisScope: localAnalysisScope,
           });
+          localBpmAdded += 1;
           console.log(`[LocalBpmEngine] ${track.artist.title} - ${track.title} -> ${localBpm.tempo} BPM (${localBpm.analyzerLabel} ${localBpm.windowLabel}, confidence ${localBpm.confidence.toFixed(2)})`);
         } else if (deezerBpm) {
           const tempo = normalizeBpm(deezerBpm);
@@ -1682,6 +1687,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
             preferLocal: metadataSettings.preferLocal,
             analysisScope: localAnalysisScope,
           });
+          importedApiBpmAdded += 1;
           console.log(`[LocalBpmEngine] ${track.artist.title} - ${track.title} -> ${tempo} BPM (Deezer)`);
         } else if (deezerRateLimited) {
           outcome = "rate_limited";
@@ -1763,7 +1769,58 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
       },
     });
 
-    console.log(`[LocalBpmEngine] BPM backfill completed. attempted=${summary.attempted}, processed=${summary.processed}, skipped=${summary.skipped}, failed=${summary.failed}.`);
+    const libraryFilter = options.bpmBackfillLibraryId ? Prisma.sql`AND t."libraryId" = ${options.bpmBackfillLibraryId}` : Prisma.empty;
+    const userFilter = options.bpmBackfillUserId ? Prisma.sql`AND s."userId" = ${options.bpmBackfillUserId}` : Prisma.empty;
+    const postRunRows = await prisma.$queryRaw<Array<{ low_confidence_count: number | bigint; conflict_count: number | bigint }>>`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE
+            COALESCE(t."bpmConfidence", af."tempoConfidence") < 0.5
+            OR t."bpmSource" ILIKE '%estimated%'
+            OR t."bpmSource" ILIKE '%heuristic%'
+            OR (
+              COALESCE(t."localBpm", 0) > 0
+              AND COALESCE(t."apiBpm", 0) > 0
+              AND ABS(t."localBpm" - t."apiBpm") > 10
+            )
+        ) AS low_confidence_count,
+        COUNT(*) FILTER (
+          WHERE
+            COALESCE(t."localBpm", 0) > 0
+            AND COALESCE(t."apiBpm", 0) > 0
+            AND ABS(t."localBpm" - t."apiBpm") > 10
+        ) AS conflict_count
+      FROM "Track" t
+      JOIN "Library" l ON l."id" = t."libraryId"
+      JOIN "Server" s ON s."id" = l."serverId"
+      LEFT JOIN "AudioFeature" af ON af."trackId" = t."id"
+      WHERE t."syncStatus" = 'active'
+        ${libraryFilter}
+        ${userFilter}
+        AND (
+          COALESCE(t."bpm", 0) > 0
+          OR COALESCE(t."effectiveBpm", 0) > 0
+          OR COALESCE(t."apiBpm", 0) > 0
+          OR COALESCE(t."localBpm", 0) > 0
+          OR (COALESCE(t."bpm", 0) <= 0 AND COALESCE(af."tempo", 0) > 0)
+        )
+    `;
+    const postRunMetadata = {
+      lowConfidenceCount: Number(postRunRows[0]?.low_confidence_count || 0),
+      conflictCount: Number(postRunRows[0]?.conflict_count || 0),
+    };
+    const message = `BPM sync completed. Processed ${summary.processed} tracks, added ${localBpmAdded} local BPM values, added ${importedApiBpmAdded} imported/API BPM values, found ${postRunMetadata.conflictCount} possible source conflicts.`;
+    console.log(`[LocalBpmEngine] ${message} attempted=${summary.attempted}, skipped=${summary.skipped}, failed=${summary.failed}, lowConfidence=${postRunMetadata.lowConfidenceCount}.`);
+    return {
+      ...summary,
+      message,
+      metadata: {
+        localBpmAdded,
+        importedApiBpmAdded,
+        lowConfidenceCount: postRunMetadata.lowConfidenceCount,
+        conflictCount: postRunMetadata.conflictCount,
+      },
+    };
   } catch (error) {
     console.error(`[LocalBpmEngine] Sync failed: ${sanitizedErrorMessage(error)}`);
   }

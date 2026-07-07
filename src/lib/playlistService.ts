@@ -1,7 +1,7 @@
 import axios from "axios";
 import { z } from "zod";
 import prisma from "./prisma";
-import { effectiveBpmTrackWhere, getEffectiveBpm } from "./bpm";
+import { effectiveBpmTrackWhere, getBpmDisplayMetadata, getEffectiveBpm } from "./bpm";
 import { audioFeatureFilterGuardWhere, type AudioFeatureFilterOptions } from "./audioFeatures";
 import { activeSyncStatusWhere } from "./syncStatus";
 import { getUserSyncSettings } from "./syncSettings";
@@ -516,11 +516,13 @@ const playlistTrackInclude = {
 
 function annotateTrack(track: any, reasons: string[]) {
   const effectiveBpm = getEffectiveBpm(track);
+  const bpmDisplay = getBpmDisplayMetadata(track);
 
   return {
     ...track,
     bpm: effectiveBpm,
     effectiveBpm,
+    bpmDisplay,
     matchReasons: reasons,
     metadataConfidence: {
       popularity: track.popularity ? {
@@ -547,6 +549,9 @@ function publicPreviewTrack(track: any) {
     duration: track.duration,
     bpm: track.bpm,
     effectiveBpm: track.effectiveBpm,
+    bpmSource: track.bpmDisplay?.sourceLabel || null,
+    bpmConfidence: track.bpmDisplay?.confidence || null,
+    bpmConflictStatus: track.bpmDisplay?.conflictStatus || "none",
     popularity: track.popularity ? {
       score: track.popularity.score,
       provider: track.popularity.provider,

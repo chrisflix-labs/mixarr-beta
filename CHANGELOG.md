@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.4 - BPM Confidence & Source Improvements
+
+- Added clearer BPM source labels for local, API, imported, estimated, and manual values.
+- Added BPM confidence levels to make tempo data easier to trust.
+- Added BPM source conflict detection for significantly different provider values, including possible half-time/double-time matches.
+- Improved Library Health BPM detail views with source, confidence, source values, and reason information.
+- Added BPM source/confidence filters and source breakdowns where available.
+- Improved Dashboard, Data Enrichment, diagnostics, Job History, and playlist preview BPM summaries.
+
 ## v1.3.3 - Data Enrichment Cleanup
 
 - Cleaned up Data Enrichment into clearer BPM, Audio Features, Genres, Popularity, and Local Audio Analysis sections.

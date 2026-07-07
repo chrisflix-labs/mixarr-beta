@@ -10,6 +10,10 @@ type Category =
   | "missing_bpm"
   | "api_bpm"
   | "local_bpm"
+  | "imported_bpm"
+  | "pending_bpm"
+  | "low_confidence_bpm"
+  | "bpm_source_conflict"
   | "missing_audio_features"
   | "partial_audio_features"
   | "pending_audio_features"
@@ -83,7 +87,16 @@ type Track = {
   duration: number | null;
   mediaPath: string | null;
   bpm: number | null;
+  apiBpm: number | null;
+  localBpm: number | null;
+  importedBpm: number | null;
   bpmSource: string | null;
+  bpmSourceKey?: string | null;
+  bpmConfidence?: string | null;
+  bpmConfidenceValue?: number | null;
+  bpmConflictStatus?: string | null;
+  bpmConflictReason?: string | null;
+  bpmReason?: string | null;
   energy: number | null;
   mood: number | null;
   danceability: number | null;
@@ -102,6 +115,10 @@ const categoryLabels: Record<Category, string> = {
   missing_bpm: "Missing BPM",
   api_bpm: "API BPM Only",
   local_bpm: "Local BPM Available",
+  imported_bpm: "Imported BPM",
+  pending_bpm: "Pending BPM",
+  low_confidence_bpm: "Low Confidence BPM",
+  bpm_source_conflict: "BPM Source Conflicts",
   missing_audio_features: "Missing Audio Features",
   partial_audio_features: "Partial Audio Features",
   pending_audio_features: "Pending Audio Features",
@@ -120,6 +137,10 @@ const emptyMessages: Record<Category, string> = {
   missing_bpm: "No tracks are missing BPM. Nice!",
   api_bpm: "No tracks are relying on API-only BPM.",
   local_bpm: "No tracks have locally analyzed BPM yet.",
+  imported_bpm: "No tracks are relying on imported BPM.",
+  pending_bpm: "No tracks are pending BPM analysis.",
+  low_confidence_bpm: "No low-confidence BPM values found.",
+  bpm_source_conflict: "No BPM source conflicts found.",
   missing_audio_features: "No tracks are missing required audio features for the current provider mode.",
   partial_audio_features: "No tracks have partial audio feature data.",
   pending_audio_features: "No tracks are pending audio feature analysis.",
@@ -137,6 +158,11 @@ const categoryOrder: Category[] = [
   "all_tracks",
   "missing_bpm",
   "api_bpm",
+  "local_bpm",
+  "imported_bpm",
+  "pending_bpm",
+  "low_confidence_bpm",
+  "bpm_source_conflict",
   "missing_audio_features",
   "partial_audio_features",
   "pending_audio_features",
@@ -146,7 +172,6 @@ const categoryOrder: Category[] = [
   "missing_local_file",
   "too_short",
   "skipped",
-  "local_bpm",
   "complete_audio_features",
   "healthy_tracks",
 ];
@@ -210,6 +235,10 @@ const defaultFilters = {
   artist: "",
   album: "",
   bpmSource: "all",
+  bpmConfidence: "all",
+  bpmConflict: "all",
+  apiImportedOnly: false,
+  noLocalBpm: false,
   audioFeatureStatus: "all",
   localFileStatus: "all",
   failedOnly: false,
@@ -348,6 +377,10 @@ export default function LibraryHealthDetailsPage() {
       artist: params.get("artist") || "",
       album: params.get("album") || "",
       bpmSource: params.get("bpmSource") || "all",
+      bpmConfidence: params.get("bpmConfidence") || "all",
+      bpmConflict: params.get("bpmConflict") || "all",
+      apiImportedOnly: params.get("apiImportedOnly") === "true",
+      noLocalBpm: params.get("noLocalBpm") === "true",
       audioFeatureStatus: params.get("audioFeatureStatus") || "all",
       localFileStatus: params.get("localFileStatus") || "all",
       failedOnly: params.get("failedOnly") === "true",
@@ -403,6 +436,11 @@ export default function LibraryHealthDetailsPage() {
       { key: "healthy", label: "Healthy Tracks", count: counts?.healthy_tracks || 0, category: "healthy_tracks" as Category },
       { key: "missing_bpm", label: "Missing BPM", count: counts?.missing_bpm || 0, category: "missing_bpm" as Category },
       { key: "api_bpm", label: "API BPM Only", count: counts?.api_bpm || 0, category: "api_bpm" as Category },
+      { key: "local_bpm", label: "Local BPM", count: counts?.local_bpm || 0, category: "local_bpm" as Category },
+      { key: "imported_bpm", label: "Imported BPM", count: counts?.imported_bpm || 0, category: "imported_bpm" as Category },
+      { key: "low_confidence_bpm", label: "Low Confidence BPM", count: counts?.low_confidence_bpm || 0, category: "low_confidence_bpm" as Category },
+      { key: "bpm_source_conflict", label: "BPM Source Conflicts", count: counts?.bpm_source_conflict || 0, category: "bpm_source_conflict" as Category },
+      { key: "pending_bpm", label: "Pending BPM", count: counts?.pending_bpm || 0, category: "pending_bpm" as Category },
       { key: "missing_audio_features", label: "Missing Audio Features", count: counts?.missing_audio_features || 0, category: "missing_audio_features" as Category },
       { key: "partial_audio_features", label: "Partial Audio Features", count: counts?.partial_audio_features || 0, category: "partial_audio_features" as Category },
       { key: "pending_audio_features", label: "Pending Audio Features", count: counts?.pending_audio_features || 0, category: "pending_audio_features" as Category },
@@ -541,6 +579,10 @@ export default function LibraryHealthDetailsPage() {
     || filters.artist
     || filters.album
     || filters.bpmSource !== "all"
+    || filters.bpmConfidence !== "all"
+    || filters.bpmConflict !== "all"
+    || filters.apiImportedOnly
+    || filters.noLocalBpm
     || filters.audioFeatureStatus !== "all"
     || filters.localFileStatus !== "all"
     || filters.failedOnly
@@ -672,6 +714,26 @@ export default function LibraryHealthDetailsPage() {
               <option value="api">API</option>
               <option value="local">Local</option>
               <option value="imported">Imported</option>
+              <option value="manual">Manual</option>
+              <option value="estimated">Estimated</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </label>
+          <label>
+            <span>BPM confidence</span>
+            <select value={filters.bpmConfidence} onChange={(event) => setFilters({ ...filters, bpmConfidence: event.target.value })}>
+              <option value="all">All</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </label>
+          <label>
+            <span>BPM conflicts</span>
+            <select value={filters.bpmConflict} onChange={(event) => setFilters({ ...filters, bpmConflict: event.target.value })}>
+              <option value="all">All</option>
+              <option value="conflicts">Conflicts only</option>
             </select>
           </label>
           <label>
@@ -722,6 +784,14 @@ export default function LibraryHealthDetailsPage() {
           <label className={styles.checkboxRow}>
             <input type="checkbox" checked={filters.missingDataOnly} onChange={(event) => setFilters({ ...filters, missingDataOnly: event.target.checked })} />
             Missing data only
+          </label>
+          <label className={styles.checkboxRow}>
+            <input type="checkbox" checked={filters.apiImportedOnly} onChange={(event) => setFilters({ ...filters, apiImportedOnly: event.target.checked })} />
+            API/imported only
+          </label>
+          <label className={styles.checkboxRow}>
+            <input type="checkbox" checked={filters.noLocalBpm} onChange={(event) => setFilters({ ...filters, noLocalBpm: event.target.checked })} />
+            No local BPM
           </label>
           <div className={styles.buttonGroup}>
             <button className={styles.primaryButton} type="submit">Apply</button>
@@ -774,6 +844,9 @@ export default function LibraryHealthDetailsPage() {
                   <th>Album</th>
                   <th>BPM</th>
                   <th>BPM source</th>
+                  <th>BPM confidence</th>
+                  <th>API/imported BPM</th>
+                  <th>Local BPM</th>
                   <th>Energy</th>
                   <th>Mood</th>
                   <th>Danceability</th>
@@ -793,7 +866,16 @@ export default function LibraryHealthDetailsPage() {
                     <td data-label="Artist">{track.artist}</td>
                     <td data-label="Album">{track.album}</td>
                     <td data-label="BPM">{track.bpm === null ? "-" : Math.round(track.bpm * 10) / 10}</td>
-                    <td data-label="BPM source">{track.bpmSource || "-"}</td>
+                    <td data-label="BPM source">
+                      <span className={styles.badge}>{track.bpmSource || "Unknown"}</span>
+                      <small className={styles.trackMeta}>{track.bpmReason || "-"}</small>
+                    </td>
+                    <td data-label="BPM confidence">
+                      <span className={track.bpmConfidence === "Low" ? `${styles.badge} ${styles.dangerBadge}` : track.bpmConfidence === "High" ? `${styles.badge} ${styles.okBadge}` : styles.badge}>{track.bpmConfidence || "Unknown"}</span>
+                      {track.bpmConflictStatus && track.bpmConflictStatus !== "none" && <small className={styles.trackMeta}>{track.bpmConflictReason || "BPM source conflict"}</small>}
+                    </td>
+                    <td data-label="API/imported BPM">{track.apiBpm === null && track.importedBpm === null ? "-" : `API ${track.apiBpm === null ? "-" : Math.round(track.apiBpm * 10) / 10} | Imported ${track.importedBpm === null ? "-" : Math.round(track.importedBpm * 10) / 10}`}</td>
+                    <td data-label="Local BPM">{track.localBpm === null ? "-" : Math.round(track.localBpm * 10) / 10}</td>
                     <td data-label="Energy">{formatDecimal(track.energy)}</td>
                     <td data-label="Mood">{formatDecimal(track.mood)}</td>
                     <td data-label="Danceability">{formatDecimal(track.danceability)}</td>
@@ -804,7 +886,7 @@ export default function LibraryHealthDetailsPage() {
                     <td data-label="Local file"><span className={track.localFileStatus === "missing" ? `${styles.badge} ${styles.dangerBadge}` : `${styles.badge} ${styles.okBadge}`}>{track.localFileStatus}</span><small className={`${styles.trackMeta} ${styles.path}`} title={track.mediaPath || ""}>{track.mediaPath || "-"}</small></td>
                     <td data-label="Last analyzed">{formatDate(track.lastAnalyzed)}</td>
                     <td data-label="Failure reason">{track.failureReason || "-"}</td>
-                    <td data-label="Reason" className={styles.reason}>{track.reason}</td>
+                    <td data-label="Reason" className={styles.reason}>{track.bpmConflictReason || track.reason}</td>
                     <td data-label="Actions">{canRetry ? <button className={styles.tableAction} disabled={working !== null} onClick={() => void retryTracks([track.id])}>Retry</button> : "-"}</td>
                   </tr>
                 ))}

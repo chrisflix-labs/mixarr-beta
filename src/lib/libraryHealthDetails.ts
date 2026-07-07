@@ -31,6 +31,7 @@ import {
   bpmTooShortTrackWhere,
   buildBpmSourceWhereClause,
   effectiveBpmTrackWhere,
+  getBpmDisplayMetadata,
   getEffectiveBpm,
   missingEffectiveBpmTrackWhere,
   pendingBpmBackfillTrackWhere,
@@ -48,6 +49,10 @@ export const libraryHealthDetailCategories = [
   "missing_bpm",
   "api_bpm",
   "local_bpm",
+  "imported_bpm",
+  "pending_bpm",
+  "low_confidence_bpm",
+  "bpm_source_conflict",
   "missing_audio_features",
   "partial_audio_features",
   "pending_audio_features",
@@ -72,6 +77,10 @@ export const libraryHealthDetailLabels: Record<LibraryHealthDetailCategory, stri
   missing_bpm: "Missing BPM",
   api_bpm: "API BPM Only",
   local_bpm: "Local BPM Available",
+  imported_bpm: "Imported BPM",
+  pending_bpm: "Pending BPM",
+  low_confidence_bpm: "Low Confidence BPM",
+  bpm_source_conflict: "BPM Source Conflicts",
   missing_audio_features: "Missing Audio Features",
   partial_audio_features: "Partial Audio Features",
   pending_audio_features: "Pending Audio Features",
@@ -90,6 +99,10 @@ export const libraryHealthEmptyMessages: Record<LibraryHealthDetailCategory, str
   missing_bpm: "No tracks are missing BPM. Nice!",
   api_bpm: "No tracks are relying on API-only BPM.",
   local_bpm: "No tracks have locally analyzed BPM yet.",
+  imported_bpm: "No tracks are relying on imported BPM.",
+  pending_bpm: "No tracks are pending BPM analysis.",
+  low_confidence_bpm: "No low-confidence BPM values found.",
+  bpm_source_conflict: "No BPM source conflicts found.",
   missing_audio_features: "No tracks are missing required audio features for the current provider mode.",
   partial_audio_features: "No tracks have partial audio feature data.",
   pending_audio_features: "No tracks are pending audio feature analysis.",
@@ -170,6 +183,13 @@ export function libraryHealthCategoryWhere(category: LibraryHealthDetailCategory
       return buildBpmSourceWhereClause("api_bpm");
     case "local_bpm":
       return buildBpmSourceWhereClause("local_bpm");
+    case "imported_bpm":
+      return buildBpmSourceWhereClause("imported_bpm");
+    case "pending_bpm":
+      return pendingBpmBackfillTrackWhere();
+    case "low_confidence_bpm":
+    case "bpm_source_conflict":
+      return effectiveBpmTrackWhere();
     case "missing_audio_features":
       return missingAudioFeatureTrackWhere(settings);
     case "partial_audio_features":
@@ -199,9 +219,7 @@ type ResolvableLibraryHealthCategory =
   | LibraryHealthDetailCategory
   | "api_bpm_only"
   | "tracks_with_bpm"
-  | "imported_bpm"
   | "bpm_no_data"
-  | "pending_bpm"
   | "api_audio_features"
   | "local_audio_features"
   | "estimated_audio_features"
@@ -261,14 +279,57 @@ async function findTrackIds(where: Prisma.TrackWhereInput) {
   return tracks.map((track) => track.id);
 }
 
+async function findBpmMetadataTrackIds(where: Prisma.TrackWhereInput, predicate: (track: any) => boolean) {
+  const tracks = await prisma.track.findMany({
+    where,
+    select: libraryHealthDetailTrackSelect,
+  });
+  return tracks.filter(predicate).map((track) => track.id);
+}
+
+export async function resolveBpmMetadataFilteredTrackIds(userId: string, options: {
+  category: LibraryHealthDetailCategory;
+  libraryId?: string;
+  settings?: EffectiveAudioFeatureSettings;
+  bpmSource?: string;
+  bpmConfidence?: string;
+  bpmConflict?: string;
+  apiImportedOnly?: boolean;
+  noLocalBpm?: boolean;
+  resolvedTrackIds?: string[];
+}) {
+  const active = activeUserTrackWhere(userId, options.libraryId);
+  const baseCategory: Prisma.TrackWhereInput = options.resolvedTrackIds
+    ? options.resolvedTrackIds.length
+      ? { id: { in: options.resolvedTrackIds } }
+      : { id: "__library_health_empty_bpm_metadata_filter__" }
+    : libraryHealthCategoryWhere(options.category, options.settings);
+  const tracks = await prisma.track.findMany({
+    where: { AND: [active, baseCategory] },
+    select: libraryHealthDetailTrackSelect,
+  });
+  return tracks.filter((track) => {
+    const metadata = getBpmDisplayMetadata(track);
+    const source = options.bpmSource || "all";
+    const confidence = options.bpmConfidence || "all";
+    if (source !== "all") {
+      if (source === "missing" && metadata.effectiveBpm !== null) return false;
+      if (source !== "missing" && metadata.source !== source) return false;
+    }
+    if (confidence !== "all" && metadata.confidence.toLowerCase() !== confidence) return false;
+    if (options.bpmConflict === "conflicts" && !metadata.hasConflict) return false;
+    if (options.apiImportedOnly && !["api", "deezer", "imported", "plex"].includes(metadata.source)) return false;
+    if (options.noLocalBpm && metadata.localBpm !== null) return false;
+    return true;
+  }).map((track) => track.id);
+}
+
 function resolvableCategoryWhere(category: ResolvableLibraryHealthCategory, settings?: EffectiveAudioFeatureSettings): Prisma.TrackWhereInput {
   if (isLibraryHealthDetailCategory(category)) return libraryHealthCategoryWhere(category, settings);
 
   switch (category) {
     case "tracks_with_bpm": return effectiveBpmTrackWhere();
-    case "imported_bpm": return buildBpmSourceWhereClause("imported_bpm");
     case "bpm_no_data": return bpmNoDataTrackWhere();
-    case "pending_bpm": return pendingBpmBackfillTrackWhere();
     case "api_audio_features": return apiAudioFeatureTrackWhere(settings);
     case "local_audio_features": return localAudioFeatureTrackWhere(settings);
     case "heuristic_audio_features": return heuristicAudioFeatureTrackWhere();
@@ -303,6 +364,20 @@ export async function resolveLibraryHealthTrackIds(userId: string, options: {
   const category = normalizeResolvableCategory(options.category);
   const active = activeUserTrackWhere(userId, options.libraryId);
   const baseWhere = { AND: [active, resolvableCategoryWhere(category, options.settings)] };
+
+  if (category === "low_confidence_bpm" || category === "bpm_source_conflict") {
+    const trackIds = await findBpmMetadataTrackIds(baseWhere, (track) => {
+      const metadata = getBpmDisplayMetadata(track);
+      return category === "low_confidence_bpm"
+        ? metadata.confidence === "Low"
+        : metadata.hasConflict;
+    });
+    return {
+      trackIds,
+      count: trackIds.length,
+      debug: { filter: category, normal: trackIds.length, gap: 0, total: trackIds.length },
+    };
+  }
 
   if (category !== "missing_audio_features" && category !== "partial_audio_features" && category !== "pending_audio_features") {
     const trackIds = await findTrackIds(baseWhere);
@@ -359,6 +434,10 @@ export function buildLibraryHealthTrackWhere(userId: string, options: {
   artist?: string;
   album?: string;
   bpmSource?: string;
+  bpmConfidence?: string;
+  bpmConflict?: string;
+  apiImportedOnly?: boolean;
+  noLocalBpm?: boolean;
   audioFeatureStatus?: string;
   localFileStatus?: string;
   failedOnly?: boolean;
@@ -404,7 +483,35 @@ export function buildLibraryHealthTrackWhere(userId: string, options: {
     if (options.bpmSource === "api") and.push(buildBpmSourceWhereClause("api_bpm"));
     if (options.bpmSource === "local") and.push(buildBpmSourceWhereClause("local_bpm"));
     if (options.bpmSource === "imported") and.push(buildBpmSourceWhereClause("imported_bpm"));
+    if (options.bpmSource === "manual") and.push({ bpmSource: { contains: "manual", mode: "insensitive" } });
+    if (options.bpmSource === "estimated") and.push({ OR: [
+      { bpmSource: { contains: "estimated", mode: "insensitive" } },
+      { audioFeature: { is: { tempoSource: { contains: "estimated", mode: "insensitive" } } } },
+      { audioFeature: { is: { tempoSource: { contains: "heuristic", mode: "insensitive" } } } },
+    ] });
+    if (options.bpmSource === "unknown") and.push({ AND: [
+      effectiveBpmTrackWhere(),
+      { bpmSource: null },
+      { OR: [{ audioFeature: null }, { audioFeature: { is: { tempoSource: null } } }] },
+    ] });
   }
+  if (options.bpmConfidence && options.bpmConfidence !== "all") {
+    if (options.bpmConfidence === "unknown") and.push({ AND: [{ bpmConfidence: null }, { OR: [{ audioFeature: null }, { audioFeature: { is: { tempoConfidence: null } } }] }] });
+    if (options.bpmConfidence === "high") and.push({ OR: [{ bpmConfidence: { gte: 0.8 } }, { audioFeature: { is: { tempoConfidence: { gte: 0.8 } } } }] });
+    if (options.bpmConfidence === "medium") and.push({ OR: [
+      { bpmConfidence: { gte: 0.5, lt: 0.8 } },
+      { audioFeature: { is: { tempoConfidence: { gte: 0.5, lt: 0.8 } } } },
+    ] });
+    if (options.bpmConfidence === "low") and.push({ OR: [
+      { bpmConfidence: { lt: 0.5 } },
+      { audioFeature: { is: { tempoConfidence: { lt: 0.5 } } } },
+      { bpmSource: { contains: "estimated", mode: "insensitive" } },
+    ] });
+  }
+  if (options.apiImportedOnly) {
+    and.push({ AND: [{ NOT: buildBpmSourceWhereClause("local_bpm") }, { OR: [buildBpmSourceWhereClause("api_bpm"), buildBpmSourceWhereClause("imported_bpm")] }] });
+  }
+  if (options.noLocalBpm) and.push({ NOT: buildBpmSourceWhereClause("local_bpm") });
   if (options.audioFeatureStatus && options.audioFeatureStatus !== "all") {
     if (options.audioFeatureStatus === "missing") {
       and.push(audioFeatureGapWhere ? { OR: [missingAudioFeatureTrackWhere(options.settings), audioFeatureGapWhere] } : missingAudioFeatureTrackWhere(options.settings));
@@ -479,6 +586,7 @@ export const libraryHealthDetailTrackSelect = {
       effectiveDanceability: true,
       effectiveAcousticness: true,
       tempo: true,
+      tempoConfidence: true,
       audioFeatureSource: true,
       audioFeatureStatus: true,
       audioFeatureConfidence: true,
@@ -517,9 +625,17 @@ export function reasonForLibraryHealthTrack(category: LibraryHealthDetailCategor
     case "missing_bpm":
       return "No BPM value is available for the current provider mode.";
     case "api_bpm":
-      return "This track has BPM from an API provider but does not have locally analyzed BPM yet.";
+      return "API/imported BPM only. No local BPM has been calculated yet.";
     case "local_bpm":
-      return "This track has BPM from local analysis.";
+      return "Local BPM preferred. Local BPM is used because local analysis is available.";
+    case "imported_bpm":
+      return "API/imported BPM only. No local BPM has been calculated yet.";
+    case "pending_bpm":
+      return "This track is pending BPM analysis.";
+    case "low_confidence_bpm":
+      return getBpmDisplayMetadata(track).reason;
+    case "bpm_source_conflict":
+      return getBpmDisplayMetadata(track).conflictReason || "BPM source conflict.";
     case "missing_audio_features":
       if (!track.audioFeature) return "No usable audio feature metadata was found for the current provider mode.";
       if (audio.reason === "API data only") return "API data only. The current provider mode requires local or allowed estimated audio features.";
@@ -555,6 +671,7 @@ export function reasonForLibraryHealthTrack(category: LibraryHealthDetailCategor
 
 export function serializeLibraryHealthDetailTrack(track: any, category: LibraryHealthDetailCategory, settings?: EffectiveAudioFeatureSettings) {
   const effectiveBpm = getEffectiveBpm(track);
+  const bpmDisplay = getBpmDisplayMetadata(track);
   const audio = getEffectiveAudioFeatures(track, settings);
   const lastAnalyzed = [track.bpmAnalyzedAt, track.audioFeature?.audioFeatureAnalyzedAt]
     .filter(Boolean)
@@ -573,7 +690,16 @@ export function serializeLibraryHealthDetailTrack(track: any, category: LibraryH
     bpm: effectiveBpm,
     apiBpm: track.apiBpm ?? null,
     localBpm: track.localBpm ?? null,
-    bpmSource: track.bpmSource || track.audioFeature?.tempoSource || (effectiveBpm === null ? "missing" : null),
+    importedBpm: track.bpm ?? null,
+    bpmSource: bpmDisplay.sourceLabel,
+    bpmSourceKey: bpmDisplay.source,
+    bpmConfidence: bpmDisplay.confidence,
+    bpmConfidenceValue: bpmDisplay.confidenceValue,
+    bpmConflictStatus: bpmDisplay.conflictStatus,
+    bpmConflictReason: bpmDisplay.conflictReason,
+    bpmOtherSources: bpmDisplay.otherSources,
+    bpmOriginalSource: bpmDisplay.originalSource,
+    bpmReason: bpmDisplay.reason,
     energy: audio.energy,
     mood: audio.mood,
     danceability: audio.danceability,

@@ -258,6 +258,8 @@ export default async function Home() {
             const bpmApi = health.reduce((sum, library) => sum + (library as any).bpmApi, 0);
             const bpmLocal = health.reduce((sum, library) => sum + (library as any).bpmLocal, 0);
             const bpmImported = health.reduce((sum, library) => sum + (library as any).bpmImported, 0);
+            const bpmLowConfidence = health.reduce((sum, library) => sum + ((library as any).bpmLowConfidence || 0), 0);
+            const bpmSourceConflicts = health.reduce((sum, library) => sum + ((library as any).bpmSourceConflicts || 0), 0);
             const bpmMissing = health.reduce((sum, library) => sum + library.missingBpm, 0);
             const bpmFailed = health.reduce((sum, library) => sum + library.bpmFailed, 0);
             const audioComplete = health.reduce((sum, library) => sum + library.audioFeaturesComplete, 0);
@@ -286,13 +288,16 @@ export default async function Home() {
               <div className={styles.cardsGrid} style={{ marginBottom: "1.5rem" }}>
                 <article className={styles.card}>
                   <h3>BPM / Tempo</h3>
-                  <p>{bpmComplete.toLocaleString()} / {active.toLocaleString()}</p>
-                  <p>API: {bpmApi.toLocaleString()} &middot; Local Essentia: {bpmLocal.toLocaleString()}</p>
+                  <p>{bpmComplete.toLocaleString()} / {active.toLocaleString()} with BPM</p>
+                  <p>Local: {bpmLocal.toLocaleString()} &middot; Imported/API: {(bpmApi + bpmImported).toLocaleString()} &middot; Low confidence: {bpmLowConfidence.toLocaleString()}</p>
                   <p>Imported: {bpmImported.toLocaleString()} &middot; Missing: {bpmMissing.toLocaleString()} &middot; Failed: {bpmFailed.toLocaleString()}</p>
+                  {bpmSourceConflicts > 0 && <p>{bpmSourceConflicts.toLocaleString()} possible BPM source conflict{bpmSourceConflicts === 1 ? "" : "s"}</p>}
                   <p>Mode: {bpmMode}</p>
                   <div className={styles.healthMetricLinks}>
                     <Link href="/library-health?filter=missing_bpm">Missing BPM</Link>
                     <Link href="/library-health?filter=api_bpm">API BPM Only</Link>
+                    <Link href="/library-health?filter=low_confidence_bpm">Low Confidence</Link>
+                    <Link href="/library-health?filter=bpm_source_conflict">Conflicts</Link>
                     <Link href="/library-health?filter=failed_bpm_analysis">Failed</Link>
                   </div>
                 </article>

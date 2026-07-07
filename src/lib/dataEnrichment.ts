@@ -30,6 +30,7 @@ import {
 export type DataEnrichmentAction =
   | "sync_bpm"
   | "retry_missing_bpm"
+  | "analyze_local_bpm"
   | "force_local_bpm_reprocess"
   | "sync_audio_features"
   | "retry_partial_audio_features"
@@ -66,7 +67,7 @@ type ActionConfig = {
   title: string;
   enrichmentType: DataEnrichmentPreflight["enrichmentType"];
   filter: string;
-  mode?: AudioFeatureRetryMode | "configured" | "force_local";
+  mode?: AudioFeatureRetryMode | "configured" | "local_only" | "force_local";
   advanced?: boolean;
   estimatedAction: string;
 };
@@ -85,6 +86,13 @@ export const dataEnrichmentActionConfigs: Record<DataEnrichmentAction, ActionCon
     filter: "missing_bpm",
     mode: "configured",
     estimatedAction: "Retry tracks that Library Health classifies as Missing BPM.",
+  },
+  analyze_local_bpm: {
+    title: "Local BPM analysis preflight",
+    enrichmentType: "bpm",
+    filter: "missing_bpm",
+    mode: "local_only",
+    estimatedAction: "Analyze missing BPM tracks with local Essentia only.",
   },
   force_local_bpm_reprocess: {
     title: "Force local BPM reprocess preflight",
@@ -211,7 +219,7 @@ function labelsForReasons(reasons: Record<string, number>) {
 }
 
 async function preflightBpm(userId: string, config: ActionConfig, libraryId: string | undefined, settings: ReturnType<typeof resolveMetadataProviderSettings>["bpm"]): Promise<DataEnrichmentPreflight> {
-  const providerMode = config.mode === "force_local" ? "force_local" : "configured";
+  const providerMode = config.mode === "force_local" ? "force_local" : config.mode === "local_only" ? "local_only" : "configured";
   const matchedWhere = buildBpmRetryBaseWhere(userId, { filter: config.filter as BpmHealthFilter, libraryId });
   const candidateWhere = buildBpmRetryCandidateWhere(userId, {
     filter: config.filter as BpmHealthFilter,
@@ -226,6 +234,8 @@ async function preflightBpm(userId: string, config: ActionConfig, libraryId: str
   const trackIds = tracks.map((track) => track.id);
   const disabledReason = !settings.api && !settings.local
     ? "No BPM providers are enabled."
+    : config.mode === "local_only" && !settings.local
+      ? "Local BPM analysis is disabled. Enable local BPM in Settings first."
     : config.mode === "force_local" && !settings.local
       ? "Local BPM analysis is disabled. Enable local BPM in Settings first."
       : null;
@@ -234,7 +244,9 @@ async function preflightBpm(userId: string, config: ActionConfig, libraryId: str
   const skipReasons = disabledReason
     ? countReasons(matched, settings.local ? "provider_disabled" : "local_disabled")
     : countReasons(skipped, "not_eligible_for_selected_mode");
-  const providerModeLabel = metadataProviderModeLabel(settings);
+  const providerModeLabel = config.mode === "local_only" || config.mode === "force_local"
+    ? metadataProviderModeLabel({ ...settings, api: false, local: true, preferLocal: true })
+    : metadataProviderModeLabel(settings);
 
   return {
     action: "" as DataEnrichmentAction,

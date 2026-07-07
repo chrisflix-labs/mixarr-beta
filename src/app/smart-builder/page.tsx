@@ -763,7 +763,7 @@ export default function SmartBuilderPage() {
                           <p>{track.artist?.title || "-"} · {track.album?.title || "-"}</p>
                           <div className={styles.trackMeta}>
                             <span>{formatDuration(track.duration)}</span>
-                            <span>BPM {(track.effectiveBpm ?? track.bpm ?? track.audioFeature?.tempo)?.toFixed(0) || "-"}</span>
+                            <span>BPM {(track.effectiveBpm ?? track.bpm ?? track.audioFeature?.tempo)?.toFixed(0) || "-"}{track.bpmSource ? ` | ${track.bpmSource}` : ""}{track.bpmConfidence === "Low" ? " | Low confidence" : ""}</span>
                             <span>Energy {(track.audioFeature?.effectiveEnergy ?? track.audioFeature?.energy)?.toFixed(2) || "-"}</span>
                             <span>Mood {(track.audioFeature?.effectiveMood ?? track.audioFeature?.valence)?.toFixed(2) || "-"}</span>
                             <span>Popularity {track.popularity?.score?.toFixed(0) || "-"}</span>
