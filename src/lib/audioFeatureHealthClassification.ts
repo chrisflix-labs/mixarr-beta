@@ -8,6 +8,7 @@ import {
   audioFeatureNoDataTrackWhere,
   audioFeatureTooShortTrackWhere,
   completeAudioFeatureTrackWhere,
+  enforceAudioFeatureIncompleteInvariant,
   getAudioFeatureHealthStatus,
   heuristicAudioFeatureTrackWhere,
   localAudioFeatureTrackWhere,
@@ -268,6 +269,24 @@ export async function getAudioFeatureHealthClassificationForScope(scopeWhere: Pr
     },
   };
 
+  // Hard invariant: the dashboard's incomplete count (activeTracks - complete)
+  // must always be reflected in the Audio Feature Health categories. If the
+  // classified predicates still leave tracks unaccounted for, assign the
+  // remainder to partial (BPM-present incomplete tracks are partial by policy)
+  // and make sure pending covers every non-too-short incomplete track. This is a
+  // safety net on top of the null-safe complete predicate so the two views can
+  // never disagree, even for unusual audio feature row shapes.
+  const invariant = enforceAudioFeatureIncompleteInvariant({
+    activeTracks,
+    complete,
+    partial: merged.partial,
+    missing: merged.missing,
+    pending: merged.pending,
+    noData,
+    failed,
+    tooShort,
+  });
+
   return {
     activeTracks,
     complete,
@@ -275,8 +294,8 @@ export async function getAudioFeatureHealthClassificationForScope(scopeWhere: Pr
     api,
     local,
     heuristic,
-    partial,
-    pending: merged.pending,
+    partial: invariant.partial,
+    pending: invariant.pending,
     noData,
     failed,
     extractionFailed,
@@ -287,7 +306,12 @@ export async function getAudioFeatureHealthClassificationForScope(scopeWhere: Pr
     gapTrackIds: gapClassification.gapTrackIds,
     partialGapTrackIds: gapClassification.partialGapTrackIds,
     missingGapTrackIds: gapClassification.missingGapTrackIds,
-    audit: merged.audit,
+    audit: {
+      ...merged.audit,
+      classifiedIncomplete: invariant.classifiedIncomplete,
+      unclassifiedGap: invariant.unclassifiedIncomplete,
+      gapDetected: merged.audit.gapDetected || invariant.unclassifiedIncomplete > 0,
+    },
   };
 }
 

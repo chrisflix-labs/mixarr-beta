@@ -5,11 +5,13 @@ import {
   apiAudioFeatureTrackWhere,
   audioFeatureFilterGuardWhere,
   classifyAudioFeatureTracks,
+  enforceAudioFeatureIncompleteInvariant,
   getAudioFeatureHealthStatus,
   audioFeatureRetryEligibilityTrackWhere,
   completeAudioFeatureTrackWhere,
   getEffectiveAudioFeatures,
   heuristicAudioFeatureTrackWhere,
+  incompleteAudioFeatureTrackWhere,
   localEssentiaAudioFeatureSuccessTrackWhere,
   mergeAudioFeatureHealthGapCounts,
   missingAudioFeatureTrackWhere,
@@ -414,6 +416,138 @@ describe("audio feature health predicates", () => {
     assert.equal(classified.counts.partial_audio_features, 1);
     assert.equal(classified.counts.missing_audio_features, 0);
     assert.equal(classified.counts.pending_audio_features, 1);
+  });
+
+  it("guards complete audio feature fields against NULL so NOT complete stays reliable", () => {
+    // Root cause of the incomplete-count mismatch: a partial audio feature row
+    // that fails completeness only via a NULL comparison makes the whole
+    // predicate SQL NULL, and NOT(NULL) drops the row from both complete and
+    // incomplete result sets. Requiring the field to be non-null keeps the
+    // positive match identical while making the negation well-defined.
+    const complete = JSON.stringify(completeAudioFeatureTrackWhere());
+    assert.match(complete, /"not":null/);
+    assert.match(complete, /localEnergy/);
+    assert.match(complete, /tempo/);
+
+    const incomplete = JSON.stringify(incompleteAudioFeatureTrackWhere());
+    assert.match(incomplete, /NOT/);
+    assert.match(incomplete, /"not":null/);
+  });
+
+  it("assigns unclassified incomplete tracks to partial so health matches the dashboard invariant", () => {
+    // Exact production bug: dashboard says 70 incomplete, but every classified
+    // category counts 0. The invariant must surface those 70 as partial/pending.
+    const invariant = enforceAudioFeatureIncompleteInvariant({
+      activeTracks: 33645,
+      complete: 33575,
+      partial: 0,
+      missing: 0,
+      pending: 0,
+      noData: 0,
+      failed: 0,
+      tooShort: 0,
+    });
+
+    assert.equal(invariant.audioIncomplete, 70);
+    assert.equal(invariant.classifiedIncomplete, 0);
+    assert.equal(invariant.unclassifiedIncomplete, 70);
+    assert.equal(invariant.partial, 70);
+    assert.equal(invariant.pending, 70);
+  });
+
+  it("keeps already-classified incomplete counts intact and never hides too-short tracks from pending", () => {
+    const invariant = enforceAudioFeatureIncompleteInvariant({
+      activeTracks: 10,
+      complete: 8,
+      partial: 2,
+      missing: 0,
+      pending: 2,
+      noData: 0,
+      failed: 0,
+      tooShort: 0,
+    });
+    assert.equal(invariant.unclassifiedIncomplete, 0);
+    assert.equal(invariant.partial, 2);
+    assert.equal(invariant.pending, 2);
+
+    const withTooShort = enforceAudioFeatureIncompleteInvariant({
+      activeTracks: 10,
+      complete: 8,
+      partial: 0,
+      missing: 0,
+      pending: 0,
+      noData: 0,
+      failed: 0,
+      tooShort: 1,
+    });
+    // 2 incomplete, 1 too short -> 1 unclassified becomes partial, pending excludes too short.
+    assert.equal(withTooShort.partial, 1);
+    assert.equal(withTooShort.pending, 1);
+  });
+
+  it("classifies two BPM-present incomplete tracks as partial and pending, not missing", () => {
+    const completeFeature = {
+      localEnergy: 0.7,
+      localMood: 0.6,
+      localDanceability: 0.5,
+      localAcousticness: 0.4,
+      tempo: 120,
+      audioFeatureSource: "local_essentia",
+      audioFeatureStatus: "success",
+      energySource: "local_essentia",
+      valenceSource: "local_essentia",
+      danceabilitySource: "local_essentia",
+      acousticnessSource: "local_essentia",
+    };
+    const tracks = Array.from({ length: 10 }, (_, index) => ({
+      id: `track-${index + 1}`,
+      syncStatus: "active",
+      bpm: index >= 8 ? 124 : null,
+      bpmSource: index >= 8 ? "Deezer" : null,
+      mediaPath: index >= 8 ? "C:/Music/song.flac" : null,
+      audioFeature: index < 8 ? completeFeature : {
+        audioFeatureStatus: "partial",
+        localEnergy: null,
+        localMood: null,
+        localDanceability: null,
+        localAcousticness: null,
+        tempo: null,
+      },
+    }));
+
+    const classified = classifyAudioFeatureTracks(tracks, { api: false, local: true, preferLocalAudioFeatures: true });
+    assert.equal(classified.counts.complete, 8);
+    assert.equal(classified.counts.partial_audio_features, 2);
+    assert.equal(classified.counts.missing_audio_features, 0);
+    assert.equal(classified.counts.pending_audio_features, 2);
+  });
+
+  it("classifies two tracks with no BPM and no audio metadata as missing, not partial", () => {
+    const completeFeature = {
+      localEnergy: 0.7,
+      localMood: 0.6,
+      localDanceability: 0.5,
+      localAcousticness: 0.4,
+      tempo: 120,
+      audioFeatureSource: "local_essentia",
+      audioFeatureStatus: "success",
+      energySource: "local_essentia",
+      valenceSource: "local_essentia",
+      danceabilitySource: "local_essentia",
+      acousticnessSource: "local_essentia",
+    };
+    const tracks = Array.from({ length: 10 }, (_, index) => ({
+      id: `track-${index + 1}`,
+      syncStatus: "active",
+      bpm: null,
+      bpmSource: null,
+      audioFeature: index < 8 ? completeFeature : null,
+    }));
+
+    const classified = classifyAudioFeatureTracks(tracks, { api: false, local: true, preferLocalAudioFeatures: true });
+    assert.equal(classified.counts.complete, 8);
+    assert.equal(classified.counts.missing_audio_features, 2);
+    assert.equal(classified.counts.partial_audio_features, 0);
   });
 
   it("keeps tracks with no audio metadata at all classified as missing audio features", () => {

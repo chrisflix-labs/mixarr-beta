@@ -1,6 +1,6 @@
 {
   "name": "plex-playlist-builder",
-  "version": "1.2.8-hotfix.6",
+  "version": "1.2.8-hotfix.7",
   "private": true,
   "scripts": {
     "dev": "next dev",

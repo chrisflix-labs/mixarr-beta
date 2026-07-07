@@ -133,7 +133,8 @@ describe("library health", () => {
     assert.match(classifier, /partialGapTrackIds/);
     assert.match(classifier, /missingGapTrackIds/);
     assert.match(classifier, /missing: merged\.missing/);
-    assert.match(classifier, /pending: merged\.pending/);
+    assert.match(classifier, /enforceAudioFeatureIncompleteInvariant/);
+    assert.match(classifier, /pending: invariant\.pending/);
     assert.match(details, /categories\.missing_audio_features = missingAudioFeatureTracks\.count/);
     assert.match(details, /categories\.partial_audio_features = partialAudioFeatureTracks\.count/);
     assert.match(details, /categories\.pending_audio_features = pendingAudioFeatureTracks\.count/);

@@ -525,7 +525,7 @@ export async function getAudioFeatureHealthSummary(userId: string, libraryId?: s
   if (classification.gapOnly > 0) {
     console.log(`[LibraryHealth] audio gap split count=${classification.gapOnly} partial=${classification.partialGapTrackIds.length} missing=${classification.missingGapTrackIds.length}`);
   }
-  console.log(`[LibraryHealth] audio feature counts complete=${classification.complete} partial=${classification.partial} missing=${classification.missing} pending=${classification.pending} noData=${classification.noData} failed=${classification.failed} tooShort=${classification.tooShort} gap=${classification.gapOnly} mode=${mode}`);
+  console.log(`[LibraryHealth] audio feature counts active=${classification.activeTracks} complete=${classification.complete} incomplete=${Math.max(0, classification.activeTracks - classification.complete)} partial=${classification.partial} missing=${classification.missing} pending=${classification.pending} noData=${classification.noData} failed=${classification.failed} tooShort=${classification.tooShort} gap=${classification.gapOnly} mode=${mode}`);
   return classification;
 }
 
@@ -973,7 +973,7 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
   if (audioFeatures.gapOnly > 0) {
     console.log(`[LibraryHealth] audio gap split count=${audioFeatures.gapOnly} partial=${audioFeatures.partialGapTrackIds.length} missing=${audioFeatures.missingGapTrackIds.length}`);
   }
-  console.log(`[LibraryHealth] audio feature counts complete=${audioFeatures.complete} partial=${audioFeatures.partial} missing=${audioFeatures.missing} pending=${audioFeatures.pending} noData=${audioFeatures.noData} failed=${audioFeatures.failed} tooShort=${audioFeatures.tooShort} gap=${audioFeatures.gapOnly} mode=${mode}`);
+  console.log(`[LibraryHealth] audio feature counts active=${audioFeatures.activeTracks} complete=${audioFeatures.complete} incomplete=${Math.max(0, audioFeatures.activeTracks - audioFeatures.complete)} partial=${audioFeatures.partial} missing=${audioFeatures.missing} pending=${audioFeatures.pending} noData=${audioFeatures.noData} failed=${audioFeatures.failed} tooShort=${audioFeatures.tooShort} gap=${audioFeatures.gapOnly} mode=${mode}`);
   return result;
 }
 

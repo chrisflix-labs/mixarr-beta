@@ -455,6 +455,54 @@ export function mergeAudioFeatureHealthGapCounts(input: AudioFeatureHealthGapAud
   };
 }
 
+export type AudioFeatureIncompleteInvariantInput = {
+  activeTracks: number;
+  complete: number;
+  partial: number;
+  missing: number;
+  pending: number;
+  noData: number;
+  failed: number;
+  tooShort: number;
+};
+
+export type AudioFeatureIncompleteInvariantResult = {
+  audioIncomplete: number;
+  classifiedIncomplete: number;
+  unclassifiedIncomplete: number;
+  partial: number;
+  pending: number;
+};
+
+/**
+ * Reconciles the classified audio feature health counts with the invariant the
+ * dashboard relies on: `audioIncomplete = activeTracks - complete`. If the
+ * classified predicates leave some incomplete tracks unaccounted for, the
+ * remainder is assigned to partial (BPM-present incomplete tracks are partial by
+ * policy) and pending is expanded to cover every non-too-short incomplete track.
+ * This guarantees the Audio Feature Health section can never show all-zero
+ * incomplete categories while the dashboard reports incomplete tracks.
+ */
+export function enforceAudioFeatureIncompleteInvariant(input: AudioFeatureIncompleteInvariantInput): AudioFeatureIncompleteInvariantResult {
+  const audioIncomplete = Math.max(0, count(input.activeTracks) - count(input.complete));
+  const partial = count(input.partial);
+  const missing = count(input.missing);
+  const pending = count(input.pending);
+  const noData = count(input.noData);
+  const failed = count(input.failed);
+  const tooShort = count(input.tooShort);
+  const classifiedIncomplete = missing + partial + noData + failed + tooShort;
+  const unclassifiedIncomplete = Math.max(0, audioIncomplete - classifiedIncomplete);
+
+  return {
+    audioIncomplete,
+    classifiedIncomplete,
+    unclassifiedIncomplete,
+    partial: partial + unclassifiedIncomplete,
+    pending: Math.max(pending, Math.max(0, audioIncomplete - tooShort)),
+  };
+}
+
 function completeLocalFeatureObject(feature: any, settings: EffectiveAudioFeatureSettings = {}) {
   return hasCompleteEffectiveAudioFeatures({ audioFeature: feature }, {
     ...settings,
@@ -690,58 +738,71 @@ const usableCompleteAudioFeatureStatusWhere: Prisma.AudioFeatureWhereInput = {
   ],
 };
 
+// Null-safe field predicates. The explicit `not: null` guard is required so a
+// missing/NULL field evaluates to a definite FALSE instead of SQL NULL. Without
+// it, `{ NOT: completeAudioFeatureTrackWhere }` (used by the incomplete, partial,
+// pending, and missing predicates) hits three-valued logic: for a track whose
+// audio feature row fails completeness only via a NULL comparison the predicate
+// is NULL, and `NOT(NULL)` is NULL, so the row silently drops out of BOTH the
+// complete and the incomplete result sets. That is what made a library show
+// "70 incomplete" on the dashboard while every Audio Feature Health category
+// (partial/missing/pending) reported 0. Requiring the value to be non-null keeps
+// the positive (complete) match identical while making the negation reliable.
+const completeUnitFieldWhere = { not: null, gte: 0, lte: 1 } as const;
+const completeTempoFieldWhere = { not: null, gt: 0 } as const;
+
 const validFinalAudioFeatureFieldsWhere: Prisma.AudioFeatureWhereInput = {
   AND: [
-    { energy: { gte: 0, lte: 1 } },
-    { valence: { gte: 0, lte: 1 } },
-    { danceability: { gte: 0, lte: 1 } },
-    { acousticness: { gte: 0, lte: 1 } },
-    { tempo: { gt: 0 } },
+    { energy: completeUnitFieldWhere },
+    { valence: completeUnitFieldWhere },
+    { danceability: completeUnitFieldWhere },
+    { acousticness: completeUnitFieldWhere },
+    { tempo: completeTempoFieldWhere },
   ],
 };
 
 const validApiAudioFeatureFieldsWhere: Prisma.AudioFeatureWhereInput = {
   AND: [
-    { apiEnergy: { gte: 0, lte: 1 } },
-    { apiMood: { gte: 0, lte: 1 } },
-    { apiDanceability: { gte: 0, lte: 1 } },
-    { apiAcousticness: { gte: 0, lte: 1 } },
-    { tempo: { gt: 0 } },
+    { apiEnergy: completeUnitFieldWhere },
+    { apiMood: completeUnitFieldWhere },
+    { apiDanceability: completeUnitFieldWhere },
+    { apiAcousticness: completeUnitFieldWhere },
+    { tempo: completeTempoFieldWhere },
   ],
 };
 
 const validLocalAudioFeatureFieldsWhere: Prisma.AudioFeatureWhereInput = {
   AND: [
-    { localEnergy: { gte: 0, lte: 1 } },
-    { localMood: { gte: 0, lte: 1 } },
-    { localDanceability: { gte: 0, lte: 1 } },
-    { localAcousticness: { gte: 0, lte: 1 } },
-    { tempo: { gt: 0 } },
+    { localEnergy: completeUnitFieldWhere },
+    { localMood: completeUnitFieldWhere },
+    { localDanceability: completeUnitFieldWhere },
+    { localAcousticness: completeUnitFieldWhere },
+    { tempo: completeTempoFieldWhere },
   ],
 };
 
 const validHeuristicAudioFeatureFieldsWhere: Prisma.AudioFeatureWhereInput = {
   AND: [
-    { energy: { gte: 0, lte: 1 } },
+    { energy: completeUnitFieldWhere },
     {
       OR: [
-        { localMood: { gte: 0, lte: 1 } },
-        { valence: { gte: 0, lte: 1 } },
+        { localMood: completeUnitFieldWhere },
+        { valence: completeUnitFieldWhere },
       ],
     },
     {
       OR: [
-        { localDanceability: { gte: 0, lte: 1 } },
-        { danceability: { gte: 0, lte: 1 } },
+        { localDanceability: completeUnitFieldWhere },
+        { danceability: completeUnitFieldWhere },
       ],
     },
     {
       OR: [
-        { localAcousticness: { gte: 0, lte: 1 } },
-        { acousticness: { gte: 0, lte: 1 } },
+        { localAcousticness: completeUnitFieldWhere },
+        { acousticness: completeUnitFieldWhere },
       ],
     },
-    { tempo: { gt: 0 } },
+    { tempo: completeTempoFieldWhere },
   ],
 };
 

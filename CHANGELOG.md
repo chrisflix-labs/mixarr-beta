@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.8-hotfix.7 - Audio Feature Incomplete Count Classification Fix
+
+- Fixed Audio Feature Health showing zero incomplete categories while the dashboard reported incomplete tracks.
+- Tracks with BPM data but missing full audio feature fields now count as Partial Audio Features.
+- Partial and Pending Audio Feature detail views now use the same incomplete track set as the dashboard.
+- Improved local Essentia retry targeting for partial audio-feature tracks.
+- Removed misleading missing-audio-feature gap wording when tracks are actually partial.
+
 ## v1.2.8-hotfix.6 - BPM Partial Audio Feature Classification Fix
 
 - Fixed tracks with BPM data being incorrectly classified as missing audio features.

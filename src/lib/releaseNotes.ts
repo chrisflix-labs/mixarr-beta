@@ -46,6 +46,18 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.2.8-hotfix.7",
+    title: "Audio Feature Incomplete Count Classification Fix",
+    badges: ["Hotfix", "Library Health", "Audio Features", "Retry", "Dashboard"],
+    changes: [
+      "Fixed Audio Feature Health showing zero incomplete categories while the dashboard reported incomplete tracks.",
+      "Tracks with BPM data but missing full audio feature fields now count as Partial Audio Features.",
+      "Partial and Pending Audio Feature detail views now use the same incomplete track set as the dashboard.",
+      "Improved local Essentia retry targeting for partial audio-feature tracks.",
+      "Removed misleading missing-audio-feature gap wording when tracks are actually partial.",
+    ],
+  },
+  {
     version: "1.2.8-hotfix.6",
     title: "BPM Partial Audio Feature Classification Fix",
     badges: ["Hotfix", "Library Health", "Audio Features", "Retry", "Local Analysis"],
