@@ -20,12 +20,14 @@ import {
   getEffectiveAudioFeatures,
   incompleteAudioFeatureTrackWhere,
   localEssentiaAudioFeatureSuccessTrackWhere,
+  partialAudioFeatureTrackWhere,
   type AudioFeatureStatus,
 } from "./audioFeatures";
 import {
   resolveDelayMs,
   resolveLimit,
   logMetadataProviderSettings,
+  metadataProviderModeKey,
   type SyncEngineOptions,
 } from "./syncSettings";
 import {
@@ -36,6 +38,8 @@ import {
 import { safeTrackBatchIterator, type EnrichmentRunSummary } from "./safeTrackBatch";
 import { resolveDbJobConcurrency, runWithConcurrency } from "./concurrency";
 import { acquireJobLock } from "./jobLock";
+import { markEnrichmentJobProgress } from "./enrichmentJobStatus";
+import { audioFeatureAnalysisScopeLabel } from "./audioFeatureRetry";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -686,7 +690,7 @@ async function analyzeTrackLocally(track: any, scope: LocalAudioFeatureAnalysisS
   } finally {
     const removedBytes = await directorySize(tempDir).catch(() => 0);
     await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
-    console.log(`[LocalAudioFeatureEngine] Temp cleanup for track ${trackLabel(track)} removed ${formatBytes(removedBytes)}.`);
+    debugLog(`[LocalAudioFeatureEngine] Temp cleanup for track ${trackLabel(track)} removed ${formatBytes(removedBytes)}.`);
   }
 }
 
@@ -798,6 +802,7 @@ async function logPostSaveVerification(trackId: string, settings: {
   preferLocal: boolean;
   allowEstimated: boolean;
 }) {
+  if (!boolSetting(undefined, "LOCAL_AUDIO_FEATURE_DEBUG", false)) return;
   const saved = await prisma.track.findUnique({
     where: { id: trackId },
     select: savedFeatureSelect(),
@@ -1212,12 +1217,19 @@ const localAudioFeatureTrackSelect = {
 
 export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}): Promise<EnrichmentRunSummary> => {
   console.log("[LocalAudioFeatureEngine] Starting local audio feature backfill.");
-  let summary: EnrichmentRunSummary = { attempted: 0, processed: 0, skipped: 0, failed: 0 };
+  let summary: EnrichmentRunSummary & Record<string, any> = { attempted: 0, processed: 0, skipped: 0, failed: 0 };
 
   const metadataSettings = logMetadataProviderSettings(options).audioFeatures;
   if (!metadataSettings.local) {
     console.log("[LocalAudioFeatureEngine] Local audio feature analysis is disabled.");
-    return summary;
+    return {
+      ...summary,
+      analyzer: "Essentia",
+      providerMode: metadataProviderModeKey(metadataSettings as any),
+      analysisScope: metadataSettings.scope,
+      skipReasons: { local_analysis_disabled: 0 },
+      message: "Local analysis is disabled. Enable local audio analysis in Settings first.",
+    } as EnrichmentRunSummary;
   }
 
   installShutdownHandlers();
@@ -1241,12 +1253,17 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
     const allowEstimatedMoodAcousticness = metadataSettings.allowEstimated;
     const reprocessLocal = boolSetting(options.reprocessLocalAudioFeatures, "LOCAL_AUDIO_FEATURE_REPROCESS", false);
     const analysisScope = metadataSettings.scope;
-    console.log(`[LocalAudioFeatureEngine] Local audio feature analyzer selected: Essentia; scope=${analysisScope}.`);
+    const analysisScopeLabel = audioFeatureAnalysisScopeLabel(analysisScope);
+    const providerMode = metadataProviderModeKey(metadataSettings as any);
+    console.log(`[LocalAudioFeatureEngine] Analyzer=Essentia scope=${analysisScope} providerMode=${providerMode}`);
     if (analysisScope === "whole_track") {
       console.log(`[LocalAudioFeatureEngine] Whole-track mode uses concurrency=${localAudioFeatureConcurrency}.`);
     }
     const where = localAudioFeatureWhere(reprocessLocal, metadataSettings.reprocessApiWithLocal, analysisScope);
-    const candidateCount = await prisma.track.count({ where });
+    const [candidateCount, partialBefore] = await runWithConcurrency([
+      () => prisma.track.count({ where }),
+      () => prisma.track.count({ where: { AND: [{ syncStatus: "active" }, partialAudioFeatureTrackWhere(metadataSettings)] } }),
+    ], resolveDbJobConcurrency());
     await safeTrackBatchIterator<any>({
       engineName: "LocalAudioFeatureEngineCandidatePreview",
       where,
@@ -1261,7 +1278,7 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
           allowEstimated: allowEstimatedMoodAcousticness,
           analysisScope,
         });
-        console.log("[LocalAudioFeatureEngine] Candidate reason:", reason);
+        debugLog(`[LocalAudioFeatureEngine] Candidate reason: ${JSON.stringify(reason)}`);
         if (reason.effectiveComplete && reason.selected) {
           console.error("[LocalAudioFeatureEngine] BUG: selected completed local_essentia audio feature track.", {
             track: reason.track,
@@ -1277,16 +1294,45 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
     let progressProcessed = 0;
     let progressFailed = 0;
     let shutdownLogged = false;
-    console.log(`[LocalAudioFeatureEngine] Found ${candidateCount} tracks needing local Essentia audio feature backfill.`);
+    const skipReasons: Record<string, number> = {};
+    console.log(`[LocalAudioFeatureEngine] Candidate preflight matched=${candidateCount} eligible=${candidateCount} skipped=0`);
     engineBatchSize.observe({ engine: ENGINE }, Math.min(candidateCount, batchSize || candidateCount));
+    markEnrichmentJobProgress("audio", {
+      phase: "local_audio_analysis",
+      analyzer: "Essentia",
+      scope: analysisScope,
+      scopeLabel: analysisScopeLabel,
+      providerMode,
+      matched: candidateCount,
+      eligible: candidateCount,
+      processed: 0,
+      skipped: 0,
+      failed: 0,
+      remaining: candidateCount,
+      startedAt: new Date(startedAt).toISOString(),
+    });
 
     const logProgress = (force = false) => {
       const completed = progressProcessed + alreadyAnalyzed + progressFailed;
       if (!force && completed > 0 && completed % 25 !== 0) return;
       const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
       const remaining = Math.max(0, candidateCount - completed);
+      markEnrichmentJobProgress("audio", {
+        phase: "local_audio_analysis",
+        analyzer: "Essentia",
+        scope: analysisScope,
+        scopeLabel: analysisScopeLabel,
+        providerMode,
+        matched: candidateCount,
+        eligible: candidateCount,
+        processed: progressProcessed,
+        skipped: alreadyAnalyzed,
+        failed: progressFailed,
+        remaining,
+        elapsedSeconds,
+      });
       console.log(
-        `[LocalAudioFeatureEngine] Progress: processed=${progressProcessed} alreadyAnalyzed=${alreadyAnalyzed} failed=${progressFailed} remaining=${remaining} elapsed=${elapsedSeconds}s`,
+        `[LocalAudioFeatureEngine] Progress processed=${progressProcessed} failed=${progressFailed} skipped=${alreadyAnalyzed} remaining=${remaining} elapsed=${elapsedSeconds}s`,
       );
     };
 
@@ -1308,6 +1354,7 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
               );
             }
             alreadyAnalyzed += 1;
+            skipReasons.already_processing = (skipReasons.already_processing || 0) + 1;
             return "skipped";
           }
 
@@ -1323,6 +1370,7 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
             analysisScope,
           })) {
             alreadyAnalyzed += 1;
+            skipReasons.already_complete = (skipReasons.already_complete || 0) + 1;
             const effective = freshTrack ? getEffectiveAudioFeatures(freshTrack, {
               preferLocalAudioFeatures: metadataSettings.preferLocal,
               allowEstimated: allowEstimatedMoodAcousticness,
@@ -1332,7 +1380,7 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
               && freshTrack.audioFeature.audioFeatureStatus === "success"
               && effective?.complete
             ) {
-              console.log(`[LocalAudioFeatureEngine] Retry item skipped because track already has complete local_essentia audio features: ${trackLabel(freshTrack)}`);
+              debugLog(`[LocalAudioFeatureEngine] Retry item skipped because track already has complete local_essentia audio features: ${trackLabel(freshTrack)}`);
             } else {
               debugLog(`[LocalAudioFeatureEngine] Skipping already analyzed track ${track.id} ${trackLabel(track)}.`);
             }
@@ -1391,17 +1439,57 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
     });
     logProgress(true);
 
-    const [api, local, noData, tooShort, failed] = await runWithConcurrency([
+    const [api, local, noData, tooShort, failed, partialAfter] = await runWithConcurrency([
       () => prisma.audioFeature.count({ where: { audioFeatureSource: "api", track: { syncStatus: "active" } } }),
       () => prisma.audioFeature.count({ where: { audioFeatureSource: { in: ["local_essentia", "mixed"] }, track: { syncStatus: "active" } } }),
       () => prisma.audioFeature.count({ where: { audioFeatureStatus: "no_data", track: { syncStatus: "active" } } }),
       () => prisma.audioFeature.count({ where: { audioFeatureStatus: "too_short", track: { syncStatus: "active" } } }),
       () => prisma.audioFeature.count({ where: { audioFeatureStatus: { in: ["extraction_failed", "analyzer_failed"] }, track: { syncStatus: "active" } } }),
+      () => prisma.track.count({ where: { AND: [{ syncStatus: "active" }, partialAudioFeatureTrackWhere(metadataSettings)] } }),
     ], resolveDbJobConcurrency());
-    console.log(`[LocalAudioFeatureEngine] Completed: api=${api} local=${local} no_data=${noData} too_short=${tooShort} failed=${failed}`);
+    const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+    console.log(`[LocalAudioFeatureEngine] Completed matched=${candidateCount} processed=${summary.processed} skipped=${summary.skipped} failed=${summary.failed}`);
+    console.log(`[LocalAudioFeatureEngine] Active totals api=${api} local=${local} no_data=${noData} too_short=${tooShort} failed=${failed}`);
+    markEnrichmentJobProgress("audio", {
+      phase: "local_audio_analysis",
+      analyzer: "Essentia",
+      scope: analysisScope,
+      scopeLabel: analysisScopeLabel,
+      providerMode,
+      matched: candidateCount,
+      eligible: candidateCount,
+      processed: summary.processed,
+      skipped: summary.skipped,
+      failed: summary.failed,
+      remaining: 0,
+      elapsedSeconds,
+      completed: true,
+    });
+    summary = {
+      ...summary,
+      analyzer: "Essentia",
+      providerMode,
+      analysisScope,
+      analysisScopeLabel,
+      matched: candidateCount,
+      eligible: candidateCount,
+      queued: candidateCount,
+      skipReasons,
+      partialBefore,
+      partialAfter,
+      message: `Local audio analysis completed. Matched ${candidateCount} tracks, processed ${summary.processed}, skipped ${summary.skipped}, failed ${summary.failed}. Partial Audio Features changed from ${partialBefore} to ${partialAfter}.`,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[LocalAudioFeatureEngine] Sync failed: ${message}`);
+    summary = {
+      ...summary,
+      analyzer: "Essentia",
+      providerMode: metadataProviderModeKey(metadataSettings as any),
+      analysisScope: metadataSettings.scope,
+      skipReasons: { essentia_unavailable: summary.attempted || 0 },
+      message: `Local audio analysis did not run because Essentia is unavailable: ${message}`,
+    };
   } finally {
     lock.release();
   }

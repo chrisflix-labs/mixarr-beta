@@ -110,11 +110,34 @@ const fields: Array<{
   },
 ];
 
+function enabledLabel(value: boolean) {
+  return value ? "Enabled" : "Disabled";
+}
+
+function analysisScopeLabel(scope: FormState["localAudioFeaturesScope"]) {
+  return scope === "whole_track" ? "Whole track" : "Sample window";
+}
+
+function providerModeKey(form: FormState) {
+  if (!form.enableApiAudioFeatures && !form.enableLocalAudioFeatures) return "disabled";
+  if (form.enableApiAudioFeatures && form.enableLocalAudioFeatures) return `api_local_${form.preferLocalAudioFeatures ? "local" : "api"}_preferred`;
+  if (form.enableApiAudioFeatures) return "api_enabled_local_disabled";
+  return "local_enabled_api_disabled";
+}
+
+function providerModeLabel(form: FormState) {
+  if (!form.enableApiAudioFeatures && !form.enableLocalAudioFeatures) return "No audio feature providers enabled";
+  if (form.enableApiAudioFeatures && form.enableLocalAudioFeatures) return `API and Local Essentia, ${form.preferLocalAudioFeatures ? "local" : "API"} preferred`;
+  if (form.enableApiAudioFeatures) return "API enabled, local disabled";
+  return "Local enabled, API disabled";
+}
+
 export default function SyncOptionsForm() {
   const [form, setForm] = useState<FormState>(emptyState);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [analyzerStatus, setAnalyzerStatus] = useState<{ available: boolean | null; error?: string | null }>({ available: null });
 
   useEffect(() => {
     fetchSettings();
@@ -122,7 +145,16 @@ export default function SyncOptionsForm() {
 
   const fetchSettings = async () => {
     try {
-      const res = await axios.get("/api/settings/sync-options");
+      const [res, status] = await Promise.all([
+        axios.get("/api/settings/sync-options"),
+        axios.get("/api/settings/local-audio-analysis/status").catch(() => null),
+      ]);
+      if (status?.data) {
+        setAnalyzerStatus({
+          available: status.data.analyzerAvailable === true,
+          error: status.data.analyzerError || null,
+        });
+      }
       const nextState = { ...emptyState };
       fields.forEach(({ key }) => {
         const value = res.data?.[key];
@@ -346,7 +378,20 @@ export default function SyncOptionsForm() {
       <div style={sectionGroupStyle}>
         <div>
           <h4 style={sectionTitleStyle}>Audio Feature Providers</h4>
-          <p style={sectionCopyStyle}>API mode uses external metadata/audio feature providers when available. Local Essentia mode analyzes your local media files directly. This is slower but self-hosted and works when API data is missing.</p>
+          <p style={sectionCopyStyle}>Choose whether Mixarr gets audio features from external providers, local Essentia analysis, or both.</p>
+        </div>
+        <div style={statusGridStyle} aria-label="Local Audio Analysis status">
+          <div style={statusHeaderStyle}>
+            <strong>Local Audio Analysis</strong>
+            <span>{providerModeLabel(form)}</span>
+          </div>
+          <div><span>Analyzer</span><strong>Essentia {analyzerStatus.available === null ? "not checked" : analyzerStatus.available ? "available" : "unavailable"}</strong></div>
+          <div><span>Mode</span><strong>{analysisScopeLabel(form.localAudioFeaturesScope)}</strong></div>
+          <div><span>Local audio features</span><strong>{enabledLabel(form.enableLocalAudioFeatures)}</strong></div>
+          <div><span>API audio features</span><strong>{enabledLabel(form.enableApiAudioFeatures)}</strong></div>
+          <div><span>Prefer local</span><strong>{enabledLabel(form.preferLocalAudioFeatures)}</strong></div>
+          <div><span>Reprocess imported/API data</span><strong>{enabledLabel(form.reprocessApiAudioFeaturesWithLocal)}</strong></div>
+          <div><span>Provider mode</span><strong>{providerModeKey(form)}</strong></div>
         </div>
         <label style={toggleStyle}>
           <input
@@ -356,7 +401,7 @@ export default function SyncOptionsForm() {
             style={checkboxStyle}
           />
           <span style={{ display: "grid", gap: "0.25rem" }}>
-            <span style={labelStyle}>Enable API Audio Feature lookup</span>
+            <span style={labelStyle}>Enable API audio feature lookup</span>
             <span style={hintStyle}>Uses external metadata/audio feature providers when available.</span>
           </span>
         </label>
@@ -369,9 +414,9 @@ export default function SyncOptionsForm() {
           style={checkboxStyle}
         />
         <span style={{ display: "grid", gap: "0.25rem" }}>
-          <span style={labelStyle}>Enable local Essentia Audio Feature analysis</span>
+          <span style={labelStyle}>Enable local audio feature analysis</span>
           <span style={hintStyle}>
-            Analyzes your local media files directly. This is slower but self-hosted and works when API data is missing.
+            Analyze local files with Essentia to calculate energy, mood, danceability, and other audio features.
           </span>
         </span>
       </label>
@@ -384,9 +429,9 @@ export default function SyncOptionsForm() {
           style={checkboxStyle}
         />
         <span style={{ display: "grid", gap: "0.25rem" }}>
-          <span style={labelStyle}>Prefer local Audio Features over API Audio Features</span>
+          <span style={labelStyle}>Prefer local audio features</span>
           <span style={hintStyle}>
-            Use local Essentia values as the effective value when both API and local data exist.
+            Use locally analyzed values when available instead of imported/API values.
           </span>
         </span>
       </label>
@@ -414,15 +459,15 @@ export default function SyncOptionsForm() {
           style={checkboxStyle}
         />
         <span style={{ display: "grid", gap: "0.25rem" }}>
-          <span style={labelStyle}>Reprocess existing API Audio Features with local Essentia</span>
+          <span style={labelStyle}>Reprocess imported/API audio features</span>
           <span style={hintStyle}>
-            Queue local analysis even for tracks that already have API audio-feature data.
+            Allow Mixarr to replace imported or API audio-feature values with local analysis results.
           </span>
         </span>
       </label>
 
       <label style={{ display: "grid", gap: "0.35rem" }}>
-        <span style={labelStyle}>Local audio feature analysis scope</span>
+        <span style={labelStyle}>Analysis scope</span>
         <select
           value={form.localAudioFeaturesScope}
           onChange={(event) => setForm((current) => ({
@@ -432,11 +477,11 @@ export default function SyncOptionsForm() {
           style={inputStyle}
         >
           <option value="">Use LOCAL_AUDIO_FEATURES_SCOPE env default</option>
-          <option value="windows">Window samples, faster</option>
-          <option value="whole_track">Whole track, slower but potentially more accurate</option>
+          <option value="windows">Sample window</option>
+          <option value="whole_track">Whole track</option>
         </select>
         <span style={hintStyle}>
-          Windows analyzes 30s-90s, middle 60s, and last third 60s. Whole track analyzes the entire song and may be slower.
+          Choose how much of each track Mixarr analyzes. Whole track is most accurate but slower.
         </span>
       </label>
       </div>
@@ -536,6 +581,24 @@ const sectionCopyStyle = {
   fontSize: "0.8rem",
   lineHeight: 1.4,
   margin: 0,
+};
+
+const statusGridStyle = {
+  background: "rgba(53,174,234,0.06)",
+  border: "1px solid rgba(53,174,234,0.22)",
+  borderRadius: "var(--radius-sm)",
+  display: "grid",
+  gap: "0.65rem",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  padding: "0.9rem",
+};
+
+const statusHeaderStyle = {
+  gridColumn: "1 / -1",
+  display: "grid",
+  gap: "0.2rem",
+  color: "var(--text-primary)",
+  fontSize: "0.86rem",
 };
 
 const inputStyle = {

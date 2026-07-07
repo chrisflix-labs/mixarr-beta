@@ -12,6 +12,7 @@ export type ReleaseNoteBadge =
   | "Dashboard"
   | "Debugging"
   | "Diagnostics"
+  | "Essentia"
   | "Hotfix"
   | "History"
   | "Import"
@@ -51,6 +52,19 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.3.2",
+    title: "Local Audio Analysis Polish",
+    badges: ["Audio Features", "Local Analysis", "Essentia", "Library Health", "Job History"],
+    changes: [
+      "Added clearer Local Audio Analysis status and provider-mode visibility.",
+      "Added local analysis preflight summaries with matched, eligible, skipped, and skip-reason counts.",
+      "Improved Local Essentia progress and completion summaries.",
+      "Improved skip reason reporting for local audio analysis and force reprocess actions.",
+      "Added local analysis diagnostics to Library Health.",
+      "Improved Library Health and dashboard refresh after local analysis jobs complete.",
+    ],
+  },
   {
     version: "1.3.1",
     title: "Audio Feature Retry Improvements",

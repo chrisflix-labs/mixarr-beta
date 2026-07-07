@@ -106,12 +106,16 @@ export function startSyncJobInBackground({
         return;
       }
       const counts = countsFromResult(result);
+      const resultMetadata = result && typeof result === "object" && "metadata" in result
+        ? (result as any).metadata
+        : undefined;
       await safeFinishJobHistory({
         job: history,
         result,
         counts,
         status: statusFromCounts(counts),
         summary: summaryFromResult(name, result, counts),
+        metadata: resultMetadata,
       });
     } catch (error) {
       if (trackedEngine) markEnrichmentJobFinished(trackedEngine, undefined, error);

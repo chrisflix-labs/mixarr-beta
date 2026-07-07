@@ -59,6 +59,21 @@ export function statusFromCounts(counts: JobCounts): JobHistoryStatus {
 }
 
 export function summaryFromResult(name: string, result: unknown, counts: JobCounts = countsFromResult(result)) {
+  if (result && typeof result === "object") {
+    const source = result as Record<string, any>;
+    if (typeof source.message === "string" && source.message.trim()) return source.message;
+    const localMessage = source.metadata?.local?.message;
+    const providerMode = String(source.metadata?.providerMode || "");
+    const localSummary = source.metadata?.local || {};
+    const localFocused = providerMode === "local_only"
+      || providerMode === "force_local"
+      || providerMode === "force_local_reprocess"
+      || typeof localSummary.matched === "number";
+    if (/audio/i.test(name) && localFocused && typeof localMessage === "string" && localMessage.trim()) {
+      return localMessage;
+    }
+  }
+
   if (hasCounts(counts)) {
     if ((counts.attempted ?? 0) === 0 && (counts.processed ?? 0) === 0 && (counts.failed ?? 0) === 0) {
       if (/bpm/i.test(name)) {

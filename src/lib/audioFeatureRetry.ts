@@ -20,11 +20,19 @@ export type LegacyAudioFeatureRetryMode = "configured" | "api_only" | "local_onl
 
 export type AudioFeatureSkipReason =
   | "missing_local_file"
+  | "unsupported_file_type"
+  | "file_not_readable"
   | "already_complete"
+  | "already_processing"
+  | "local_analysis_disabled"
+  | "essentia_unavailable"
   | "provider_disabled"
   | "api_disabled"
   | "local_disabled"
   | "too_short"
+  | "previous_failure"
+  | "not_active"
+  | "not_in_selected_library"
   | "missing_required_metadata"
   | "not_eligible_for_selected_mode"
   | "unknown";
@@ -49,12 +57,18 @@ export type AudioFeatureRetryResult = {
   processed: number;
   failed: number;
   skipReasons: Record<string, number>;
+  skipReasonLabels: Record<string, string>;
   summary: string;
   message: string;
   explanation: string | null;
   disabledReason: string | null;
   canRun: boolean;
   trackIds: string[];
+  analyzer: "Essentia";
+  analyzerAvailable: boolean | null;
+  analysisScope: string;
+  analysisScopeLabel: string;
+  expectedAction: string;
   jobId?: string | null;
 };
 
@@ -150,6 +164,38 @@ function increment(reasons: Record<string, number>, reason: AudioFeatureSkipReas
   reasons[reason] = (reasons[reason] || 0) + 1;
 }
 
+export function audioFeatureAnalysisScopeLabel(scope?: string | null) {
+  if (scope === "whole_track") return "Whole track";
+  if (scope === "middle_sample") return "Middle sample";
+  return "Sample window";
+}
+
+export const audioFeatureSkipReasonLabels: Record<string, string> = {
+  missing_local_file: "Missing local file",
+  unsupported_file_type: "Unsupported file type",
+  file_not_readable: "File not readable",
+  already_complete: "Already complete",
+  already_processing: "Already processing",
+  local_analysis_disabled: "Local analysis disabled",
+  essentia_unavailable: "Essentia unavailable",
+  provider_disabled: "Provider disabled",
+  api_disabled: "API audio features disabled",
+  local_disabled: "Local analysis disabled",
+  too_short: "Too short",
+  previous_failure: "Previous failure",
+  not_active: "Not active",
+  not_in_selected_library: "Not in selected library",
+  missing_required_metadata: "Missing required metadata",
+  not_eligible_for_selected_mode: "Not eligible for selected mode",
+  unknown: "Unknown",
+};
+
+function labelsForReasons(reasons: Record<string, number>) {
+  return Object.fromEntries(
+    Object.keys(reasons).map((reason) => [reason, audioFeatureSkipReasonLabels[reason] || reason.replace(/_/g, " ")]),
+  );
+}
+
 export function normalizeAudioFeatureRetryMode(value?: string | null, force?: boolean): AudioFeatureRetryMode {
   if (force || value === "force_local" || value === "force_local_reprocess") return "force_local_reprocess";
   if (value === "api_only") return "api_only";
@@ -205,7 +251,7 @@ function selectedProviders(settings: EffectiveAudioFeatureSettings, mode: AudioF
   const local = settings.local ?? settings.enableLocalAudioFeatures ?? true;
   if (mode === "api_only") return { api: true, local: false, disabledReason: api ? null : "API audio features are disabled." };
   if (mode === "local_only" || mode === "force_local_reprocess") {
-    return { api: false, local: true, disabledReason: local ? null : "Local Essentia is disabled." };
+    return { api: false, local: true, disabledReason: local ? null : "Local Essentia analysis is disabled." };
   }
   if (!api && !local) return { api: false, local: false, disabledReason: "No audio feature providers are enabled." };
   return { api, local, disabledReason: null };
@@ -224,6 +270,7 @@ export function audioFeatureRetryEligibility(track: RetryTrack, options: {
   const classification = getAudioFeatureHealthStatus(track, providerSettings);
   const localRequired = !providers.api && providers.local;
 
+  if (track.audioFeature?.audioFeatureStatus === "pending") return "already_processing";
   if (options.mode !== "force_local_reprocess" && classification.status === "complete") return "already_complete";
   if (localRequired && !hasLocalFile(track)) return "missing_local_file";
   if (localRequired && classification.status === "too_short") return "too_short";
@@ -235,14 +282,31 @@ function formatSummary(input: {
   filter: string;
   mode: AudioFeatureRetryMode;
   providerMode: string;
+  analysisScopeLabel?: string;
   matched: number;
+  eligible?: number;
   queued: number;
   skipped: number;
   skipReasons: Record<string, number>;
 }) {
-  const base = `Audio feature retry matched ${input.matched} track${input.matched === 1 ? "" : "s"}, queued ${input.queued}, skipped ${input.skipped}.`;
   const skipped = formatRetrySkipReasons(input.skipReasons);
+  if (input.queued === 0) {
+    const reason = skipped || "all matching tracks are already complete or not eligible for the selected provider mode";
+    return `No local audio analysis jobs were queued. Matched ${input.matched} track${input.matched === 1 ? "" : "s"}, queued 0, skipped ${input.skipped}. Reason: ${reason}.`;
+  }
+  const localMode = input.mode === "local_only" || input.mode === "force_local_reprocess";
+  const base = localMode
+    ? `Local audio analysis preflight matched ${input.matched} track${input.matched === 1 ? "" : "s"}, eligible ${input.eligible ?? input.queued}, queued ${input.queued}, skipped ${input.skipped}. Scope: ${input.analysisScopeLabel || "Sample window"}.`
+    : `Audio feature retry matched ${input.matched} track${input.matched === 1 ? "" : "s"}, eligible ${input.eligible ?? input.queued}, queued ${input.queued}, skipped ${input.skipped}.`;
   return skipped ? `${base} Skipped: ${skipped}.` : base;
+}
+
+function expectedActionFor(mode: AudioFeatureRetryMode, queued: number) {
+  if (queued === 0) return "No jobs will be queued.";
+  if (mode === "force_local_reprocess") return "Recalculate local audio features for eligible tracks using Essentia.";
+  if (mode === "local_only") return "Analyze eligible local files with Essentia.";
+  if (mode === "api_only") return "Queue eligible tracks for API audio-feature lookup.";
+  return "Queue eligible tracks using the configured audio-feature providers.";
 }
 
 async function resolveRetryTargetTrackIds(userId: string, input: {
@@ -307,6 +371,8 @@ export async function preflightAudioFeatureRetry(userId: string, request: AudioF
   }
 
   const providerMode = audioFeatureRetryProviderMode(settings);
+  const analysisScope = String((settings as any).scope || (settings as any).localAudioFeaturesScope || "windows");
+  const analysisScopeLabel = audioFeatureAnalysisScopeLabel(analysisScope);
   const matched = targetTrackIds.length;
   const eligible = eligibleTrackIds.length;
   const skipped = Math.max(0, matched - eligible);
@@ -325,7 +391,8 @@ export async function preflightAudioFeatureRetry(userId: string, request: AudioF
   const disabledReason = Object.keys(skipReasons).length === 1 && eligible === 0
     ? disabledReasonForSkipReason(Object.keys(skipReasons)[0])
     : null;
-  const summary = formatSummary({ filter, mode, providerMode, matched, queued: eligible, skipped, skipReasons });
+  const summary = formatSummary({ filter, mode, providerMode, analysisScopeLabel, matched, eligible, queued: eligible, skipped, skipReasons });
+  const expectedAction = expectedActionFor(mode, eligible);
 
   return {
     filter,
@@ -338,21 +405,28 @@ export async function preflightAudioFeatureRetry(userId: string, request: AudioF
     processed: 0,
     failed: 0,
     skipReasons,
+    skipReasonLabels: labelsForReasons(skipReasons),
     summary,
     message: summary || explanation.message,
     explanation: explanation.explanation,
     disabledReason,
     canRun: eligible > 0,
     trackIds: eligibleTrackIds,
+    analyzer: "Essentia",
+    analyzerAvailable: null,
+    analysisScope,
+    analysisScopeLabel,
+    expectedAction,
   };
 }
 
 function disabledReasonForSkipReason(reason: string) {
   if (reason === "api_disabled") return "API audio features are disabled.";
-  if (reason === "local_disabled") return "Local Essentia is disabled.";
+  if (reason === "local_disabled" || reason === "local_analysis_disabled") return "Local analysis is disabled. Enable local audio analysis in Settings first.";
   if (reason === "provider_disabled") return "No audio feature providers are enabled.";
   if (reason === "missing_local_file") return "No eligible tracks have local files.";
   if (reason === "already_complete") return "All matching tracks are already complete.";
+  if (reason === "already_processing") return "All matching tracks are already queued or processing.";
   if (reason === "too_short") return "All matching tracks are too short for local analysis.";
   return null;
 }
@@ -397,16 +471,26 @@ export async function runAudioFeatureRetry(userId: string, request: AudioFeature
     processed: result.queued,
     failed: 0,
   };
+  const completionSummary = result.queued > 0
+    ? (
+      result.mode === "local_only" || result.mode === "force_local_reprocess"
+        ? `Local audio analysis queued. Matched ${result.matched}, queued ${result.queued}, skipped ${result.skipped}, failed 0.${formatRetrySkipReasons(result.skipReasons) ? ` Skipped: ${formatRetrySkipReasons(result.skipReasons)}.` : ""}`
+        : result.summary
+    )
+    : result.summary;
   const jobId = await safeRecordJobHistory({
     userId,
     type: "audio_features",
-    name: "Audio feature retry",
+    name: result.mode === "local_only" || result.mode === "force_local_reprocess" ? "Local audio analysis retry" : "Audio feature retry",
     status: result.queued > 0 ? "success" : "warning",
     trigger: "retry",
-    summary: completed.summary,
+    summary: completionSummary,
     counts: { attempted: result.matched, processed: result.queued, skipped: result.skipped, failed: 0 },
     metadata: {
       retryType: "audio-feature",
+      analyzer: result.analyzer,
+      analysisScope: result.analysisScope,
+      analysisScopeLabel: result.analysisScopeLabel,
       filter: result.filter,
       retryMode: result.mode,
       mode: result.mode,
@@ -418,7 +502,9 @@ export async function runAudioFeatureRetry(userId: string, request: AudioFeature
       processed: result.queued,
       failed: 0,
       skipReasons: result.skipReasons,
-      summary: completed.summary,
+      skipReasonLabels: result.skipReasonLabels,
+      expectedAction: result.expectedAction,
+      summary: completionSummary,
       disabledReason: result.disabledReason,
       libraryId: request.libraryId || null,
       force: result.mode === "force_local_reprocess",
@@ -426,7 +512,7 @@ export async function runAudioFeatureRetry(userId: string, request: AudioFeature
   });
 
   console.log(
-    `[LibraryHealth] audio-feature retry filter=${result.filter} mode=${result.mode} providerMode=${result.providerMode} matched=${result.matched} eligible=${result.eligible} queued=${result.queued} skipped=${result.skipped}`,
+    `[LibraryHealth] audio-feature retry filter=${result.filter} mode=${result.mode} analyzer=${result.analyzer} scope=${result.analysisScope} providerMode=${result.providerMode} matched=${result.matched} eligible=${result.eligible} queued=${result.queued} skipped=${result.skipped}`,
   );
   if (Object.keys(result.skipReasons).length) {
     console.log(`[LibraryHealth] audio-feature retry skip reasons: ${formatRetrySkipReasons(result.skipReasons)}`);

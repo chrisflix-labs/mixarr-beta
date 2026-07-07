@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.2 - Local Audio Analysis Polish
+
+- Added clearer Local Audio Analysis status and provider-mode visibility.
+- Added local analysis preflight summaries with matched, eligible, skipped, and skip-reason counts.
+- Improved Local Essentia progress and completion summaries.
+- Improved skip reason reporting for local audio analysis and force reprocess actions.
+- Added local analysis diagnostics to Library Health.
+- Improved Library Health and dashboard refresh after local analysis jobs complete.
+
 ## v1.3.1 - Audio Feature Retry Improvements
 
 - Improved audio-feature retry actions to use the same resolved track sets as Library Health cards and detail views.

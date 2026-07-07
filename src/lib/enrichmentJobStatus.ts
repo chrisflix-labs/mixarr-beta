@@ -6,6 +6,7 @@ export type EnrichmentJobState = {
   finishedAt?: string;
   summary?: EnrichmentRunSummary;
   error?: string;
+  progress?: Record<string, unknown>;
 };
 
 const globalJobs = globalThis as typeof globalThis & {
@@ -29,6 +30,19 @@ export function markEnrichmentJobFinished(engine: string, result: unknown, error
       ? { summary: result as EnrichmentRunSummary }
       : {}),
     ...(error ? { error: error instanceof Error ? error.message : String(error) } : {}),
+  };
+}
+
+export function markEnrichmentJobProgress(engine: string, progress: Record<string, unknown>) {
+  const previous = jobs[engine] ?? { running: true, startedAt: new Date().toISOString() };
+  jobs[engine] = {
+    ...previous,
+    running: previous.running !== false,
+    progress: {
+      ...(previous.progress || {}),
+      ...progress,
+      updatedAt: new Date().toISOString(),
+    },
   };
 }
 

@@ -51,6 +51,19 @@ type HealthAccuracyDiagnostics = {
     failed: number | null;
     completedAt: string | null;
   } | null;
+  localAnalysisDiagnostics?: {
+    analyzer: string;
+    analyzerAvailable: boolean | null;
+    localEnabled: boolean;
+    scope: string;
+    scopeLabel: string;
+    lastRunAt: string | null;
+    matched: number | null;
+    processed: number | null;
+    skipped: number | null;
+    failed: number | null;
+    skipReasons: Record<string, number>;
+  };
 };
 type Summary = {
   totalTracks: number;
@@ -75,6 +88,9 @@ type Track = {
   mood: number | null;
   danceability: number | null;
   audioFeatureStatus: string;
+  audioFeatureSource?: string | null;
+  audioFeatureAnalysisScope?: string | null;
+  audioFeatureConfidence?: number | null;
   localFileStatus: string;
   lastAnalyzed: string | null;
   failureReason: string | null;
@@ -161,11 +177,31 @@ type AudioRetryResult = {
   processed?: number;
   failed?: number;
   skipReasons: Record<string, number>;
+  skipReasonLabels?: Record<string, string>;
   summary: string;
   message?: string;
   disabledReason?: string | null;
   canRun?: boolean;
+  analyzer?: string;
+  analysisScope?: string;
+  analysisScopeLabel?: string;
+  expectedAction?: string;
   jobId?: string | null;
+};
+
+type LocalAnalysisProgress = {
+  running?: boolean;
+  analyzer?: string;
+  scopeLabel?: string;
+  providerMode?: string;
+  matched?: number;
+  eligible?: number;
+  processed?: number;
+  skipped?: number;
+  failed?: number;
+  remaining?: number;
+  elapsedSeconds?: number;
+  updatedAt?: string;
 };
 
 const defaultFilters = {
@@ -205,6 +241,12 @@ function formatDecimal(value: number | null) {
   return value === null ? "-" : value.toFixed(2);
 }
 
+function formatScope(value?: string | null) {
+  if (value === "whole_track") return "Whole track";
+  if (value === "windows") return "Sample window";
+  return "-";
+}
+
 function retryTypeFor(category: Category): "bpm" | "audio_features" {
   return category === "missing_audio_features" || category === "partial_audio_features" || category === "pending_audio_features" || category === "complete_audio_features" || category === "failed_audio_feature_analysis"
     ? "audio_features"
@@ -218,6 +260,17 @@ function isAudioRetryCategory(category: Category) {
 function formatSkipReasons(reasons: Record<string, number> | undefined) {
   const entries = Object.entries(reasons || {}).filter(([, value]) => value > 0);
   return entries.map(([reason, value]) => `${reason.replace(/_/g, " ")}=${formatNumber(value)}`).join(", ");
+}
+
+function formatLabeledSkipReasons(reasons: Record<string, number> | undefined, labels?: Record<string, string>) {
+  const entries = Object.entries(reasons || {}).filter(([, value]) => value > 0);
+  return entries.map(([reason, value]) => `${labels?.[reason] || reason.replace(/_/g, " ")}=${formatNumber(value)}`).join(", ");
+}
+
+function formatElapsed(seconds?: number) {
+  if (!seconds) return "-";
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
 }
 
 export default function LibraryHealthDetailsPage() {
@@ -234,6 +287,7 @@ export default function LibraryHealthDetailsPage() {
   const [working, setWorking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [localProgress, setLocalProgress] = useState<LocalAnalysisProgress | null>(null);
 
   const selectedCount = selected.size;
   const allVisibleSelected = tracks.length > 0 && tracks.every((track) => selected.has(track.id));
@@ -314,6 +368,34 @@ export default function LibraryHealthDetailsPage() {
     void loadTracks(category, page);
   }, [loading, category, page, loadSummary, loadTracks]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function pollProgress() {
+      try {
+        const response = await fetch("/api/sync/status", { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok || cancelled) return;
+        const lastRun = data?.audioFeatures?.lastRun;
+        const progress = lastRun?.progress;
+        if (lastRun?.running && progress?.phase === "local_audio_analysis") {
+          setLocalProgress({ running: true, ...progress });
+        } else if (progress?.phase === "local_audio_analysis") {
+          setLocalProgress({ running: false, ...progress });
+        } else if (!lastRun?.running) {
+          setLocalProgress(null);
+        }
+      } catch {
+        // Status polling is best-effort; the retry result and Job History remain the source of record.
+      }
+    }
+    void pollProgress();
+    const interval = window.setInterval(() => void pollProgress(), working ? 5000 : 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [working]);
+
   const cards = useMemo(() => {
     const counts = summary?.categories;
     return [
@@ -370,9 +452,16 @@ export default function LibraryHealthDetailsPage() {
           setMessage(preflight.disabledReason || preflight.summary || "No eligible audio-feature tracks were found.");
           return;
         }
-        if (preflight.skipped > 0) {
+        const localMode = mode === "local_only" || mode === "force_local_reprocess";
+        if (preflight.skipped > 0 || localMode) {
+          const skipped = formatLabeledSkipReasons(preflight.skipReasons, preflight.skipReasonLabels);
+          const heading = mode === "force_local_reprocess"
+            ? `Force local reprocess for ${formatNumber(preflight.matched)} track${preflight.matched === 1 ? "" : "s"}?`
+            : localMode
+              ? "Local analysis preflight"
+              : `Retry ${formatNumber(preflight.matched)} ${categoryLabels[category]} track${preflight.matched === 1 ? "" : "s"}?`;
           const confirmed = window.confirm(
-            `Retry ${formatNumber(preflight.matched)} ${categoryLabels[category]} track${preflight.matched === 1 ? "" : "s"}?\n\n${formatNumber(preflight.eligible)} are eligible and ${formatNumber(preflight.skipped)} will be skipped.${formatSkipReasons(preflight.skipReasons) ? `\n\nSkipped: ${formatSkipReasons(preflight.skipReasons)}.` : ""}`,
+            `${heading}\n\nMatched: ${formatNumber(preflight.matched)}\nEligible: ${formatNumber(preflight.eligible)}\nSkipped: ${formatNumber(preflight.skipped)}${skipped ? `\nSkipped reasons: ${skipped}` : ""}\nAnalyzer: ${preflight.analyzer || "Essentia"}\nScope: ${preflight.analysisScopeLabel || "Sample window"}\nProvider mode: ${preflight.providerMode}\n\n${preflight.expectedAction || "Queue eligible tracks."}`,
           );
           if (!confirmed) return;
         }
@@ -386,7 +475,26 @@ export default function LibraryHealthDetailsPage() {
         if (!retryResponse.ok) throw new Error((data as any).error || "Failed to queue audio-feature retry");
         let suffix = "";
         if (data.queued > 0) {
-          const startResponse = await fetch("/api/audio-features/start", { method: "POST" });
+          setLocalProgress((current) => mode === "local_only" || mode === "force_local_reprocess"
+            ? {
+              ...current,
+              running: true,
+              analyzer: data.analyzer || "Essentia",
+              scopeLabel: data.analysisScopeLabel || "Sample window",
+              providerMode: data.providerMode,
+              matched: data.matched,
+              eligible: data.eligible,
+              processed: 0,
+              skipped: data.skipped,
+              failed: 0,
+              remaining: data.queued,
+            }
+            : current);
+          const startResponse = await fetch("/api/audio-features/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode, providerMode: mode, force: mode === "force_local_reprocess" }),
+          });
           const startData = await startResponse.json().catch(() => ({}));
           suffix = startData?.status === "already_running"
             ? " The audio-feature analyzer is already running."
@@ -394,7 +502,7 @@ export default function LibraryHealthDetailsPage() {
           window.setTimeout(() => { void loadSummary(); void loadTracks(category, page); }, 5000);
           window.setTimeout(() => { void loadSummary(); void loadTracks(category, page); }, 20000);
         }
-        setMessage(`${data.summary || `Queued ${data.queued || 0} audio-feature retry jobs.`}${suffix}`);
+        setMessage(`${data.message || data.summary || `Queued ${data.queued || 0} audio-feature retry jobs.`}${suffix}`);
         await Promise.all([loadSummary(), loadTracks(category, page)]);
         return;
       }
@@ -498,6 +606,15 @@ export default function LibraryHealthDetailsPage() {
                 </small>
               </div>
             )}
+            {summary.diagnostics.localAnalysisDiagnostics && (
+              <div>
+                <span>Local analysis diagnostics: {summary.diagnostics.localAnalysisDiagnostics.analyzer} {summary.diagnostics.localAnalysisDiagnostics.analyzerAvailable === null ? "availability not checked" : summary.diagnostics.localAnalysisDiagnostics.analyzerAvailable ? "available" : "unavailable"} | {summary.diagnostics.localAnalysisDiagnostics.scopeLabel}</span>
+                <small>
+                  last run: {formatNumber(summary.diagnostics.localAnalysisDiagnostics.matched)} matched | {formatNumber(summary.diagnostics.localAnalysisDiagnostics.processed)} processed | {formatNumber(summary.diagnostics.localAnalysisDiagnostics.skipped)} skipped | {formatNumber(summary.diagnostics.localAnalysisDiagnostics.failed)} failed | completed: {formatDate(summary.diagnostics.localAnalysisDiagnostics.lastRunAt)}
+                  {Object.keys(summary.diagnostics.localAnalysisDiagnostics.skipReasons || {}).length ? ` | skipped: ${formatSkipReasons(summary.diagnostics.localAnalysisDiagnostics.skipReasons)}` : ""}
+                </small>
+              </div>
+            )}
           </div>
           <a className={styles.secondaryButton} href={`/api/library-health/diagnostics${filters.libraryId ? `?libraryId=${filters.libraryId}` : ""}`}>
             <Download size={15} /> Export Health Diagnostics
@@ -507,6 +624,18 @@ export default function LibraryHealthDetailsPage() {
 
       {message && <div className={styles.message}>{message}</div>}
       {error && <div className={styles.error}>{error}</div>}
+      {localProgress && (
+        <div className={styles.message}>
+          <strong>{localProgress.running ? "Local audio analysis running" : "Local audio analysis completed"}</strong>
+          <br />
+          Processed: {formatNumber(localProgress.processed)} / {formatNumber(localProgress.matched)}
+          {" | "}Skipped: {formatNumber(localProgress.skipped)}
+          {" | "}Failed: {formatNumber(localProgress.failed)}
+          {" | "}Remaining: {formatNumber(localProgress.remaining)}
+          {" | "}Mode: {localProgress.scopeLabel || "Sample window"}
+          {" | "}Elapsed: {formatElapsed(localProgress.elapsedSeconds)}
+        </div>
+      )}
 
       <section className={`glass-panel ${styles.panel}`}>
         <form className={styles.toolbar} onSubmit={applyFilters}>
@@ -668,7 +797,10 @@ export default function LibraryHealthDetailsPage() {
                     <td data-label="Energy">{formatDecimal(track.energy)}</td>
                     <td data-label="Mood">{formatDecimal(track.mood)}</td>
                     <td data-label="Danceability">{formatDecimal(track.danceability)}</td>
-                    <td data-label="Audio status"><span className={track.audioFeatureStatus === "complete" ? `${styles.badge} ${styles.okBadge}` : styles.badge}>{track.audioFeatureStatus}</span></td>
+                    <td data-label="Audio status">
+                      <span className={track.audioFeatureStatus === "complete" ? `${styles.badge} ${styles.okBadge}` : styles.badge}>{track.audioFeatureStatus}</span>
+                      <small className={styles.trackMeta}>Source: {track.audioFeatureSource || "-"} | Scope: {formatScope(track.audioFeatureAnalysisScope)} | Confidence: {track.audioFeatureConfidence == null ? "-" : track.audioFeatureConfidence.toFixed(2)}</small>
+                    </td>
                     <td data-label="Local file"><span className={track.localFileStatus === "missing" ? `${styles.badge} ${styles.dangerBadge}` : `${styles.badge} ${styles.okBadge}`}>{track.localFileStatus}</span><small className={`${styles.trackMeta} ${styles.path}`} title={track.mediaPath || ""}>{track.mediaPath || "-"}</small></td>
                     <td data-label="Last analyzed">{formatDate(track.lastAnalyzed)}</td>
                     <td data-label="Failure reason">{track.failureReason || "-"}</td>

@@ -41,6 +41,7 @@ import {
   type GenreHealthFilter,
   type PopularityHealthFilter,
 } from "./libraryHealth";
+import { metadataProviderModeKey } from "./syncSettings";
 
 export const libraryHealthDetailCategories = [
   "all_tracks",
@@ -579,6 +580,8 @@ export function serializeLibraryHealthDetailTrack(track: any, category: LibraryH
     acousticness: audio.acousticness,
     audioFeatureStatus: audioFeatureStatus(track, settings),
     audioFeatureSource: audio.source || track.audioFeature?.audioFeatureSource || null,
+    audioFeatureAnalysisScope: track.audioFeature?.audioFeatureAnalysisScope || null,
+    audioFeatureConfidence: track.audioFeature?.audioFeatureConfidence ?? null,
     localFileStatus: localFileStatus(track),
     lastAnalyzed,
     bpmAnalysisStatus: track.bpmAnalysisStatus || null,
@@ -648,6 +651,19 @@ export type LibraryHealthAccuracyDiagnostics = {
     failed: number | null;
     completedAt: Date | null;
   } | null;
+  localAnalysisDiagnostics?: {
+    analyzer: string;
+    analyzerAvailable: boolean | null;
+    localEnabled: boolean;
+    scope: string;
+    scopeLabel: string;
+    lastRunAt: Date | null;
+    matched: number | null;
+    processed: number | null;
+    skipped: number | null;
+    failed: number | null;
+    skipReasons: Record<string, number>;
+  };
 };
 
 function invariant(section: LibraryHealthInvariantResult["section"], counts: Record<string, number>, ok: boolean, message: string): LibraryHealthInvariantResult {
@@ -740,7 +756,11 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
     resolveLibraryHealthTrackIds(userId, { category: "available_local_files", libraryId, settings }),
     resolveLibraryHealthTrackIds(userId, { category: "missing_local_files", libraryId, settings }),
   ]);
-  const audioMode = `${settings?.api || settings?.enableApiAudioFeatures ? "api_enabled" : "api_disabled"}_${settings?.local || settings?.enableLocalAudioFeatures ? "local_enabled" : "local_disabled"}_${settings?.preferLocal || settings?.preferLocalAudioFeatures ? "local_preferred" : "api_preferred"}`;
+  const audioMode = metadataProviderModeKey({
+    api: settings?.api ?? settings?.enableApiAudioFeatures ?? true,
+    local: settings?.local ?? settings?.enableLocalAudioFeatures ?? true,
+    preferLocal: settings?.preferLocal ?? settings?.preferLocalAudioFeatures ?? false,
+  } as any);
   const diagnostics = buildHealthAccuracyDiagnostics({
     totalTracks,
     categories,
@@ -776,6 +796,44 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
     failed: typeof retryMetadata.failed === "number" ? retryMetadata.failed : lastAudioFeatureRetryJob.failed,
     completedAt: lastAudioFeatureRetryJob.finishedAt,
   } : null;
+  const recentAudioJobs = await prisma.jobHistory.findMany({
+    where: {
+      OR: [{ userId }, { userId: null }],
+      type: "audio_features",
+    },
+    orderBy: { startedAt: "desc" },
+    take: 20,
+  });
+  const lastLocalAnalysisJob = recentAudioJobs.find((job) => {
+    const metadata = job.metadata && typeof job.metadata === "object" && !Array.isArray(job.metadata)
+      ? job.metadata as Record<string, any>
+      : {};
+    return job.name.toLowerCase().includes("local audio analysis")
+      || metadata.analyzer === "Essentia"
+      || (metadata.local && typeof metadata.local === "object");
+  }) || null;
+  const localMetadata = lastLocalAnalysisJob?.metadata && typeof lastLocalAnalysisJob.metadata === "object" && !Array.isArray(lastLocalAnalysisJob.metadata)
+    ? lastLocalAnalysisJob.metadata as Record<string, any>
+    : {};
+  const localRun = localMetadata.local && typeof localMetadata.local === "object" ? localMetadata.local : localMetadata;
+  const scope = typeof localRun.analysisScope === "string"
+    ? localRun.analysisScope
+    : typeof localRun.scope === "string"
+      ? localRun.scope
+      : String((settings as any)?.scope || "windows");
+  diagnostics.localAnalysisDiagnostics = {
+    analyzer: "Essentia",
+    analyzerAvailable: null,
+    localEnabled: settings?.local ?? settings?.enableLocalAudioFeatures ?? true,
+    scope,
+    scopeLabel: scope === "whole_track" ? "Whole track" : "Sample window",
+    lastRunAt: lastLocalAnalysisJob?.finishedAt || null,
+    matched: typeof localRun.matched === "number" ? localRun.matched : typeof localRun.attempted === "number" ? localRun.attempted : lastLocalAnalysisJob?.attempted ?? null,
+    processed: typeof localRun.processed === "number" ? localRun.processed : lastLocalAnalysisJob?.processed ?? null,
+    skipped: typeof localRun.skipped === "number" ? localRun.skipped : lastLocalAnalysisJob?.skipped ?? null,
+    failed: typeof localRun.failed === "number" ? localRun.failed : lastLocalAnalysisJob?.failed ?? null,
+    skipReasons: localRun.skipReasons && typeof localRun.skipReasons === "object" && !Array.isArray(localRun.skipReasons) ? localRun.skipReasons : {},
+  };
   return {
     totalTracks,
     categories,

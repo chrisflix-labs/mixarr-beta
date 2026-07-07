@@ -95,4 +95,19 @@ describe("audio feature retry", () => {
 
     assert.equal(reason, null);
   });
+
+  it("explains pending audio-feature rows as already processing", () => {
+    const reason = audioFeatureRetryEligibility({
+      id: "track-1",
+      title: "Song",
+      mediaPath: "/music/song.flac",
+      syncStatus: "active",
+      artist: { title: "Artist" },
+      audioFeature: {
+        audioFeatureStatus: "pending",
+      },
+    }, { mode: "local_only", settings: localSettings });
+
+    assert.equal(reason, "already_processing");
+  });
 });

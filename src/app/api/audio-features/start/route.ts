@@ -5,7 +5,7 @@ import { invalidateLibraryHealthCache } from "@/lib/libraryHealth";
 import { getUserSyncSettings } from "@/lib/syncSettings";
 import { alreadyRunningPayload, startSyncJobInBackground } from "@/lib/syncJobRunner";
 
-export async function POST() {
+export async function POST(request: Request) {
   const cookieStore = cookies();
   const userId = cookieStore.get("mixarr_session")?.value;
 
@@ -14,11 +14,26 @@ export async function POST() {
   }
 
   try {
-    const syncSettings = await getUserSyncSettings(userId);
+    const body = await request.json().catch(() => ({}));
+    const providerMode = typeof body?.providerMode === "string" ? body.providerMode : typeof body?.mode === "string" ? body.mode : "configured";
+    const force = body?.force === true || providerMode === "force_local" || providerMode === "force_local_reprocess";
+    const baseSettings = await getUserSyncSettings(userId);
+    const syncSettings = {
+      ...baseSettings,
+      ...(providerMode === "api_only" ? { enableApiAudioFeatures: true, enableLocalAudioFeatures: false } : {}),
+      ...(providerMode === "local_only" || force ? {
+        enableApiAudioFeatures: false,
+        enableLocalAudioFeatures: true,
+        preferLocalAudioFeatures: true,
+        reprocessApiAudioFeaturesWithLocal: force,
+        reprocessLocalAudioFeatures: force,
+      } : {}),
+    };
     const started = startSyncJobInBackground({
       engine: "audio",
       userId,
       trackedEngine: "audio",
+      source: providerMode === "configured" ? "manual" : "retry",
       task: async () => {
         const audio = await import("@/lib/audioFeatureEngine");
         const apiSummary = await audio.runAudioFeatureEngine(syncSettings);
@@ -33,6 +48,12 @@ export async function POST() {
           processed: apiSummary.processed + localSummary.processed,
           skipped: apiSummary.skipped + localSummary.skipped,
           failed: apiSummary.failed + localSummary.failed,
+          metadata: {
+            providerMode,
+            force,
+            api: apiSummary,
+            local: localSummary,
+          },
         };
       },
     });
