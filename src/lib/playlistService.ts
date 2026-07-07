@@ -116,6 +116,11 @@ export const savedPlaylistSchema = playlistConfigSchema.extend({
 
 export type PlaylistRuleInput = z.infer<typeof playlistRuleSchema>;
 export type PlaylistConfigInput = z.infer<typeof playlistConfigSchema>;
+export type PreviewMessageSeverity = "info" | "warning" | "error";
+export type PlaylistPreviewMessage = {
+  severity: PreviewMessageSeverity;
+  message: string;
+};
 
 const previewDisplayLimit = Number(process.env.PLAYLIST_PREVIEW_DISPLAY_LIMIT || 100);
 
@@ -408,7 +413,7 @@ export function summarizePlaylistSafetyRules(config: Pick<PlaylistConfigInput, "
   if (safetyRules.limitTracksPerAlbum) parts.push(`max ${safetyRules.maxTracksPerAlbum} per album`);
   if (safetyRules.warnIfFewerThan) parts.push(`warn below ${safetyRules.minimumTrackCount} tracks`);
 
-  return parts.length ? `Safety: ${parts.join(", ")}` : "Safety: off";
+  return parts.length ? `Safety rules: ${parts.join(", ")}` : "Safety rules: off";
 }
 
 function safetyRulesAreEnabled(config: PlaylistConfigInput) {
@@ -424,6 +429,7 @@ function safetyRulesAreEnabled(config: PlaylistConfigInput) {
 export function applyPlaylistSafetyRules(tracks: any[], config: PlaylistConfigInput) {
   const safetyRules = config.safetyRules;
   const warnings: string[] = [];
+  const infos: string[] = [];
   let nextTracks = [...tracks];
   let removedBySafetyRules = 0;
   let rearrangedTrackCount = 0;
@@ -464,6 +470,9 @@ export function applyPlaylistSafetyRules(tracks: any[], config: PlaylistConfigIn
   }
 
   const finalTracks = nextTracks.slice(0, config.limit);
+  if (safetyRules.limitTracksPerArtist && finalTracks.length > 0) {
+    infos.push(`Artist variety rules applied. Max ${safetyRules.maxTracksPerArtist} tracks per artist.`);
+  }
   if (removedBySafetyRules > 0 && finalTracks.length < config.limit) {
     warnings.push("Safety rules reduced the preview below the requested target count.");
   }
@@ -477,6 +486,7 @@ export function applyPlaylistSafetyRules(tracks: any[], config: PlaylistConfigIn
       safetyRulesApplied: safetyRulesAreEnabled(config),
       removedBySafetyRules,
       rearrangedTrackCount,
+      infos: infos.filter((info, index, list) => list.indexOf(info) === index),
       warnings: warnings.filter((warning, index, list) => list.indexOf(warning) === index),
       artistLimitApplied,
       albumLimitApplied,
@@ -705,10 +715,17 @@ function formatNegativeFilters(filters: PlaylistConfigInput["negativeFilters"]) 
   return enabled.length ? enabled.join(", ") : "None";
 }
 
-function buildPreviewWarnings({
+function uniquePreviewMessages(messages: PlaylistPreviewMessage[]) {
+  return messages.filter((message, index, list) => (
+    list.findIndex((candidate) => candidate.severity === message.severity && candidate.message === message.message) === index
+  ));
+}
+
+export function buildPreviewMessages({
   tracks,
   matchedTrackCount,
   requestedLimit,
+  safetyRules,
   smartPresetName,
   moodPresetName,
   moodPresetModified,
@@ -718,59 +735,60 @@ function buildPreviewWarnings({
   tracks: any[];
   matchedTrackCount: number;
   requestedLimit: number;
+  safetyRules: PlaylistConfigInput["safetyRules"];
   smartPresetName?: string;
   moodPresetName?: string;
   moodPresetModified?: boolean;
   bpmPresetName?: string;
   bpmPresetModified?: boolean;
 }) {
-  const warnings: string[] = [];
+  const messages: PlaylistPreviewMessage[] = [];
   const moodPresetLabel = moodPresetName ? `${moodPresetName}${moodPresetModified ? " modified" : ""}` : "";
   const bpmPresetLabel = bpmPresetName ? `${bpmPresetName}${bpmPresetModified ? " modified" : ""}` : "";
   if (matchedTrackCount === 0 || tracks.length === 0) {
-    warnings.push(bpmPresetName
+    messages.push({ severity: "error", message: bpmPresetName
       ? `No tracks matched the ${bpmPresetLabel} BPM preset. Try choosing Medium, Wide Open, or widening the BPM range.`
       : moodPresetLabel
       ? `No tracks matched the ${moodPresetLabel} mood preset. Try widening BPM, energy, or mood ranges.`
       : smartPresetName
       ? `No tracks matched the ${smartPresetName} preset. Try widening the BPM range, allowing more genres, or disabling popularity limits.`
-      : "No tracks matched this playlist recipe. Adjust your filters and preview again.");
+      : "No tracks matched this playlist recipe. Adjust your filters and preview again." });
     if (bpmPresetName) {
-      warnings.push("This BPM preset depends on BPM data. Run BPM analysis or choose Wide Open if too few tracks match.");
+      messages.push({ severity: "warning", message: "This BPM preset depends on BPM data. Run BPM analysis or choose Wide Open if too few tracks match." });
     }
     if (moodPresetName) {
-      warnings.push("This preset depends on mood and energy data. Run audio feature analysis or widen your filters if too few tracks match.");
+      messages.push({ severity: "warning", message: "This preset depends on mood and energy data. Run audio feature analysis or widen your filters if too few tracks match." });
     }
-    warnings.push("Some filters may be too restrictive. Try widening BPM, energy, mood, genre, or popularity filters.");
-    return warnings;
+    messages.push({ severity: "warning", message: "Some filters may be too restrictive. Try widening BPM, energy, mood, genre, or popularity filters." });
+    return uniquePreviewMessages(messages);
   }
 
   if (matchedTrackCount < requestedLimit) {
-    warnings.push(bpmPresetName
+    messages.push({ severity: "warning", message: bpmPresetName
       ? `Only ${matchedTrackCount} tracks matched the ${bpmPresetLabel} BPM preset. Try choosing Medium, Wide Open, or widening the BPM range.`
       : moodPresetLabel
       ? `Only ${matchedTrackCount} tracks matched the ${moodPresetLabel} mood preset. Try widening BPM or energy ranges.`
       : smartPresetName
       ? `Only ${matchedTrackCount} tracks matched the ${smartPresetName} preset. Try widening the BPM range, allowing more genres, or disabling popularity limits.`
-      : `Only ${matchedTrackCount} tracks matched your filters. Try widening the BPM range, removing a genre filter, or allowing tracks with missing audio features.`);
+      : `Only ${matchedTrackCount} tracks matched your filters. Try widening the BPM range, removing a genre filter, or allowing tracks with missing audio features.` });
   }
   if (tracks.length < requestedLimit) {
-    warnings.push(`Playlist has fewer tracks than requested: ${tracks.length} of ${requestedLimit}.`);
+    messages.push({ severity: "warning", message: `Playlist has fewer tracks than requested: ${tracks.length} of ${requestedLimit}.` });
   }
 
   const missingBpm = tracks.filter((track) => !track.effectiveBpm && !track.bpm && !track.audioFeature?.tempo).length;
   if (missingBpm >= Math.max(3, Math.ceil(tracks.length * 0.25))) {
-    warnings.push(`Many tracks are missing BPM data (${missingBpm} of ${tracks.length}).`);
+    messages.push({ severity: "warning", message: `Many tracks are missing BPM data (${missingBpm} of ${tracks.length}).` });
     if (bpmPresetName) {
-      warnings.push("This BPM preset depends on BPM data. Run BPM analysis or choose Wide Open if too few tracks match.");
+      messages.push({ severity: "warning", message: "This BPM preset depends on BPM data. Run BPM analysis or choose Wide Open if too few tracks match." });
     }
   }
 
   const missingAudio = tracks.filter((track) => !track.audioFeature || (track.audioFeature.energy == null && track.audioFeature.valence == null && track.audioFeature.effectiveEnergy == null && track.audioFeature.effectiveMood == null)).length;
   if (missingAudio >= Math.max(3, Math.ceil(tracks.length * 0.25))) {
-    warnings.push(`Many tracks are missing audio features (${missingAudio} of ${tracks.length}).`);
+    messages.push({ severity: "warning", message: `Many tracks are missing audio features (${missingAudio} of ${tracks.length}).` });
     if (moodPresetName) {
-      warnings.push("This preset depends on mood and energy data. Run audio feature analysis or widen your filters if too few tracks match.");
+      messages.push({ severity: "warning", message: "This preset depends on mood and energy data. Run audio feature analysis or widen your filters if too few tracks match." });
     }
   }
 
@@ -780,16 +798,31 @@ function buildPreviewWarnings({
     artistCounts.set(artist, (artistCounts.get(artist) || 0) + 1);
   }
   const repeatedArtistTracks = Array.from(artistCounts.values()).reduce((sum, count) => sum + Math.max(0, count - 1), 0);
-  if (repeatedArtistTracks >= Math.max(4, Math.ceil(tracks.length * 0.25))) {
-    const repeatedArtists = Array.from(artistCounts.entries())
-      .filter(([, count]) => count > 1)
+  const repeatedArtists = Array.from(artistCounts.entries())
+    .filter(([, count]) => count > 1)
+    .sort((left, right) => right[1] - left[1]);
+
+  if (safetyRules.limitTracksPerArtist) {
+    const artistsOverLimit = repeatedArtists.filter(([, count]) => count > safetyRules.maxTracksPerArtist);
+    if (artistsOverLimit.length > 0) {
+      const mostRepeated = artistsOverLimit
       .sort((left, right) => right[1] - left[1])
       .slice(0, 3)
       .map(([artist, count]) => `${artist} (${count})`);
-    warnings.push(`Preview contains repeated artists. ${artistCounts.size} artists appear across ${tracks.length} tracks.${repeatedArtists.length ? ` Most repeated: ${repeatedArtists.join(", ")}.` : ""} Try adjusting filters or refreshing the preview.`);
+      messages.push({ severity: "warning", message: `Some artists exceed the max ${safetyRules.maxTracksPerArtist} tracks per artist rule.${mostRepeated.length ? ` Most repeated: ${mostRepeated.join(", ")}.` : ""}` });
+    }
+  } else if (repeatedArtistTracks >= Math.max(6, Math.ceil(tracks.length * 0.35))) {
+    const mostRepeated = repeatedArtists
+      .slice(0, 3)
+      .map(([artist, count]) => `${artist} (${count})`);
+    messages.push({ severity: "warning", message: `Preview has heavy artist repetition. ${artistCounts.size} artists appear across ${tracks.length} tracks.${mostRepeated.length ? ` Most repeated: ${mostRepeated.join(", ")}.` : ""} Try enabling max tracks per artist or widening your filters.` });
   }
 
-  return warnings;
+  if (safetyRules.avoidSameArtistBackToBack && hasBackToBackArtistRepeat(tracks)) {
+    messages.push({ severity: "warning", message: "Same-artist back-to-back spacing could not be fully applied to this preview." });
+  }
+
+  return uniquePreviewMessages(messages);
 }
 
 export async function previewPlaylistTracks({
@@ -881,19 +914,24 @@ export async function previewPlaylistTracks({
     { label: "Rules", value: collectRuleReasons(config.ruleTree, config.rules).join("; ") || "All active tracks" },
   ];
 
-  const warnings = [
-    ...buildPreviewWarnings({
+  const messages = uniquePreviewMessages([
+    ...buildPreviewMessages({
       tracks: previewTracks,
       matchedTrackCount,
       requestedLimit: config.limit,
+      safetyRules: config.safetyRules,
       smartPresetName: config.smartPresetName,
       moodPresetName: config.moodPresetName,
       moodPresetModified: config.moodPresetModified,
       bpmPresetName: config.bpmPresetName,
       bpmPresetModified: config.bpmPresetModified,
     }),
-    ...generation.safety.warnings,
-  ].filter((warning, index, list) => list.indexOf(warning) === index);
+    ...generation.safety.infos.map((message) => ({ severity: "info" as const, message })),
+    ...generation.safety.warnings.map((message) => ({ severity: "warning" as const, message })),
+  ]);
+  const warnings = messages
+    .filter((message) => message.severity !== "info")
+    .map((message) => message.message);
 
   return {
     previewId: Buffer.from(`${Date.now()}:${previewTracks.map((track) => track.id).join(",")}`).toString("base64url").slice(0, 48),
@@ -907,6 +945,7 @@ export async function previewPlaylistTracks({
     removedBySafetyRules: generation.safety.removedBySafetyRules,
     manualExclusionsRemoved: summary.manualExclusionsRemoved,
     warnings,
+    messages,
     safety: generation.safety,
   };
 }
@@ -2057,7 +2096,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
       ? ` Manual exclusions removed ${manualExclusionsApplied} track${manualExclusionsApplied === 1 ? "" : "s"} from the candidate pool.`
       : "";
     const safetySummary = safetyMetadata?.safetyRulesApplied
-      ? ` Safety rules applied: ${safetyMetadata.summary.replace(/^Safety: /, "")}.`
+      ? ` Safety rules applied: ${safetyMetadata.summary.replace(/^Safety rules: /, "")}.`
       : "";
     await safeFinishJobHistory({
       job: history,
@@ -2074,7 +2113,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
         excludedTrackCount: manualExclusionsApplied,
         manualExclusionsRemoved: manualExclusionsApplied,
         safetyRules: safetyMetadata?.enabledRules || null,
-        safetyRuleSummary: safetyMetadata?.summary || "Safety: off",
+        safetyRuleSummary: safetyMetadata?.summary || "Safety rules: off",
         removedBySafetyRules: safetyMetadata?.removedBySafetyRules || 0,
         finalTrackCount: trackCount,
       },

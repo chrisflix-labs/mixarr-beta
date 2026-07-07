@@ -46,6 +46,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.2.9",
+    title: "Playlist Builder UI Fix",
+    badges: ["UI", "Playlists", "Preview", "Safety Rules", "Bug Fix"],
+    changes: [
+      "Fixed Playlist Builder layout overlap after generating a playlist preview.",
+      "Improved Previewed Tracks table sizing and overflow behavior.",
+      "Improved responsive layout for builder and preview panels.",
+      "Tuned repeated-artist warnings so allowed repeats do not show as warnings when max tracks per artist is enabled.",
+      "Added clearer safety-rule messaging for successful variety rules versus actual problems.",
+      "Prepared the UI for the upcoming v1.3.0 feature branch.",
+    ],
+  },
+  {
     version: "1.2.8-hotfix.7",
     title: "Audio Feature Incomplete Count Classification Fix",
     badges: ["Hotfix", "Library Health", "Audio Features", "Retry", "Dashboard"],

@@ -71,9 +71,9 @@ export async function POST(req: Request) {
       : "";
     const safetyConfig = optionsSnapshot ? playlistConfigSchema.safeParse(optionsSnapshot) : null;
     const parsedOptions = safetyConfig?.success ? safetyConfig.data : null;
-    const safetyRuleSummary = parsedOptions ? summarizePlaylistSafetyRules(parsedOptions) : "Safety: off";
-    const safetySummary = safetyRulesApplied || (safetyConfig?.success && safetyRuleSummary !== "Safety: off")
-      ? ` Safety rules applied: ${safetyRuleSummary.replace(/^Safety: /, "")}.`
+    const safetyRuleSummary = parsedOptions ? summarizePlaylistSafetyRules(parsedOptions) : "Safety rules: off";
+    const safetySummary = safetyRulesApplied || (safetyConfig?.success && safetyRuleSummary !== "Safety rules: off")
+      ? ` Safety rules applied: ${safetyRuleSummary.replace(/^Safety rules: /, "")}.`
       : "";
     const smartPresetName = parsedOptions?.smartPresetName || null;
     const smartPresetSummary = smartPresetName ? ` from Smart Builder preset "${smartPresetName}"` : "";

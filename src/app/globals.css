@@ -203,14 +203,18 @@ tr:hover {
 }
 
 .builder-container {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(500px, 1.05fr) minmax(560px, 0.95fr);
   gap: 1.5rem;
-  height: 100%;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+  height: auto;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1220px) {
   .builder-container {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     height: auto;
   }
 }

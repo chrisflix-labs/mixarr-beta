@@ -13,6 +13,7 @@ const nextFeatures = [
   "Recipe sharing gallery",
   "Export playlist history",
   "Restore previous playlist version",
+  "Better recommendations",
   "Advanced Smart Mix Engine",
   "Mood blending",
   "BPM transition/ramp tools",
@@ -22,6 +23,11 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "v1.2.9 completes Playlist Builder UI Fix as the final v1.2.x polish release before v1.3.0 feature development.",
+  "Playlist Builder preview panels now stay contained after generating a playlist preview.",
+  "Previewed Tracks table sizing and overflow are easier to read at desktop and mobile widths.",
+  "Repeated-artist warnings now stay quiet when max tracks per artist allows the repeats.",
+  "Safety-rule messaging now distinguishes successful variety rules from actual problems.",
   "v1.2.8-hotfix.7 fixes Audio Feature Health showing zero incomplete categories while the dashboard reported incomplete tracks.",
   "v1.2.8-hotfix.6 fixes BPM-present incomplete tracks being classified as missing instead of partial audio features.",
   "v1.2.8-hotfix.4 fixes Library Health card/detail mismatches with shared track ID resolution for audio feature gaps.",
@@ -112,7 +118,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>This release fixes audio feature health consistency so Library Health summaries, detail lists, retry actions, and dashboard counts agree.</p>
+          <p>v1.2.9 is the final v1.2.x polish release before v1.3.0 feature development, focused on Playlist Builder preview layout and safety-rule message clarity.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -137,7 +143,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Recipe sharing gallery, playlist history export, restore previous version, mood blending, BPM transition/ramp tools, recently added automation, and deeper discovery tuning are planned for future releases.</p>
+        <p className={styles.futureNote}>Better recommendations, deeper discovery tuning, Advanced Smart Mix Engine, mood blending, BPM transition/ramp tools, recently added automation, and beta experimental features are planned for v1.3.0 and beyond.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

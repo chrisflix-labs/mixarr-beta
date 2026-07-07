@@ -413,7 +413,7 @@ export default function GeneratedPlaylistsPage() {
             {preview.regeneration.smartPresetName && <span>Smart preset: {preview.regeneration.smartPresetName}</span>}
             {preview.regeneration.moodPresetName && <span>Mood preset: {preview.regeneration.moodPresetName}</span>}
             {preview.regeneration.bpmPresetName && <span>BPM preset: {preview.regeneration.bpmPresetName}</span>}
-            <span>{preview.summary.safetyRuleSummary || "Safety: off"}</span>
+            <span>{preview.summary.safetyRuleSummary || "Safety rules: off"}</span>
           </div>
 
           {preview.warnings.length > 0 && (

@@ -477,7 +477,7 @@ export default function SmartBuilderPage() {
         filters: payload,
         manualExclusionsApplied: playlistPreview.summary.manualExclusionsRemoved || 0,
         removedBySafetyRules: playlistPreview.summary.removedBySafetyRules || 0,
-        safetyRulesApplied: Boolean(playlistPreview.summary.safetyRuleSummary && playlistPreview.summary.safetyRuleSummary !== "Safety: off"),
+        safetyRulesApplied: Boolean(playlistPreview.summary.safetyRuleSummary && playlistPreview.summary.safetyRuleSummary !== "Safety rules: off"),
       });
       setNotice(`Created "${playlistName.trim()}" in Plex${selectedPresetDetails.length ? ` with ${selectedPresetDetails.join(", ")}` : ""}.`);
     } catch (error: any) {

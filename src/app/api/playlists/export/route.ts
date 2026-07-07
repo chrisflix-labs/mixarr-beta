@@ -31,9 +31,9 @@ export async function POST(req: Request) {
       ? ` Manual exclusions removed ${result.excludedTrackCount} track${result.excludedTrackCount === 1 ? "" : "s"} from the candidate pool.`
       : "";
     const safetyConfig = optionsSnapshot ? playlistConfigSchema.safeParse(optionsSnapshot) : null;
-    const safetyRuleSummary = safetyConfig?.success ? summarizePlaylistSafetyRules(safetyConfig.data) : "Safety: off";
-    const safetySummary = safetyConfig?.success && safetyRuleSummary !== "Safety: off"
-      ? ` Safety rules applied: ${safetyRuleSummary.replace(/^Safety: /, "")}.`
+    const safetyRuleSummary = safetyConfig?.success ? summarizePlaylistSafetyRules(safetyConfig.data) : "Safety rules: off";
+    const safetySummary = safetyConfig?.success && safetyRuleSummary !== "Safety rules: off"
+      ? ` Safety rules applied: ${safetyRuleSummary.replace(/^Safety rules: /, "")}.`
       : "";
     const filters = safetyConfig?.success ? safetyConfig.data : optionsSnapshot || { rules: rulesSnapshot || [] };
     const sourceType = safetyConfig?.success && (safetyConfig.data.smartPresetName || safetyConfig.data.moodPresetName || safetyConfig.data.bpmPresetName)

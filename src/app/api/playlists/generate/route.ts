@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       ? ` Manual exclusions removed ${result.manualExclusionsApplied} track${result.manualExclusionsApplied === 1 ? "" : "s"} from the candidate pool.`
       : "";
     const safetySummary = result.safety.safetyRulesApplied
-      ? ` Safety rules applied: ${result.safety.summary.replace(/^Safety: /, "")}.`
+      ? ` Safety rules applied: ${result.safety.summary.replace(/^Safety rules: /, "")}.`
       : "";
     await safeRecordJobHistory({
       userId,

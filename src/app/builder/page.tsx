@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks, Ban, ShieldCheck, Sparkles } from "lucide-react";
+import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks, Ban, ShieldCheck, Sparkles, Info } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import { isMoodPresetRuleField, moodPresetLabel } from "@/lib/moodPresets";
@@ -124,6 +124,7 @@ type PlaylistPreviewState = {
   summary: PlaylistPreviewSummary;
   filterSummary: Array<{ label: string; value: string }>;
   warnings: string[];
+  messages: Array<{ severity: "info" | "warning" | "error"; message: string }>;
   signature: string;
 };
 
@@ -843,6 +844,7 @@ export default function BuilderPage() {
         summary: res.data.summary,
         filterSummary: res.data.filterSummary || [],
         warnings: res.data.warnings || [],
+        messages: res.data.messages || (res.data.warnings || []).map((message: string) => ({ severity: "warning", message })),
         signature,
       });
       if (recipeForUsage?.id) {
@@ -881,6 +883,7 @@ export default function BuilderPage() {
         summary: res.data.summary,
         filterSummary: res.data.filterSummary || [],
         warnings: res.data.warnings || [],
+        messages: res.data.messages || (res.data.warnings || []).map((message: string) => ({ severity: "warning", message })),
         signature,
       });
       setPinnedTrackIds((res.data.trackIds || []).filter((trackId: string) => pinnedTrackIds.includes(trackId)));
@@ -1013,7 +1016,7 @@ export default function BuilderPage() {
     <>
     <div className="builder-container">
       {/* LEFT COLUMN: BUILDER */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      <div className={styles.builderMainColumn}>
         <header className={styles.header}>
           <div>
             <h2>Playlist Builder</h2>
@@ -1480,19 +1483,19 @@ export default function BuilderPage() {
               )}
               {(playlistPreview.summary.removedBySafetyRules || 0) > 0 && (
                 <div className={styles.statCard}>
-                  <span>Safety rules</span>
+                  <span>Safety removed</span>
                   <strong>{playlistPreview.summary.removedBySafetyRules} removed</strong>
                 </div>
               )}
               {(playlistPreview.summary.safetyRearrangedTrackCount || 0) > 0 && (
                 <div className={styles.statCard}>
-                  <span>Artist spacing</span>
+                  <span>Artist moves</span>
                   <strong>{playlistPreview.summary.safetyRearrangedTrackCount} moved</strong>
                 </div>
               )}
               {playlistPreview.summary.safetyRulesApplied && (
                 <div className={styles.statCard}>
-                  <span>Safety</span>
+                  <span>Safety rules</span>
                   <strong>On</strong>
                 </div>
               )}
@@ -1509,14 +1512,16 @@ export default function BuilderPage() {
               </p>
             )}
 
-            {playlistPreview.warnings.length > 0 && (
-              <div className={styles.warningPanel}>
-                <div className={styles.warningTitle}>
-                  <AlertTriangle size={16} />
-                  Warnings
-                </div>
-                {playlistPreview.warnings.map((warning) => (
-                  <p key={warning}>{warning}</p>
+            {playlistPreview.messages.length > 0 && (
+              <div className={styles.messageList}>
+                {playlistPreview.messages.map((message) => (
+                  <div key={`${message.severity}-${message.message}`} className={`${styles.messagePanel} ${styles[`messagePanel${message.severity.charAt(0).toUpperCase()}${message.severity.slice(1)}`]}`}>
+                    <div className={styles.messageTitle}>
+                      {message.severity === "info" ? <Info size={16} /> : <AlertTriangle size={16} />}
+                      {message.severity === "info" ? "Info" : message.severity === "error" ? "Needs Attention" : "Warning"}
+                    </div>
+                    <p>{message.message}</p>
+                  </div>
                 ))}
               </div>
             )}
@@ -1666,7 +1671,7 @@ export default function BuilderPage() {
                   <div><dt>Artists</dt><dd>{playlistPreview.summary.diversity.artistCount}</dd></div>
                   <div><dt>Albums</dt><dd>{playlistPreview.summary.diversity.albumCount}</dd></div>
                   {(playlistPreview.summary.manualExclusionsRemoved || 0) > 0 && <div><dt>Manual exclusions</dt><dd>{playlistPreview.summary.manualExclusionsRemoved} removed</dd></div>}
-                  <div><dt>Safety</dt><dd>{playlistPreview.summary.safetyRuleSummary || "Safety: off"}</dd></div>
+                  <div><dt>Safety</dt><dd>{playlistPreview.summary.safetyRuleSummary || "Safety rules: off"}</dd></div>
                   <div><dt>Safety removed</dt><dd>{playlistPreview.summary.removedBySafetyRules || 0}</dd></div>
                   <div><dt>Artist spacing</dt><dd>{playlistPreview.summary.artistSpacingApplied ? "Yes" : "No"}</dd></div>
                   <div><dt>Album limit</dt><dd>{playlistPreview.summary.albumLimitApplied ? "Yes" : "No"}</dd></div>

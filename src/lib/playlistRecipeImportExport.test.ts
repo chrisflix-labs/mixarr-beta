@@ -67,7 +67,7 @@ describe("playlist recipe import/export", () => {
 
     assert.equal(exported.format, "mixarr.recipe");
     assert.equal(exported.formatVersion, 1);
-    assert.equal(exported.mixarrVersion, "v1.2.8-hotfix.7");
+    assert.equal(exported.mixarrVersion, "v1.2.9");
     assert.equal(exported.exportedAt, "2026-01-04T00:00:00.000Z");
     assert.equal(exported.recipe.name, "Workout Mix");
     assert.equal(exported.recipe.smartPreset?.name, "Workout");
@@ -110,7 +110,7 @@ describe("playlist recipe import/export", () => {
     assert.equal(preview.recipes[0].smartPresetName, "Workout");
     assert.equal(preview.recipes[0].moodPresetName, "Hype");
     assert.equal(preview.recipes[0].bpmPresetName, "Dance");
-    assert.match(preview.recipes[0].filterSummary, /Safety:/);
+    assert.match(preview.recipes[0].filterSummary, /Safety rules:/);
   });
 
   it("rejects invalid JSON with the Mixarr export error", () => {

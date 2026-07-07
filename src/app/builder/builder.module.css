@@ -27,6 +27,13 @@
   border-radius: var(--radius-lg);
 }
 
+.builderMainColumn {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
 .panel h3 {
   margin: 0 0 0.85rem 0;
   font-size: 1rem;
@@ -482,7 +489,7 @@
 
 .rulePanel {
   composes: panel;
-  flex: 1;
+  min-width: 0;
 }
 
 .ruleHeader {
@@ -551,7 +558,11 @@
 /* ---- Preview column ---- */
 
 .previewPanel {
-  flex: 1;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  align-self: start;
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
@@ -587,12 +598,14 @@
 
 .previewNameRow {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
 }
 
 .previewNameInput {
   composes: input;
-  flex: 1;
+  flex: 1 1 240px;
+  min-width: 0;
   font-size: 1rem;
   padding: 0.65rem 0.75rem;
 }
@@ -635,7 +648,7 @@
 
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 0.5rem;
 }
 
@@ -664,17 +677,37 @@
   font-size: 0.78rem;
 }
 
-.warningPanel {
-  border: 1px solid rgba(215, 91, 91, 0.28);
-  background: rgba(215, 91, 91, 0.07);
+.messageList {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.messagePanel {
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  background: rgba(245, 158, 11, 0.08);
   border-radius: var(--radius-md);
   padding: 0.75rem;
   display: grid;
   gap: 0.35rem;
 }
 
-.warningTitle {
-  color: var(--danger);
+.messagePanelInfo {
+  border-color: rgba(53, 174, 234, 0.3);
+  background: rgba(53, 174, 234, 0.08);
+}
+
+.messagePanelWarning {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.messagePanelError {
+  border: 1px solid rgba(215, 91, 91, 0.28);
+  background: rgba(215, 91, 91, 0.07);
+}
+
+.messageTitle {
+  color: var(--warning);
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -682,10 +715,19 @@
   font-size: 0.82rem;
 }
 
-.warningPanel p {
+.messagePanelInfo .messageTitle {
+  color: #b9e9ff;
+}
+
+.messagePanelError .messageTitle {
+  color: var(--danger);
+}
+
+.messagePanel p {
   margin: 0;
   color: var(--muted);
   font-size: 0.78rem;
+  overflow-wrap: anywhere;
 }
 
 .mobileTrackActions {
@@ -754,6 +796,9 @@
 /* ---- Preview table ---- */
 
 .trackPreviewSection {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   padding: 0.85rem;
@@ -789,7 +834,9 @@
 }
 
 .trackTableWrap {
-  max-height: 520px;
+  width: 100%;
+  max-width: 100%;
+  max-height: min(520px, calc(100vh - 360px));
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -797,8 +844,10 @@
 
 .previewTable {
   width: 100%;
+  min-width: 980px;
   border-collapse: collapse;
   text-align: left;
+  table-layout: fixed;
 }
 
 .previewTable thead tr {
@@ -813,6 +862,7 @@
   color: var(--muted);
   font-weight: 600;
   font-size: 0.72rem;
+  white-space: nowrap;
 }
 
 .previewTable td {
@@ -820,6 +870,7 @@
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
   font-size: 0.85rem;
+  min-width: 0;
 }
 
 .previewTable tbody tr:last-child td {
@@ -827,7 +878,7 @@
 }
 
 .colIndex {
-  width: 35px;
+  width: 44px;
 }
 
 .colActions {
@@ -836,20 +887,25 @@
 }
 
 .colBpm {
-  width: 55px;
+  width: 64px;
 }
 
 .colDuration,
 .colFeature {
-  width: 70px;
+  width: 78px;
 }
 
 .colPop {
-  width: 50px;
+  width: 76px;
 }
 
 .trackTitle {
   font-weight: 500;
+  width: 220px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .trackOrder {
@@ -859,6 +915,11 @@
 
 .trackArtist {
   color: var(--muted);
+  width: 160px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .trackAlbum,
@@ -866,6 +927,14 @@
 .trackFeature {
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.trackAlbum {
+  width: 180px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .trackBpm {
@@ -925,12 +994,14 @@
 .mobileTrackTop h5 {
   margin: 0;
   font-size: 0.95rem;
+  overflow-wrap: anywhere;
 }
 
 .mobileTrackTop p {
   margin: 0.2rem 0 0 0;
   color: var(--muted);
   font-size: 0.82rem;
+  overflow-wrap: anywhere;
 }
 
 .mobileTrackMeta {
@@ -955,7 +1026,7 @@
 
 .actionGroup {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.3rem;
   align-items: center;
 }

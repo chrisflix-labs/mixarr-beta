@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   applyPlaylistSafetyRules,
+  buildPreviewMessages,
   playlistConfigSchema,
   summarizePlaylistSafetyRules,
 } from "./playlistService";
@@ -94,6 +95,83 @@ describe("playlist safety rules", () => {
     assert.equal(config.safetyRules.maxTracksPerArtist, 3);
     assert.equal(config.safetyRules.maxTracksPerAlbum, 2);
     assert.equal(config.safetyRules.minimumTrackCount, 10);
-    assert.equal(summarizePlaylistSafetyRules(config), "Safety: avoid back-to-back artists, warn below 10 tracks");
+    assert.equal(summarizePlaylistSafetyRules(config), "Safety rules: avoid back-to-back artists, warn below 10 tracks");
+  });
+
+  it("does not warn about repeated artists when repeats are within max tracks per artist", () => {
+    const config = configWithSafety({
+      avoidSameArtistBackToBack: false,
+      limitTracksPerArtist: true,
+      maxTracksPerArtist: 3,
+      warnIfFewerThan: false,
+    }, 9);
+    const messages = buildPreviewMessages({
+      tracks: [
+        track("one", "artist-a", "album-a"),
+        track("two", "artist-a", "album-b"),
+        track("three", "artist-a", "album-c"),
+        track("four", "artist-b", "album-d"),
+        track("five", "artist-b", "album-e"),
+        track("six", "artist-b", "album-f"),
+      ],
+      matchedTrackCount: 9,
+      requestedLimit: 9,
+      safetyRules: config.safetyRules,
+    });
+
+    assert.equal(messages.some((message) => message.severity === "warning" && message.message.includes("artist")), false);
+  });
+
+  it("warns when repeated artists exceed max tracks per artist", () => {
+    const config = configWithSafety({
+      avoidSameArtistBackToBack: false,
+      limitTracksPerArtist: true,
+      maxTracksPerArtist: 2,
+      warnIfFewerThan: false,
+    }, 5);
+    const messages = buildPreviewMessages({
+      tracks: [
+        track("one", "artist-a", "album-a"),
+        track("two", "artist-a", "album-b"),
+        track("three", "artist-a", "album-c"),
+        track("four", "artist-b", "album-d"),
+      ],
+      matchedTrackCount: 5,
+      requestedLimit: 5,
+      safetyRules: config.safetyRules,
+    });
+
+    assert.equal(messages.some((message) => message.severity === "warning" && message.message.includes("exceed the max 2")), true);
+  });
+
+  it("warns about back-to-back artists only when adjacency remains", () => {
+    const config = configWithSafety({
+      avoidSameArtistBackToBack: true,
+      limitTracksPerArtist: false,
+      warnIfFewerThan: false,
+    }, 5);
+    const spacedMessages = buildPreviewMessages({
+      tracks: [
+        track("one", "artist-a", "album-a"),
+        track("two", "artist-b", "album-b"),
+        track("three", "artist-a", "album-c"),
+      ],
+      matchedTrackCount: 5,
+      requestedLimit: 5,
+      safetyRules: config.safetyRules,
+    });
+    const adjacentMessages = buildPreviewMessages({
+      tracks: [
+        track("one", "artist-a", "album-a"),
+        track("two", "artist-a", "album-b"),
+        track("three", "artist-b", "album-c"),
+      ],
+      matchedTrackCount: 5,
+      requestedLimit: 5,
+      safetyRules: config.safetyRules,
+    });
+
+    assert.equal(spacedMessages.some((message) => message.message.includes("back-to-back")), false);
+    assert.equal(adjacentMessages.some((message) => message.message.includes("back-to-back")), true);
   });
 });
