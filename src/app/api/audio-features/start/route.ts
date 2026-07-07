@@ -41,6 +41,7 @@ export async function POST(request: Request) {
         const localSummary = await local.runLocalAudioFeatureEngine(syncSettings);
         await invalidateLibraryHealthCache(userId, { reason: "audio_feature_sync_completed" });
         revalidatePath("/");
+        revalidatePath("/data-enrichment");
         revalidatePath("/library-health");
         revalidatePath("/settings/library-health");
         return {

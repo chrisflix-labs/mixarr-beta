@@ -1,0 +1,320 @@
+.page {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: start;
+}
+
+.header h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0 0 0.35rem;
+  font-size: 1.75rem;
+}
+
+.header p,
+.muted,
+.helperText {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.toolbar select {
+  min-height: 38px;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.toolbar option {
+  color: #111;
+}
+
+.modePanel,
+.message,
+.error,
+.preflightPanel {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.modePanel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.7rem;
+}
+
+.modePanel div {
+  min-width: 0;
+}
+
+.modePanel span,
+.modePanel strong {
+  display: block;
+}
+
+.modePanel span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.modePanel strong {
+  margin-top: 0.18rem;
+  overflow-wrap: anywhere;
+  font-size: 0.86rem;
+}
+
+.message {
+  border-color: rgba(53, 174, 234, 0.25);
+  color: #b9e9ff;
+  background: rgba(53, 174, 234, 0.07);
+}
+
+.error {
+  border-color: rgba(215, 91, 91, 0.25);
+  color: #ffb0b0;
+  background: rgba(215, 91, 91, 0.08);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  display: grid;
+  gap: 1rem;
+  padding: 1.15rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.cardHeader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.card h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.statusBadge {
+  width: fit-content;
+  padding: 0.28rem 0.48rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.statusBadge[data-status="complete"],
+.statusBadge[data-status="enabled"] {
+  border-color: rgba(94, 229, 138, 0.26);
+  color: #8de6b0;
+  background: rgba(94, 229, 138, 0.08);
+}
+
+.statusBadge[data-status="incomplete"],
+.statusBadge[data-status="disabled"] {
+  border-color: rgba(242, 181, 46, 0.26);
+  color: var(--warning);
+  background: rgba(242, 181, 46, 0.08);
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.metric {
+  min-width: 0;
+  padding: 0.68rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.metric span,
+.metric strong {
+  display: block;
+}
+
+.metric span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric strong {
+  margin-top: 0.22rem;
+  font-size: 1rem;
+}
+
+.linkRow,
+.actionGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.48rem;
+}
+
+.linkRow a,
+.secondaryButton,
+.primaryButton,
+.advancedButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  min-height: 34px;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.linkRow a,
+.secondaryButton {
+  border: 1px solid var(--line);
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.primaryButton {
+  border: 1px solid var(--accent);
+  color: #fff;
+  background: var(--accent);
+}
+
+.advancedButton {
+  border: 1px solid rgba(242, 181, 46, 0.32);
+  color: #ffe0a2;
+  background: rgba(242, 181, 46, 0.08);
+}
+
+.primaryButton:hover,
+.secondaryButton:hover,
+.advancedButton:hover,
+.linkRow a:hover {
+  border-color: var(--line-strong);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.advancedButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.sectionLabel {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.actionSection {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.lastRun {
+  display: grid;
+  gap: 0.2rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+.lastRun strong {
+  font-size: 0.82rem;
+}
+
+.lastRun small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.preflightPanel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.preflightGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.fullWidth {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1000px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .header,
+  .cardHeader,
+  .metricGrid,
+  .preflightGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .statusBadge {
+    white-space: normal;
+  }
+}

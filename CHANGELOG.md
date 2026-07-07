@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.3.3 - Data Enrichment Cleanup
+
+- Cleaned up Data Enrichment into clearer BPM, Audio Features, Genres, Popularity, and Local Audio Analysis sections.
+- Added clearer provider/mode visibility for enrichment actions.
+- Added preflight summaries before enrichment jobs run.
+- Improved no-op handling so enrichment actions explain when no tracks are eligible.
+- Connected enrichment actions to Library Health detail filters.
+- Improved Job History summaries for enrichment jobs.
+- Improved dashboard and Library Health refresh after enrichment jobs complete.
+
 ## v1.3.2 - Local Audio Analysis Polish
 
 - Added clearer Local Audio Analysis status and provider-mode visibility.

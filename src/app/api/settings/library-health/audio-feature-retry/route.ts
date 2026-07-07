@@ -44,6 +44,7 @@ export async function POST(request: Request) {
     }, syncSettings);
 
     revalidatePath("/");
+    revalidatePath("/data-enrichment");
     revalidatePath("/library-health");
     revalidatePath("/settings/library-health");
     return NextResponse.json({

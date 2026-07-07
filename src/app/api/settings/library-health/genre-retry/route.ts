@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
@@ -106,6 +107,10 @@ export async function POST(request: Request) {
       counts: { attempted: matched, processed: ids.length, skipped, failed: 0 },
       metadata: { filter: filter || "selected_tracks", matched, queued: ids.length, skipped, skipReasons, libraryId: libraryId || null, force },
     });
+    revalidatePath("/");
+    revalidatePath("/data-enrichment");
+    revalidatePath("/library-health");
+    revalidatePath("/settings/library-health");
     return NextResponse.json({ queued: ids.length, matched, skipped, skipReasons, trackIds: ids, summary: retryExplanation.summary, message: retryExplanation.message });
   } catch (error) {
     console.error("[LibraryHealth] Failed to queue genre retry", error);

@@ -89,6 +89,7 @@ export async function POST(req: Request) {
           });
           await invalidateLibraryHealthCache(userId, { libraryId, reason: "audio_feature_sync_completed" });
           revalidatePath("/");
+          revalidatePath("/data-enrichment");
           revalidatePath("/library-health");
           revalidatePath("/settings/library-health");
           return {
@@ -155,6 +156,7 @@ async function runInitialEnrichment(userId: string, syncSettings: Awaited<Return
   }
   await invalidateLibraryHealthCache(userId, { reason: "initial_audio_feature_sync_completed" });
   revalidatePath("/");
+  revalidatePath("/data-enrichment");
   revalidatePath("/library-health");
   revalidatePath("/settings/library-health");
   await bpm.runLocalBpmEngine(syncSettings);

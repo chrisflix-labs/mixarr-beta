@@ -22,6 +22,10 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "v1.3.3 completes Data Enrichment Cleanup.",
+  "Data Enrichment now has clear BPM, Audio Features, Genres, Popularity, and Local Audio Analysis sections.",
+  "Enrichment actions now show provider mode, preflight matched/eligible/skipped counts, no-op explanations, and Library Health detail links.",
+  "Job History and refresh behavior are clearer after enrichment jobs complete.",
   "v1.3.2 completes Local Audio Analysis Polish.",
   "Settings now shows Local Audio Analysis status, analyzer, scope, provider mode, API/local toggles, and reprocess behavior.",
   "Local Essentia retries now show preflight matched, eligible, skipped, and skip-reason counts.",
@@ -138,7 +142,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>v1.3.2 delivers Local Audio Analysis Polish, making Essentia mode, eligibility, progress, skips, and completion results easier to trust and verify.</p>
+          <p>v1.3.3 delivers Data Enrichment Cleanup, organizing BPM, audio features, genres, popularity, local analysis, preflights, and Library Health links in one clear place.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -163,7 +167,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Local Audio Analysis Polish is complete in v1.3.2. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood and BPM tools, restore/version workflows, recently added automation, and beta experiments.</p>
+        <p className={styles.futureNote}>Data Enrichment Cleanup is complete in v1.3.3. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood and BPM tools, restore/version workflows, recently added automation, and beta experiments.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

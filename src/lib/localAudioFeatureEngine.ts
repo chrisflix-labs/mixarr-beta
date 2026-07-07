@@ -1195,6 +1195,14 @@ function explainLocalAudioFeatureCandidate(track: any, options: {
   };
 }
 
+function localAudioFeatureFailureMessage(track: any, action: string, error: unknown) {
+  const base = redactedMessage(error);
+  const title = track?.title || "Unknown title";
+  const artist = track?.artist?.title || "Unknown artist";
+  const album = track?.album?.title || "Unknown album";
+  return `Audio feature sync failed for "${title}" by ${artist} on ${album}. Action: ${action}. Provider: Local Essentia. Reason: ${base}. Suggested next step: verify the local file is readable and retry local analysis.`;
+}
+
 const localAudioFeatureTrackSelect = {
   id: true,
   title: true,
@@ -1402,7 +1410,7 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
             progressProcessed += 1;
           }
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = localAudioFeatureFailureMessage(track, "local audio analysis", error);
           if (error instanceof ShortTrackAudioFeatureError) {
             outcome = "not_found";
             await saveFailure(track.id, "too_short", analysisScope, message);

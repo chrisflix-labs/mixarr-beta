@@ -141,6 +141,9 @@ export async function POST(request: Request) {
         }),
       ]);
     }
+    revalidatePath("/");
+    revalidatePath("/data-enrichment");
+    revalidatePath("/library-health");
     revalidatePath("/settings/library-health");
 
     if (trackIds?.length && matching.length === 1) {

@@ -196,6 +196,7 @@ export async function POST(request: Request) {
       : await runBpmRetry(userId, { ...parsed.data, category });
 
     revalidatePath("/");
+    revalidatePath("/data-enrichment");
     revalidatePath("/library-health");
     revalidatePath("/settings/library-health");
     return NextResponse.json(result);

@@ -1,6 +1,6 @@
 import styles from "./page.module.css";
 import Link from "next/link";
-import { BookMarked, BrainCircuit, Fingerprint, Gauge, HeartPulse, History, ListMusic, ListRestart, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
+import { AudioWaveform, BookMarked, BrainCircuit, Fingerprint, Gauge, HeartPulse, History, ListMusic, ListRestart, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
 import LibrarySelector from "@/components/LibrarySelector";
 import SyncProgress from "@/components/SyncProgress";
 import PlexLoginButton from "@/components/PlexLoginButton";
@@ -94,6 +94,33 @@ function RecentJobsCard({ summary }: { summary: Awaited<ReturnType<typeof getRec
         <p className={styles.failureText}>{summary.recentFailures} failure{summary.recentFailures === 1 ? "" : "s"} in the last 7 days</p>
       )}
       <span className={styles.cardAction}>View Job History</span>
+    </Link>
+  );
+}
+
+function DataEnrichmentDashboardCard({
+  bpmComplete,
+  audioComplete,
+  genresComplete,
+  popularityComplete,
+}: {
+  bpmComplete: number;
+  audioComplete: number;
+  genresComplete: number;
+  popularityComplete: number;
+}) {
+  return (
+    <Link href="/data-enrichment" className={styles.card}>
+      <AudioWaveform size={22} className={styles.cardIcon} />
+      <h3>Data Enrichment</h3>
+      <p>BPM, audio features, genres, and popularity metadata used by Mixarr playlists.</p>
+      <div className={styles.enrichmentStats}>
+        <span>BPM <b>{bpmComplete.toLocaleString()}</b></span>
+        <span>Audio <b>{audioComplete.toLocaleString()}</b></span>
+        <span>Genres <b>{genresComplete.toLocaleString()}</b></span>
+        <span>Popularity <b>{popularityComplete.toLocaleString()}</b></span>
+      </div>
+      <span className={styles.cardAction}>Manage Enrichment</span>
     </Link>
   );
 }
@@ -296,6 +323,12 @@ export default async function Home() {
           )}
           <div className={styles.compactCardsGrid}>
             <RecentJobsCard summary={jobSummary} />
+            <DataEnrichmentDashboardCard
+              bpmComplete={health.reduce((sum, library) => sum + library.tracksWithBpm, 0)}
+              audioComplete={health.reduce((sum, library) => sum + library.audioFeaturesComplete, 0)}
+              genresComplete={health.reduce((sum, library) => sum + (library as any).tracksWithGenres, 0)}
+              popularityComplete={health.reduce((sum, library) => sum + (library as any).tracksWithPopularity, 0)}
+            />
             <SmartBuilderCard />
             <PlaylistRecipesCard count={recipeCount} />
             <PlaylistRegenerationCard count={generatedPlaylistCount} />
@@ -318,7 +351,7 @@ export default async function Home() {
               <span className={styles.versionPill}>v2.0.0</span>
             </div>
             <p className={styles.enrichmentNote}>
-              Data enrichment controls have moved into their matching dashboard cards. Use the play button on each card to run or retry BPM, genres, popularity, or audio feature processing.
+              Data enrichment controls now live in a dedicated section for BPM, audio features, genres, popularity, local analysis, preflight checks, and Library Health links.
             </p>
             <div className={styles.previewGrid}>
               {previewFeatures.map((feature) => {
@@ -381,6 +414,8 @@ export default async function Home() {
             <MixarrVersionCard />
 
             <RecentJobsCard summary={null} />
+
+            <DataEnrichmentDashboardCard bpmComplete={0} audioComplete={0} genresComplete={0} popularityComplete={0} />
 
             <PlaylistRecipesCard count={0} />
 

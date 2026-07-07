@@ -247,6 +247,34 @@
   font-size: 0.72rem;
 }
 
+.enrichmentStats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0 0 0.9rem;
+}
+
+.enrichmentStats span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.enrichmentStats b {
+  overflow: hidden;
+  color: var(--fg);
+  text-overflow: ellipsis;
+}
+
 .failureText {
   color: #ffb0b0 !important;
   font-weight: 700;

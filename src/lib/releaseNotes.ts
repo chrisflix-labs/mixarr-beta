@@ -10,6 +10,7 @@ export type ReleaseNoteBadge =
   | "Accuracy"
   | "Cache"
   | "Dashboard"
+  | "Data Enrichment"
   | "Debugging"
   | "Diagnostics"
   | "Essentia"
@@ -52,6 +53,20 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.3.3",
+    title: "Data Enrichment Cleanup",
+    badges: ["Data Enrichment", "Library Health", "BPM", "Audio Features", "Genres", "Popularity", "Job History"],
+    changes: [
+      "Cleaned up Data Enrichment into clearer BPM, Audio Features, Genres, Popularity, and Local Audio Analysis sections.",
+      "Added clearer provider/mode visibility for enrichment actions.",
+      "Added preflight summaries before enrichment jobs run.",
+      "Improved no-op handling so enrichment actions explain when no tracks are eligible.",
+      "Connected enrichment actions to Library Health detail filters.",
+      "Improved Job History summaries for enrichment jobs.",
+      "Improved dashboard and Library Health refresh after enrichment jobs complete.",
+    ],
+  },
   {
     version: "1.3.2",
     title: "Local Audio Analysis Polish",

@@ -30,6 +30,7 @@ export async function POST(request: Request) {
     const syncSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId)).audioFeatures;
     const result = await runAudioFeatureRetry(userId, parsed.data, syncSettings);
     revalidatePath("/");
+    revalidatePath("/data-enrichment");
     revalidatePath("/library-health");
     revalidatePath("/settings/library-health");
     return NextResponse.json(result);

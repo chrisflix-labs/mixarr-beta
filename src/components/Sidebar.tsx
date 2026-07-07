@@ -20,6 +20,7 @@ const playlistLinks = [
 const libraryLinks = [
   { href: "/library", label: "Tracks", icon: ListMusic, isActive: (pathname: string) => pathname === "/library" },
   { href: "/genres", label: "Genres", icon: Tags, isActive: (pathname: string) => pathname.startsWith("/genres") },
+  { href: "/data-enrichment", label: "Data Enrichment", icon: AudioWaveform, isActive: (pathname: string) => pathname.startsWith("/data-enrichment") },
   { href: "/library-health", label: "Library Health", icon: HeartPulse, isActive: (pathname: string) => pathname.startsWith("/library-health") },
 ];
 
