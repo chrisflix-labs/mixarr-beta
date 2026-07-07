@@ -22,6 +22,13 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "v1.3.1 completes Audio Feature Retry Improvements.",
+  "Audio-feature retries now preflight matched, eligible, queued, skipped, and skip-reason counts before queueing.",
+  "Partial, missing, pending, failed, skipped, and too-short audio-feature retries now start from the same Library Health resolved track sets as cards and detail views.",
+  "Local Essentia retry now includes partial and pending tracks with local files instead of requiring a completed local row first.",
+  "API-only and local-only retry modes now explain disabled provider states clearly.",
+  "Audio-feature retry Job History entries now include filter, retry mode, provider mode, counts, skip reasons, and summaries.",
+  "Library Health and dashboard counts refresh after audio-feature retry jobs complete.",
   "v1.3.0.1 fixed stale Audio Features health card counts after sync/reprocess completion.",
   "v1.3.0 completes Library Health Accuracy.",
   "Library Health cards, detail rows, retry actions, diagnostics, and exports now use shared category resolution.",
@@ -125,7 +132,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>v1.3.0 delivers Library Health Accuracy, making counts, detail views, retry targeting, diagnostics, and exports agree.</p>
+          <p>v1.3.1 delivers Audio Feature Retry Improvements, making Library Health retry and reprocess actions easier to trust and verify.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -150,7 +157,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Library Health Accuracy is complete in v1.3.0. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, and beta automation experiments.</p>
+        <p className={styles.futureNote}>Audio Feature Retry Improvements are complete in v1.3.1. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, and beta automation experiments.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

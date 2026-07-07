@@ -194,7 +194,7 @@ export async function safeRecordJobHistory({
   metadata?: Prisma.InputJsonValue;
 }) {
   try {
-    await prisma.jobHistory.create({
+    const row = await prisma.jobHistory.create({
       data: {
         userId: userId || undefined,
         type,
@@ -212,10 +212,13 @@ export async function safeRecordJobHistory({
         error: capText(error, 2_000),
         metadata: metadataOrUndefined(metadata),
       },
+      select: { id: true },
     });
     await pruneOldJobHistory();
+    return row.id;
   } catch (historyError) {
     console.error("[JobHistory] Failed to record job history", historyError);
+    return null;
   }
 }
 

@@ -637,6 +637,17 @@ export type LibraryHealthAccuracyDiagnostics = {
     cardCount: number;
     detailCount: number;
   }>;
+  lastAudioFeatureRetry?: {
+    filter: string | null;
+    mode: string | null;
+    providerMode: string | null;
+    matched: number | null;
+    queued: number | null;
+    skipped: number | null;
+    processed: number | null;
+    failed: number | null;
+    completedAt: Date | null;
+  } | null;
 };
 
 function invariant(section: LibraryHealthInvariantResult["section"], counts: Record<string, number>, ok: boolean, message: string): LibraryHealthInvariantResult {
@@ -743,6 +754,28 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
     audioFeatureClassification,
     audioMode,
   });
+  const lastAudioFeatureRetryJob = await prisma.jobHistory.findFirst({
+    where: {
+      OR: [{ userId }, { userId: null }],
+      type: "audio_features",
+      trigger: "retry",
+    },
+    orderBy: { startedAt: "desc" },
+  });
+  const retryMetadata = lastAudioFeatureRetryJob?.metadata && typeof lastAudioFeatureRetryJob.metadata === "object" && !Array.isArray(lastAudioFeatureRetryJob.metadata)
+    ? lastAudioFeatureRetryJob.metadata as Record<string, any>
+    : {};
+  diagnostics.lastAudioFeatureRetry = lastAudioFeatureRetryJob ? {
+    filter: typeof retryMetadata.filter === "string" ? retryMetadata.filter : null,
+    mode: typeof retryMetadata.retryMode === "string" ? retryMetadata.retryMode : typeof retryMetadata.mode === "string" ? retryMetadata.mode : null,
+    providerMode: typeof retryMetadata.providerMode === "string" ? retryMetadata.providerMode : null,
+    matched: typeof retryMetadata.matched === "number" ? retryMetadata.matched : lastAudioFeatureRetryJob.attempted,
+    queued: typeof retryMetadata.queued === "number" ? retryMetadata.queued : lastAudioFeatureRetryJob.processed,
+    skipped: typeof retryMetadata.skipped === "number" ? retryMetadata.skipped : lastAudioFeatureRetryJob.skipped,
+    processed: typeof retryMetadata.processed === "number" ? retryMetadata.processed : lastAudioFeatureRetryJob.processed,
+    failed: typeof retryMetadata.failed === "number" ? retryMetadata.failed : lastAudioFeatureRetryJob.failed,
+    completedAt: lastAudioFeatureRetryJob.finishedAt,
+  } : null;
   return {
     totalTracks,
     categories,

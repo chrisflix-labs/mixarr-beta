@@ -40,11 +40,23 @@ type HealthAccuracyDiagnostics = {
     counts: Record<string, number>;
   }>;
   mismatches: Array<{ category: string; cardCount: number; detailCount: number }>;
+  lastAudioFeatureRetry?: {
+    filter: string | null;
+    mode: string | null;
+    providerMode: string | null;
+    matched: number | null;
+    queued: number | null;
+    skipped: number | null;
+    processed: number | null;
+    failed: number | null;
+    completedAt: string | null;
+  } | null;
 };
 type Summary = {
   totalTracks: number;
   categories: Record<Category, number>;
   libraries: LibraryOption[];
+  audioFeatureProviderLabel?: string;
   audioFeatureGapAudit?: AudioFeatureGapAudit;
   diagnostics?: HealthAccuracyDiagnostics;
 };
@@ -129,11 +141,32 @@ const actionableCategories: Category[] = [
   "missing_audio_features",
   "partial_audio_features",
   "pending_audio_features",
+  "complete_audio_features",
   "failed_bpm_analysis",
   "failed_audio_feature_analysis",
   "too_short",
   "skipped",
 ];
+
+type AudioRetryMode = "configured_providers" | "api_only" | "local_only" | "force_local_reprocess";
+
+type AudioRetryResult = {
+  filter: string;
+  mode: AudioRetryMode;
+  providerMode: string;
+  matched: number;
+  eligible: number;
+  queued: number;
+  skipped: number;
+  processed?: number;
+  failed?: number;
+  skipReasons: Record<string, number>;
+  summary: string;
+  message?: string;
+  disabledReason?: string | null;
+  canRun?: boolean;
+  jobId?: string | null;
+};
 
 const defaultFilters = {
   libraryId: "",
@@ -173,9 +206,18 @@ function formatDecimal(value: number | null) {
 }
 
 function retryTypeFor(category: Category): "bpm" | "audio_features" {
-  return category === "missing_audio_features" || category === "partial_audio_features" || category === "pending_audio_features" || category === "failed_audio_feature_analysis"
+  return category === "missing_audio_features" || category === "partial_audio_features" || category === "pending_audio_features" || category === "complete_audio_features" || category === "failed_audio_feature_analysis"
     ? "audio_features"
     : "bpm";
+}
+
+function isAudioRetryCategory(category: Category) {
+  return retryTypeFor(category) === "audio_features";
+}
+
+function formatSkipReasons(reasons: Record<string, number> | undefined) {
+  const entries = Object.entries(reasons || {}).filter(([, value]) => value > 0);
+  return entries.map(([reason, value]) => `${reason.replace(/_/g, " ")}=${formatNumber(value)}`).join(", ");
 }
 
 export default function LibraryHealthDetailsPage() {
@@ -303,11 +345,60 @@ export default function LibraryHealthDetailsPage() {
     void loadTracks(category, 1);
   }
 
-  async function retryTracks(trackIds?: string[]) {
-    setWorking(trackIds?.length ? "selected" : "filter");
+  async function retryTracks(trackIds?: string[], mode: AudioRetryMode = "configured_providers") {
+    const workingKey = trackIds?.length ? `selected-${mode}` : `filter-${mode}`;
+    setWorking(workingKey);
     setError(null);
     setMessage(null);
     try {
+      if (isAudioRetryCategory(category)) {
+        const payload = {
+          filter: trackIds?.length ? undefined : category,
+          trackIds,
+          libraryId: filters.libraryId || undefined,
+          mode,
+          force: mode === "force_local_reprocess",
+        };
+        const preflightResponse = await fetch("/api/library-health/audio-features/retry/preflight", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const preflight: AudioRetryResult = await preflightResponse.json();
+        if (!preflightResponse.ok) throw new Error((preflight as any).error || "Failed to preflight audio-feature retry");
+        if (!preflight.canRun) {
+          setMessage(preflight.disabledReason || preflight.summary || "No eligible audio-feature tracks were found.");
+          return;
+        }
+        if (preflight.skipped > 0) {
+          const confirmed = window.confirm(
+            `Retry ${formatNumber(preflight.matched)} ${categoryLabels[category]} track${preflight.matched === 1 ? "" : "s"}?\n\n${formatNumber(preflight.eligible)} are eligible and ${formatNumber(preflight.skipped)} will be skipped.${formatSkipReasons(preflight.skipReasons) ? `\n\nSkipped: ${formatSkipReasons(preflight.skipReasons)}.` : ""}`,
+          );
+          if (!confirmed) return;
+        }
+
+        const retryResponse = await fetch("/api/library-health/audio-features/retry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data: AudioRetryResult = await retryResponse.json();
+        if (!retryResponse.ok) throw new Error((data as any).error || "Failed to queue audio-feature retry");
+        let suffix = "";
+        if (data.queued > 0) {
+          const startResponse = await fetch("/api/audio-features/start", { method: "POST" });
+          const startData = await startResponse.json().catch(() => ({}));
+          suffix = startData?.status === "already_running"
+            ? " The audio-feature analyzer is already running."
+            : " Audio-feature analysis started.";
+          window.setTimeout(() => { void loadSummary(); void loadTracks(category, page); }, 5000);
+          window.setTimeout(() => { void loadSummary(); void loadTracks(category, page); }, 20000);
+        }
+        setMessage(`${data.summary || `Queued ${data.queued || 0} audio-feature retry jobs.`}${suffix}`);
+        await Promise.all([loadSummary(), loadTracks(category, page)]);
+        return;
+      }
+
       const response = await fetch("/api/library-health/retry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -331,7 +422,12 @@ export default function LibraryHealthDetailsPage() {
   }
 
   const canRetry = actionableCategories.includes(category);
+  const canAudioRetry = canRetry && isAudioRetryCategory(category);
   const activeCardCount = summary?.categories?.[category] ?? (category === "all_tracks" ? summary?.totalTracks ?? 0 : 0);
+  const configuredProviderLabel = summary?.audioFeatureProviderLabel || "Configured providers";
+  const audioApiEnabled = configuredProviderLabel.includes("API");
+  const audioLocalEnabled = configuredProviderLabel.includes("Local");
+  const retryableFilterCount = canAudioRetry ? activeCardCount : pagination.total;
   const hasNarrowingFilters = !!(
     filters.search
     || filters.artist
@@ -343,6 +439,9 @@ export default function LibraryHealthDetailsPage() {
     || filters.missingDataOnly
   );
   const detailMismatch = !tracksLoading && !hasNarrowingFilters && (countDetailMismatch || (tracks.length === 0 && pagination.total === 0 && activeCardCount > 0));
+  const emptyMessage = isAudioRetryCategory(category) && tracks.length === 0
+    ? "No tracks match this audio-feature health filter."
+    : filters.search || filters.artist || filters.album ? "No tracks match this Library Health filter." : emptyMessages[category];
 
   if (loading) {
     return <main className={styles.page}><div className={`glass-panel ${styles.loading}`}><Loader2 className="animate-spin" size={18} /> Loading Library Health details...</div></main>;
@@ -391,6 +490,14 @@ export default function LibraryHealthDetailsPage() {
                 {!entry.ok && <small>{Object.entries(entry.counts).map(([key, value]) => `${key}: ${formatNumber(value)}`).join(" | ")}</small>}
               </div>
             ))}
+            {summary.diagnostics.lastAudioFeatureRetry && (
+              <div>
+                <span>Last audio feature retry: {summary.diagnostics.lastAudioFeatureRetry.filter || "selected_tracks"}</span>
+                <small>
+                  matched: {formatNumber(summary.diagnostics.lastAudioFeatureRetry.matched)} | queued: {formatNumber(summary.diagnostics.lastAudioFeatureRetry.queued)} | skipped: {formatNumber(summary.diagnostics.lastAudioFeatureRetry.skipped)} | processed: {formatNumber(summary.diagnostics.lastAudioFeatureRetry.processed)} | failed: {formatNumber(summary.diagnostics.lastAudioFeatureRetry.failed)} | completed: {formatDate(summary.diagnostics.lastAudioFeatureRetry.completedAt)}
+                </small>
+              </div>
+            )}
           </div>
           <a className={styles.secondaryButton} href={`/api/library-health/diagnostics${filters.libraryId ? `?libraryId=${filters.libraryId}` : ""}`}>
             <Download size={15} /> Export Health Diagnostics
@@ -509,17 +616,24 @@ export default function LibraryHealthDetailsPage() {
           <div className={styles.buttonGroup}>
             <button className={styles.secondaryButton} disabled={!tracks.length} onClick={() => setSelected(allVisibleSelected ? new Set() : new Set(tracks.map((track) => track.id)))}>Select all visible</button>
             <button className={styles.secondaryButton} disabled={!selectedCount} onClick={() => setSelected(new Set())}>Clear selection</button>
-            {canRetry && <button className={styles.secondaryButton} disabled={!selectedCount || working !== null} onClick={() => void retryTracks(Array.from(selected))}><RefreshCw size={15} /> Retry selected ({selectedCount})</button>}
-            {canRetry && <button className={styles.primaryButton} disabled={working !== null || pagination.total === 0} onClick={() => void retryTracks()}>{working === "filter" ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />} Retry all tracks matching this filter</button>}
+            {canRetry && <button className={styles.secondaryButton} title={selectedCount ? "" : "No tracks selected."} disabled={!selectedCount || working !== null} onClick={() => void retryTracks(Array.from(selected))}><RefreshCw size={15} /> Retry selected ({selectedCount})</button>}
+            {canRetry && <button className={styles.primaryButton} title={retryableFilterCount === 0 ? (canAudioRetry ? "No tracks match this audio-feature health filter." : "No tracks match this filter.") : ""} disabled={working !== null || retryableFilterCount === 0} onClick={() => void retryTracks()}>{working === "filter-configured_providers" ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />} Retry all tracks matching this filter</button>}
+            {canAudioRetry && <button className={styles.secondaryButton} title={`Configured providers: ${configuredProviderLabel}`} disabled={working !== null || retryableFilterCount === 0} onClick={() => void retryTracks(undefined, "configured_providers")}>Retry using configured providers</button>}
+            {canAudioRetry && <button className={styles.secondaryButton} title={audioApiEnabled ? "" : "API audio features are disabled. Enable API audio features in Settings first."} disabled={working !== null || retryableFilterCount === 0 || !audioApiEnabled} onClick={() => void retryTracks(undefined, "api_only")}>Retry using API only</button>}
+            {canAudioRetry && <button className={styles.secondaryButton} title={audioLocalEnabled ? "" : "Local Essentia analysis is disabled or unavailable."} disabled={working !== null || retryableFilterCount === 0 || !audioLocalEnabled} onClick={() => void retryTracks(undefined, "local_only")}>Retry using local Essentia only</button>}
+            {canAudioRetry && <button className={styles.secondaryButton} title={audioLocalEnabled ? "" : "Local Essentia analysis is disabled or unavailable."} disabled={working !== null || retryableFilterCount === 0 || !audioLocalEnabled} onClick={() => void retryTracks(undefined, "force_local_reprocess")}>Force local reprocess</button>}
           </div>
         </div>
+        {canAudioRetry && <p className={styles.muted}>Configured providers: {configuredProviderLabel}</p>}
+        {canAudioRetry && !audioApiEnabled && <p className={styles.muted}>API audio features are disabled. Enable API audio features in Settings first.</p>}
+        {canAudioRetry && !audioLocalEnabled && <p className={styles.muted}>Local Essentia analysis is disabled or unavailable.</p>}
 
         {tracksLoading ? (
           <div className={styles.loading}><Loader2 className="animate-spin" size={18} /> Loading tracks...</div>
         ) : detailMismatch ? (
           <div className={styles.error}>Library Health count/detail mismatch detected for this category. Check logs.</div>
         ) : tracks.length === 0 ? (
-          <div className={styles.empty}>{filters.search || filters.artist || filters.album ? "No tracks match this Library Health filter." : emptyMessages[category]}</div>
+          <div className={styles.empty}>{emptyMessage}</div>
         ) : (
           <div className={styles.tableWrap}>
             <table>

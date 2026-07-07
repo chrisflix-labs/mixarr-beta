@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
+import { configuredProviderLabel } from "@/lib/audioFeatureRetry";
 import { getLibraryHealthDetailSummary } from "@/lib/libraryHealthDetails";
 import { getUserSyncSettings, resolveMetadataProviderSettings } from "@/lib/syncSettings";
 
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    return NextResponse.json({ ...summary, libraries });
+    return NextResponse.json({ ...summary, libraries, audioFeatureProviderLabel: configuredProviderLabel(audioFeatureSettings) });
   } catch (error) {
     console.error("[LibraryHealthDetails] Failed to load summary", error);
     return NextResponse.json({ error: "Unable to load Library Health details. Check logs or try again." }, { status: 500 });

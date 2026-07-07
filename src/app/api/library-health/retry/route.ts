@@ -3,9 +3,8 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
-import { audioFeatureRetryEligibilityTrackWhere } from "@/lib/audioFeatures";
+import { runAudioFeatureRetry } from "@/lib/audioFeatureRetry";
 import {
-  buildAudioFeatureHealthQuery,
   buildBpmRetryBaseWhere,
   buildBpmRetryCandidateWhere,
   invalidateLibraryHealthCache,
@@ -17,7 +16,6 @@ import {
 import {
   isLibraryHealthDetailCategory,
   libraryHealthDetailLabels,
-  resolveLibraryHealthTrackIds,
   type LibraryHealthDetailCategory,
 } from "@/lib/libraryHealthDetails";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
@@ -32,7 +30,8 @@ const requestSchema = z.object({
   filter: z.string().optional(),
   trackIds: z.array(z.string().uuid()).max(10_000).optional(),
   libraryId: z.string().uuid().optional(),
-  providerMode: z.enum(["configured", "api_only", "local_only", "force_local"]).default("configured"),
+  mode: z.string().optional(),
+  providerMode: z.string().default("configured"),
   force: z.boolean().default(false),
 }).refine((body) => !!body.retryType || !!body.category || !!body.filter || (body.trackIds?.length || 0) > 0, {
   message: "Provide a retry type, category, filter, or selected tracks",
@@ -64,6 +63,12 @@ function retryTypeFor(category: LibraryHealthDetailCategory | null, requested?: 
   return "bpm";
 }
 
+function bpmProviderModeFor(value?: string): "configured" | "api_only" | "local_only" | "force_local" {
+  if (value === "api_only" || value === "local_only" || value === "force_local") return value;
+  if (value === "force_local_reprocess") return "force_local";
+  return "configured";
+}
+
 function manualSummary(categoryLabel: string, queued: number, matched: number) {
   if (queued === 0) {
     return `Manual Library Health retry for ${categoryLabel} queued 0 tracks. No eligible tracks matched the selected retry mode.`;
@@ -76,10 +81,11 @@ async function runBpmRetry(userId: string, input: {
   filter?: string;
   trackIds?: string[];
   libraryId?: string;
-  providerMode: "configured" | "api_only" | "local_only" | "force_local";
+  providerMode: string;
   force: boolean;
 }) {
   const filter = bpmFilterFor(input.category, input.filter);
+  const providerMode = bpmProviderModeFor(input.providerMode);
   const baseWhere = input.trackIds?.length
     ? {
         AND: [
@@ -92,7 +98,7 @@ async function runBpmRetry(userId: string, input: {
     filter,
     libraryId: input.libraryId,
     trackIds: input.trackIds,
-    providerMode: input.providerMode,
+    providerMode,
     force: input.force,
   });
   const [matched, matching] = await Promise.all([
@@ -108,7 +114,7 @@ async function runBpmRetry(userId: string, input: {
     queued: ids.length,
     skipped,
     skipReasons: skipped ? { not_eligible_for_mode: skipped } : {},
-    mode: input.providerMode,
+    mode: providerMode,
   });
 
   for (let offset = 0; offset < ids.length; offset += 5_000) {
@@ -146,7 +152,7 @@ async function runBpmRetry(userId: string, input: {
       skipped,
       reasonSummary: explanation.summary,
       explanation: explanation.explanation,
-      providerMode: input.providerMode,
+      providerMode,
       libraryId: input.libraryId || null,
     },
   });
@@ -158,128 +164,20 @@ async function runAudioRetry(userId: string, input: {
   filter?: string;
   trackIds?: string[];
   libraryId?: string;
-  providerMode: "configured" | "api_only" | "local_only" | "force_local";
+  providerMode: string;
+  mode?: string;
   force: boolean;
 }) {
   const filter = audioFilterFor(input.category, input.filter);
   const syncSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId)).audioFeatures;
-  const activeScope = { syncStatus: "active", library: { ...(input.libraryId ? { id: input.libraryId } : {}), server: { userId } } };
-  const resolved = !input.trackIds?.length && (
-    filter === "missing_audio_features"
-    || filter === "pending_audio_features"
-    || filter === "partial_audio_features"
-  )
-    ? await resolveLibraryHealthTrackIds(userId, {
-      category: filter,
-      libraryId: input.libraryId,
-      settings: syncSettings,
-    })
-    : null;
-  const targetQuery = input.trackIds?.length
-    ? {
-      where: {
-        AND: [
-          activeScope,
-          { id: { in: input.trackIds } },
-        ],
-      },
-      gapTrackIds: [] as string[],
-    }
-    : resolved
-      ? {
-        where: {
-          AND: [
-            activeScope,
-            resolved.trackIds.length ? { id: { in: resolved.trackIds } } : { id: "__library_health_empty_resolved_track_set__" },
-          ],
-        },
-        gapTrackIds: Object.keys(resolved.reasonByTrackId || {}),
-      }
-    : await buildAudioFeatureHealthQuery(userId, {
-      filter,
-      libraryId: input.libraryId,
-      settings: syncSettings,
-    });
-  const baseWhere = {
-    AND: [
-      targetQuery.where,
-    ],
-  };
-  const gapRetryWhere = targetQuery.gapTrackIds.length ? { id: { in: targetQuery.gapTrackIds } } : null;
-  const candidateWhere = {
-    AND: [
-      baseWhere,
-      input.force || input.providerMode === "force_local"
-        ? {}
-        : {
-          OR: [
-            audioFeatureRetryEligibilityTrackWhere({
-              providerMode: input.providerMode,
-              force: input.force,
-              analysisScope: syncSettings.scope,
-              settings: syncSettings,
-            }),
-            ...(gapRetryWhere ? [gapRetryWhere] : []),
-          ],
-        },
-    ],
-  };
-  const [matched, matching] = await Promise.all([
-    prisma.track.count({ where: baseWhere }),
-    prisma.track.findMany({ where: candidateWhere, select: { id: true } }),
-  ]);
-  const ids = matching.map((track) => track.id);
-  const skipped = Math.max(0, matched - ids.length);
-  const explanation = buildRetryExplanation({
-    retryType: "audio-feature",
-    filter: input.filter || input.category || "selected_tracks",
-    matched,
-    queued: ids.length,
-    skipped,
-    skipReasons: skipped ? { not_eligible_for_mode: skipped } : {},
-    mode: input.providerMode,
-  });
-  console.log(`[LibraryHealth] retry filter=${filter} matched=${matched} queued=${ids.length} skipped=${skipped}${skipped ? ` reason=${explanation.logReason}` : ""}`);
-
-  for (let offset = 0; offset < ids.length; offset += 5_000) {
-    const chunk = ids.slice(offset, offset + 5_000);
-    await prisma.$transaction([
-      prisma.audioFeature.createMany({
-        data: chunk.map((trackId) => ({ trackId, audioFeatureStatus: "pending" })),
-        skipDuplicates: true,
-      }),
-      prisma.audioFeature.updateMany({
-        where: { trackId: { in: chunk } },
-        data: { audioFeatureStatus: "pending", audioFeatureFailureReason: null },
-      }),
-    ]);
-  }
-
-  const categoryLabel = input.category ? libraryHealthDetailLabels[input.category] : filter;
-  const summary = manualSummary(categoryLabel, ids.length, matched);
-  await safeRecordJobHistory({
-    userId,
-    type: "audio_features",
-    name: "Manual Library Health audio feature retry",
-    status: "success",
-    trigger: "manual",
-    summary: ids.length === 0 ? `${summary} ${explanation.explanation}` : summary,
-    counts: { attempted: matched, processed: ids.length, skipped, failed: 0 },
-    metadata: {
-      source: "library_health_details",
-      retryType: "audio-feature",
-      filter: input.filter || input.category || "selected_tracks",
-      category: input.category,
-      matched,
-      queued: ids.length,
-      skipped,
-      reasonSummary: explanation.summary,
-      explanation: explanation.explanation,
-      providerMode: input.providerMode,
-      libraryId: input.libraryId || null,
-    },
-  });
-  return { queued: ids.length, matched, skipped, trackIds: ids, summary, explanation: explanation.explanation, retryType: "audio-feature", filter };
+  return runAudioFeatureRetry(userId, {
+    filter,
+    trackIds: input.trackIds,
+    libraryId: input.libraryId,
+    mode: input.mode || input.providerMode,
+    providerMode: input.providerMode,
+    force: input.force,
+  }, syncSettings);
 }
 
 export async function POST(request: Request) {

@@ -155,26 +155,30 @@ describe("library health", () => {
   it("resolves audio feature gap IDs into partial, missing, and pending detail/retry sets", async () => {
     const details = await readFile(path.join(process.cwd(), "src/lib/libraryHealthDetails.ts"), "utf8");
     const retryRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/retry/route.ts"), "utf8");
+    const retryHelper = await readFile(path.join(process.cwd(), "src/lib/audioFeatureRetry.ts"), "utf8");
 
     assert.match(details, /normalTrackIds/);
     assert.match(details, /audioFeatureClassification\.partialGapTrackIds/);
     assert.match(details, /audioFeatureClassification\.missingGapTrackIds/);
     assert.match(details, /reasonByTrackId/);
     assert.match(details, /Track has BPM data but is missing required audio feature fields/);
-    assert.match(retryRoute, /resolveLibraryHealthTrackIds/);
-    assert.match(retryRoute, /retry filter=\$\{filter\} matched=\$\{matched\}/);
+    assert.match(retryRoute, /runAudioFeatureRetry/);
+    assert.match(retryHelper, /resolveLibraryHealthTrackIds/);
+    assert.match(retryHelper, /audio-feature retry filter=\$\{result\.filter\}/);
   });
 
   it("settings audio-feature retry uses the selected health filter before eligibility skips", async () => {
     const retryRoute = await readFile(path.join(process.cwd(), "src/app/api/settings/library-health/audio-feature-retry/route.ts"), "utf8");
+    const retryHelper = await readFile(path.join(process.cwd(), "src/lib/audioFeatureRetry.ts"), "utf8");
 
-    assert.match(retryRoute, /buildAudioFeatureHealthQuery/);
-    assert.match(retryRoute, /gapTrackIds/);
-    assert.match(retryRoute, /settings: syncSettings/);
-    assert.match(retryRoute, /matched: originalCount/);
-    assert.match(retryRoute, /queued: ids\.length/);
-    assert.match(retryRoute, /audioFeature\.createMany/);
-    assert.match(retryRoute, /skipDuplicates: true/);
+    assert.match(retryRoute, /runAudioFeatureRetry/);
+    assert.match(retryHelper, /resolveLibraryHealthTrackIds/);
+    assert.match(retryHelper, /matched/);
+    assert.match(retryHelper, /eligible/);
+    assert.match(retryHelper, /queued/);
+    assert.match(retryHelper, /skipReasons/);
+    assert.match(retryHelper, /audioFeature\.createMany/);
+    assert.match(retryHelper, /skipDuplicates: true/);
   });
 
   it("Library Health details expose the audio feature gap diagnostic and avoid a hidden empty state", async () => {
@@ -324,12 +328,14 @@ describe("library health", () => {
     const audioStartRoute = await readFile(path.join(process.cwd(), "src/app/api/audio-features/start/route.ts"), "utf8");
     const settingsRetryRoute = await readFile(path.join(process.cwd(), "src/app/api/settings/library-health/audio-feature-retry/route.ts"), "utf8");
     const detailRetryRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/retry/route.ts"), "utf8");
+    const audioRetryHelper = await readFile(path.join(process.cwd(), "src/lib/audioFeatureRetry.ts"), "utf8");
     const syncProgress = await readFile(path.join(process.cwd(), "src/components/SyncProgress.tsx"), "utf8");
 
     assert.match(syncStartRoute, /invalidateLibraryHealthCache\(userId, \{ libraryId, reason: "audio_feature_sync_completed" \}\)/);
     assert.match(audioStartRoute, /invalidateLibraryHealthCache\(userId, \{ reason: "audio_feature_sync_completed" \}\)/);
-    assert.match(settingsRetryRoute, /invalidateLibraryHealthCache\(userId, \{ libraryId, reason: "audio_feature_retry_queued" \}\)/);
-    assert.match(detailRetryRoute, /invalidateLibraryHealthCache\(userId, \{ libraryId: input\.libraryId, reason: "library_health_audio_feature_retry_queued" \}\)/);
+    assert.match(settingsRetryRoute, /runAudioFeatureRetry/);
+    assert.match(detailRetryRoute, /runAudioFeatureRetry/);
+    assert.match(audioRetryHelper, /invalidateLibraryHealthCache\(userId, \{ libraryId: request\.libraryId, reason: "audio_feature_retry_queued" \}\)/);
     assert.match(syncProgress, /router\.refresh\(\)/);
   });
 

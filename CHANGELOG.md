@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.1 - Audio Feature Retry Improvements
+
+- Improved audio-feature retry actions to use the same resolved track sets as Library Health cards and detail views.
+- Added retry preflight checks with matched, eligible, queued, skipped, and skip-reason counts.
+- Improved local Essentia retry handling for partial and pending audio-feature tracks.
+- Added clearer disabled states for API-only and local-only retry modes.
+- Improved Job History summaries for audio-feature retry and reprocess jobs.
+- Library Health and dashboard counts now refresh after audio-feature retry jobs complete.
+
 ## v1.3.0.1 - Audio Features Health Card Sync Fix
 
 - Fixed Audio Features health cards showing stale incomplete counts after audio feature data was saved.

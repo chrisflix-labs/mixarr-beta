@@ -31,6 +31,7 @@ export async function GET(request: Request) {
       },
       invariantResults: summary.diagnostics.invariants,
       mismatchResults: summary.diagnostics.mismatches,
+      lastAudioFeatureRetry: summary.diagnostics.lastAudioFeatureRetry || null,
       categoryCounts: summary.categories,
     };
 

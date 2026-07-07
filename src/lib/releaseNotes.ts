@@ -52,6 +52,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.3.1",
+    title: "Audio Feature Retry Improvements",
+    badges: ["Library Health", "Audio Features", "Retry", "Local Analysis", "Job History"],
+    changes: [
+      "Improved audio-feature retry actions to use the same resolved track sets as Library Health cards and detail views.",
+      "Added retry preflight checks with matched, eligible, queued, skipped, and skip-reason counts.",
+      "Improved local Essentia retry handling for partial and pending audio-feature tracks.",
+      "Added clearer disabled states for API-only and local-only retry modes.",
+      "Improved Job History summaries for audio-feature retry and reprocess jobs.",
+      "Library Health and dashboard counts now refresh after audio-feature retry jobs complete.",
+    ],
+  },
+  {
     version: "1.3.0.1",
     title: "Audio Features Health Card Sync Fix",
     badges: ["Hotfix", "Dashboard", "Library Health", "Audio Features", "Cache"],
