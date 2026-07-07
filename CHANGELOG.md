@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.3.0.1 - Audio Features Health Card Sync Fix
+
+- Fixed Audio Features health cards showing stale incomplete counts after audio feature data was saved.
+- Improved Library Health cache invalidation after audio feature sync, retry, and local Essentia reprocess jobs.
+- Aligned Dashboard and Library Health audio feature counts around the same source-of-truth resolver.
+- Added stale summary diagnostics for audio feature health counts.
+- Preserved v1.3.0 Library Health Accuracy count/detail/retry consistency rules.
+
+## v1.3.0 - Library Health Accuracy
+
+- Rebuilt Library Health around shared category resolvers so card counts, detail rows, and retry actions use the same track sets.
+- Added health accuracy invariants for audio features, BPM, genres, popularity, and local file status.
+- Added Health Accuracy Diagnostics to detect count/detail mismatches.
+- Improved provider-mode-aware classification for BPM and audio feature health.
+- Preserved the v1.2.8 fix for BPM-present tracks being classified as partial audio features.
+- Improved retry targeting and skip explanations for Library Health categories.
+- Added health diagnostics export for easier bug reports.
+
 ## v1.2.9.1 - Matching Rules Layout Fix
 
 - Fixed Matching Rules row overflow on the Playlist Builder page.

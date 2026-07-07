@@ -44,6 +44,12 @@
 .syncDetails dt { color: var(--muted); }
 .syncDetails dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .syncError { font-size: .76rem; margin: 0; }
+.diagnostics { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: .65rem; background: rgba(255,255,255,.025); }
+.diagnostics summary { display: flex; align-items: center; justify-content: space-between; gap: .6rem; cursor: pointer; color: var(--fg); font-size: .78rem; font-weight: 700; }
+.diagnosticRows { display: grid; gap: .4rem; margin: .65rem 0; }
+.diagnosticRows div { display: grid; gap: .16rem; padding: .45rem .5rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(0,0,0,.12); }
+.diagnosticRows span { font-size: .75rem; }
+.diagnosticRows small { color: var(--muted); font-size: .68rem; overflow-wrap: anywhere; }
 .missingSection, .bpmSection { padding: 1.15rem; min-width: 0; }
 .exportActions, .modalActions { display: flex; gap: .5rem; }
 .filters { display: grid; grid-template-columns: repeat(6,minmax(130px,1fr)); gap: .65rem; margin: 1rem 0; }

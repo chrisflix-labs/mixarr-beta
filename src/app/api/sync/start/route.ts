@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { runSyncEngine } from "@/lib/syncEngine";
-import { getAudioFeatureHealthSummary, logPartialAudioFeatureRetryResult } from "@/lib/libraryHealth";
+import { getAudioFeatureHealthSummary, invalidateLibraryHealthCache, logPartialAudioFeatureRetryResult } from "@/lib/libraryHealth";
 import { getUserSyncSettings, resolveMetadataProviderSettings } from "@/lib/syncSettings";
 import { alreadyRunningPayload, startSyncJobInBackground } from "@/lib/syncJobRunner";
 
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       started = startSyncJobInBackground({
         engine,
         userId,
-        task: () => runInitialEnrichment(syncSettings),
+        task: () => runInitialEnrichment(userId, syncSettings),
       });
     } else if (engine === 'plex') {
       if (!libraryId) return NextResponse.json({ error: "Library ID required" }, { status: 400 });
@@ -87,6 +87,9 @@ export async function POST(req: Request) {
             processed: localSummary.processed,
             failed: localSummary.failed,
           });
+          await invalidateLibraryHealthCache(userId, { libraryId, reason: "audio_feature_sync_completed" });
+          revalidatePath("/");
+          revalidatePath("/library-health");
           revalidatePath("/settings/library-health");
           return {
             attempted: apiSummary.attempted + localSummary.attempted,
@@ -126,7 +129,7 @@ export async function POST(req: Request) {
   }
 }
 
-async function runInitialEnrichment(syncSettings: Awaited<ReturnType<typeof getUserSyncSettings>>) {
+async function runInitialEnrichment(userId: string, syncSettings: Awaited<ReturnType<typeof getUserSyncSettings>>) {
   console.log("[InitialSync] Starting recommended enrichment sequence...");
 
   const [
@@ -150,6 +153,10 @@ async function runInitialEnrichment(syncSettings: Awaited<ReturnType<typeof getU
   } else {
     console.log("[InitialSync] Skipping local Essentia audio feature backfill; set LOCAL_AUDIO_FEATURES_AUTO_BACKFILL=1 to include it in automatic initial enrichment.");
   }
+  await invalidateLibraryHealthCache(userId, { reason: "initial_audio_feature_sync_completed" });
+  revalidatePath("/");
+  revalidatePath("/library-health");
+  revalidatePath("/settings/library-health");
   await bpm.runLocalBpmEngine(syncSettings);
 
   console.log("[InitialSync] Recommended enrichment sequence completed.");

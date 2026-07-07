@@ -61,6 +61,15 @@ type HealthLibrary = {
   popularityNoData: number;
   popularityFailed: number;
   pendingPopularityBackfill: number;
+  healthAccuracyDiagnostics?: {
+    ok: boolean;
+    invariants: Array<{
+      section: string;
+      ok: boolean;
+      message: string;
+      counts: Record<string, number>;
+    }>;
+  };
   lastFullSyncAt: string | null;
   lastReconciliationAt: string | null;
   lastSyncStatus: string;
@@ -723,9 +732,9 @@ export default function LibraryHealthPage() {
       const suffix = startResponse.ok
         ? startData.status === "already_running" ? ` The ${label} sync is already running.` : ` ${label[0].toUpperCase()}${label.slice(1)} sync started.`
         : ` The tracks will be processed by the next ${label} run.`;
-      setMessage(`Queued ${data.queued} track${data.queued === 1 ? "" : "s"} for ${label} retry.${suffix}`);
+      setMessage(`${data.message || data.summary || `Queued ${data.queued} track${data.queued === 1 ? "" : "s"} for ${label} retry.`}${suffix}`);
     } else {
-      setMessage(`No eligible active tracks were queued. Tracks with valid ${label} data require a forced retry.`);
+      setMessage(data.message || data.summary || `No eligible active tracks were queued. Tracks with valid ${label} data require a forced retry.`);
     }
     await loadSummary();
     if (metadataSection && metadataFilter) await loadMetadataTracks(metadataSection, metadataFilter, metadataLibraryId, metadataAppliedSearch, metadataPage);
@@ -903,6 +912,27 @@ export default function LibraryHealthPage() {
               <div><dt>Sync status</dt><dd>{library.lastSyncStatus}</dd></div>
               <div><dt>Run ID</dt><dd title={library.lastSyncRunId || ""}>{library.lastSyncRunId || "â€”"}</dd></div>
             </dl>
+            {library.healthAccuracyDiagnostics && (
+              <details className={styles.diagnostics}>
+                <summary>
+                  <span>Health Accuracy Diagnostics</span>
+                  <b className={library.healthAccuracyDiagnostics.ok ? styles.good : styles.bad}>
+                    {library.healthAccuracyDiagnostics.ok ? "OK" : "Mismatch detected"}
+                  </b>
+                </summary>
+                <div className={styles.diagnosticRows}>
+                  {library.healthAccuracyDiagnostics.invariants.map((entry) => (
+                    <div key={entry.section}>
+                      <span>{entry.section}: {entry.ok ? "OK" : "Mismatch detected"}</span>
+                      {!entry.ok && <small>{Object.entries(entry.counts).map(([key, value]) => `${key}: ${formatNumber(value)}`).join(" | ")}</small>}
+                    </div>
+                  ))}
+                </div>
+                <a className={styles.secondaryButton} href={`/api/library-health/diagnostics?libraryId=${library.id}`}>
+                  <Download size={15} /> Export Health Diagnostics
+                </a>
+              </details>
+            )}
             {library.lastSyncError && <p className={styles.syncError}>{library.lastSyncError}</p>}
             <button className={styles.primaryButton} onClick={() => void resync(library)} disabled={working !== null}>
               {working === `resync:${library.id}` ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />} Resync library
@@ -1187,5 +1217,3 @@ export default function LibraryHealthPage() {
     </div>
   );
 }
-
-

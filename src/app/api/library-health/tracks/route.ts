@@ -113,8 +113,9 @@ export async function GET(request: Request) {
 
     const mode = metadataProviderModeKey(audioFeatureSettings);
     const expectedTotal = resolved?.count ?? total;
-    if (resolved && resolved.count > 0 && total === 0 && !hasAdditionalDetailFilters(params)) {
-      console.error(`[LibraryHealth][ERROR] Count/detail mismatch filter=${category} cardCount=${resolved.count} detailCount=${total}`);
+    const countDetailMismatch = !!resolved && resolved.count !== total && !hasAdditionalDetailFilters(params);
+    if (countDetailMismatch) {
+      console.error(`[LibraryHealth][ERROR] Count/detail mismatch category=${category} cardCount=${resolved.count} detailCount=${total}`);
     }
     console.log(`[LibraryHealth] detail filter=${category} returned=${total} total=${expectedTotal} pageRows=${tracks.length} gapCount=${resolved?.debug?.gap ?? audioFeatureGapTrackIds.length} mode=${mode}`);
 
@@ -122,6 +123,7 @@ export async function GET(request: Request) {
       tracks: tracks.map((track) => serializeLibraryHealthDetailTrack(track, category, audioFeatureSettings)),
       total,
       resolvedTotal: expectedTotal,
+      countDetailMismatch,
       page,
       pageSize,
       totalPages: Math.max(1, Math.ceil(total / pageSize)),

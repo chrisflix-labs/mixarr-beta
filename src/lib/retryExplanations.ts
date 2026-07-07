@@ -1,4 +1,4 @@
-export type RetryType = "BPM" | "audio-feature";
+export type RetryType = "BPM" | "audio-feature" | "genre" | "popularity";
 
 export type RetrySkipReasons = Record<string, number>;
 
@@ -24,7 +24,9 @@ function count(value: number | undefined) {
 }
 
 function retryLabel(retryType: RetryType) {
-  return retryType === "BPM" ? "BPM" : "audio-feature";
+  if (retryType === "BPM") return "BPM";
+  if (retryType === "audio-feature") return "audio-feature";
+  return retryType;
 }
 
 function likelyZeroQueueReason(input: Required<Pick<RetryExplanationInput, "retryType" | "matched" | "queued" | "filter">> & {
@@ -50,6 +52,14 @@ function likelyZeroQueueReason(input: Required<Pick<RetryExplanationInput, "retr
     return "All matching tracks already have local BPM data or are not eligible for the selected retry mode.";
   }
 
+  if (input.retryType === "genre") {
+    return "Matching tracks already have genre data or are not eligible for the selected retry mode.";
+  }
+
+  if (input.retryType === "popularity") {
+    return "Matching tracks already have popularity data or are not eligible for the selected retry mode.";
+  }
+
   if (knownReasons.includes("already_has_complete_audio_features")) {
     return "Matching tracks already have complete audio features, so the selected retry mode did not queue them.";
   }
@@ -67,6 +77,8 @@ function nextStep(input: RetryExplanationInput) {
   if (input.retryType === "BPM") {
     return " Try force local reprocess, retry missing or failed BPM tracks, or select a different retry mode.";
   }
+  if (input.retryType === "genre") return " Try retrying missing genre tracks or select a different filter.";
+  if (input.retryType === "popularity") return " Try retrying missing popularity tracks or select a different filter.";
   return " Try force local reprocess, retry missing or partial audio-feature tracks, or select a different retry mode.";
 }
 

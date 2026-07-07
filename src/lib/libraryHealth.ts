@@ -641,6 +641,15 @@ type LibraryHealthSnapshotPayload = {
   popularityNoData: number;
   popularityFailed: number;
   pendingPopularityBackfill: number;
+  healthAccuracyDiagnostics?: {
+    ok: boolean;
+    invariants: Array<{
+      section: string;
+      ok: boolean;
+      message: string;
+      counts: Record<string, number>;
+    }>;
+  };
   lastFullSyncAt: Date | string | null;
   lastReconciliationAt: Date | string | null;
   lastSyncStatus: string;
@@ -650,6 +659,49 @@ type LibraryHealthSnapshotPayload = {
   mixarrActiveTrackCount: number;
   difference: number | null;
 };
+
+function snapshotInvariant(section: string, counts: Record<string, number>, ok: boolean, message: string) {
+  if (!ok) {
+    console.warn(`[LibraryHealth][Invariant] ${section.toLowerCase()} ${message} ${Object.entries(counts).map(([key, value]) => `${key}=${value}`).join(" ")}`);
+  }
+  return { section, ok, message, counts };
+}
+
+function buildSnapshotDiagnostics(input: {
+  activeTracks: number;
+  bpm: Awaited<ReturnType<typeof getBpmHealthCounts>>;
+  audioFeatures: Awaited<ReturnType<typeof getAudioFeatureHealthCounts>>;
+  genres: Awaited<ReturnType<typeof getGenreHealthCounts>>;
+  popularity: Awaited<ReturnType<typeof getPopularityHealthCounts>>;
+}) {
+  const expectedAudioIncomplete = Math.max(0, input.activeTracks - input.audioFeatures.complete);
+  const audioClassifiedIncomplete = input.audioFeatures.audit.classifiedIncomplete;
+  const invariants = [
+    snapshotInvariant("Audio Features", {
+      active: input.activeTracks,
+      complete: input.audioFeatures.complete,
+      expectedIncomplete: expectedAudioIncomplete,
+      classifiedIncomplete: audioClassifiedIncomplete,
+      unclassified: input.audioFeatures.audit.unclassifiedGap,
+    }, expectedAudioIncomplete === audioClassifiedIncomplete, expectedAudioIncomplete === audioClassifiedIncomplete ? "OK" : "incomplete mismatch"),
+    snapshotInvariant("BPM", {
+      active: input.activeTracks,
+      tracksWithBpm: input.bpm.tracksWithBpm,
+      missingBpm: input.bpm.missingBpm,
+    }, input.activeTracks === input.bpm.tracksWithBpm + input.bpm.missingBpm, "active tracks = tracksWithBpm + missingBpm"),
+    snapshotInvariant("Genres", {
+      active: input.activeTracks,
+      tracksWithGenres: input.genres.tracksWithGenres,
+      missingGenres: input.genres.missingGenres,
+    }, input.activeTracks === input.genres.tracksWithGenres + input.genres.missingGenres, "active tracks = tracksWithGenres + missingGenres"),
+    snapshotInvariant("Popularity", {
+      active: input.activeTracks,
+      tracksWithPopularity: input.popularity.tracksWithPopularity,
+      missingPopularity: input.popularity.missingPopularity,
+    }, input.activeTracks === input.popularity.tracksWithPopularity + input.popularity.missingPopularity, "active tracks = tracksWithPopularity + missingPopularity"),
+  ];
+  return { ok: invariants.every((entry) => entry.ok), invariants };
+}
 
 function countValue(row: CountRow | undefined, key: string) {
   return Number(row?.[key] ?? 0);
@@ -884,6 +936,7 @@ async function getPopularityHealthCounts(libraryId: string) {
 
 async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: {
   bpmProviderMode: string;
+  bpmProviderModeKey: string;
   audioFeatureProviderMode: string;
   audioFeatureSettings: EffectiveAudioFeatureSettings;
 }): Promise<LibraryHealthSnapshotPayload> {
@@ -908,6 +961,13 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
     missingTrackCount: base.missingTracks,
     bpmFailureCount: bpm.bpmFailed,
     lastSyncAt: latest?.endedAt || latest?.startedAt,
+  });
+  const healthAccuracyDiagnostics = buildSnapshotDiagnostics({
+    activeTracks: base.activeTracks,
+    bpm,
+    audioFeatures,
+    genres,
+    popularity,
   });
   const result = {
     id: library.id,
@@ -957,6 +1017,7 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
     popularityNoData: popularity.popularityNoData,
     popularityFailed: popularity.popularityFailed,
     pendingPopularityBackfill: popularity.pendingPopularityBackfill,
+    healthAccuracyDiagnostics,
     lastFullSyncAt: latest?.endedAt || latest?.startedAt || null,
     lastReconciliationAt: lastReconciliation?.reconciliationAt || null,
     lastSyncStatus: latest?.status || "never",
@@ -969,6 +1030,7 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
   const durationMs = Date.now() - started;
   console.log(`[LibraryHealth] calculated library=${library.id} name=${JSON.stringify(library.name)} activeTracks=${base.activeTracks} durationMs=${durationMs} source=fresh`);
   const mode = metadataProviderModeKey(modes.audioFeatureSettings as any);
+  console.log(`[LibraryHealth] mode audio=${mode} bpm=${modes.bpmProviderModeKey}`);
   console.log(`[LibraryHealth] audio gap audit active=${audioFeatures.audit.activeTracks} complete=${audioFeatures.audit.completeAudioFeatures} expectedIncomplete=${audioFeatures.audit.incompleteExpected} classifiedIncomplete=${audioFeatures.audit.classifiedIncomplete} unclassifiedGap=${audioFeatures.audit.unclassifiedGap} mode=${mode}`);
   if (audioFeatures.gapOnly > 0) {
     console.log(`[LibraryHealth] audio gap split count=${audioFeatures.gapOnly} partial=${audioFeatures.partialGapTrackIds.length} missing=${audioFeatures.missingGapTrackIds.length}`);
@@ -994,26 +1056,84 @@ function parseLibraryHealthSnapshot(payload: Prisma.JsonValue): LibraryHealthSna
 
 export async function getCachedLibraryHealth(userId: string) {
   const started = Date.now();
+  const metadataSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId));
   const libraries = await prisma.library.findMany({
     where: { type: "artist", server: { userId } },
     select: {
       id: true,
+      name: true,
+      plexId: true,
+      server: { select: { id: true, name: true } },
+      syncLogs: { orderBy: { startedAt: "desc" }, take: 1 },
       healthSnapshot: { select: { payload: true, updatedAt: true } },
     },
     orderBy: [{ server: { name: "asc" } }, { name: "asc" }],
   });
-  const snapshots = libraries.flatMap((library) => {
+  const snapshots: Array<LibraryHealthSnapshotPayload & { healthUpdatedAt: Date }> = [];
+  for (const library of libraries) {
     const payload = library.healthSnapshot ? parseLibraryHealthSnapshot(library.healthSnapshot.payload) : null;
-    return payload ? [{ ...payload, healthUpdatedAt: library.healthSnapshot!.updatedAt }] : [];
-  });
+    if (!payload) continue;
+    snapshots.push(await refreshStaleAudioFeatureSnapshot(userId, library, payload, library.healthSnapshot!.updatedAt, metadataSettings.audioFeatures));
+  }
   console.log(`[LibraryHealth] homepage cache read libraries=${libraries.length} snapshots=${snapshots.length} durationMs=${Date.now() - started} source=cache`);
   return snapshots;
+}
+
+async function refreshStaleAudioFeatureSnapshot(
+  userId: string,
+  library: LibraryForHealth,
+  cached: LibraryHealthSnapshotPayload,
+  cachedUpdatedAt: Date,
+  audioFeatureSettings: EffectiveAudioFeatureSettings,
+): Promise<LibraryHealthSnapshotPayload & { healthUpdatedAt: Date }> {
+  const freshAudio = await getAudioFeatureHealthCounts(library.id, audioFeatureSettings);
+  const cachedIncomplete = Math.max(0, cached.activeTracks - cached.audioFeaturesComplete);
+  const freshIncomplete = Math.max(0, freshAudio.activeTracks - freshAudio.complete);
+  const stale = cached.activeTracks !== freshAudio.activeTracks
+    || cached.audioFeaturesComplete !== freshAudio.complete
+    || cached.audioFeaturesMissing !== freshAudio.missing
+    || cached.audioFeaturesPartial !== freshAudio.partial
+    || cached.audioFeaturesPending !== freshAudio.pending
+    || cached.audioFeaturesNoData !== freshAudio.noData
+    || cached.audioFeaturesFailed !== freshAudio.failed
+    || cached.audioFeaturesTooShort !== freshAudio.tooShort;
+
+  if (!stale) return { ...cached, healthUpdatedAt: cachedUpdatedAt };
+
+  console.warn(
+    `[LibraryHealth][StaleSummary] cached audio summary complete=${cached.audioFeaturesComplete} incomplete=${cachedIncomplete} but fresh resolver complete=${freshAudio.complete} incomplete=${freshIncomplete}. Refreshing summary.`,
+  );
+  const metadataSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId));
+  const refreshed = await calculateLibraryHealthSnapshot(library, {
+    bpmProviderMode: metadataProviderModeLabel(metadataSettings.bpm),
+    bpmProviderModeKey: metadataProviderModeKey(metadataSettings.bpm as any),
+    audioFeatureProviderMode: metadataProviderModeLabel(metadataSettings.audioFeatures),
+    audioFeatureSettings: metadataSettings.audioFeatures,
+  });
+  await saveLibraryHealthSnapshot(library.id, refreshed);
+  return { ...refreshed, healthUpdatedAt: new Date() };
+}
+
+export async function invalidateLibraryHealthCache(userId: string, options: {
+  libraryId?: string | null;
+  reason?: string;
+} = {}) {
+  const where: Prisma.LibraryHealthSnapshotWhereInput = {
+    library: {
+      ...(options.libraryId ? { id: options.libraryId } : {}),
+      server: { userId },
+    },
+  };
+  const result = await prisma.libraryHealthSnapshot.deleteMany({ where });
+  console.log(`[LibraryHealth] invalidated health snapshot cache count=${result.count} reason=${options.reason || "manual"}${options.libraryId ? ` library=${options.libraryId}` : ""}`);
+  return result.count;
 }
 
 export async function getLibraryHealth(userId: string) {
   const started = Date.now();
   const metadataSettings = resolveMetadataProviderSettings(await getUserSyncSettings(userId));
   const bpmProviderMode = metadataProviderModeLabel(metadataSettings.bpm);
+  const bpmProviderModeKey = metadataProviderModeKey(metadataSettings.bpm as any);
   const audioFeatureProviderMode = metadataProviderModeLabel(metadataSettings.audioFeatures);
   const libraries = await prisma.library.findMany({
     where: { type: "artist", server: { userId } },
@@ -1031,6 +1151,7 @@ export async function getLibraryHealth(userId: string) {
   for (const library of libraries) {
     const result = await calculateLibraryHealthSnapshot(library, {
       bpmProviderMode,
+      bpmProviderModeKey,
       audioFeatureProviderMode,
       audioFeatureSettings: metadataSettings.audioFeatures,
     });

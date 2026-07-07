@@ -135,9 +135,9 @@ describe("library health", () => {
     assert.match(classifier, /missing: merged\.missing/);
     assert.match(classifier, /enforceAudioFeatureIncompleteInvariant/);
     assert.match(classifier, /pending: invariant\.pending/);
-    assert.match(details, /categories\.missing_audio_features = missingAudioFeatureTracks\.count/);
-    assert.match(details, /categories\.partial_audio_features = partialAudioFeatureTracks\.count/);
-    assert.match(details, /categories\.pending_audio_features = pendingAudioFeatureTracks\.count/);
+    assert.match(details, /libraryHealthDetailCategories\.map/);
+    assert.match(details, /resolveLibraryHealthTrackIds\(userId, \{ category, libraryId, settings, audioFeatureClassification \}\)/);
+    assert.match(details, /buildHealthAccuracyDiagnostics/);
   });
 
   it("uses shared Library Health track ID resolution for card counts and detail rows", async () => {
@@ -145,8 +145,8 @@ describe("library health", () => {
     const detailRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/tracks/route.ts"), "utf8");
 
     assert.match(details, /resolveLibraryHealthTrackIds/);
-    assert.match(details, /categories\.missing_audio_features = missingAudioFeatureTracks\.count/);
-    assert.match(details, /categories\.pending_audio_features = pendingAudioFeatureTracks\.count/);
+    assert.match(details, /libraryHealthDetailCategories\.map/);
+    assert.match(details, /resolveLibraryHealthTrackIds\(userId, \{ category, libraryId, settings, audioFeatureClassification \}\)/);
     assert.match(detailRoute, /resolveLibraryHealthTrackIds/);
     assert.match(detailRoute, /resolvedTrackIds: resolved\?\.trackIds/);
     assert.match(detailRoute, /Count\/detail mismatch/);
@@ -307,6 +307,30 @@ describe("library health", () => {
     assert.match(page, /getCachedLibraryHealth/);
     assert.doesNotMatch(page, /getLibraryHealth\(user\.id\)/);
     assert.match(page, /Library Health is refreshing/);
+  });
+
+  it("refreshes stale cached audio feature health before dashboard snapshots are returned", async () => {
+    const source = await readFile(path.join(process.cwd(), "src/lib/libraryHealth.ts"), "utf8");
+
+    assert.match(source, /refreshStaleAudioFeatureSnapshot/);
+    assert.match(source, /getAudioFeatureHealthCounts\(library\.id, audioFeatureSettings\)/);
+    assert.match(source, /\[LibraryHealth\]\[StaleSummary\]/);
+    assert.match(source, /calculateLibraryHealthSnapshot/);
+    assert.match(source, /saveLibraryHealthSnapshot/);
+  });
+
+  it("invalidates Library Health cache after audio feature retry and sync completion", async () => {
+    const syncStartRoute = await readFile(path.join(process.cwd(), "src/app/api/sync/start/route.ts"), "utf8");
+    const audioStartRoute = await readFile(path.join(process.cwd(), "src/app/api/audio-features/start/route.ts"), "utf8");
+    const settingsRetryRoute = await readFile(path.join(process.cwd(), "src/app/api/settings/library-health/audio-feature-retry/route.ts"), "utf8");
+    const detailRetryRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/retry/route.ts"), "utf8");
+    const syncProgress = await readFile(path.join(process.cwd(), "src/components/SyncProgress.tsx"), "utf8");
+
+    assert.match(syncStartRoute, /invalidateLibraryHealthCache\(userId, \{ libraryId, reason: "audio_feature_sync_completed" \}\)/);
+    assert.match(audioStartRoute, /invalidateLibraryHealthCache\(userId, \{ reason: "audio_feature_sync_completed" \}\)/);
+    assert.match(settingsRetryRoute, /invalidateLibraryHealthCache\(userId, \{ libraryId, reason: "audio_feature_retry_queued" \}\)/);
+    assert.match(detailRetryRoute, /invalidateLibraryHealthCache\(userId, \{ libraryId: input\.libraryId, reason: "library_health_audio_feature_retry_queued" \}\)/);
+    assert.match(syncProgress, /router\.refresh\(\)/);
   });
 
   it("uses grouped health summary queries instead of unbounded per-library count batches", async () => {

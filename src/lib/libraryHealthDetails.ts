@@ -1,10 +1,13 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "./prisma";
 import {
+  apiAudioFeatureTrackWhere,
   audioFeatureAnalyzerFailedTrackWhere,
   audioFeatureExtractionFailedTrackWhere,
   audioFeatureFailedTrackWhere,
   getAudioFeatureHealthStatus,
+  heuristicAudioFeatureTrackWhere,
+  localAudioFeatureTrackWhere,
   audioFeatureNoDataTrackWhere,
   audioFeatureTooShortTrackWhere,
   completeAudioFeatureTrackWhere,
@@ -30,7 +33,14 @@ import {
   effectiveBpmTrackWhere,
   getEffectiveBpm,
   missingEffectiveBpmTrackWhere,
+  pendingBpmBackfillTrackWhere,
 } from "./bpm";
+import {
+  genreHealthFilterWhere,
+  popularityHealthFilterWhere,
+  type GenreHealthFilter,
+  type PopularityHealthFilter,
+} from "./libraryHealth";
 
 export const libraryHealthDetailCategories = [
   "all_tracks",
@@ -187,6 +197,33 @@ export function libraryHealthCategoryWhere(category: LibraryHealthDetailCategory
 type ResolvableLibraryHealthCategory =
   | LibraryHealthDetailCategory
   | "api_bpm_only"
+  | "tracks_with_bpm"
+  | "imported_bpm"
+  | "bpm_no_data"
+  | "pending_bpm"
+  | "api_audio_features"
+  | "local_audio_features"
+  | "estimated_audio_features"
+  | "heuristic_audio_features"
+  | "audio_no_data"
+  | "audio_failed"
+  | "audio_feature_no_data"
+  | "audio_feature_failed"
+  | "audio_too_short"
+  | "extraction_failed"
+  | "analyzer_failed"
+  | "tracks_with_genres"
+  | "missing_genres"
+  | "genre_no_data"
+  | "genre_failed"
+  | "pending_genre_backfill"
+  | "tracks_with_popularity"
+  | "missing_popularity"
+  | "popularity_no_data"
+  | "popularity_failed"
+  | "pending_popularity"
+  | "pending_popularity_backfill"
+  | "available_local_files"
   | "missing_local_files";
 
 export type LibraryHealthTrackIdResolution = {
@@ -201,9 +238,13 @@ export type LibraryHealthTrackIdResolution = {
   };
 };
 
-function normalizeResolvableCategory(category: ResolvableLibraryHealthCategory): LibraryHealthDetailCategory {
+function normalizeResolvableCategory(category: ResolvableLibraryHealthCategory): ResolvableLibraryHealthCategory {
   if (category === "api_bpm_only") return "api_bpm";
   if (category === "missing_local_files") return "missing_local_file";
+  if (category === "estimated_audio_features") return "heuristic_audio_features";
+  if (category === "audio_feature_no_data") return "audio_no_data";
+  if (category === "audio_feature_failed") return "audio_failed";
+  if (category === "pending_popularity") return "pending_popularity_backfill";
   return category;
 }
 
@@ -219,6 +260,39 @@ async function findTrackIds(where: Prisma.TrackWhereInput) {
   return tracks.map((track) => track.id);
 }
 
+function resolvableCategoryWhere(category: ResolvableLibraryHealthCategory, settings?: EffectiveAudioFeatureSettings): Prisma.TrackWhereInput {
+  if (isLibraryHealthDetailCategory(category)) return libraryHealthCategoryWhere(category, settings);
+
+  switch (category) {
+    case "tracks_with_bpm": return effectiveBpmTrackWhere();
+    case "imported_bpm": return buildBpmSourceWhereClause("imported_bpm");
+    case "bpm_no_data": return bpmNoDataTrackWhere();
+    case "pending_bpm": return pendingBpmBackfillTrackWhere();
+    case "api_audio_features": return apiAudioFeatureTrackWhere(settings);
+    case "local_audio_features": return localAudioFeatureTrackWhere(settings);
+    case "heuristic_audio_features": return heuristicAudioFeatureTrackWhere();
+    case "audio_no_data": return audioFeatureNoDataTrackWhere(settings);
+    case "audio_failed": return audioFeatureFailedTrackWhere(settings);
+    case "audio_too_short": return audioFeatureTooShortTrackWhere(settings);
+    case "extraction_failed": return { OR: [bpmExtractionFailedTrackWhere(), audioFeatureExtractionFailedTrackWhere(settings)] };
+    case "analyzer_failed": return { OR: [bpmAnalyzerFailedTrackWhere(), audioFeatureAnalyzerFailedTrackWhere(settings)] };
+    case "tracks_with_genres":
+    case "missing_genres":
+    case "genre_no_data":
+    case "genre_failed":
+    case "pending_genre_backfill":
+      return genreHealthFilterWhere(category as GenreHealthFilter);
+    case "tracks_with_popularity":
+    case "missing_popularity":
+    case "popularity_no_data":
+    case "popularity_failed":
+    case "pending_popularity_backfill":
+      return popularityHealthFilterWhere(category as PopularityHealthFilter);
+    case "available_local_files": return { NOT: missingLocalFileWhere() };
+  }
+  return { id: "__invalid_library_health_category__" };
+}
+
 export async function resolveLibraryHealthTrackIds(userId: string, options: {
   category: ResolvableLibraryHealthCategory;
   libraryId?: string;
@@ -227,7 +301,7 @@ export async function resolveLibraryHealthTrackIds(userId: string, options: {
 }): Promise<LibraryHealthTrackIdResolution> {
   const category = normalizeResolvableCategory(options.category);
   const active = activeUserTrackWhere(userId, options.libraryId);
-  const baseWhere = { AND: [active, libraryHealthCategoryWhere(category, options.settings)] };
+  const baseWhere = { AND: [active, resolvableCategoryWhere(category, options.settings)] };
 
   if (category !== "missing_audio_features" && category !== "partial_audio_features" && category !== "pending_audio_features") {
     const trackIds = await findTrackIds(baseWhere);
@@ -440,16 +514,16 @@ export function reasonForLibraryHealthTrack(category: LibraryHealthDetailCategor
   const audio = getAudioFeatureHealthStatus(track, settings);
   switch (category) {
     case "missing_bpm":
-      return "No BPM value is currently available for this track.";
+      return "No BPM value is available for the current provider mode.";
     case "api_bpm":
       return "This track has BPM from an API provider but does not have locally analyzed BPM yet.";
     case "local_bpm":
       return "This track has BPM from local analysis.";
     case "missing_audio_features":
-      if (!track.audioFeature) return "No audio feature record found.";
+      if (!track.audioFeature) return "No usable audio feature metadata was found for the current provider mode.";
       if (audio.reason === "API data only") return "API data only. The current provider mode requires local or allowed estimated audio features.";
       if (audio.missingFields.length) return `Missing required audio feature fields for the current provider mode: ${audio.missingFields.join(", ")}.`;
-      return "Missing required audio features for the current provider mode.";
+      return "No usable audio feature metadata was found for the current provider mode.";
     case "partial_audio_features":
       if (trackHasUsefulBpmMetadata(track)) return "Track has BPM data but is missing required audio feature fields.";
       return audio.missingFields.length
@@ -466,13 +540,13 @@ export function reasonForLibraryHealthTrack(category: LibraryHealthDetailCategor
     case "failed_audio_feature_analysis":
       return track.audioFeature?.audioFeatureFailureReason || "Local audio feature analysis failed during a previous attempt.";
     case "missing_local_file":
-      return "Mixarr could not find a matching local file for analysis.";
+      return "Mixarr could not find a local file path for this active track.";
     case "too_short":
       return track.bpmFailureReason || track.audioFeature?.audioFeatureFailureReason || "The track is too short for the selected local analysis window.";
     case "skipped":
       return "Analysis previously completed without usable data, so this track was skipped by the current retry rules.";
     case "healthy_tracks":
-      return "This track has BPM, complete audio features, and an available local file reference.";
+      return "Healthy Tracks are active tracks with required metadata complete for the current settings.";
     case "all_tracks":
       return "This active library track is included in the full Library Health view.";
   }
@@ -545,27 +619,135 @@ export function defaultOrderForLibraryHealth(category: LibraryHealthDetailCatego
   return [{ artist: { title: "asc" } }, { album: { title: "asc" } }, { trackIndex: "asc" }, { title: "asc" }];
 }
 
+export type LibraryHealthInvariantResult = {
+  section: "Audio Features" | "BPM" | "Genres" | "Popularity" | "Local Files";
+  ok: boolean;
+  message: string;
+  counts: Record<string, number>;
+};
+
+export type LibraryHealthAccuracyDiagnostics = {
+  ok: boolean;
+  providerMode: {
+    audio: string;
+  };
+  invariants: LibraryHealthInvariantResult[];
+  mismatches: Array<{
+    category: string;
+    cardCount: number;
+    detailCount: number;
+  }>;
+};
+
+function invariant(section: LibraryHealthInvariantResult["section"], counts: Record<string, number>, ok: boolean, message: string): LibraryHealthInvariantResult {
+  if (!ok) {
+    console.warn(`[LibraryHealth][Invariant] ${section.toLowerCase()} ${message} ${Object.entries(counts).map(([key, value]) => `${key}=${value}`).join(" ")}`);
+  }
+  return { section, ok, message, counts };
+}
+
+function buildHealthAccuracyDiagnostics(input: {
+  totalTracks: number;
+  categories: Record<LibraryHealthDetailCategory, number>;
+  tracksWithBpm: number;
+  tracksWithGenres: number;
+  missingGenres: number;
+  tracksWithPopularity: number;
+  missingPopularity: number;
+  availableLocalFiles: number;
+  missingLocalFiles: number;
+  audioFeatureClassification: AudioFeatureHealthClassification;
+  audioMode: string;
+}): LibraryHealthAccuracyDiagnostics {
+  const audio = input.audioFeatureClassification;
+  const expectedIncomplete = Math.max(0, input.totalTracks - audio.complete);
+  const classifiedIncomplete = audio.audit.classifiedIncomplete;
+  const audioOk = expectedIncomplete === classifiedIncomplete;
+  const bpmOk = input.totalTracks === input.tracksWithBpm + input.categories.missing_bpm;
+  const genresOk = input.totalTracks === input.tracksWithGenres + input.missingGenres;
+  const popularityOk = input.totalTracks === input.tracksWithPopularity + input.missingPopularity;
+  const localFilesOk = input.totalTracks === input.availableLocalFiles + input.missingLocalFiles;
+
+  const invariants = [
+    invariant("Audio Features", {
+      active: input.totalTracks,
+      complete: audio.complete,
+      expectedIncomplete,
+      classifiedIncomplete,
+      partial: input.categories.partial_audio_features,
+      missing: input.categories.missing_audio_features,
+      failed: input.categories.failed_audio_feature_analysis,
+      tooShort: audio.tooShort,
+      noData: audio.noData,
+      unclassified: audio.audit.unclassifiedGap,
+    }, audioOk, audioOk ? "OK" : "incomplete mismatch"),
+    invariant("BPM", {
+      active: input.totalTracks,
+      tracksWithBpm: input.tracksWithBpm,
+      missingBpm: input.categories.missing_bpm,
+    }, bpmOk, bpmOk ? "OK" : "active tracks do not equal tracks with BPM plus missing BPM"),
+    invariant("Genres", {
+      active: input.totalTracks,
+      tracksWithGenres: input.tracksWithGenres,
+      missingGenres: input.missingGenres,
+    }, genresOk, genresOk ? "OK" : "active tracks do not equal tracks with genres plus missing genres"),
+    invariant("Popularity", {
+      active: input.totalTracks,
+      tracksWithPopularity: input.tracksWithPopularity,
+      missingPopularity: input.missingPopularity,
+    }, popularityOk, popularityOk ? "OK" : "active tracks do not equal tracks with popularity plus missing popularity"),
+    invariant("Local Files", {
+      active: input.totalTracks,
+      availableLocalFiles: input.availableLocalFiles,
+      missingLocalFiles: input.missingLocalFiles,
+    }, localFilesOk, localFilesOk ? "OK" : "active tracks do not equal available plus missing local files"),
+  ];
+
+  return {
+    ok: invariants.every((entry) => entry.ok),
+    providerMode: { audio: input.audioMode },
+    invariants,
+    mismatches: [],
+  };
+}
+
 export async function getLibraryHealthDetailSummary(userId: string, libraryId?: string, settings?: EffectiveAudioFeatureSettings) {
   const active = activeUserTrackWhere(userId, libraryId);
+  const totalTracks = await prisma.track.count({ where: active });
+  const audioFeatureClassification = await getAudioFeatureHealthClassification(userId, { libraryId, settings });
   const entries = await Promise.all(libraryHealthDetailCategories.map(async (category) => [
     category,
-    await prisma.track.count({ where: { AND: [active, libraryHealthCategoryWhere(category, settings)] } }),
+    (await resolveLibraryHealthTrackIds(userId, { category, libraryId, settings, audioFeatureClassification })).count,
   ] as const));
-  const totalTracks = await prisma.track.count({ where: active });
   const categories = Object.fromEntries(entries) as Record<LibraryHealthDetailCategory, number>;
-  const audioFeatureClassification = await getAudioFeatureHealthClassification(userId, { libraryId, settings });
-  const [missingAudioFeatureTracks, partialAudioFeatureTracks, pendingAudioFeatureTracks] = await Promise.all([
-    resolveLibraryHealthTrackIds(userId, { category: "missing_audio_features", libraryId, settings, audioFeatureClassification }),
-    resolveLibraryHealthTrackIds(userId, { category: "partial_audio_features", libraryId, settings, audioFeatureClassification }),
-    resolveLibraryHealthTrackIds(userId, { category: "pending_audio_features", libraryId, settings, audioFeatureClassification }),
+  const [tracksWithBpm, tracksWithGenres, missingGenres, tracksWithPopularity, missingPopularity, availableLocalFiles, missingLocalFiles] = await Promise.all([
+    resolveLibraryHealthTrackIds(userId, { category: "tracks_with_bpm", libraryId, settings }),
+    resolveLibraryHealthTrackIds(userId, { category: "tracks_with_genres", libraryId, settings }),
+    resolveLibraryHealthTrackIds(userId, { category: "missing_genres", libraryId, settings }),
+    resolveLibraryHealthTrackIds(userId, { category: "tracks_with_popularity", libraryId, settings }),
+    resolveLibraryHealthTrackIds(userId, { category: "missing_popularity", libraryId, settings }),
+    resolveLibraryHealthTrackIds(userId, { category: "available_local_files", libraryId, settings }),
+    resolveLibraryHealthTrackIds(userId, { category: "missing_local_files", libraryId, settings }),
   ]);
-  categories.missing_audio_features = missingAudioFeatureTracks.count;
-  categories.partial_audio_features = partialAudioFeatureTracks.count;
-  categories.pending_audio_features = pendingAudioFeatureTracks.count;
+  const audioMode = `${settings?.api || settings?.enableApiAudioFeatures ? "api_enabled" : "api_disabled"}_${settings?.local || settings?.enableLocalAudioFeatures ? "local_enabled" : "local_disabled"}_${settings?.preferLocal || settings?.preferLocalAudioFeatures ? "local_preferred" : "api_preferred"}`;
+  const diagnostics = buildHealthAccuracyDiagnostics({
+    totalTracks,
+    categories,
+    tracksWithBpm: tracksWithBpm.count,
+    tracksWithGenres: tracksWithGenres.count,
+    missingGenres: missingGenres.count,
+    tracksWithPopularity: tracksWithPopularity.count,
+    missingPopularity: missingPopularity.count,
+    availableLocalFiles: availableLocalFiles.count,
+    missingLocalFiles: missingLocalFiles.count,
+    audioFeatureClassification,
+    audioMode,
+  });
   return {
     totalTracks,
     categories,
     audioFeatureGapAudit: audioFeatureClassification.audit,
+    diagnostics,
   };
 }
 

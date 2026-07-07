@@ -16,7 +16,7 @@ import {
   localEssentiaAudioFeatureSuccessTrackWhere,
   partialAudioFeatureTrackWhere,
 } from "@/lib/audioFeatures";
-import { buildAudioFeatureHealthQuery, isAudioFeatureHealthFilter } from "@/lib/libraryHealth";
+import { buildAudioFeatureHealthQuery, invalidateLibraryHealthCache, isAudioFeatureHealthFilter } from "@/lib/libraryHealth";
 import { resolveLibraryHealthTrackIds } from "@/lib/libraryHealthDetails";
 import { buildRetryExplanation } from "@/lib/retryExplanations";
 import { getUserSyncSettings, resolveMetadataProviderSettings } from "@/lib/syncSettings";
@@ -162,6 +162,9 @@ export async function POST(request: Request) {
         }),
       ]);
     }
+    await invalidateLibraryHealthCache(userId, { libraryId, reason: "audio_feature_retry_queued" });
+    revalidatePath("/");
+    revalidatePath("/library-health");
     revalidatePath("/settings/library-health");
 
     if (trackIds?.length && matching.length === 1) {

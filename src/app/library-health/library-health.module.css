@@ -28,6 +28,15 @@
 .message, .error, .empty, .loading { padding: .85rem 1rem; border-radius: var(--radius-md); font-size: .84rem; }
 .message { border: 1px solid rgba(94,229,138,.22); color: #5ee58a; background: rgba(94,229,138,.08); }
 .error { border: 1px solid rgba(215,91,91,.28); color: #ffb0b0; background: rgba(215,91,91,.1); }
+.diagnostics { padding: .9rem 1rem; }
+.diagnostics summary { display: flex; align-items: center; justify-content: space-between; gap: .75rem; cursor: pointer; font-size: .86rem; font-weight: 750; }
+.diagnostics summary::marker { color: var(--muted); }
+.diagnosticRows { display: grid; gap: .45rem; margin: .8rem 0; }
+.diagnosticRows div { display: grid; gap: .18rem; padding: .5rem .6rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(255,255,255,.03); }
+.diagnosticRows span { font-size: .8rem; }
+.diagnosticRows small { color: var(--muted); font-size: .7rem; overflow-wrap: anywhere; }
+.okText { color: #5ee58a; }
+.badText { color: #ffb0b0; }
 .loading, .empty { display: flex; align-items: center; justify-content: center; gap: .5rem; min-height: 140px; color: var(--muted); text-align: center; }
 .tableWrap { overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-md); }
 .tableWrap table { width: 100%; min-width: 1320px; border-collapse: collapse; }

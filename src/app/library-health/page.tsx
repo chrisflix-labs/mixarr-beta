@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, HeartPulse, Loader2, RefreshCw, Settings, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, HeartPulse, Loader2, RefreshCw, Settings, X } from "lucide-react";
 import styles from "./library-health.module.css";
 
 type Category =
@@ -30,7 +30,24 @@ type AudioFeatureGapAudit = {
   noAudioFeatureRecord: number;
   gapDetected: boolean;
 };
-type Summary = { totalTracks: number; categories: Record<Category, number>; libraries: LibraryOption[]; audioFeatureGapAudit?: AudioFeatureGapAudit };
+type HealthAccuracyDiagnostics = {
+  ok: boolean;
+  providerMode: { audio: string };
+  invariants: Array<{
+    section: string;
+    ok: boolean;
+    message: string;
+    counts: Record<string, number>;
+  }>;
+  mismatches: Array<{ category: string; cardCount: number; detailCount: number }>;
+};
+type Summary = {
+  totalTracks: number;
+  categories: Record<Category, number>;
+  libraries: LibraryOption[];
+  audioFeatureGapAudit?: AudioFeatureGapAudit;
+  diagnostics?: HealthAccuracyDiagnostics;
+};
 type Track = {
   id: string;
   title: string;
@@ -168,6 +185,7 @@ export default function LibraryHealthDetailsPage() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 50, total: 0, totalPages: 1 });
+  const [countDetailMismatch, setCountDetailMismatch] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [tracksLoading, setTracksLoading] = useState(false);
@@ -215,6 +233,7 @@ export default function LibraryHealthDetailsPage() {
       if (!response.ok) throw new Error(data.error || "Unable to load Library Health details. Check logs or try again.");
       setTracks(data.tracks || []);
       setPagination({ page: data.page, pageSize: data.pageSize, total: data.total, totalPages: data.totalPages });
+      setCountDetailMismatch(!!data.countDetailMismatch);
       setSelected(new Set());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load Library Health details. Check logs or try again.");
@@ -323,7 +342,7 @@ export default function LibraryHealthDetailsPage() {
     || filters.failedOnly
     || filters.missingDataOnly
   );
-  const detailMismatch = !tracksLoading && tracks.length === 0 && pagination.total === 0 && activeCardCount > 0 && !hasNarrowingFilters;
+  const detailMismatch = !tracksLoading && !hasNarrowingFilters && (countDetailMismatch || (tracks.length === 0 && pagination.total === 0 && activeCardCount > 0));
 
   if (loading) {
     return <main className={styles.page}><div className={`glass-panel ${styles.loading}`}><Loader2 className="animate-spin" size={18} /> Loading Library Health details...</div></main>;
@@ -354,10 +373,30 @@ export default function LibraryHealthDetailsPage() {
           <button key={card.key} className={`${styles.summaryCard} ${category === card.category ? styles.summaryCardActive : ""}`} type="button" onClick={() => updateCategory(card.category)}>
             <span>{card.label}</span>
             <strong>{formatNumber(card.count)}</strong>
-            <small>{card.key === "total" ? "Active library tracks" : "Open filtered track list"}</small>
+            <small>{card.key === "total" ? "Active library tracks" : card.key === "healthy" ? "Required metadata complete for current settings" : "Open filtered track list"}</small>
           </button>
         ))}
       </section>
+
+      {summary?.diagnostics && (
+        <details className={`glass-panel ${styles.diagnostics}`}>
+          <summary>
+            <span>Health Accuracy Diagnostics</span>
+            <b className={summary.diagnostics.ok ? styles.okText : styles.badText}>{summary.diagnostics.ok ? "OK" : "Mismatch detected"}</b>
+          </summary>
+          <div className={styles.diagnosticRows}>
+            {summary.diagnostics.invariants.map((entry) => (
+              <div key={entry.section}>
+                <span>{entry.section}: {entry.ok ? "OK" : "Mismatch detected"}</span>
+                {!entry.ok && <small>{Object.entries(entry.counts).map(([key, value]) => `${key}: ${formatNumber(value)}`).join(" | ")}</small>}
+              </div>
+            ))}
+          </div>
+          <a className={styles.secondaryButton} href={`/api/library-health/diagnostics${filters.libraryId ? `?libraryId=${filters.libraryId}` : ""}`}>
+            <Download size={15} /> Export Health Diagnostics
+          </a>
+        </details>
+      )}
 
       {message && <div className={styles.message}>{message}</div>}
       {error && <div className={styles.error}>{error}</div>}
@@ -478,7 +517,7 @@ export default function LibraryHealthDetailsPage() {
         {tracksLoading ? (
           <div className={styles.loading}><Loader2 className="animate-spin" size={18} /> Loading tracks...</div>
         ) : detailMismatch ? (
-          <div className={styles.error}>Library Health count/detail mismatch detected. This category reports {formatNumber(activeCardCount)} tracks, but the detail query returned 0. Check logs.</div>
+          <div className={styles.error}>Library Health count/detail mismatch detected for this category. Check logs.</div>
         ) : tracks.length === 0 ? (
           <div className={styles.empty}>{filters.search || filters.artist || filters.album ? "No tracks match this Library Health filter." : emptyMessages[category]}</div>
         ) : (

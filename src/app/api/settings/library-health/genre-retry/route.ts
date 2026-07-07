@@ -4,6 +4,7 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
 import { genreHealthFilterWhere, isGenreHealthFilter, missingGenresWhere } from "@/lib/libraryHealth";
+import { buildRetryExplanation } from "@/lib/retryExplanations";
 
 const requestSchema = z.object({
   trackIds: z.array(z.string().uuid()).max(10_000).optional(),
@@ -31,21 +32,40 @@ export async function POST(request: Request) {
     const targetWhere = trackIds?.length
       ? { id: { in: trackIds } }
       : isGenreHealthFilter(filter) ? genreHealthFilterWhere(filter) : { id: "__invalid__" };
-    const where = {
+    const baseWhere = {
       AND: [
         {
           syncStatus: "active",
           library: { ...(libraryId ? { id: libraryId } : {}), server: { userId } },
         },
         targetWhere,
+      ],
+    };
+    const where = {
+      AND: [
+        baseWhere,
         ...(force ? [] : [missingGenresWhere()]),
       ],
     };
-    const matching = await prisma.track.findMany({
-      where,
-      select: { id: true, title: true, artist: { select: { title: true } }, tags: { where: { type: "genre" }, select: { id: true } } },
-    });
+    const [matched, matching] = await Promise.all([
+      prisma.track.count({ where: baseWhere }),
+      prisma.track.findMany({
+        where,
+        select: { id: true, title: true, artist: { select: { title: true } }, tags: { where: { type: "genre" }, select: { id: true } } },
+      }),
+    ]);
     const ids = matching.map((track) => track.id);
+    const skipped = Math.max(0, matched - ids.length);
+    const skipReasons: Record<string, number> = skipped ? { already_has_genres: skipped } : {};
+    const retryExplanation = buildRetryExplanation({
+      retryType: "genre",
+      filter: filter || "selected_tracks",
+      matched,
+      queued: ids.length,
+      skipped,
+      skipReasons,
+      mode: force ? "force" : "configured",
+    });
 
     for (let offset = 0; offset < ids.length; offset += 5_000) {
       const chunk = ids.slice(offset, offset + 5_000);
@@ -74,7 +94,7 @@ export async function POST(request: Request) {
     if (trackIds?.length && matching.length === 1) {
       console.log(`[LibraryHealth] Queued genre retry for track: ${matching[0].artist.title} - ${matching[0].title}`);
     } else {
-      console.log(`[LibraryHealth] Queued genre retry for filter ${filter || "selected_tracks"}: ${matching.length} tracks`);
+      console.log(`[LibraryHealth] genre retry filter=${filter || "selected_tracks"} matched=${matched} queued=${ids.length} skipped=${skipped}`);
     }
     await safeRecordJobHistory({
       userId,
@@ -82,11 +102,11 @@ export async function POST(request: Request) {
       name: "Genre retry",
       status: "success",
       trigger: "retry",
-      summary: `Queued genre retry for filter ${filter || "selected_tracks"}: ${matching.length} tracks.`,
-      counts: { attempted: matching.length, processed: matching.length, skipped: 0, failed: 0 },
-      metadata: { filter: filter || "selected_tracks", libraryId: libraryId || null, force },
+      summary: retryExplanation.message,
+      counts: { attempted: matched, processed: ids.length, skipped, failed: 0 },
+      metadata: { filter: filter || "selected_tracks", matched, queued: ids.length, skipped, skipReasons, libraryId: libraryId || null, force },
     });
-    return NextResponse.json({ queued: matching.length, trackIds: ids });
+    return NextResponse.json({ queued: ids.length, matched, skipped, skipReasons, trackIds: ids, summary: retryExplanation.summary, message: retryExplanation.message });
   } catch (error) {
     console.error("[LibraryHealth] Failed to queue genre retry", error);
     await safeRecordJobHistory({

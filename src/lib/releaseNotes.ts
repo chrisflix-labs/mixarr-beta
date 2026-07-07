@@ -7,12 +7,16 @@ export type ReleaseNoteBadge =
   | "Beta"
   | "Bug Fix"
   | "BPM"
+  | "Accuracy"
+  | "Cache"
   | "Dashboard"
   | "Debugging"
+  | "Diagnostics"
   | "Hotfix"
   | "History"
   | "Import"
   | "Export"
+  | "Genres"
   | "Job History"
   | "Jobs"
   | "Library"
@@ -23,6 +27,7 @@ export type ReleaseNoteBadge =
   | "Mobile"
   | "Navigation"
   | "Playlists"
+  | "Popularity"
   | "Plex"
   | "Preview"
   | "Recipes"
@@ -46,6 +51,32 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.3.0.1",
+    title: "Audio Features Health Card Sync Fix",
+    badges: ["Hotfix", "Dashboard", "Library Health", "Audio Features", "Cache"],
+    changes: [
+      "Fixed Audio Features health cards showing stale incomplete counts after audio feature data was saved.",
+      "Improved Library Health cache invalidation after audio feature sync, retry, and local Essentia reprocess jobs.",
+      "Aligned Dashboard and Library Health audio feature counts around the same source-of-truth resolver.",
+      "Added stale summary diagnostics for audio feature health counts.",
+      "Preserved v1.3.0 Library Health Accuracy count/detail/retry consistency rules.",
+    ],
+  },
+  {
+    version: "1.3.0",
+    title: "Library Health Accuracy",
+    badges: ["Library Health", "Accuracy", "Diagnostics", "Audio Features", "BPM", "Genres", "Popularity", "Retry"],
+    changes: [
+      "Rebuilt Library Health around shared category resolvers so card counts, detail rows, and retry actions use the same track sets.",
+      "Added health accuracy invariants for audio features, BPM, genres, popularity, and local file status.",
+      "Added Health Accuracy Diagnostics to detect count/detail mismatches.",
+      "Improved provider-mode-aware classification for BPM and audio feature health.",
+      "Preserved the v1.2.8 fix for BPM-present tracks being classified as partial audio features.",
+      "Improved retry targeting and skip explanations for Library Health categories.",
+      "Added health diagnostics export for easier bug reports.",
+    ],
+  },
   {
     version: "1.2.9.1",
     title: "Matching Rules Layout Fix",

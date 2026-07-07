@@ -8,6 +8,7 @@ import {
   buildAudioFeatureHealthQuery,
   buildBpmRetryBaseWhere,
   buildBpmRetryCandidateWhere,
+  invalidateLibraryHealthCache,
   isAudioFeatureHealthFilter,
   isBpmHealthFilter,
   type AudioFeatureHealthFilter,
@@ -123,6 +124,7 @@ async function runBpmRetry(userId: string, input: {
       }),
     ]);
   }
+  await invalidateLibraryHealthCache(userId, { libraryId: input.libraryId, reason: "library_health_audio_feature_retry_queued" });
 
   const categoryLabel = input.category ? libraryHealthDetailLabels[input.category] : filter;
   const summary = manualSummary(categoryLabel, ids.length, matched);
@@ -295,6 +297,7 @@ export async function POST(request: Request) {
       ? await runAudioRetry(userId, { ...parsed.data, category })
       : await runBpmRetry(userId, { ...parsed.data, category });
 
+    revalidatePath("/");
     revalidatePath("/library-health");
     revalidatePath("/settings/library-health");
     return NextResponse.json(result);

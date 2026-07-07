@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Loader2, Database, Music, Star, Tag, Play, Activity, Info, Sparkles } from "lucide-react";
 import { nextStatusPollDelayMs } from "@/lib/statusPolling";
@@ -20,10 +21,12 @@ function formatProgressPercent(processed: number, total: number) {
 }
 
 export default function SyncProgress() {
+  const router = useRouter();
   const [status, setStatus] = useState<any>(null);
   const [starting, setStarting] = useState<string | null>(null);
   const [initialPrompt, setInitialPrompt] = useState<InitialPromptKind | null>(null);
   const [startingInitial, setStartingInitial] = useState(false);
+  const audioWasRunning = useRef(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -73,6 +76,11 @@ export default function SyncProgress() {
 
   useEffect(() => {
     if (!status) return;
+    const audioRunning = !!status.audioFeatures?.lastRun?.running;
+    if (audioWasRunning.current && !audioRunning) {
+      router.refresh();
+    }
+    audioWasRunning.current = audioRunning;
 
     const totalTracks = status.popularity?.total || 0;
     const initialLibrary = status.metadata?.initialLibrary;
@@ -129,7 +137,7 @@ export default function SyncProgress() {
         ? "enrichment"
         : null,
     );
-  }, [status]);
+  }, [router, status]);
 
   const startSync = async (engine: string) => {
     setStarting(engine);

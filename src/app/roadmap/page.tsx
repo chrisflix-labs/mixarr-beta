@@ -10,19 +10,25 @@ export const metadata = {
 };
 
 const nextFeatures = [
-  "Recipe sharing gallery",
-  "Export playlist history",
-  "Restore previous playlist version",
   "Better recommendations",
-  "Advanced Smart Mix Engine",
+  "Deep cut / discovery tuning",
+  "Playlist scoring",
+  "Smart Mix Engine groundwork",
   "Mood blending",
   "BPM transition/ramp tools",
-  "Deep cut / discovery tuning",
+  "Restore previous playlist version",
   "Recently added automation",
   "Beta experimental features",
 ];
 
 const currentReleaseFeatures = [
+  "v1.3.0.1 fixed stale Audio Features health card counts after sync/reprocess completion.",
+  "v1.3.0 completes Library Health Accuracy.",
+  "Library Health cards, detail rows, retry actions, diagnostics, and exports now use shared category resolution.",
+  "Health Accuracy Diagnostics now checks audio features, BPM, genres, popularity, and local file invariants.",
+  "Retry actions now record matched, queued, skipped, skip reasons, and provider mode in Job History.",
+  "BPM-present incomplete audio tracks remain classified as Partial Audio Features.",
+  "Health diagnostics export makes future bug reports easier without including credentials.",
   "v1.2.9.1 fixed Matching Rules layout overflow before v1.3.0 development begins.",
   "v1.2.9 completes Playlist Builder UI Fix as the final v1.2.x polish release before v1.3.0 feature development.",
   "Playlist Builder preview panels now stay contained after generating a playlist preview.",
@@ -119,7 +125,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>v1.2.9.1 is a small Playlist Builder hotfix for Matching Rules layout containment before v1.3.0 feature development begins.</p>
+          <p>v1.3.0 delivers Library Health Accuracy, making counts, detail views, retry targeting, diagnostics, and exports agree.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -131,7 +137,7 @@ export default function RoadmapPage() {
       <section className={styles.section} aria-labelledby="coming-next">
         <div className={styles.sectionHeader}>
           <div>
-            <span className={styles.kicker}>Next</span>
+            <span className={styles.kicker}>v1.3.x</span>
             <h3 id="coming-next">What is coming next</h3>
           </div>
           <p>Planned features will be shaped by beta testing and smaller release milestones.</p>
@@ -144,7 +150,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Better recommendations, deeper discovery tuning, Advanced Smart Mix Engine, mood blending, BPM transition/ramp tools, recently added automation, and beta experimental features are planned for v1.3.0 and beyond.</p>
+        <p className={styles.futureNote}>Library Health Accuracy is complete in v1.3.0. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, and beta automation experiments.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">
