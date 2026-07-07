@@ -1335,7 +1335,6 @@ export default function BuilderPage() {
                   onChange={(e) => updateRule(i, "value", e.target.value)}
                   placeholder="Value..."
                   className={styles.input}
-                  style={{ flex: 1 }}
                 />
 
                 <button onClick={() => removeRule(i)} className={styles.btnGhostDanger}>
@@ -1383,7 +1382,7 @@ export default function BuilderPage() {
                       <option value="gte">Greater or Equal (&ge;)</option>
                       <option value="lte">Less or Equal (&le;)</option>
                     </select>
-                    <input type="text" value={rule.value} onChange={(e) => updateGroupRule(group.id, i, "value", e.target.value)} placeholder="Value..." className={styles.input} style={{ flex: 1 }} />
+                    <input type="text" value={rule.value} onChange={(e) => updateGroupRule(group.id, i, "value", e.target.value)} placeholder="Value..." className={styles.input} />
                     <button onClick={() => removeGroupRule(group.id, i)} className={styles.btnGhostDanger}>
                       <Trash2 size={16} />
                     </button>
@@ -1401,7 +1400,7 @@ export default function BuilderPage() {
               <label>Track Limit:</label>
               <input type="number" value={limit} onChange={(e) => { setLimit(Number(e.target.value)); clearPreview(); }} className={styles.limitInput} />
             </div>
-            <button onClick={previewPlaylist} disabled={loading} className={styles.btnPrimary} style={{ marginLeft: "auto" }}>
+            <button onClick={previewPlaylist} disabled={loading} className={`${styles.btnPrimary} ${styles.rulePreviewButton}`}>
               <Play size={16} /> {loading ? "Querying..." : "Preview Playlist"}
             </button>
           </div>

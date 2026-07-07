@@ -18,6 +18,7 @@ export type ReleaseNoteBadge =
   | "Library"
   | "Library Health"
   | "Local Analysis"
+  | "Matching Rules"
   | "Mood"
   | "Mobile"
   | "Navigation"
@@ -45,6 +46,17 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.2.9.1",
+    title: "Matching Rules Layout Fix",
+    badges: ["Hotfix", "UI", "Playlists", "Matching Rules"],
+    changes: [
+      "Fixed Matching Rules row overflow on the Playlist Builder page.",
+      "Improved responsive layout for rule fields, operators, values, and delete actions.",
+      "Prevented Matching Rules controls from overlapping the preview panel.",
+      "Improved narrow-width and mobile behavior for the Matching Rules card.",
+    ],
+  },
   {
     version: "1.2.9",
     title: "Playlist Builder UI Fix",

@@ -23,6 +23,7 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "v1.2.9.1 fixed Matching Rules layout overflow before v1.3.0 development begins.",
   "v1.2.9 completes Playlist Builder UI Fix as the final v1.2.x polish release before v1.3.0 feature development.",
   "Playlist Builder preview panels now stay contained after generating a playlist preview.",
   "Previewed Tracks table sizing and overflow are easier to read at desktop and mobile widths.",
@@ -118,7 +119,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>v1.2.9 is the final v1.2.x polish release before v1.3.0 feature development, focused on Playlist Builder preview layout and safety-rule message clarity.</p>
+          <p>v1.2.9.1 is a small Playlist Builder hotfix for Matching Rules layout containment before v1.3.0 feature development begins.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>

@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.9.1 - Matching Rules Layout Fix
+
+- Fixed Matching Rules row overflow on the Playlist Builder page.
+- Improved responsive layout for rule fields, operators, values, and delete actions.
+- Prevented Matching Rules controls from overlapping the preview panel.
+- Improved narrow-width and mobile behavior for the Matching Rules card.
+
 ## v1.2.9 - Playlist Builder UI Fix
 
 - Fixed Playlist Builder layout overlap after generating a playlist preview.
