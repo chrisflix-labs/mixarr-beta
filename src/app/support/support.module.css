@@ -14,7 +14,13 @@
 .aboutCard dl div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: .75rem; padding: .45rem 0; border-bottom: 1px solid var(--line); }
 .aboutCard dt { color: var(--muted); font-size: .72rem; font-weight: 800; }
 .aboutCard dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--fg); font-size: .82rem; }
+.aboutCard dd a { color: #b9e9ff; font-weight: 800; }
 .aboutCard ul { display: grid; gap: .4rem; margin: .75rem 0 0; padding-left: 1.1rem; }
+.statusPill { display: inline-flex; margin-right: .35rem; padding: .18rem .38rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: rgba(255,255,255,.04); font-size: .66rem; font-weight: 900; line-height: 1; }
+.statusPill[data-status="OK"] { border-color: rgba(94,229,138,.22); color: #5ee58a; background: rgba(94,229,138,.08); }
+.statusPill[data-status="Warning"] { border-color: rgba(242,181,46,.28); color: var(--warning); background: rgba(242,181,46,.1); }
+.statusPill[data-status="Error"] { border-color: rgba(215,91,91,.28); color: #ffb0b0; background: rgba(215,91,91,.1); }
+.statusPill[data-status="Disabled"], .statusPill[data-status="Unknown"] { color: var(--muted); }
 .primaryButton, .secondaryButton { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; width: fit-content; min-height: 38px; padding: .58rem .75rem; border-radius: var(--radius-sm); font-size: .8rem; font-weight: 800; line-height: 1; }
 .primaryButton { border: 1px solid var(--accent); color: #fff; background: var(--accent); cursor: pointer; }
 .primaryButton:hover { background: var(--accent-hover); }

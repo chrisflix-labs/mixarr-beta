@@ -132,6 +132,12 @@
   color: var(--fg);
   font-size: 0.84rem;
   line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.aboutRows dd a {
+  color: #b9e9ff;
+  font-weight: 800;
 }
 
 .aboutActions {
@@ -166,6 +172,75 @@
   color: var(--muted);
   margin: 0 0 1rem 0;
   line-height: 1.5;
+}
+
+.readinessGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.readinessItem {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.readinessItem span,
+.readinessItem small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.readinessItem strong {
+  display: inline-flex;
+  margin: 0.25rem 0;
+  padding: 0.2rem 0.42rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.readinessItem strong[data-status="OK"] {
+  border-color: rgba(94, 229, 138, 0.22);
+  color: #5ee58a;
+  background: rgba(94, 229, 138, 0.08);
+}
+
+.readinessItem strong[data-status="Warning"] {
+  border-color: rgba(242, 181, 46, 0.28);
+  color: var(--warning);
+  background: rgba(242, 181, 46, 0.1);
+}
+
+.readinessItem strong[data-status="Error"] {
+  border-color: rgba(215, 91, 91, 0.28);
+  color: #ffb0b0;
+  background: rgba(215, 91, 91, 0.1);
+}
+
+.validationList {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.8rem;
+}
+
+.validationList p {
+  margin: 0;
+  padding: 0.62rem 0.75rem;
+  border: 1px solid rgba(242, 181, 46, 0.24);
+  border-radius: var(--radius-sm);
+  color: var(--warning);
+  background: rgba(242, 181, 46, 0.08);
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 /* ---- Inputs ---- */
@@ -545,7 +620,8 @@
   .aboutRows div,
   .schedulerStatusGrid,
   .schedulerGrid,
-  .schedulerRunRows {
+    .schedulerRunRows,
+    .readinessGrid {
     grid-template-columns: 1fr;
   }
 

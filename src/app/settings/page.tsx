@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Settings as SettingsIcon, Ban, Database, ExternalLink, Github, HeartPulse, Info, Key, LifeBuoy, Map, RefreshCw, ScrollText, Server } from "lucide-react";
+import { cookies } from "next/headers";
+import { Settings as SettingsIcon, Ban, Database, ExternalLink, Github, HeartPulse, Info, Key, LifeBuoy, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
 import ProviderTestButton from "@/components/ProviderTestButton";
 import LibraryDefaultSelector from "@/components/LibraryDefaultSelector";
 import SyncOptionsForm from "@/components/SyncOptionsForm";
@@ -8,9 +9,17 @@ import TrackExclusionsManager from "@/components/TrackExclusionsManager";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
 import { APP_DESCRIPTION, APP_NAME, MIXARR_GITHUB_URL } from "@/lib/appInfo";
 import { APP_VERSION } from "@/lib/appVersion";
+import { getAppReadiness } from "@/lib/readiness";
 import styles from "./settings.module.css";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const userId = cookies().get("mixarr_session")?.value;
+  const readiness = await getAppReadiness({ userId }).catch(() => null);
+  const readinessChecks = readiness?.checks ? Object.values(readiness.checks) : [];
+  const validationMessages = readinessChecks
+    .filter((item) => item.status === "Warning" || item.status === "Error")
+    .map((item) => item.summary);
+
   return (
     <div className={styles.wrapper}>
       <header className={styles.header}>
@@ -46,6 +55,18 @@ export default function SettingsPage() {
             <dd>{APP_VERSION}</dd>
           </div>
           <div>
+            <dt>Beta label</dt>
+            <dd>Beta</dd>
+          </div>
+          <div>
+            <dt>GitHub repo</dt>
+            <dd><a href={MIXARR_GITHUB_URL} target="_blank" rel="noopener noreferrer">cvarano84/mixarr-beta</a></dd>
+          </div>
+          <div>
+            <dt>Build metadata</dt>
+            <dd>Build date: {process.env.BUILD_DATE || process.env.NEXT_PUBLIC_BUILD_DATE || "Unknown"} · Commit: {process.env.GIT_COMMIT || process.env.NEXT_PUBLIC_GIT_COMMIT || "Unknown"} · Runtime: {process.env.NODE_ENV || "Unknown"} · Docker: {process.env.DOCKER === "1" || process.env.CONTAINER === "1" ? "Yes" : "Unknown"}</dd>
+          </div>
+          <div>
             <dt>Update status</dt>
             <dd>Update checks are currently manual. View GitHub releases to compare your installed version with the latest available build.</dd>
           </div>
@@ -69,6 +90,35 @@ export default function SettingsPage() {
             <ExternalLink size={13} aria-hidden="true" />
           </a>
         </div>
+      </section>
+
+      <section className={`glass-panel ${styles.section}`} aria-labelledby="app-readiness">
+        <h3 id="app-readiness" className={styles.sectionTitle}>
+          <ShieldCheck size={20} color="var(--info)" /> App Readiness
+        </h3>
+        <p className={styles.sectionDesc}>
+          Compact startup and configuration checks for Mixarr {APP_VERSION} Beta.
+        </p>
+        {readinessChecks.length > 0 ? (
+          <div className={styles.readinessGrid}>
+            {readinessChecks.map((item) => (
+              <div key={item.label} className={styles.readinessItem}>
+                <span>{item.label}</span>
+                <strong data-status={item.status}>{item.status}</strong>
+                <small>{item.summary}</small>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className={styles.errorText}>No support diagnostics are available yet.</p>
+        )}
+        {validationMessages.length > 0 && (
+          <div className={styles.validationList}>
+            {validationMessages.map((message) => (
+              <p key={message}>{message}</p>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* API Keys & Integrations */}

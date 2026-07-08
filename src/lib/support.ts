@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import prisma from "./prisma";
 import { APP_VERSION } from "./appVersion";
-import { APP_NAME, MIXARR_GITHUB_URL } from "./appInfo";
+import { APP_NAME, DEFAULT_GITHUB_REPO_URL, MIXARR_GITHUB_URL, validHttpUrl } from "./appInfo";
 import { getDashboardSummary } from "./dashboardSummary";
 import { getDataEnrichmentSummary } from "./dataEnrichment";
 import { getRecentJobSummary } from "./jobHistory";
@@ -11,18 +11,7 @@ import { getUserSyncSettings, metadataProviderModeLabel, resolveMetadataProvider
 import { getWorkerHealthSummary } from "./workerHealth";
 import { buildBugReportTemplate, buildFeedbackTemplate, buildHealthReport, buildJobFailureReport } from "./supportReports";
 import { sanitizeDiagnostics, sanitizeErrorText } from "./supportRedaction";
-
-export const DEFAULT_GITHUB_REPO_URL = "https://github.com/cvarano84/mixarr-beta";
-
-function validHttpUrl(value: string | undefined | null) {
-  if (!value) return null;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.toString() : null;
-  } catch {
-    return null;
-  }
-}
+import { getAppReadiness } from "./readiness";
 
 export function getSupportLinks() {
   return {
@@ -105,7 +94,7 @@ function compactJob(job: any) {
 }
 
 export async function getSupportSummary(userId: string) {
-  const [user, settings, worker, recentJobs] = await Promise.all([
+  const [user, settings, worker, recentJobs, readiness] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -124,6 +113,7 @@ export async function getSupportSummary(userId: string) {
     getUserSyncSettings(userId),
     getWorkerHealthSummary().catch(() => null),
     getRecentJobSummary(userId).catch(() => null),
+    getAppReadiness({ userId }).catch(() => null),
   ]);
   const providerSettings = resolveMetadataProviderSettings(settings);
   const libraries = (user?.servers || []).flatMap((server) =>
@@ -157,6 +147,7 @@ export async function getSupportSummary(userId: string) {
       selectedLibraryId: user?.defaultLibraryId || null,
       libraries,
     },
+    readiness,
     worker: compactWorker(worker),
     recentJob: compactJob(recentJobs?.lastJob),
     recentFailures: recentJobs?.recentFailures ?? 0,
@@ -164,7 +155,7 @@ export async function getSupportSummary(userId: string) {
 }
 
 export async function getSupportDiagnostics(userId: string) {
-  const [summary, dashboard, worker, settings, libraries, recentJobs] = await Promise.all([
+  const [summary, dashboard, worker, settings, libraries, recentJobs, readiness] = await Promise.all([
     getSupportSummary(userId),
     getDashboardSummary(userId).catch((error) => ({ error: sanitizeErrorText(error) })),
     getWorkerHealthSummary().catch((error) => ({ error: sanitizeErrorText(error) })),
@@ -179,6 +170,7 @@ export async function getSupportDiagnostics(userId: string) {
       orderBy: { startedAt: "desc" },
       take: 12,
     }),
+    getAppReadiness({ userId }).catch((error) => ({ error: sanitizeErrorText(error) })),
   ]);
   const providerSettings = resolveMetadataProviderSettings(settings);
   const [libraryHealth, dataEnrichment] = await Promise.all([
@@ -190,20 +182,39 @@ export async function getSupportDiagnostics(userId: string) {
     timestamp: new Date().toISOString(),
     mixarrVersion: APP_VERSION,
     releaseVersion: APP_VERSION,
+    releaseChannel: "beta",
+    betaLabel: "Beta",
     build: buildInfo(),
     environment: environmentSummary(),
     supportSummary: summary,
+    appReadiness: readiness,
     configuredFeatures: (summary as any).configuredFeatures,
     plex: {
-      connected: true,
+      configured: Boolean((summary as any).plex?.connected),
+      connected: (readiness as any)?.checks?.plex?.status === "OK",
       libraries,
     },
     dashboardSummary: dashboard,
-    libraryHealthSummary: libraryHealth,
-    dataEnrichmentSummary: dataEnrichment,
-    workerHealthSummary: compactWorker("status" in worker ? worker as any : null) || worker,
-    schedulerSummary: "status" in worker ? compactWorker(worker as any)?.scheduler : null,
+    "Library Health Diagnostics": libraryHealth,
+    "Data Enrichment Diagnostics": dataEnrichment,
+    "Worker & Scheduler Diagnostics": {
+      worker: compactWorker("status" in worker ? worker as any : null) || worker,
+      scheduler: "status" in worker ? compactWorker(worker as any)?.scheduler : null,
+    },
+    "Local Audio Analysis Diagnostics": (readiness as any)?.checks?.localAudioAnalysis ?? null,
+    "Plex Sync Diagnostics": (readiness as any)?.checks?.plex ?? null,
+    "Support Diagnostics": {
+      links: (summary as any).links,
+      recentFailures: (summary as any).recentFailures,
+    },
+    "App Readiness": readiness,
     recentJobHistory: recentJobs.map(compactJob),
+    recentJobSummary: {
+      totalIncluded: recentJobs.length,
+      failed: recentJobs.filter((job) => job.status === "failed").length,
+      interrupted: recentJobs.filter((job) => job.status === "interrupted" || job.status === "stale").length,
+      running: recentJobs.filter((job) => job.status === "running" || job.status === "processing").length,
+    },
     lastErrors: recentJobs.filter((job) => job.error).slice(0, 5).map((job) => ({
       id: job.id,
       type: job.type,

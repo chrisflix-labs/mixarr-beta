@@ -18,6 +18,8 @@ export default async function SupportPage() {
   const links = summary?.links || { githubRepoUrl: MIXARR_GITHUB_URL, discordSupportUrl: null, discordConfigured: false };
   const app = summary?.app || { version: APP_VERSION, buildDate: null, gitCommit: null, runtimeMode: "unknown", serverTime: new Date().toISOString() };
   const worker = summary?.worker;
+  const readiness = summary?.readiness;
+  const readinessChecks = readiness?.checks ? Object.values(readiness.checks) as Array<{ label: string; status: string; summary: string }> : [];
 
   return (
     <main className={styles.page}>
@@ -51,22 +53,29 @@ export default async function SupportPage() {
             <div><dt>Build</dt><dd>{app.buildDate || "unknown"}</dd></div>
             <div><dt>Commit</dt><dd>{app.gitCommit || "unknown"}</dd></div>
             <div><dt>Runtime</dt><dd>{summary?.environment?.dockerDetected ? "Docker" : app.runtimeMode || "unknown"}</dd></div>
+            <div><dt>Docker</dt><dd>{summary?.environment?.dockerDetected == null ? "Unknown" : summary.environment.dockerDetected ? "Yes" : "No"}</dd></div>
             <div><dt>Worker</dt><dd>{worker?.status || "unknown"}</dd></div>
             <div><dt>Scheduler</dt><dd>{summary?.configuredFeatures?.scheduler ? "Enabled" : "Disabled"}</dd></div>
+            <div><dt>Repo</dt><dd><a href={links.githubRepoUrl} target="_blank" rel="noopener noreferrer">cvarano84/mixarr-beta</a></dd></div>
             <div><dt>Server time</dt><dd>{app.serverTime}</dd></div>
             <div><dt>Plex libraries</dt><dd>{summary?.plex?.libraryCount ?? 0}</dd></div>
           </dl>
         </article>
 
         <article className={styles.aboutCard}>
-          <h3>What to include</h3>
-          <ul>
-            <li>What page or feature you were using.</li>
-            <li>What you expected and what happened instead.</li>
-            <li>Recent job status if sync, enrichment, or analysis failed.</li>
-            <li>Exported diagnostics JSON when requested.</li>
-            <li>Screenshots if they make the issue clearer.</li>
-          </ul>
+          <h3>App Readiness</h3>
+          {readinessChecks.length > 0 ? (
+            <dl>
+              {readinessChecks.map((item) => (
+                <div key={item.label}>
+                  <dt>{item.label}</dt>
+                  <dd><span className={styles.statusPill} data-status={item.status}>{item.status}</span> {item.summary}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p>No support diagnostics are available yet.</p>
+          )}
         </article>
       </section>
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.3.9 - v2.0.0 Readiness & Beta Hardening
+
+- Added app readiness checks for database, Plex, worker, scheduler, support links, and local analysis status.
+- Added readiness information to support/settings diagnostics.
+- Cleaned up release notes and roadmap for the end of the v1.3.x cycle.
+- Added a v2.0.0 roadmap preview focused on Smart Mix Engine v2 and smarter playlist generation.
+- Improved configuration validation and safer empty/error states.
+- Improved support diagnostics consistency while preserving secret redaction.
+- Hardened beta defaults before the v2.0.0 feature cycle.
+
 ## v1.3.8 - Beta Feedback & Discord Support Polish
 
 - Added a Beta Support page with Discord, GitHub, feedback, and diagnostics actions.

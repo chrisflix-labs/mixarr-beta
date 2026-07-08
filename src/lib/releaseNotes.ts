@@ -1,4 +1,6 @@
-export const MIXARR_BETA_DISCORD_URL = process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL || "";
+import { validHttpUrl } from "./appInfo";
+
+export const MIXARR_BETA_DISCORD_URL = validHttpUrl(process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL) || "";
 
 export type ReleaseNoteBadge =
   | "Audio Features"
@@ -42,6 +44,7 @@ export type ReleaseNoteBadge =
   | "Release Notes"
   | "Refresh"
   | "Retry"
+  | "Readiness"
   | "Roadmap"
   | "Safety Rules"
   | "Scheduler"
@@ -63,6 +66,20 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.3.9",
+    title: "v2.0.0 Readiness & Beta Hardening",
+    badges: ["Beta", "Readiness", "Diagnostics", "Settings", "Release Notes", "Roadmap"],
+    changes: [
+      "Added app readiness checks for database, Plex, worker, scheduler, support links, and local analysis status.",
+      "Added readiness information to support/settings diagnostics.",
+      "Cleaned up release notes and roadmap for the end of the v1.3.x cycle.",
+      "Added a v2.0.0 roadmap preview focused on Smart Mix Engine v2 and smarter playlist generation.",
+      "Improved configuration validation and safer empty/error states.",
+      "Improved support diagnostics consistency while preserving secret redaction.",
+      "Hardened beta defaults before the v2.0.0 feature cycle.",
+    ],
+  },
   {
     version: "1.3.8",
     title: "Beta Feedback & Discord Support Polish",

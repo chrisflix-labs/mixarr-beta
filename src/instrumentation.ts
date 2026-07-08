@@ -14,9 +14,32 @@ export async function register() {
     console.log("[Metrics] Prometheus endpoint disabled (METRICS_PORT is 0 or unset)");
   }
 
-  const { initializeWorkerReliability } = await import("./lib/workerHealth");
-  await initializeWorkerReliability();
+  const { sanitizeErrorText } = await import("./lib/supportRedaction");
 
-  const { initializeBackgroundScheduler } = await import("./lib/backgroundScheduler");
-  await initializeBackgroundScheduler();
+  const databaseConfigured = Boolean(process.env.DATABASE_URL);
+
+  if (!databaseConfigured) {
+    console.warn("[Readiness] DATABASE_URL is missing. Worker and scheduler startup are disabled until the database is configured.");
+  } else {
+    try {
+      const { initializeWorkerReliability } = await import("./lib/workerHealth");
+      await initializeWorkerReliability();
+    } catch (error) {
+      console.error("[Worker] Startup initialization failed", sanitizeErrorText(error));
+    }
+
+    try {
+      const { initializeBackgroundScheduler } = await import("./lib/backgroundScheduler");
+      await initializeBackgroundScheduler();
+    } catch (error) {
+      console.error("[Scheduler] Startup initialization failed", sanitizeErrorText(error));
+    }
+  }
+
+  try {
+    const { runStartupReadinessCheck } = await import("./lib/readiness");
+    await runStartupReadinessCheck();
+  } catch (error) {
+    console.error("[Readiness] Startup initialization failed", sanitizeErrorText(error));
+  }
 }
