@@ -14,6 +14,9 @@ export async function register() {
     console.log("[Metrics] Prometheus endpoint disabled (METRICS_PORT is 0 or unset)");
   }
 
+  const { initializeWorkerReliability } = await import("./lib/workerHealth");
+  await initializeWorkerReliability();
+
   const { initializeBackgroundScheduler } = await import("./lib/backgroundScheduler");
   await initializeBackgroundScheduler();
 }

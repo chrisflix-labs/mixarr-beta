@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Download, HeartPulse, Loader2, RefreshCw, Settings, X } from "lucide-react";
+import WorkerHealthCard from "@/components/WorkerHealthCard";
 import styles from "./library-health.module.css";
 
 type Category =
@@ -653,6 +654,8 @@ export default function LibraryHealthDetailsPage() {
         </div>
         <Link href="/settings/library-health" className={styles.settingsLink}><Settings size={15} /> Maintenance Tools</Link>
       </header>
+
+      <WorkerHealthCard compact />
 
       {summary && summary.totalTracks === 0 && (
         <div className={`glass-panel ${styles.empty}`}>Library Health data is not available yet. Run a library sync or audio analysis job first.</div>

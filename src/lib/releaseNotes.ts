@@ -43,7 +43,9 @@ export type ReleaseNoteBadge =
   | "Settings"
   | "Sharing"
   | "Smart Builder"
-  | "UI";
+  | "UI"
+  | "Reliability"
+  | "Worker";
 
 export type ReleaseNote = {
   version: string;
@@ -54,6 +56,20 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.3.6",
+    title: "Background Worker Reliability",
+    badges: ["Worker", "Scheduler", "Job History", "Reliability", "Diagnostics"],
+    changes: [
+      "Added clearer background worker health, heartbeat, and queue visibility.",
+      "Added stale worker and stale job detection.",
+      "Improved recovery for interrupted enrichment and analysis jobs after restart.",
+      "Added duplicate job protection for long-running sync and enrichment actions.",
+      "Improved Job History status, progress, and result summaries.",
+      "Improved scheduled job reliability and skip reporting when another job is already running.",
+      "Added worker and scheduler diagnostics for troubleshooting.",
+    ],
+  },
   {
     version: "1.3.5",
     title: "Mood & Energy Sync Improvements",

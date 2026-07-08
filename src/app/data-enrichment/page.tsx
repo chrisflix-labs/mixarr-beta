@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AudioWaveform, BarChart3, Gauge, Loader2, Music2, RefreshCw, Settings, Tags, TrendingUp } from "lucide-react";
+import WorkerHealthCard from "@/components/WorkerHealthCard";
 import styles from "./data-enrichment.module.css";
 
 type Action =
@@ -305,6 +306,8 @@ export default function DataEnrichmentPage() {
           <Link href="/settings" className={styles.secondaryButton}><Settings size={14} /> Settings</Link>
         </div>
       </header>
+
+      <WorkerHealthCard compact />
 
       <section className={styles.modePanel} aria-label="Current provider settings">
         <div><span>BPM mode</span><strong>{summary.providerModes.bpm}</strong></div>

@@ -6,6 +6,7 @@ import {
   AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Download,
   FileJson, HeartPulse, Loader2, Music, RefreshCw, Search, ShieldAlert, Trash2,
 } from "lucide-react";
+import WorkerHealthCard from "@/components/WorkerHealthCard";
 import styles from "./library-health.module.css";
 
 type HealthLibrary = {
@@ -789,6 +790,8 @@ export default function LibraryHealthPage() {
         </div>
         <div className={styles.totalActive}><span>Active tracks</span><strong>{formatNumber(totalActive)}</strong></div>
       </header>
+
+      <WorkerHealthCard compact />
 
       {error && <div className={styles.errorBanner}><ShieldAlert size={18} /> {error}</div>}
       {message && <div className={styles.successBanner}><CheckCircle2 size={18} /> {message}</div>}

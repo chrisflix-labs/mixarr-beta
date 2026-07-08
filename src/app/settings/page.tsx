@@ -5,6 +5,7 @@ import LibraryDefaultSelector from "@/components/LibraryDefaultSelector";
 import SyncOptionsForm from "@/components/SyncOptionsForm";
 import BackgroundSchedulerSettings from "@/components/BackgroundSchedulerSettings";
 import TrackExclusionsManager from "@/components/TrackExclusionsManager";
+import WorkerHealthCard from "@/components/WorkerHealthCard";
 import { APP_DESCRIPTION, APP_NAME, MIXARR_GITHUB_URL } from "@/lib/appInfo";
 import { APP_VERSION } from "@/lib/appVersion";
 import styles from "./settings.module.css";
@@ -192,6 +193,7 @@ export default function SettingsPage() {
         <p className={styles.sectionDesc}>
           Control when Mixarr automatically runs background sync and analysis jobs.
         </p>
+        <WorkerHealthCard />
         <BackgroundSchedulerSettings />
       </section>
 

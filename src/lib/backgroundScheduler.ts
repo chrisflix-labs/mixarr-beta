@@ -69,7 +69,7 @@ async function applyBackgroundSchedulerSettings(settings: ResolvedSchedulerSetti
 
 export async function runScheduledBackgroundSync(activeCron: string) {
   const { pipelineRunsTotal, pipelineDurationSeconds } = await import("./metrics");
-  const { GLOBAL_SYNC_JOB_KEY, acquireJobLock, setJobPhase } = await import("./jobLock");
+  const { GLOBAL_SYNC_JOB_KEY, acquireJobLock, attachJobHistoryToLock, setJobPhase } = await import("./jobLock");
   const { safeFinishJobHistory, safeRecordJobHistory, safeStartJobHistory } = await import("./jobHistory");
 
   if (runtime.pipelineRunning) {
@@ -77,7 +77,7 @@ export async function runScheduledBackgroundSync(activeCron: string) {
     await safeRecordJobHistory({
       type: "other",
       name: "nightly sync pipeline",
-      status: "warning",
+      status: "skipped",
       trigger: "scheduled",
       summary: `Scheduled background sync skipped because the previous run is still running. Cron: ${activeCron}.`,
       counts: { attempted: 1, processed: 0, skipped: 1, failed: 0 },
@@ -98,7 +98,7 @@ export async function runScheduledBackgroundSync(activeCron: string) {
     await safeRecordJobHistory({
       type: "other",
       name: "nightly sync pipeline",
-      status: "warning",
+      status: "blocked",
       trigger: "scheduled",
       summary: `Scheduled background sync skipped because ${lock.activeJob.name} is already running. Cron: ${activeCron}.`,
       counts: { attempted: 1, processed: 0, skipped: 1, failed: 0 },
@@ -115,8 +115,11 @@ export async function runScheduledBackgroundSync(activeCron: string) {
     type: "other",
     name: "nightly sync pipeline",
     trigger: "scheduled",
-    metadata: { cron: activeCron },
+    metadata: { cron: activeCron, lockKey: lock.job.lockKey },
+    lockKey: lock.job.lockKey,
+    workerId: lock.job.workerId,
   });
+  attachJobHistoryToLock(lock.job, history, "other");
 
   const pipelineStart = Date.now();
   const maxPipelineMs = Number(process.env.SYNC_MAX_PIPELINE_MS || 6 * 60 * 60 * 1000);
@@ -188,7 +191,7 @@ export async function runScheduledBackgroundSync(activeCron: string) {
     endTimer();
     await safeFinishJobHistory({
       job: history,
-      status: pipelineResult === "success" ? "success" : pipelineResult === "timeout" ? "warning" : "failed",
+      status: pipelineResult === "success" ? "completed" : pipelineResult === "timeout" ? "completed_with_warnings" : "failed",
       summary: `Scheduled background sync started using cron ${activeCron} and finished with status=${pipelineResult}.`,
       metadata: { cron: activeCron },
     });

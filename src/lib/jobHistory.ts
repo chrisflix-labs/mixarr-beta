@@ -1,10 +1,24 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "./prisma";
+import { getWorkerIdentity, leaseExpiresAt } from "./workerHealth";
 
 export const JOB_HISTORY_RETENTION_LIMIT = 500;
 export const JOB_HISTORY_PAGE_LIMIT = 100;
 
-export type JobHistoryStatus = "running" | "success" | "warning" | "failed" | "cancelled";
+export type JobHistoryStatus =
+  | "queued"
+  | "running"
+  | "processing"
+  | "success"
+  | "warning"
+  | "completed"
+  | "completed_with_warnings"
+  | "failed"
+  | "cancelled"
+  | "interrupted"
+  | "stale"
+  | "skipped"
+  | "blocked";
 export type JobHistoryTrigger = "manual" | "scheduled" | "retry" | "startup" | "system" | "unknown";
 
 export type JobCounts = {
@@ -55,7 +69,7 @@ function hasCounts(counts: JobCounts) {
 }
 
 export function statusFromCounts(counts: JobCounts): JobHistoryStatus {
-  return (counts.failed || 0) > 0 ? "warning" : "success";
+  return (counts.failed || 0) > 0 ? "completed_with_warnings" : "completed";
 }
 
 export function summaryFromResult(name: string, result: unknown, counts: JobCounts = countsFromResult(result)) {
@@ -114,14 +128,20 @@ export async function safeStartJobHistory({
   name,
   trigger = "unknown",
   metadata,
+  lockKey,
+  workerId,
 }: {
   userId?: string | null;
   type: string;
   name: string;
   trigger?: JobHistoryTrigger | string;
   metadata?: Prisma.InputJsonValue;
+  lockKey?: string | null;
+  workerId?: string | null;
 }): Promise<StartedJobHistory | null> {
   try {
+    const worker = getWorkerIdentity();
+    const now = new Date();
     const row = await prisma.jobHistory.create({
       data: {
         userId: userId || undefined,
@@ -130,6 +150,12 @@ export async function safeStartJobHistory({
         status: "running",
         trigger,
         metadata: metadataOrUndefined(metadata),
+        workerId: workerId || worker.workerId,
+        lockKey: lockKey || undefined,
+        lastHeartbeatAt: now,
+        lastProgressAt: now,
+        leaseExpiresAt: leaseExpiresAt(now),
+        recoveryHint: recoveryHintForType(type, name),
       },
       select: { id: true, startedAt: true },
     });
@@ -175,12 +201,23 @@ export async function safeFinishJobHistory({
         failed: counts.failed ?? undefined,
         error: capText(error, 2_000),
         metadata: metadataOrUndefined(metadata),
+        lastHeartbeatAt: finishedAt,
+        lastProgressAt: finishedAt,
+        leaseExpiresAt: null,
+        currentItemLabel: null,
       },
     });
     await pruneOldJobHistory();
   } catch (historyError) {
     console.error("[JobHistory] Failed to finish job history record", historyError);
   }
+}
+
+function recoveryHintForType(type: string, name: string) {
+  if (/playlist/i.test(type) || /playlist/i.test(name)) {
+    return "Manual review required before retrying playlist jobs.";
+  }
+  return "Safe to retry if interrupted.";
 }
 
 export async function safeRecordJobHistory({
@@ -269,7 +306,7 @@ export async function getRecentJobSummary(userId: string) {
     prisma.jobHistory.count({
       where: {
         OR: [{ userId }, { userId: null }],
-        status: "failed",
+        status: { in: ["failed", "interrupted", "stale"] },
         startedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
       },
     }),

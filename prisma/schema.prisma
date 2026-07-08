@@ -533,6 +533,14 @@ model JobHistory {
   failed     Int?
   error      String?
   metadata   Json?
+  workerId   String?
+  lockKey    String?
+  currentItemLabel String?
+  lastHeartbeatAt DateTime?
+  lastProgressAt DateTime?
+  leaseExpiresAt DateTime?
+  progress   Json?
+  recoveryHint String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -540,6 +548,28 @@ model JobHistory {
   @@index([userId, startedAt])
   @@index([status, startedAt])
   @@index([type, startedAt])
+  @@index([workerId, status])
+  @@index([lockKey, status])
+  @@index([lastHeartbeatAt])
+  @@index([leaseExpiresAt])
+}
+
+model WorkerHeartbeat {
+  workerId        String   @id
+  hostname        String?
+  processId       Int?
+  appVersion      String?
+  status          String   @default("unknown")
+  startedAt       DateTime @default(now())
+  lastHeartbeatAt DateTime @default(now())
+  currentJobId    String?
+  currentJobType  String?
+  lastError       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([lastHeartbeatAt])
+  @@index([status])
 }
 
 model SystemState {

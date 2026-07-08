@@ -155,25 +155,33 @@
   white-space: nowrap;
 }
 
-.statusBadge[data-status="success"] {
+.statusBadge[data-status="success"],
+.statusBadge[data-status="completed"] {
   border-color: rgba(94, 229, 138, 0.24);
   color: #5ee58a;
   background: rgba(94, 229, 138, 0.08);
 }
 
-.statusBadge[data-status="warning"] {
+.statusBadge[data-status="warning"],
+.statusBadge[data-status="completed_with_warnings"],
+.statusBadge[data-status="skipped"],
+.statusBadge[data-status="blocked"] {
   border-color: rgba(242, 181, 46, 0.28);
   color: var(--warning);
   background: rgba(242, 181, 46, 0.10);
 }
 
-.statusBadge[data-status="failed"] {
+.statusBadge[data-status="failed"],
+.statusBadge[data-status="interrupted"],
+.statusBadge[data-status="stale"] {
   border-color: rgba(215, 91, 91, 0.34);
   color: #ffb0b0;
   background: rgba(215, 91, 91, 0.12);
 }
 
-.statusBadge[data-status="running"] {
+.statusBadge[data-status="running"],
+.statusBadge[data-status="processing"],
+.statusBadge[data-status="queued"] {
   border-color: rgba(53, 174, 234, 0.28);
   color: #b9e9ff;
   background: rgba(53, 174, 234, 0.09);

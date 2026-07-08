@@ -1,4 +1,4 @@
-import { GLOBAL_SYNC_JOB_KEY, acquireJobLock, type ActiveJob } from "./jobLock";
+import { GLOBAL_SYNC_JOB_KEY, acquireJobLock, attachJobHistoryToLock, setJobPhase, type ActiveJob } from "./jobLock";
 import { markEnrichmentJobFinished, markEnrichmentJobStarted } from "./enrichmentJobStatus";
 import {
   countsFromResult,
@@ -74,11 +74,11 @@ export function startSyncJobInBackground({
       userId,
       type: jobHistoryTypeForEngine(engine),
       name,
-      status: "warning",
+      status: "blocked",
       trigger: source,
       summary: `${name} skipped because ${lock.activeJob.name} is already running.`,
       counts: { attempted: 1, processed: 0, skipped: 1, failed: 0 },
-      metadata: { activeJobName: lock.activeJob.name, activeJobStartedAt: lock.activeJob.startedAt },
+      metadata: { activeJobName: lock.activeJob.name, activeJobStartedAt: lock.activeJob.startedAt, lockKey: lock.activeJob.lockKey },
     });
     return { started: false as const, activeJob: lock.activeJob };
   }
@@ -90,10 +90,14 @@ export function startSyncJobInBackground({
       type: jobHistoryTypeForEngine(engine),
       name,
       trigger: source,
-      metadata: libraryId ? { libraryId } : undefined,
+      metadata: { ...(libraryId ? { libraryId } : {}), engine, lockKey: lock.job.lockKey },
+      lockKey: lock.job.lockKey,
+      workerId: lock.job.workerId,
     });
+    attachJobHistoryToLock(lock.job, history, jobHistoryTypeForEngine(engine));
 
     try {
+      setJobPhase(lock.job, "Running");
       const result = await task();
       if (trackedEngine) markEnrichmentJobFinished(trackedEngine, result);
       if (engine === "plex" && !result) {
@@ -106,6 +110,7 @@ export function startSyncJobInBackground({
         return;
       }
       const counts = countsFromResult(result);
+      const durationSeconds = history ? Math.round((Date.now() - history.startedAt.getTime()) / 1000) : 0;
       const resultMetadata = result && typeof result === "object" && "metadata" in result
         ? (result as any).metadata
         : undefined;
@@ -117,6 +122,7 @@ export function startSyncJobInBackground({
         summary: summaryFromResult(name, result, counts),
         metadata: resultMetadata,
       });
+      console.log(`[Worker] Job completed id=${history?.id || lock.job.id} type=${jobHistoryTypeForEngine(engine)} processed=${counts.processed ?? 0} skipped=${counts.skipped ?? 0} failed=${counts.failed ?? 0} duration=${durationSeconds}s`);
     } catch (error) {
       if (trackedEngine) markEnrichmentJobFinished(trackedEngine, undefined, error);
       await safeFinishJobHistory({
@@ -125,6 +131,7 @@ export function startSyncJobInBackground({
         error,
         summary: `${name} failed.`,
       });
+      console.error(`[Worker] Job failed id=${history?.id || lock.job.id} type=${jobHistoryTypeForEngine(engine)}`, error);
       console.error(error);
     } finally {
       lock.release();

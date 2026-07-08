@@ -1,3 +1,5 @@
+import { getWorkerIdentity, markJobLeaseHeartbeat } from "./workerHealth";
+
 export const GLOBAL_SYNC_JOB_KEY = "global:sync";
 
 export type ActiveJob = {
@@ -5,7 +7,13 @@ export type ActiveJob = {
   name: string;
   source: string;
   keys: string[];
+  lockKey: string;
+  workerId: string;
+  jobHistoryId?: string;
+  jobHistoryType?: string;
   startedAt: string;
+  lastHeartbeatAt: string;
+  leaseExpiresAt: string;
   phase?: string;
 };
 
@@ -25,6 +33,10 @@ const globalJobLocks = globalThis as typeof globalThis & {
 
 const jobLocks = globalJobLocks.mixarrJobLocks ?? { activeByKey: {} };
 globalJobLocks.mixarrJobLocks = jobLocks;
+
+function heartbeatEnabled() {
+  return Boolean(process.env.DATABASE_URL);
+}
 
 function jobId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -65,19 +77,32 @@ export function acquireJobLock({
       skippedAt: new Date().toISOString(),
       activeJob,
     };
-    console.warn(`[JobLock] Skipping ${name}; ${activeJob.name} is already running.`);
+    console.warn(`[Worker] Duplicate job blocked type=${name} lockKey=${normalizedKeys[0] || "unknown"} existingJob=${activeJob.id} status=running`);
     return { acquired: false as const, activeJob };
   }
 
+  const now = new Date();
+  const worker = getWorkerIdentity();
   const job: ActiveJob = {
     id: jobId(),
     name,
     source,
     keys: normalizedKeys,
-    startedAt: new Date().toISOString(),
+    lockKey: normalizedKeys[0] || name,
+    workerId: worker.workerId,
+    startedAt: now.toISOString(),
+    lastHeartbeatAt: now.toISOString(),
+    leaseExpiresAt: new Date(now.getTime() + 10 * 60_000).toISOString(),
   };
   for (const key of normalizedKeys) jobLocks.activeByKey[key] = job;
-  console.log(`[JobLock] Started ${name} (${job.id}).`);
+  console.log(`[Worker] Acquired job id=${job.id} type=${name} lockKey=${job.lockKey}`);
+  if (heartbeatEnabled()) {
+    void markJobLeaseHeartbeat({
+      jobId: null,
+      jobType: name,
+      lockKey: job.lockKey,
+    });
+  }
 
   return {
     acquired: true as const,
@@ -92,15 +117,45 @@ export function releaseJobLock(job: ActiveJob) {
       delete jobLocks.activeByKey[key];
     }
   }
-  console.log(`[JobLock] Finished ${job.name} (${job.id}).`);
+  console.log(`[Worker] Released job id=${job.id} type=${job.name} lockKey=${job.lockKey}`);
+  if (heartbeatEnabled()) void markJobLeaseHeartbeat({ jobId: null });
 }
 
 export function setJobPhase(job: ActiveJob, phase: string) {
   job.phase = phase;
+  const now = new Date();
+  job.lastHeartbeatAt = now.toISOString();
   for (const key of job.keys) {
     if (jobLocks.activeByKey[key]?.id === job.id) {
       jobLocks.activeByKey[key] = job;
     }
+  }
+  if (heartbeatEnabled()) {
+    void markJobLeaseHeartbeat({
+      jobId: job.jobHistoryId || null,
+      jobType: job.jobHistoryType || job.name,
+      lockKey: job.lockKey,
+      progress: { phase },
+      currentItemLabel: phase,
+    });
+  }
+}
+
+export function attachJobHistoryToLock(job: ActiveJob, history: { id: string } | null, type: string) {
+  if (!history) return;
+  job.jobHistoryId = history.id;
+  job.jobHistoryType = type;
+  for (const key of job.keys) {
+    if (jobLocks.activeByKey[key]?.id === job.id) {
+      jobLocks.activeByKey[key] = job;
+    }
+  }
+  if (heartbeatEnabled()) {
+    void markJobLeaseHeartbeat({
+      jobId: history.id,
+      jobType: type,
+      lockKey: job.lockKey,
+    });
   }
 }
 
@@ -111,7 +166,12 @@ export function getJobDebugSnapshot(now = Date.now()) {
       id: job.id,
       name: job.name,
       source: job.source,
+      workerId: job.workerId,
+      lockKey: job.lockKey,
+      jobHistoryId: job.jobHistoryId || null,
       startedAt: job.startedAt,
+      lastHeartbeatAt: job.lastHeartbeatAt,
+      leaseExpiresAt: job.leaseExpiresAt,
       durationSeconds: Number.isFinite(started) ? Math.max(0, Math.round((now - started) / 1000)) : 0,
       phase: job.phase || null,
     };

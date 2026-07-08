@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AudioWaveform, BookMarked, BrainCircuit, Fingerprint, Gauge, HeartPulse, History, ListMusic, ListRestart, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
 import LibrarySelector from "@/components/LibrarySelector";
 import SyncProgress from "@/components/SyncProgress";
+import WorkerHealthCard from "@/components/WorkerHealthCard";
 import PlexLoginButton from "@/components/PlexLoginButton";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
@@ -251,6 +252,7 @@ export default async function Home() {
       {user ? (
         <div style={{ marginBottom: "3rem" }}>
           <SyncProgress />
+          <WorkerHealthCard />
           {health.length > 0 ? (() => {
             const active = health.reduce((sum, library) => sum + library.activeTracks, 0);
             const missing = health.reduce((sum, library) => sum + library.missingTracks, 0);

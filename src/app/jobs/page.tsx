@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { Activity } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { getJobHistory } from "@/lib/jobHistory";
+import WorkerHealthCard from "@/components/WorkerHealthCard";
 import styles from "./jobs.module.css";
 
 export const metadata = {
@@ -13,9 +14,15 @@ export const metadata = {
 const statusOptions = [
   ["all", "All"],
   ["running", "Running"],
+  ["completed", "Completed"],
+  ["completed_with_warnings", "Warnings"],
   ["success", "Success"],
   ["warning", "Warning"],
   ["failed", "Failed"],
+  ["interrupted", "Interrupted"],
+  ["stale", "Stale"],
+  ["skipped", "Skipped"],
+  ["blocked", "Blocked"],
 ];
 
 const typeOptions = [
@@ -105,6 +112,8 @@ export default async function JobHistoryPage({
             <Link className={styles.secondaryButton} href="/job-history">Reset</Link>
           </form>
 
+          <WorkerHealthCard />
+
           {jobs.length === 0 ? (
             <div className={styles.emptyState}>No jobs have been recorded yet. Run a sync, retry, or playlist job to see history here.</div>
           ) : (
@@ -136,6 +145,22 @@ export default async function JobHistoryPage({
                       <span>Trigger</span>
                       <strong>{job.trigger || "unknown"}</strong>
                     </div>
+                    <div className={styles.metaItem}>
+                      <span>Worker</span>
+                      <strong>{job.workerId || "unknown"}</strong>
+                    </div>
+                    <div className={styles.metaItem}>
+                      <span>Lock</span>
+                      <strong>{job.lockKey || "none"}</strong>
+                    </div>
+                    <div className={styles.metaItem}>
+                      <span>Last progress</span>
+                      <strong>{formatDate(job.lastProgressAt)}</strong>
+                    </div>
+                    <div className={styles.metaItem}>
+                      <span>Lease expires</span>
+                      <strong>{formatDate(job.leaseExpiresAt)}</strong>
+                    </div>
                   </div>
 
                   <div className={styles.counts} aria-label="Job counts">
@@ -146,6 +171,9 @@ export default async function JobHistoryPage({
                   </div>
 
                   {job.summary && <p className={styles.summary}>{job.summary}</p>}
+                  {job.recoveryHint && ["failed", "interrupted", "stale"].includes(job.status) && (
+                    <p className={styles.summary}>Recovery: {job.recoveryHint}</p>
+                  )}
 
                   {job.error && (
                     <details className={styles.errorDetails}>

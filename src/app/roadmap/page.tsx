@@ -23,6 +23,12 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "v1.3.6 completes Background Worker Reliability.",
+  "Dashboard, Job History, and Settings now show background worker health, heartbeat age, queue depth, stale jobs, active locks, and scheduler diagnostics.",
+  "Worker startup now runs a self-check, detects stale or interrupted running jobs, and safely recovers enrichment and analysis work where possible.",
+  "Long-running sync and enrichment jobs now carry worker ownership, lock keys, heartbeat/progress timestamps, and lease expiry metadata.",
+  "Duplicate long-running jobs and overlapping scheduled syncs are blocked or skipped with clearer Job History messages.",
+  "Unsafe playlist jobs are not blindly requeued after a restart.",
   "v1.3.5 completes Mood & Energy Sync Improvements.",
   "Library Health now shows missing mood, missing energy, missing mood & energy, partial mood/energy, pending mood/energy, and mood/energy failed categories.",
   "Mood and energy rows now include compact source and confidence labels where available.",
@@ -154,7 +160,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>v1.3.5 delivers Mood &amp; Energy Sync Improvements, making mood and energy values easier to trust, repair, and understand across Library Health, Data Enrichment, Smart Builder, and Playlist Preview.</p>
+          <p>v1.3.6 delivers Background Worker Reliability, making syncs, enrichment jobs, scheduled work, stale-job recovery, and worker diagnostics easier to trust after restarts or overlapping requests.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -179,7 +185,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Mood &amp; Energy Sync Improvements are complete in v1.3.5. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood blending, BPM transition/ramp tools, restore/version workflows, recently added automation, beta experiments, and manual BPM correction.</p>
+        <p className={styles.futureNote}>Background Worker Reliability is complete in v1.3.6. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood blending, BPM transition/ramp tools, restore/version workflows, recently added automation, beta experiments, and manual BPM correction.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">
