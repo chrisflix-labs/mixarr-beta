@@ -2,9 +2,10 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { Activity } from "lucide-react";
 import prisma from "@/lib/prisma";
-import { getJobHistory } from "@/lib/jobHistory";
+import { getClearableJobHistoryCount, getJobHistory } from "@/lib/jobHistory";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
 import CopySupportButton from "@/components/CopySupportButton";
+import ClearJobHistoryButton from "@/components/ClearJobHistoryButton";
 import styles from "./jobs.module.css";
 
 export const metadata = {
@@ -15,11 +16,14 @@ export const metadata = {
 const statusOptions = [
   ["all", "All"],
   ["running", "Running"],
+  ["retrying", "Retrying"],
   ["completed", "Completed"],
   ["completed_with_warnings", "Warnings"],
   ["success", "Success"],
   ["warning", "Warning"],
   ["failed", "Failed"],
+  ["error", "Error"],
+  ["cancelled", "Cancelled"],
   ["interrupted", "Interrupted"],
   ["stale", "Stale"],
   ["skipped", "Skipped"],
@@ -80,7 +84,12 @@ export default async function JobHistoryPage({
   const user = userId ? await prisma.user.findUnique({ where: { id: userId } }) : null;
   const selectedStatus = searchParams?.status || "all";
   const selectedType = searchParams?.type || "all";
-  const jobs = user ? await getJobHistory({ userId: user.id, status: selectedStatus, type: selectedType }) : [];
+  const [jobs, clearableJobCount] = user
+    ? await Promise.all([
+        getJobHistory({ userId: user.id, status: selectedStatus, type: selectedType }),
+        getClearableJobHistoryCount({ userId: user.id }),
+      ])
+    : [[], 0];
 
   return (
     <main className={styles.page}>
@@ -119,6 +128,8 @@ export default async function JobHistoryPage({
             <button className={styles.filterButton} type="submit">Apply Filters</button>
             <Link className={styles.secondaryButton} href="/job-history">Reset</Link>
           </form>
+
+          <ClearJobHistoryButton clearableCount={clearableJobCount} />
 
           <WorkerHealthCard />
 

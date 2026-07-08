@@ -7,6 +7,7 @@ export const JOB_HISTORY_PAGE_LIMIT = 100;
 
 export type JobHistoryStatus =
   | "queued"
+  | "retrying"
   | "running"
   | "processing"
   | "success"
@@ -14,6 +15,7 @@ export type JobHistoryStatus =
   | "completed"
   | "completed_with_warnings"
   | "failed"
+  | "error"
   | "cancelled"
   | "interrupted"
   | "stale"
@@ -32,6 +34,33 @@ export type StartedJobHistory = {
   id: string;
   startedAt: Date;
 };
+
+export const ACTIVE_JOB_HISTORY_STATUSES = [
+  "queued",
+  "retrying",
+  "running",
+  "processing",
+  "pending",
+  "active",
+  "in_progress",
+] as const;
+
+export const TERMINAL_JOB_HISTORY_STATUSES = [
+  "success",
+  "warning",
+  "completed",
+  "completed_with_warnings",
+  "failed",
+  "error",
+  "cancelled",
+  "interrupted",
+  "stale",
+  "skipped",
+  "blocked",
+] as const;
+
+const terminalJobHistoryStatusSet = new Set<string>(TERMINAL_JOB_HISTORY_STATUSES);
+const activeJobHistoryStatusSet = new Set<string>(ACTIVE_JOB_HISTORY_STATUSES);
 
 const TYPE_GROUPS: Record<string, string[]> = {
   bpm: ["bpm", "local_bpm"],
@@ -110,6 +139,21 @@ export function summaryFromResult(name: string, result: unknown, counts: JobCoun
 
 function metadataOrUndefined(metadata: Prisma.InputJsonValue | undefined) {
   return metadata === undefined ? undefined : metadata;
+}
+
+export function isTerminalJobHistoryStatus(status: string | null | undefined) {
+  return terminalJobHistoryStatusSet.has(String(status || "").toLowerCase());
+}
+
+export function isActiveJobHistoryStatus(status: string | null | undefined) {
+  return activeJobHistoryStatusSet.has(String(status || "").toLowerCase());
+}
+
+function clearableJobHistoryWhere(userId: string): Prisma.JobHistoryWhereInput {
+  return {
+    OR: [{ userId }, { userId: null }],
+    status: { in: [...TERMINAL_JOB_HISTORY_STATUSES] },
+  };
 }
 
 async function pruneOldJobHistory() {
@@ -295,6 +339,15 @@ export async function getJobHistory({
     orderBy: { startedAt: "desc" },
     take: limit,
   });
+}
+
+export async function getClearableJobHistoryCount({ userId }: { userId: string }) {
+  return prisma.jobHistory.count({ where: clearableJobHistoryWhere(userId) });
+}
+
+export async function clearTerminalJobHistory({ userId }: { userId: string }) {
+  const result = await prisma.jobHistory.deleteMany({ where: clearableJobHistoryWhere(userId) });
+  return result.count;
 }
 
 export async function getRecentJobSummary(userId: string) {

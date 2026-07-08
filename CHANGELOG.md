@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.5.1 - Job History Cleanup
+
+- Added a Clear History action to the Job History page.
+- Added confirmation before clearing old job records.
+- Finished jobs can now be removed from history.
+- Active, running, queued, or pending jobs are preserved.
+- Added backend support for safely clearing terminal job records.
+- Added success and error feedback for cleanup actions.
+
 ## v1.5.0 - Beta Feature Flags & Experimental Access
 
 - Added new Beta & Experimental Features settings section.
