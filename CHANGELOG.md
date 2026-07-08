@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3.7.1 - Remove Healthy Tracks Card
+
+- Removed the expensive Healthy Tracks card from the Library Health summary page.
+- Improved Library Health page load performance by avoiding unnecessary healthy-track calculations.
+- Kept issue-focused Library Health cards for missing, partial, failed, and pending metadata categories.
+
 ## v1.3.7 - Plex Matching & Track Sync Polish
 
 - Improved Plex track matching using stable identifiers before metadata fallbacks.

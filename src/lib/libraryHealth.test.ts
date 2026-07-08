@@ -135,7 +135,7 @@ describe("library health", () => {
     assert.match(classifier, /missing: merged\.missing/);
     assert.match(classifier, /enforceAudioFeatureIncompleteInvariant/);
     assert.match(classifier, /pending: invariant\.pending/);
-    assert.match(details, /libraryHealthDetailCategories\.map/);
+    assert.match(details, /libraryHealthSummaryCategories\.map/);
     assert.match(details, /resolveLibraryHealthTrackIds\(userId, \{ category, libraryId, settings, audioFeatureClassification \}\)/);
     assert.match(details, /buildHealthAccuracyDiagnostics/);
   });
@@ -145,11 +145,21 @@ describe("library health", () => {
     const detailRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/tracks/route.ts"), "utf8");
 
     assert.match(details, /resolveLibraryHealthTrackIds/);
-    assert.match(details, /libraryHealthDetailCategories\.map/);
+    assert.match(details, /libraryHealthSummaryCategories\.map/);
     assert.match(details, /resolveLibraryHealthTrackIds\(userId, \{ category, libraryId, settings, audioFeatureClassification \}\)/);
     assert.match(detailRoute, /resolveLibraryHealthTrackIds/);
     assert.match(detailRoute, /resolvedTrackIds: resolved\?\.trackIds/);
     assert.match(detailRoute, /Count\/detail mismatch/);
+  });
+
+  it("keeps Healthy Tracks out of the default Library Health summary cards", async () => {
+    const details = await readFile(path.join(process.cwd(), "src/lib/libraryHealthDetails.ts"), "utf8");
+    const page = await readFile(path.join(process.cwd(), "src/app/library-health/page.tsx"), "utf8");
+
+    assert.match(details, /libraryHealthSummaryCategories/);
+    assert.match(details, /category !== "healthy_tracks"/);
+    assert.doesNotMatch(page, /\{\s*key: "healthy"/);
+    assert.doesNotMatch(page, /counts\?\.healthy_tracks/);
   });
 
   it("resolves audio feature gap IDs into partial, missing, and pending detail/retry sets", async () => {

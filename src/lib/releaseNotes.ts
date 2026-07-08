@@ -30,6 +30,7 @@ export type ReleaseNoteBadge =
   | "Mood"
   | "Mobile"
   | "Navigation"
+  | "Performance"
   | "Playlists"
   | "Popularity"
   | "Plex"
@@ -58,6 +59,16 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.3.7.1",
+    title: "Remove Healthy Tracks Card",
+    badges: ["Hotfix", "Library Health", "Performance", "UI"],
+    changes: [
+      "Removed the expensive Healthy Tracks card from the Library Health summary page.",
+      "Improved Library Health page load performance by avoiding unnecessary healthy-track calculations.",
+      "Kept issue-focused Library Health cards for missing, partial, failed, and pending metadata categories.",
+    ],
+  },
   {
     version: "1.3.7",
     title: "Plex Matching & Track Sync Polish",

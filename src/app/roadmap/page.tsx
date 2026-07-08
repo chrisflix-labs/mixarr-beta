@@ -23,6 +23,7 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "v1.3.7.1 removed the Healthy Tracks card from Library Health to improve page performance.",
   "v1.3.7 completes Plex Matching & Track Sync Polish.",
   "Plex sync now prefers stable track identifiers before metadata fallbacks.",
   "Moved files, renamed tracks, restored tracks, and missing-from-Plex records are handled without unsafe deletion or duplicate creation.",
@@ -166,7 +167,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>v1.3.7 delivers Plex Matching & Track Sync Polish, making Plex library syncs easier to trust when tracks are renamed, moved, restored, duplicated, or missing.</p>
+          <p>v1.3.7.1 removes the Healthy Tracks card from Library Health while keeping the v1.3.7 Plex Matching & Track Sync Polish work intact.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -191,7 +192,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Plex Matching & Track Sync Polish is complete in v1.3.7. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood blending, BPM transition/ramp tools, restore/version workflows, recently added automation, beta experiments, and manual BPM correction.</p>
+        <p className={styles.futureNote}>Plex Matching & Track Sync Polish is complete in v1.3.7, with v1.3.7.1 adding a small Library Health performance hotfix. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood blending, BPM transition/ramp tools, restore/version workflows, recently added automation, beta experiments, and manual BPM correction.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

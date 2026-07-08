@@ -87,6 +87,10 @@ export const libraryHealthDetailCategories = [
 ] as const;
 
 export type LibraryHealthDetailCategory = typeof libraryHealthDetailCategories[number];
+export const libraryHealthSummaryCategories = libraryHealthDetailCategories.filter(
+  (category) => category !== "all_tracks" && category !== "healthy_tracks",
+) as Exclude<LibraryHealthDetailCategory, "all_tracks" | "healthy_tracks">[];
+export type LibraryHealthSummaryCategory = typeof libraryHealthSummaryCategories[number];
 export type LibraryHealthSort = "artist" | "title" | "album" | "duration" | "bpm" | "lastAnalyzed" | "failureStatus";
 
 export const DEFAULT_LIBRARY_HEALTH_CATEGORY: LibraryHealthDetailCategory = "missing_bpm";
@@ -980,7 +984,7 @@ function invariant(section: LibraryHealthInvariantResult["section"], counts: Rec
 
 function buildHealthAccuracyDiagnostics(input: {
   totalTracks: number;
-  categories: Record<LibraryHealthDetailCategory, number>;
+  categories: Record<LibraryHealthSummaryCategory, number>;
   moodEnergy: {
     tracksWithMood: number;
     tracksMissingMood: number;
@@ -1067,11 +1071,11 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
   const active = activeUserTrackWhere(userId, libraryId);
   const totalTracks = await prisma.track.count({ where: active });
   const audioFeatureClassification = await getAudioFeatureHealthClassification(userId, { libraryId, settings });
-  const entries = await Promise.all(libraryHealthDetailCategories.map(async (category) => [
+  const entries = await Promise.all(libraryHealthSummaryCategories.map(async (category) => [
     category,
     (await resolveLibraryHealthTrackIds(userId, { category, libraryId, settings, audioFeatureClassification })).count,
   ] as const));
-  const categories = Object.fromEntries(entries) as Record<LibraryHealthDetailCategory, number>;
+  const categories = Object.fromEntries(entries) as Record<LibraryHealthSummaryCategory, number>;
   const [tracksWithBpm, tracksWithGenres, missingGenres, tracksWithPopularity, missingPopularity, availableLocalFiles, missingLocalFiles] = await Promise.all([
     resolveLibraryHealthTrackIds(userId, { category: "tracks_with_bpm", libraryId, settings }),
     resolveLibraryHealthTrackIds(userId, { category: "tracks_with_genres", libraryId, settings }),

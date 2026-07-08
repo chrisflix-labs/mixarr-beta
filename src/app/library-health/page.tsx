@@ -98,7 +98,7 @@ type HealthAccuracyDiagnostics = {
 };
 type Summary = {
   totalTracks: number;
-  categories: Record<Category, number>;
+  categories: Partial<Record<Category, number>>;
   libraries: LibraryOption[];
   audioFeatureProviderLabel?: string;
   audioFeatureGapAudit?: AudioFeatureGapAudit;
@@ -247,7 +247,6 @@ const categoryOrder: Category[] = [
   "too_short",
   "skipped",
   "complete_audio_features",
-  "healthy_tracks",
 ];
 
 const actionableCategories: Category[] = [
@@ -515,7 +514,6 @@ export default function LibraryHealthDetailsPage() {
     const syncCardKeys = new Set(["missing_from_plex", "duplicate_candidates", "match_conflicts", "recently_added_tracks", "recently_updated_tracks", "moved_files", "renamed_tracks"]);
     return [
       { key: "total", label: "Total Tracks", count: summary?.totalTracks || 0, category: "all_tracks" as Category },
-      { key: "healthy", label: "Healthy Tracks", count: counts?.healthy_tracks || 0, category: "healthy_tracks" as Category },
       { key: "missing_from_plex", label: "Missing from Plex", count: counts?.missing_from_plex || 0, category: "missing_from_plex" as Category },
       { key: "duplicate_candidates", label: "Duplicate Candidates", count: counts?.duplicate_candidates || 0, category: "duplicate_candidates" as Category },
       { key: "match_conflicts", label: "Match Conflicts", count: counts?.match_conflicts || 0, category: "match_conflicts" as Category },
@@ -709,7 +707,7 @@ export default function LibraryHealthDetailsPage() {
         <div className={`glass-panel ${styles.empty}`}>Library Health data is not available yet. Run a library sync or audio analysis job first.</div>
       )}
 
-      {summary && summary.categories.partial_audio_features > 0 && summary.categories.pending_audio_features > 0 && (
+      {summary && (summary.categories.partial_audio_features || 0) > 0 && (summary.categories.pending_audio_features || 0) > 0 && (
         <div className={styles.message}>
           Audio feature gap detected: {formatNumber(summary.categories.partial_audio_features)} active tracks have partial audio feature data and need local audio feature processing.
         </div>
@@ -720,7 +718,7 @@ export default function LibraryHealthDetailsPage() {
           <button key={card.key} className={`${styles.summaryCard} ${category === card.category ? styles.summaryCardActive : ""}`} type="button" onClick={() => updateCategory(card.category)}>
             <span>{card.label}</span>
             <strong>{formatNumber(card.count)}</strong>
-            <small>{card.key === "total" ? "Active library tracks" : card.key === "healthy" ? "Required metadata complete for current settings" : "Open filtered track list"}</small>
+            <small>{card.key === "total" ? "Active library tracks" : "Open filtered track list"}</small>
           </button>
         ))}
       </section>
@@ -791,6 +789,7 @@ export default function LibraryHealthDetailsPage() {
           <label>
             <span>Health category</span>
             <select value={category} onChange={(event) => updateCategory(event.target.value as Category)}>
+              {category === "healthy_tracks" && <option value="healthy_tracks">Healthy Tracks</option>}
               {categoryOrder.map((item) => <option key={item} value={item}>{categoryLabels[item]}</option>)}
             </select>
           </label>
