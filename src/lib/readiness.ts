@@ -13,6 +13,7 @@ export type ReadinessCheck = {
   status: ReadinessStatus;
   summary: string;
   detail?: string | null;
+  diagnostics?: Record<string, unknown>;
 };
 
 export type AppReadiness = {
@@ -34,20 +35,48 @@ export type AppReadiness = {
   messages: string[];
 };
 
-const REQUIRED_TABLES = [
-  "_prisma_migrations",
-  "User",
-  "Server",
-  "Library",
-  "Track",
-  "SyncLog",
-  "JobHistory",
-  "WorkerHeartbeat",
-  "SystemState",
+type ReadinessModelDelegate = {
+  findFirst(args: any): Promise<unknown>;
+};
+
+type DatabaseReadinessClient = {
+  $queryRaw(strings: TemplateStringsArray, ...values: any[]): Promise<unknown>;
+  $queryRawUnsafe<T = unknown>(query: string): Promise<T>;
+  user: ReadinessModelDelegate;
+  server: ReadinessModelDelegate;
+  library: ReadinessModelDelegate;
+  track: ReadinessModelDelegate;
+  syncLog: ReadinessModelDelegate;
+  jobHistory: ReadinessModelDelegate;
+  workerHeartbeat: ReadinessModelDelegate;
+  systemState: ReadinessModelDelegate;
+};
+
+const REQUIRED_CORE_MODEL_CHECKS: Array<{
+  model: keyof Pick<DatabaseReadinessClient, "user" | "server" | "library" | "track" | "syncLog" | "jobHistory" | "workerHeartbeat" | "systemState">;
+  table: string;
+  args: Record<string, unknown>;
+}> = [
+  { model: "user", table: "User", args: { select: { id: true } } },
+  { model: "server", table: "Server", args: { select: { id: true } } },
+  { model: "library", table: "Library", args: { select: { id: true } } },
+  { model: "track", table: "Track", args: { select: { id: true } } },
+  { model: "syncLog", table: "SyncLog", args: { select: { id: true } } },
+  { model: "jobHistory", table: "JobHistory", args: { select: { id: true } } },
+  { model: "workerHeartbeat", table: "WorkerHeartbeat", args: { select: { workerId: true } } },
+  { model: "systemState", table: "SystemState", args: { select: { key: true } } },
 ];
 
-function check(label: string, status: ReadinessStatus, summary: string, detail?: string | null): ReadinessCheck {
-  return { label, status, summary, detail: detail ? sanitizeErrorText(detail, 500) : null };
+const loggedDatabaseReadinessMessages = new Set<string>();
+
+function check(label: string, status: ReadinessStatus, summary: string, detail?: string | null, diagnostics?: Record<string, unknown>): ReadinessCheck {
+  return {
+    label,
+    status,
+    summary,
+    detail: detail ? sanitizeErrorText(detail, 500) : null,
+    ...(diagnostics ? { diagnostics } : {}),
+  };
 }
 
 function statusRank(status: ReadinessStatus) {
@@ -64,6 +93,33 @@ function overallStatus(checks: Record<string, ReadinessCheck>): ReadinessStatus 
 
 function boolEnv(value: string | undefined) {
   return value ? ["1", "true", "yes", "on"].includes(value.trim().toLowerCase()) : false;
+}
+
+function debugReadinessLogsEnabled() {
+  return boolEnv(process.env.READINESS_DEBUG) || boolEnv(process.env.MIXARR_READINESS_DEBUG);
+}
+
+function logDatabaseReadiness(level: "ok" | "warning" | "error", line: string) {
+  if (level === "ok" && !debugReadinessLogsEnabled()) return;
+  if (!debugReadinessLogsEnabled() && loggedDatabaseReadinessMessages.has(line)) return;
+  loggedDatabaseReadinessMessages.add(line);
+  if (level === "error") console.error(line);
+  else if (level === "warning") console.warn(line);
+  else console.log(line);
+}
+
+function errorCode(error: unknown) {
+  return typeof error === "object" && error && "code" in error ? String((error as any).code) : "";
+}
+
+function isMissingTableError(error: unknown) {
+  const message = sanitizeErrorText(error) || "";
+  return errorCode(error) === "P2021" || /relation .* does not exist|table .* does not exist|undefined_table/i.test(message);
+}
+
+function isMissingColumnError(error: unknown) {
+  const message = sanitizeErrorText(error) || "";
+  return errorCode(error) === "P2022" || /column .* does not exist|undefined_column/i.test(message);
 }
 
 function supportLinkChecks() {
@@ -87,21 +143,116 @@ function supportLinkChecks() {
   };
 }
 
+async function inspectMigrationState(db: DatabaseReadinessClient) {
+  try {
+    const metadataRows = await db.$queryRawUnsafe<Array<{ table_name: string }>>(
+      `select table_name from information_schema.tables where table_schema = current_schema() and table_name = '_prisma_migrations' limit 1`,
+    );
+    if (!metadataRows.length) return { state: "unavailable" as const };
+
+    const incompleteRows = await db.$queryRawUnsafe<Array<{ migration_name: string }>>(
+      `select migration_name from "_prisma_migrations" where finished_at is null and rolled_back_at is null limit 5`,
+    );
+    if (incompleteRows.length > 0) {
+      return {
+        state: "incomplete" as const,
+        migrations: incompleteRows.map((row) => row.migration_name).filter(Boolean),
+      };
+    }
+    return { state: "verified" as const };
+  } catch (error) {
+    return { state: "unverified" as const, error: sanitizeErrorText(error) };
+  }
+}
+
+export async function buildDatabaseReadinessCheck(db: DatabaseReadinessClient = prisma as any): Promise<ReadinessCheck> {
+  try {
+    await db.$queryRaw`SELECT 1`;
+  } catch (error) {
+    logDatabaseReadiness("error", "[Readiness] Database check error reason=connection_failed");
+    return check("Database", "Error", "Database is not reachable.", sanitizeErrorText(error), {
+      connection: "failed",
+    });
+  }
+
+  const verifiedCoreTables: string[] = [];
+  for (const probe of REQUIRED_CORE_MODEL_CHECKS) {
+    try {
+      await db[probe.model].findFirst(probe.args);
+      verifiedCoreTables.push(probe.table);
+    } catch (error) {
+      if (isMissingTableError(error)) {
+        logDatabaseReadiness("error", `[Readiness] Database check error reason=missing_core_table table=${probe.table}`);
+        return check("Database", "Error", "Database schema check found missing required tables.", null, {
+          connection: "ok",
+          coreTables: "failed",
+          verifiedCoreTables,
+          missingRequiredTables: [probe.table],
+        });
+      }
+      if (isMissingColumnError(error)) {
+        logDatabaseReadiness("error", `[Readiness] Database check error reason=incomplete_migration table=${probe.table}`);
+        return check(
+          "Database",
+          "Error",
+          "Database is reachable, but some migrations may be missing. Check container logs or run migrations.",
+          sanitizeErrorText(error),
+          {
+            connection: "ok",
+            coreTables: "failed",
+            verifiedCoreTables,
+            migrationState: "incomplete",
+            failedCoreTable: probe.table,
+          },
+        );
+      }
+
+      logDatabaseReadiness("error", `[Readiness] Database check error reason=core_query_failed table=${probe.table}`);
+      return check("Database", "Error", "Database schema check failed while querying required app tables.", sanitizeErrorText(error), {
+        connection: "ok",
+        coreTables: "failed",
+        verifiedCoreTables,
+        failedCoreTable: probe.table,
+      });
+    }
+  }
+
+  const migrationState = await inspectMigrationState(db);
+  if (migrationState.state === "incomplete") {
+    logDatabaseReadiness("warning", "[Readiness] Database check warning migrationState=incomplete");
+    return check(
+      "Database",
+      "Warning",
+      "Database is reachable, but some migrations may be missing. Check container logs or run migrations.",
+      migrationState.migrations.length ? `Incomplete migrations: ${migrationState.migrations.join(", ")}` : null,
+      {
+        connection: "ok",
+        coreTables: "verified",
+        verifiedCoreTables,
+        migrationState: "incomplete",
+        incompleteMigrations: migrationState.migrations,
+      },
+    );
+  }
+
+  const diagnostics = {
+    connection: "ok",
+    coreTables: "verified",
+    verifiedCoreTables,
+    migrationState: migrationState.state,
+  };
+  logDatabaseReadiness("ok", "[Readiness] Database check OK coreTables=verified");
+  return check("Database", "OK", "Database connection and schema checks passed.", null, diagnostics);
+}
+
 async function databaseCheck() {
   try {
-    await prisma.$queryRaw`SELECT 1`;
-    const tableList = REQUIRED_TABLES.map((table) => `'${table.replace(/'/g, "''")}'`).join(",");
-    const rows = await prisma.$queryRawUnsafe<Array<{ table_name: string }>>(
-      `select table_name from information_schema.tables where table_schema = current_schema() and table_name in (${tableList})`,
-    );
-    const found = new Set(rows.map((row) => row.table_name));
-    const missing = REQUIRED_TABLES.filter((table) => !found.has(table));
-    if (missing.length > 0) {
-      return check("Database", "Error", "Database is reachable, but required tables are missing.", `Missing: ${missing.join(", ")}`);
-    }
-    return check("Database", "OK", "Database is reachable and required tables are present.");
+    return await buildDatabaseReadinessCheck(prisma as any);
   } catch (error) {
-    return check("Database", "Error", "Database is not reachable.", sanitizeErrorText(error));
+    console.error("[Readiness] Database check failed unexpectedly", sanitizeErrorText(error));
+    return check("Database", "Unknown", "Database readiness check could not complete. The app is still running.", sanitizeErrorText(error), {
+      connection: "unknown",
+    });
   }
 }
 

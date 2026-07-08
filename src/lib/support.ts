@@ -187,6 +187,9 @@ export async function getSupportDiagnostics(userId: string) {
     build: buildInfo(),
     environment: environmentSummary(),
     supportSummary: summary,
+    readiness: {
+      database: (readiness as any)?.checks?.database ?? null,
+    },
     appReadiness: readiness,
     configuredFeatures: (summary as any).configuredFeatures,
     plex: {

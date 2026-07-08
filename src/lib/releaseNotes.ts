@@ -13,6 +13,7 @@ export type ReleaseNoteBadge =
   | "Cache"
   | "Dashboard"
   | "Data Enrichment"
+  | "Database"
   | "Debugging"
   | "Diagnostics"
   | "Discord"
@@ -66,6 +67,17 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.3.9.1",
+    title: "App Readiness Database Check Fix",
+    badges: ["Hotfix", "Settings", "Readiness", "Database", "Diagnostics"],
+    changes: [
+      "Fixed a false App Readiness database error on the Settings page.",
+      "Improved database readiness checks so optional or stale table checks do not show as critical errors.",
+      "Added clearer database readiness statuses for OK, warning, and error states.",
+      "Improved readiness diagnostics without exposing database credentials or secrets.",
+    ],
+  },
   {
     version: "1.3.9",
     title: "v2.0.0 Readiness & Beta Hardening",

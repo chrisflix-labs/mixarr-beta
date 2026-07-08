@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.3.9.1 - App Readiness Database Check Fix
+
+- Fixed a false App Readiness database error on the Settings page.
+- Improved database readiness checks so optional or stale table checks do not show as critical errors.
+- Added clearer database readiness statuses for OK, warning, and error states.
+- Improved readiness diagnostics without exposing database credentials or secrets.
+
 ## v1.3.9 - v2.0.0 Readiness & Beta Hardening
 
 - Added app readiness checks for database, Plex, worker, scheduler, support links, and local analysis status.

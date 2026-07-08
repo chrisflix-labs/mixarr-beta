@@ -72,6 +72,7 @@ export default function RoadmapPage() {
             Mixarr {APP_VERSION} closes the v1.3.x reliability and data-foundation cycle with startup readiness checks,
             safer diagnostics, clearer configuration validation, and release visibility cleanup.
           </p>
+          <p>v1.3.9.1 fixed a false database error in App Readiness.</p>
           <div className={styles.currentReleaseList}>
             {completedV13Items.map((feature) => (
               <span key={feature}>{feature}</span>
