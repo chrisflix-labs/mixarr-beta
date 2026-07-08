@@ -42,6 +42,12 @@ import {
   type GenreHealthFilter,
   type PopularityHealthFilter,
 } from "./libraryHealth";
+import {
+  getMoodEnergyDisplayMetadata,
+  moodEnergyHealthFilters,
+  resolveMoodEnergyTrackIds,
+  type MoodEnergyHealthFilter,
+} from "./moodEnergy";
 import { metadataProviderModeKey } from "./syncSettings";
 
 export const libraryHealthDetailCategories = [
@@ -57,6 +63,13 @@ export const libraryHealthDetailCategories = [
   "partial_audio_features",
   "pending_audio_features",
   "complete_audio_features",
+  "missing_mood",
+  "missing_energy",
+  "missing_mood_energy",
+  "partial_mood_energy",
+  "complete_mood_energy",
+  "pending_mood_energy",
+  "mood_energy_failed",
   "failed_analysis",
   "failed_bpm_analysis",
   "failed_audio_feature_analysis",
@@ -85,6 +98,13 @@ export const libraryHealthDetailLabels: Record<LibraryHealthDetailCategory, stri
   partial_audio_features: "Partial Audio Features",
   pending_audio_features: "Pending Audio Features",
   complete_audio_features: "Complete Audio Features",
+  missing_mood: "Missing Mood",
+  missing_energy: "Missing Energy",
+  missing_mood_energy: "Missing Mood & Energy",
+  partial_mood_energy: "Partial Mood/Energy",
+  complete_mood_energy: "Complete Mood/Energy",
+  pending_mood_energy: "Pending Mood/Energy Analysis",
+  mood_energy_failed: "Mood/Energy Failed",
   failed_analysis: "Failed Analysis",
   failed_bpm_analysis: "Failed BPM Analysis",
   failed_audio_feature_analysis: "Failed Audio Feature Analysis",
@@ -107,6 +127,13 @@ export const libraryHealthEmptyMessages: Record<LibraryHealthDetailCategory, str
   partial_audio_features: "No tracks have partial audio feature data.",
   pending_audio_features: "No tracks are pending audio feature analysis.",
   complete_audio_features: "No tracks have complete audio features yet.",
+  missing_mood: "No tracks are missing mood values.",
+  missing_energy: "No tracks are missing energy values.",
+  missing_mood_energy: "No tracks are missing both mood and energy values.",
+  partial_mood_energy: "No tracks have partial mood/energy data.",
+  complete_mood_energy: "No tracks have complete mood/energy data yet.",
+  pending_mood_energy: "No tracks are pending mood/energy analysis.",
+  mood_energy_failed: "No mood/energy analysis failures found.",
   failed_analysis: "No failed analysis jobs found.",
   failed_bpm_analysis: "No failed BPM analysis jobs found.",
   failed_audio_feature_analysis: "No failed audio feature analysis jobs found.",
@@ -198,6 +225,14 @@ export function libraryHealthCategoryWhere(category: LibraryHealthDetailCategory
       return pendingAudioFeatureTrackWhere(settings);
     case "complete_audio_features":
       return completeAudioFeatureTrackWhere(settings);
+    case "missing_mood":
+    case "missing_energy":
+    case "missing_mood_energy":
+    case "partial_mood_energy":
+    case "complete_mood_energy":
+    case "pending_mood_energy":
+    case "mood_energy_failed":
+      return { id: "__mood_energy_requires_resolved_track_ids__" };
     case "failed_analysis":
       return { OR: [bpmFailedTrackWhere(), audioFeatureFailedTrackWhere(settings)] };
     case "failed_bpm_analysis":
@@ -229,6 +264,7 @@ type ResolvableLibraryHealthCategory =
   | "audio_feature_no_data"
   | "audio_feature_failed"
   | "audio_too_short"
+  | MoodEnergyHealthFilter
   | "extraction_failed"
   | "analyzer_failed"
   | "tracks_with_genres"
@@ -364,6 +400,19 @@ export async function resolveLibraryHealthTrackIds(userId: string, options: {
   const category = normalizeResolvableCategory(options.category);
   const active = activeUserTrackWhere(userId, options.libraryId);
   const baseWhere = { AND: [active, resolvableCategoryWhere(category, options.settings)] };
+
+  if ((moodEnergyHealthFilters as readonly string[]).includes(category)) {
+    const trackIds = await resolveMoodEnergyTrackIds(userId, {
+      filter: category as MoodEnergyHealthFilter,
+      libraryId: options.libraryId,
+      settings: options.settings,
+    });
+    return {
+      trackIds,
+      count: trackIds.length,
+      debug: { filter: category, normal: trackIds.length, gap: 0, total: trackIds.length },
+    };
+  }
 
   if (category === "low_confidence_bpm" || category === "bpm_source_conflict") {
     const trackIds = await findBpmMetadataTrackIds(baseWhere, (track) => {
@@ -595,6 +644,11 @@ export const libraryHealthDetailTrackSelect = {
       audioFeatureAnalysisScope: true,
       tempoSource: true,
       source: true,
+      confidence: true,
+      energySource: true,
+      valenceSource: true,
+      danceabilitySource: true,
+      acousticnessSource: true,
     },
   },
 } satisfies Prisma.TrackSelect;
@@ -650,6 +704,20 @@ export function reasonForLibraryHealthTrack(category: LibraryHealthDetailCategor
       return "This track is pending audio feature analysis because required audio feature fields are incomplete for the current provider mode.";
     case "complete_audio_features":
       return "This track has a complete audio feature set.";
+    case "missing_mood":
+      return getMoodEnergyDisplayMetadata(track, settings).reason;
+    case "missing_energy":
+      return getMoodEnergyDisplayMetadata(track, settings).reason;
+    case "missing_mood_energy":
+      return getMoodEnergyDisplayMetadata(track, settings).reason;
+    case "partial_mood_energy":
+      return getMoodEnergyDisplayMetadata(track, settings).reason;
+    case "complete_mood_energy":
+      return "This track has mood and energy values for the current provider mode.";
+    case "pending_mood_energy":
+      return getMoodEnergyDisplayMetadata(track, settings).reason;
+    case "mood_energy_failed":
+      return track.audioFeature?.audioFeatureFailureReason || "Mood/energy analysis failed during a previous local audio feature attempt.";
     case "failed_analysis":
       return failureReason(track) || "BPM or audio feature analysis failed during a previous attempt.";
     case "failed_bpm_analysis":
@@ -673,6 +741,7 @@ export function serializeLibraryHealthDetailTrack(track: any, category: LibraryH
   const effectiveBpm = getEffectiveBpm(track);
   const bpmDisplay = getBpmDisplayMetadata(track);
   const audio = getEffectiveAudioFeatures(track, settings);
+  const moodEnergy = getMoodEnergyDisplayMetadata(track, settings);
   const lastAnalyzed = [track.bpmAnalyzedAt, track.audioFeature?.audioFeatureAnalyzedAt]
     .filter(Boolean)
     .map((value) => new Date(value))
@@ -702,6 +771,15 @@ export function serializeLibraryHealthDetailTrack(track: any, category: LibraryH
     bpmReason: bpmDisplay.reason,
     energy: audio.energy,
     mood: audio.mood,
+    energySource: moodEnergy.energy.source,
+    energySourceKey: moodEnergy.energy.sourceKey,
+    energyConfidence: moodEnergy.energy.confidence,
+    energyConfidenceValue: moodEnergy.energy.confidenceValue,
+    moodSource: moodEnergy.mood.source,
+    moodSourceKey: moodEnergy.mood.sourceKey,
+    moodConfidence: moodEnergy.mood.confidence,
+    moodConfidenceValue: moodEnergy.mood.confidenceValue,
+    moodEnergyStatus: moodEnergy.status,
     danceability: audio.danceability,
     acousticness: audio.acousticness,
     audioFeatureStatus: audioFeatureStatus(track, settings),
@@ -749,7 +827,7 @@ export function defaultOrderForLibraryHealth(category: LibraryHealthDetailCatego
 }
 
 export type LibraryHealthInvariantResult = {
-  section: "Audio Features" | "BPM" | "Genres" | "Popularity" | "Local Files";
+  section: "Audio Features" | "Mood/Energy" | "BPM" | "Genres" | "Popularity" | "Local Files";
   ok: boolean;
   message: string;
   counts: Record<string, number>;
@@ -802,6 +880,13 @@ function invariant(section: LibraryHealthInvariantResult["section"], counts: Rec
 function buildHealthAccuracyDiagnostics(input: {
   totalTracks: number;
   categories: Record<LibraryHealthDetailCategory, number>;
+  moodEnergy: {
+    tracksWithMood: number;
+    tracksMissingMood: number;
+    tracksWithEnergy: number;
+    tracksMissingEnergy: number;
+    tracksMissingBoth: number;
+  };
   tracksWithBpm: number;
   tracksWithGenres: number;
   missingGenres: number;
@@ -817,6 +902,11 @@ function buildHealthAccuracyDiagnostics(input: {
   const classifiedIncomplete = audio.audit.classifiedIncomplete;
   const audioOk = expectedIncomplete === classifiedIncomplete;
   const bpmOk = input.totalTracks === input.tracksWithBpm + input.categories.missing_bpm;
+  const moodOk = input.totalTracks === input.moodEnergy.tracksWithMood + input.moodEnergy.tracksMissingMood;
+  const energyOk = input.totalTracks === input.moodEnergy.tracksWithEnergy + input.moodEnergy.tracksMissingEnergy;
+  const missingBothOk = input.moodEnergy.tracksMissingBoth <= input.moodEnergy.tracksMissingMood
+    && input.moodEnergy.tracksMissingBoth <= input.moodEnergy.tracksMissingEnergy;
+  const moodEnergyOk = moodOk && energyOk && missingBothOk;
   const genresOk = input.totalTracks === input.tracksWithGenres + input.missingGenres;
   const popularityOk = input.totalTracks === input.tracksWithPopularity + input.missingPopularity;
   const localFilesOk = input.totalTracks === input.availableLocalFiles + input.missingLocalFiles;
@@ -834,6 +924,14 @@ function buildHealthAccuracyDiagnostics(input: {
       noData: audio.noData,
       unclassified: audio.audit.unclassifiedGap,
     }, audioOk, audioOk ? "OK" : "incomplete mismatch"),
+    invariant("Mood/Energy", {
+      active: input.totalTracks,
+      tracksWithMood: input.moodEnergy.tracksWithMood,
+      missingMood: input.moodEnergy.tracksMissingMood,
+      tracksWithEnergy: input.moodEnergy.tracksWithEnergy,
+      missingEnergy: input.moodEnergy.tracksMissingEnergy,
+      missingMoodAndEnergy: input.moodEnergy.tracksMissingBoth,
+    }, moodEnergyOk, moodEnergyOk ? "OK" : "mood/energy count invariant failed"),
     invariant("BPM", {
       active: input.totalTracks,
       tracksWithBpm: input.tracksWithBpm,
@@ -882,6 +980,13 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
     resolveLibraryHealthTrackIds(userId, { category: "available_local_files", libraryId, settings }),
     resolveLibraryHealthTrackIds(userId, { category: "missing_local_files", libraryId, settings }),
   ]);
+  const moodEnergy = {
+    tracksWithMood: totalTracks - categories.missing_mood,
+    tracksMissingMood: categories.missing_mood,
+    tracksWithEnergy: totalTracks - categories.missing_energy,
+    tracksMissingEnergy: categories.missing_energy,
+    tracksMissingBoth: categories.missing_mood_energy,
+  };
   const audioMode = metadataProviderModeKey({
     api: settings?.api ?? settings?.enableApiAudioFeatures ?? true,
     local: settings?.local ?? settings?.enableLocalAudioFeatures ?? true,
@@ -890,6 +995,7 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
   const diagnostics = buildHealthAccuracyDiagnostics({
     totalTracks,
     categories,
+    moodEnergy,
     tracksWithBpm: tracksWithBpm.count,
     tracksWithGenres: tracksWithGenres.count,
     missingGenres: missingGenres.count,

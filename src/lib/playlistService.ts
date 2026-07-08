@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "./prisma";
 import { effectiveBpmTrackWhere, getBpmDisplayMetadata, getEffectiveBpm } from "./bpm";
 import { audioFeatureFilterGuardWhere, type AudioFeatureFilterOptions } from "./audioFeatures";
+import { getMoodEnergyDisplayMetadata } from "./moodEnergy";
 import { activeSyncStatusWhere } from "./syncStatus";
 import { getUserSyncSettings } from "./syncSettings";
 import { safeFinishJobHistory, safeRecordJobHistory, safeStartJobHistory } from "./jobHistory";
@@ -517,12 +518,14 @@ const playlistTrackInclude = {
 function annotateTrack(track: any, reasons: string[]) {
   const effectiveBpm = getEffectiveBpm(track);
   const bpmDisplay = getBpmDisplayMetadata(track);
+  const moodEnergyDisplay = getMoodEnergyDisplayMetadata(track);
 
   return {
     ...track,
     bpm: effectiveBpm,
     effectiveBpm,
     bpmDisplay,
+    moodEnergyDisplay,
     matchReasons: reasons,
     metadataConfidence: {
       popularity: track.popularity ? {
@@ -541,6 +544,7 @@ function annotateTrack(track: any, reasons: string[]) {
 }
 
 function publicPreviewTrack(track: any) {
+  const moodEnergy = track.moodEnergyDisplay || getMoodEnergyDisplayMetadata(track);
   return {
     id: track.id,
     title: track.title,
@@ -562,6 +566,12 @@ function publicPreviewTrack(track: any) {
       valence: track.audioFeature.valence,
       effectiveEnergy: track.audioFeature.effectiveEnergy,
       effectiveMood: track.audioFeature.effectiveMood,
+      energySource: moodEnergy.energy.source,
+      energyConfidence: moodEnergy.energy.confidence,
+      moodSource: moodEnergy.mood.source,
+      moodConfidence: moodEnergy.mood.confidence,
+      moodEnergyStatus: moodEnergy.status,
+      moodEnergyReason: moodEnergy.reason,
       tempo: track.audioFeature.tempo,
       source: track.audioFeature.source,
       confidence: track.audioFeature.confidence,
@@ -789,11 +799,14 @@ export function buildPreviewMessages({
     }
   }
 
-  const missingAudio = tracks.filter((track) => !track.audioFeature || (track.audioFeature.energy == null && track.audioFeature.valence == null && track.audioFeature.effectiveEnergy == null && track.audioFeature.effectiveMood == null)).length;
+  const missingAudio = tracks.filter((track) => {
+    const metadata = getMoodEnergyDisplayMetadata(track);
+    return metadata.energy.value === null || metadata.mood.value === null;
+  }).length;
   if (missingAudio >= Math.max(3, Math.ceil(tracks.length * 0.25))) {
-    messages.push({ severity: "warning", message: `Many tracks are missing audio features (${missingAudio} of ${tracks.length}).` });
+    messages.push({ severity: "warning", message: `${missingAudio} previewed tracks are missing mood or energy values. Run audio feature analysis for better Smart Builder results.` });
     if (moodPresetName) {
-      messages.push({ severity: "warning", message: "This preset depends on mood and energy data. Run audio feature analysis or widen your filters if too few tracks match." });
+      messages.push({ severity: "warning", message: `Only ${matchedTrackCount} tracks matched this mood preset. Some tracks may be missing mood or energy data.` });
     }
   }
 
@@ -894,7 +907,10 @@ export async function previewPlaylistTracks({
     },
     missing: {
       bpm: previewTracks.filter((track) => !track.effectiveBpm && !track.bpm && !track.audioFeature?.tempo).length,
-      audioFeatures: previewTracks.filter((track) => !track.audioFeature || (track.audioFeature.energy == null && track.audioFeature.valence == null && track.audioFeature.effectiveEnergy == null && track.audioFeature.effectiveMood == null)).length,
+      audioFeatures: previewTracks.filter((track) => {
+        const metadata = getMoodEnergyDisplayMetadata(track);
+        return metadata.energy.value === null || metadata.mood.value === null;
+      }).length,
       popularity: previewTracks.filter((track) => !track.popularity).length,
     },
   };

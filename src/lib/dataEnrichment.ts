@@ -9,8 +9,6 @@ import {
   getGenreHealthSummary,
   getPopularityHealthSummary,
   invalidateLibraryHealthCache,
-  isAudioFeatureHealthFilter,
-  type AudioFeatureHealthFilter,
   type BpmHealthFilter,
   type GenreHealthFilter,
   type PopularityHealthFilter,
@@ -20,6 +18,7 @@ import { safeRecordJobHistory } from "./jobHistory";
 import { buildRetryExplanation, formatRetrySkipReasons } from "./retryExplanations";
 import { getEnrichmentJobStatuses } from "./enrichmentJobStatus";
 import { assertEssentiaAvailable } from "./localBpmEngine";
+import { buildMoodEnergyHealthSummary } from "./moodEnergy";
 import {
   getUserSyncSettings,
   metadataProviderModeLabel,
@@ -35,6 +34,9 @@ export type DataEnrichmentAction =
   | "sync_audio_features"
   | "retry_partial_audio_features"
   | "retry_pending_audio_features"
+  | "retry_missing_mood_energy"
+  | "retry_partial_mood_energy"
+  | "force_local_mood_energy_reprocess"
   | "run_local_analysis"
   | "force_local_audio_reprocess"
   | "sync_genres"
@@ -122,6 +124,28 @@ export const dataEnrichmentActionConfigs: Record<DataEnrichmentAction, ActionCon
     filter: "pending_audio_features",
     mode: "configured_providers",
     estimatedAction: "Retry tracks that Library Health classifies as Pending Audio Features.",
+  },
+  retry_missing_mood_energy: {
+    title: "Missing mood/energy retry preflight",
+    enrichmentType: "audio_features",
+    filter: "missing_mood_energy",
+    mode: "configured_providers",
+    estimatedAction: "Retry tracks that Library Health classifies as Missing Mood & Energy. Mood and energy are recalculated through local audio feature analysis when local mode is selected.",
+  },
+  retry_partial_mood_energy: {
+    title: "Partial mood/energy retry preflight",
+    enrichmentType: "audio_features",
+    filter: "partial_mood_energy",
+    mode: "configured_providers",
+    estimatedAction: "Retry tracks with incomplete mood or energy values using the configured audio-feature providers.",
+  },
+  force_local_mood_energy_reprocess: {
+    title: "Force local mood/energy reprocess preflight",
+    enrichmentType: "local_audio_analysis",
+    filter: "partial_mood_energy",
+    mode: "force_local_reprocess",
+    advanced: true,
+    estimatedAction: "Recalculate mood and energy for matching tracks through local Essentia audio feature analysis.",
   },
   run_local_analysis: {
     title: "Local audio analysis preflight",
@@ -312,12 +336,8 @@ export async function preflightDataEnrichmentAction(userId: string, action: Data
   let result: DataEnrichmentPreflight;
 
   if (config.enrichmentType === "audio_features" || config.enrichmentType === "local_audio_analysis") {
-    const resolvedTrackIds = isAudioFeatureHealthFilter(config.filter)
-      ? undefined
-      : await resolveTrackIds(userId, config.filter, options.libraryId, syncSettings.audioFeatures);
     const audio = await preflightAudioFeatureRetry(userId, {
-      filter: resolvedTrackIds ? undefined : config.filter,
-      trackIds: resolvedTrackIds,
+      filter: config.filter,
       mode: config.mode,
       providerMode: config.mode,
       libraryId: options.libraryId,
@@ -389,10 +409,11 @@ async function lastJob(userId: string, where: Prisma.JobHistoryWhereInput) {
 export async function getDataEnrichmentSummary(userId: string, libraryId?: string) {
   const rawSettings = await getUserSyncSettings(userId);
   const settings = resolveMetadataProviderSettings(rawSettings);
-  const [health, bpm, audio, genres, popularity, libraries, localStatus, lastRuns] = await Promise.all([
+  const [health, bpm, audio, moodEnergy, genres, popularity, libraries, localStatus, lastRuns] = await Promise.all([
     getLibraryHealthDetailSummary(userId, libraryId, settings.audioFeatures),
     getBpmHealthSummary(userId, libraryId),
     getAudioFeatureHealthSummary(userId, libraryId, settings.audioFeatures),
+    buildMoodEnergyHealthSummary(userId, { libraryId, settings: settings.audioFeatures }),
     getGenreHealthSummary(userId, libraryId),
     getPopularityHealthSummary(userId, libraryId),
     prisma.library.findMany({
@@ -431,6 +452,7 @@ export async function getDataEnrichmentSummary(userId: string, libraryId?: strin
       missing: health.categories.missing_audio_features,
       pending: health.categories.pending_audio_features,
       failed: health.categories.failed_audio_feature_analysis,
+      moodEnergy,
     },
     genres,
     popularity,

@@ -4,7 +4,7 @@ import {
   getAudioFeatureHealthStatus,
   type EffectiveAudioFeatureSettings,
 } from "./audioFeatures";
-import { invalidateLibraryHealthCache, isAudioFeatureHealthFilter, type AudioFeatureHealthFilter } from "./libraryHealth";
+import { invalidateLibraryHealthCache } from "./libraryHealth";
 import { resolveLibraryHealthTrackIds } from "./libraryHealthDetails";
 import { safeRecordJobHistory } from "./jobHistory";
 import { buildRetryExplanation, formatRetrySkipReasons } from "./retryExplanations";
@@ -337,13 +337,13 @@ async function resolveRetryTargetTrackIds(userId: string, input: {
 
 export async function preflightAudioFeatureRetry(userId: string, request: AudioFeatureRetryRequest, settings: EffectiveAudioFeatureSettings): Promise<AudioFeatureRetryResult> {
   const mode = normalizeAudioFeatureRetryMode(request.mode || request.providerMode || null, request.force);
-  const filter = isAudioFeatureHealthFilter(request.filter) ? request.filter : "selected_tracks";
+  const filter = request.filter?.trim() || "selected_tracks";
   if (!request.trackIds?.length && filter === "selected_tracks") {
     throw new Error("A valid audio-feature health filter or selected track IDs are required");
   }
 
   const targetTrackIds = await resolveRetryTargetTrackIds(userId, {
-    filter: filter as AudioFeatureHealthFilter,
+    filter,
     trackIds: request.trackIds,
     libraryId: request.libraryId,
     settings,
@@ -392,6 +392,9 @@ export async function preflightAudioFeatureRetry(userId: string, request: AudioF
     ? disabledReasonForSkipReason(Object.keys(skipReasons)[0])
     : null;
   const summary = formatSummary({ filter, mode, providerMode, analysisScopeLabel, matched, eligible, queued: eligible, skipped, skipReasons });
+  if (filter.includes("mood") || filter.includes("energy")) {
+    console.log(`[LocalAudioFeatureEngine] Mood/Energy preflight matched=${matched} eligible=${eligible} skipped=${skipped}${formatRetrySkipReasons(skipReasons) ? ` ${formatRetrySkipReasons(skipReasons)}` : ""}`);
+  }
   const expectedAction = expectedActionFor(mode, eligible);
 
   return {

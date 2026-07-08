@@ -18,6 +18,13 @@ type Category =
   | "partial_audio_features"
   | "pending_audio_features"
   | "complete_audio_features"
+  | "missing_mood"
+  | "missing_energy"
+  | "missing_mood_energy"
+  | "partial_mood_energy"
+  | "complete_mood_energy"
+  | "pending_mood_energy"
+  | "mood_energy_failed"
   | "failed_analysis"
   | "failed_bpm_analysis"
   | "failed_audio_feature_analysis"
@@ -99,6 +106,11 @@ type Track = {
   bpmReason?: string | null;
   energy: number | null;
   mood: number | null;
+  energySource?: string | null;
+  energyConfidence?: string | null;
+  moodSource?: string | null;
+  moodConfidence?: string | null;
+  moodEnergyStatus?: string | null;
   danceability: number | null;
   audioFeatureStatus: string;
   audioFeatureSource?: string | null;
@@ -123,6 +135,13 @@ const categoryLabels: Record<Category, string> = {
   partial_audio_features: "Partial Audio Features",
   pending_audio_features: "Pending Audio Features",
   complete_audio_features: "Complete Audio Features",
+  missing_mood: "Missing Mood",
+  missing_energy: "Missing Energy",
+  missing_mood_energy: "Missing Mood & Energy",
+  partial_mood_energy: "Partial Mood/Energy",
+  complete_mood_energy: "Complete Mood/Energy",
+  pending_mood_energy: "Pending Mood/Energy Analysis",
+  mood_energy_failed: "Mood/Energy Failed",
   failed_analysis: "Failed Analysis",
   failed_bpm_analysis: "Failed BPM Analysis",
   failed_audio_feature_analysis: "Failed Audio Feature Analysis",
@@ -145,6 +164,13 @@ const emptyMessages: Record<Category, string> = {
   partial_audio_features: "No tracks have partial audio feature data.",
   pending_audio_features: "No tracks are pending audio feature analysis.",
   complete_audio_features: "No tracks have complete audio features yet.",
+  missing_mood: "No tracks are missing mood values.",
+  missing_energy: "No tracks are missing energy values.",
+  missing_mood_energy: "No tracks are missing both mood and energy values.",
+  partial_mood_energy: "No tracks have partial mood/energy data.",
+  complete_mood_energy: "No tracks have complete mood/energy data yet.",
+  pending_mood_energy: "No tracks are pending mood/energy analysis.",
+  mood_energy_failed: "No mood/energy analysis failures found.",
   failed_analysis: "No failed analysis jobs found.",
   failed_bpm_analysis: "No failed BPM analysis jobs found.",
   failed_audio_feature_analysis: "No failed audio feature analysis jobs found.",
@@ -166,6 +192,13 @@ const categoryOrder: Category[] = [
   "missing_audio_features",
   "partial_audio_features",
   "pending_audio_features",
+  "missing_mood",
+  "missing_energy",
+  "missing_mood_energy",
+  "partial_mood_energy",
+  "complete_mood_energy",
+  "pending_mood_energy",
+  "mood_energy_failed",
   "failed_analysis",
   "failed_bpm_analysis",
   "failed_audio_feature_analysis",
@@ -183,6 +216,12 @@ const actionableCategories: Category[] = [
   "partial_audio_features",
   "pending_audio_features",
   "complete_audio_features",
+  "missing_mood",
+  "missing_energy",
+  "missing_mood_energy",
+  "partial_mood_energy",
+  "pending_mood_energy",
+  "mood_energy_failed",
   "failed_bpm_analysis",
   "failed_audio_feature_analysis",
   "too_short",
@@ -278,6 +317,7 @@ function formatScope(value?: string | null) {
 
 function retryTypeFor(category: Category): "bpm" | "audio_features" {
   return category === "missing_audio_features" || category === "partial_audio_features" || category === "pending_audio_features" || category === "complete_audio_features" || category === "failed_audio_feature_analysis"
+    || category === "missing_mood" || category === "missing_energy" || category === "missing_mood_energy" || category === "partial_mood_energy" || category === "pending_mood_energy" || category === "mood_energy_failed"
     ? "audio_features"
     : "bpm";
 }
@@ -444,6 +484,13 @@ export default function LibraryHealthDetailsPage() {
       { key: "missing_audio_features", label: "Missing Audio Features", count: counts?.missing_audio_features || 0, category: "missing_audio_features" as Category },
       { key: "partial_audio_features", label: "Partial Audio Features", count: counts?.partial_audio_features || 0, category: "partial_audio_features" as Category },
       { key: "pending_audio_features", label: "Pending Audio Features", count: counts?.pending_audio_features || 0, category: "pending_audio_features" as Category },
+      { key: "missing_mood", label: "Missing Mood", count: counts?.missing_mood || 0, category: "missing_mood" as Category },
+      { key: "missing_energy", label: "Missing Energy", count: counts?.missing_energy || 0, category: "missing_energy" as Category },
+      { key: "missing_mood_energy", label: "Missing Mood & Energy", count: counts?.missing_mood_energy || 0, category: "missing_mood_energy" as Category },
+      { key: "partial_mood_energy", label: "Partial Mood/Energy", count: counts?.partial_mood_energy || 0, category: "partial_mood_energy" as Category },
+      { key: "complete_mood_energy", label: "Complete Mood/Energy", count: counts?.complete_mood_energy || 0, category: "complete_mood_energy" as Category },
+      { key: "pending_mood_energy", label: "Pending Mood/Energy", count: counts?.pending_mood_energy || 0, category: "pending_mood_energy" as Category },
+      { key: "mood_energy_failed", label: "Mood/Energy Failed", count: counts?.mood_energy_failed || 0, category: "mood_energy_failed" as Category },
       { key: "failed", label: "Failed Analysis", count: counts?.failed_analysis || 0, category: "failed_analysis" as Category },
       { key: "missing_local_file", label: "Missing Local Files", count: counts?.missing_local_file || 0, category: "missing_local_file" as Category },
     ];
@@ -848,7 +895,11 @@ export default function LibraryHealthDetailsPage() {
                   <th>API/imported BPM</th>
                   <th>Local BPM</th>
                   <th>Energy</th>
+                  <th>Energy source</th>
+                  <th>Energy confidence</th>
                   <th>Mood</th>
+                  <th>Mood source</th>
+                  <th>Mood confidence</th>
                   <th>Danceability</th>
                   <th>Audio feature status</th>
                   <th>Local file</th>
@@ -877,7 +928,11 @@ export default function LibraryHealthDetailsPage() {
                     <td data-label="API/imported BPM">{track.apiBpm === null && track.importedBpm === null ? "-" : `API ${track.apiBpm === null ? "-" : Math.round(track.apiBpm * 10) / 10} | Imported ${track.importedBpm === null ? "-" : Math.round(track.importedBpm * 10) / 10}`}</td>
                     <td data-label="Local BPM">{track.localBpm === null ? "-" : Math.round(track.localBpm * 10) / 10}</td>
                     <td data-label="Energy">{formatDecimal(track.energy)}</td>
+                    <td data-label="Energy source"><span className={styles.badge}>{track.energySource || "Unknown"}</span></td>
+                    <td data-label="Energy confidence"><span className={track.energyConfidence === "Low" ? `${styles.badge} ${styles.dangerBadge}` : track.energyConfidence === "High" ? `${styles.badge} ${styles.okBadge}` : styles.badge}>{track.energyConfidence || "Unknown"}</span></td>
                     <td data-label="Mood">{formatDecimal(track.mood)}</td>
+                    <td data-label="Mood source"><span className={styles.badge}>{track.moodSource || "Unknown"}</span></td>
+                    <td data-label="Mood confidence"><span className={track.moodConfidence === "Low" ? `${styles.badge} ${styles.dangerBadge}` : track.moodConfidence === "High" ? `${styles.badge} ${styles.okBadge}` : styles.badge}>{track.moodConfidence || "Unknown"}</span></td>
                     <td data-label="Danceability">{formatDecimal(track.danceability)}</td>
                     <td data-label="Audio status">
                       <span className={track.audioFeatureStatus === "complete" ? `${styles.badge} ${styles.okBadge}` : styles.badge}>{track.audioFeatureStatus}</span>

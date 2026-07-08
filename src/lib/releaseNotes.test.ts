@@ -14,13 +14,13 @@ describe("release notes", () => {
   it("sorts release notes from oldest to newest", () => {
     const ordered = getReleaseNotesOldestFirst();
 
-    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2", "1.2.2-hotfix", "1.2.3", "1.2.4", "1.2.5", "1.2.6", "1.2.7", "1.2.8", "1.2.8-hotfix", "1.2.8-hotfix.2", "1.2.8-hotfix.3", "1.2.8-hotfix.4", "1.2.8-hotfix.5", "1.2.8-hotfix.6", "1.2.8-hotfix.7", "1.2.9", "1.2.9.1", "1.3.0", "1.3.0.1", "1.3.1", "1.3.2", "1.3.3", "1.3.4"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2", "1.2.2-hotfix", "1.2.3", "1.2.4", "1.2.5", "1.2.6", "1.2.7", "1.2.8", "1.2.8-hotfix", "1.2.8-hotfix.2", "1.2.8-hotfix.3", "1.2.8-hotfix.4", "1.2.8-hotfix.5", "1.2.8-hotfix.6", "1.2.8-hotfix.7", "1.2.9", "1.2.9.1", "1.3.0", "1.3.0.1", "1.3.1", "1.3.2", "1.3.3", "1.3.4", "1.3.5"]);
   });
 
   it("sorts release notes from newest to oldest", () => {
     const ordered = getReleaseNotesNewestFirst();
 
-    assert.deepEqual(ordered.map((note) => note.version), ["1.3.4", "1.3.3", "1.3.2", "1.3.1", "1.3.0.1", "1.3.0", "1.2.9.1", "1.2.9", "1.2.8-hotfix.7", "1.2.8-hotfix.6", "1.2.8-hotfix.5", "1.2.8-hotfix.4", "1.2.8-hotfix.3", "1.2.8-hotfix.2", "1.2.8-hotfix", "1.2.8", "1.2.7", "1.2.6", "1.2.5", "1.2.4", "1.2.3", "1.2.2-hotfix", "1.2.2", "1.2.1", "1.2.0", "1.1.10", "1.1.9.1", "1.1.9", "1.1.8", "1.1.7", "1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["1.3.5", "1.3.4", "1.3.3", "1.3.2", "1.3.1", "1.3.0.1", "1.3.0", "1.2.9.1", "1.2.9", "1.2.8-hotfix.7", "1.2.8-hotfix.6", "1.2.8-hotfix.5", "1.2.8-hotfix.4", "1.2.8-hotfix.3", "1.2.8-hotfix.2", "1.2.8-hotfix", "1.2.8", "1.2.7", "1.2.6", "1.2.5", "1.2.4", "1.2.3", "1.2.2-hotfix", "1.2.2", "1.2.1", "1.2.0", "1.1.10", "1.1.9.1", "1.1.9", "1.1.8", "1.1.7", "1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
   });
 
   it("sorts semantic versions newest first without string ordering", () => {
@@ -72,6 +72,7 @@ describe("release notes", () => {
     assert.equal(compareSemanticVersions("v1.3.2", "v1.3.1") > 0, true);
     assert.equal(compareSemanticVersions("v1.3.3", "v1.3.2") > 0, true);
     assert.equal(compareSemanticVersions("v1.3.4", "v1.3.3") > 0, true);
+    assert.equal(compareSemanticVersions("v1.3.5", "v1.3.4") > 0, true);
     assert.equal(compareSemanticVersions("v1.2.10", "v1.2.9.1") > 0, true);
   });
 
@@ -252,12 +253,22 @@ describe("release notes", () => {
     assert.deepEqual(ordered.map((note) => note.version), ["v1.3.4", "v1.3.3", "v1.3.2"]);
   });
 
-  it("adds the v1.3.4 release note at the top", () => {
+  it("places v1.3.5 above v1.3.4", () => {
+    const ordered = getReleaseNotesNewestFirst([
+      { version: "v1.3.3", title: "Data Enrichment Cleanup", badges: ["Data Enrichment"], changes: ["Cleanup"] },
+      { version: "v1.3.4", title: "BPM Confidence & Source Improvements", badges: ["BPM"], changes: ["Confidence"] },
+      { version: "v1.3.5", title: "Mood & Energy Sync Improvements", badges: ["Mood", "Energy"], changes: ["Mood"] },
+    ]);
+
+    assert.deepEqual(ordered.map((note) => note.version), ["v1.3.5", "v1.3.4", "v1.3.3"]);
+  });
+
+  it("adds the v1.3.5 release note at the top", () => {
     const [latest] = getReleaseNotesNewestFirst();
 
-    assert.equal(latest.version, "1.3.4");
-    assert.equal(latest.title, "BPM Confidence & Source Improvements");
-    assert.deepEqual(latest.badges, ["BPM", "Library Health", "Data Enrichment", "Diagnostics", "Playlists"]);
+    assert.equal(latest.version, "1.3.5");
+    assert.equal(latest.title, "Mood & Energy Sync Improvements");
+    assert.deepEqual(latest.badges, ["Mood", "Energy", "Audio Features", "Library Health", "Data Enrichment", "Smart Builder"]);
   });
 
   it("links the sidebar navigation to the release notes page", () => {

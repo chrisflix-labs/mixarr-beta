@@ -13,6 +13,9 @@ type Action =
   | "sync_audio_features"
   | "retry_partial_audio_features"
   | "retry_pending_audio_features"
+  | "retry_missing_mood_energy"
+  | "retry_partial_mood_energy"
+  | "force_local_mood_energy_reprocess"
   | "run_local_analysis"
   | "force_local_audio_reprocess"
   | "sync_genres"
@@ -398,11 +401,25 @@ export default function DataEnrichmentPage() {
             <Metric label="Failed" value={summary.audioFeatures.failed} />
             <Metric label="Too short" value={summary.audioFeatures.tooShort} />
           </div>
+          <div className={styles.metricGrid}>
+            <Metric label="Tracks with energy" value={(summary.audioFeatures as any).moodEnergy?.tracksWithEnergy} />
+            <Metric label="Missing energy" value={(summary.audioFeatures as any).moodEnergy?.tracksMissingEnergy} />
+            <Metric label="Tracks with mood" value={(summary.audioFeatures as any).moodEnergy?.tracksWithMood} />
+            <Metric label="Missing mood" value={(summary.audioFeatures as any).moodEnergy?.tracksMissingMood} />
+            <Metric label="Missing both" value={(summary.audioFeatures as any).moodEnergy?.tracksMissingBoth} />
+            <Metric label="Local mood/energy" value={(summary.audioFeatures as any).moodEnergy?.localMoodEnergyCount} />
+            <Metric label="API/imported mood/energy" value={(summary.audioFeatures as any).moodEnergy?.apiImportedMoodEnergyCount} />
+            <Metric label="Estimated mood/energy" value={(summary.audioFeatures as any).moodEnergy?.estimatedMoodEnergyCount} />
+          </div>
           <p className={styles.helperText}>Provider mode: {summary.providerModes.audioFeatures}</p>
+          <p className={styles.helperText}>Mood and energy are recalculated through local audio feature analysis when using Local Essentia.</p>
           <div className={styles.linkRow}>
             <Link href="/library-health?filter=partial_audio_features">View partial tracks</Link>
             <Link href="/library-health?filter=missing_audio_features">View missing tracks</Link>
             <Link href="/library-health?filter=pending_audio_features">View pending tracks</Link>
+            <Link href="/library-health?filter=missing_mood">View missing mood</Link>
+            <Link href="/library-health?filter=missing_energy">View missing energy</Link>
+            <Link href="/library-health?filter=missing_mood_energy">View missing both</Link>
           </div>
           <div className={styles.actions}>
             <div className={styles.actionSection}>
@@ -414,12 +431,17 @@ export default function DataEnrichmentPage() {
               <div className={styles.actionGroup}>
                 <ActionButton action="retry_partial_audio_features" label="Retry partial audio features" disabled={!!working} onRun={runAction} />
                 <ActionButton action="retry_pending_audio_features" label="Retry pending audio features" disabled={!!working} onRun={runAction} />
+                <ActionButton action="retry_missing_mood_energy" label="Retry missing mood/energy" disabled={!!working} onRun={runAction} />
+                <ActionButton action="retry_partial_mood_energy" label="Retry partial mood/energy" disabled={!!working} onRun={runAction} />
               </div>
             </div>
             <div className={styles.actionSection}>
               <span className={styles.sectionLabel}>Advanced actions</span>
               <p className={styles.helperText}>Force local reprocess recalculates local values even when metadata already exists. This may take a while.</p>
-              <div className={styles.actionGroup}><ActionButton action="force_local_audio_reprocess" label="Force local audio reprocess" variant="advanced" disabled={!!working} onRun={runAction} /></div>
+              <div className={styles.actionGroup}>
+                <ActionButton action="force_local_audio_reprocess" label="Force local audio reprocess" variant="advanced" disabled={!!working} onRun={runAction} />
+                <ActionButton action="force_local_mood_energy_reprocess" label="Force local mood/energy reprocess" variant="advanced" disabled={!!working} onRun={runAction} />
+              </div>
             </div>
           </div>
           <LastRun job={summary.lastRuns.audioFeatures} running={summary.running.audioFeatures} />

@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.5 - Mood & Energy Sync Improvements
+
+- Added clearer mood and energy health classification in Library Health.
+- Added mood/energy source and confidence display where available.
+- Added missing mood, missing energy, and partial mood/energy visibility.
+- Improved retry/reprocess targeting for tracks missing mood or energy values.
+- Improved Data Enrichment summaries for mood and energy completeness.
+- Improved Smart Builder and Playlist Preview messaging when mood/energy data is incomplete.
+
 ## v1.3.4 - BPM Confidence & Source Improvements
 
 - Added clearer BPM source labels for local, API, imported, estimated, and manual values.

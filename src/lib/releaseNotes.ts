@@ -13,6 +13,7 @@ export type ReleaseNoteBadge =
   | "Data Enrichment"
   | "Debugging"
   | "Diagnostics"
+  | "Energy"
   | "Essentia"
   | "Hotfix"
   | "History"
@@ -53,6 +54,19 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.3.5",
+    title: "Mood & Energy Sync Improvements",
+    badges: ["Mood", "Energy", "Audio Features", "Library Health", "Data Enrichment", "Smart Builder"],
+    changes: [
+      "Added clearer mood and energy health classification in Library Health.",
+      "Added mood/energy source and confidence display where available.",
+      "Added missing mood, missing energy, and partial mood/energy visibility.",
+      "Improved retry/reprocess targeting for tracks missing mood or energy values.",
+      "Improved Data Enrichment summaries for mood and energy completeness.",
+      "Improved Smart Builder and Playlist Preview messaging when mood/energy data is incomplete.",
+    ],
+  },
   {
     version: "1.3.4",
     title: "BPM Confidence & Source Improvements",

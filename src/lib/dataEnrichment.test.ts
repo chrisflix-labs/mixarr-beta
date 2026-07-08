@@ -44,6 +44,8 @@ describe("data enrichment cleanup helpers", () => {
     assert.equal(dataEnrichmentActionConfigs.retry_missing_bpm.filter, "missing_bpm");
     assert.equal(dataEnrichmentActionConfigs.retry_partial_audio_features.filter, "partial_audio_features");
     assert.equal(dataEnrichmentActionConfigs.retry_pending_audio_features.filter, "pending_audio_features");
+    assert.equal(dataEnrichmentActionConfigs.retry_missing_mood_energy.filter, "missing_mood_energy");
+    assert.equal(dataEnrichmentActionConfigs.retry_partial_mood_energy.filter, "partial_mood_energy");
     assert.equal(dataEnrichmentActionConfigs.retry_missing_genres.filter, "missing_genres");
     assert.equal(dataEnrichmentActionConfigs.retry_missing_popularity.filter, "missing_popularity");
   });
@@ -51,5 +53,6 @@ describe("data enrichment cleanup helpers", () => {
   it("keeps force local actions grouped as advanced actions", () => {
     assert.equal(dataEnrichmentActionConfigs.force_local_bpm_reprocess.advanced, true);
     assert.equal(dataEnrichmentActionConfigs.force_local_audio_reprocess.advanced, true);
+    assert.equal(dataEnrichmentActionConfigs.force_local_mood_energy_reprocess.advanced, true);
   });
 });

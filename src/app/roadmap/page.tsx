@@ -23,6 +23,11 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "v1.3.5 completes Mood & Energy Sync Improvements.",
+  "Library Health now shows missing mood, missing energy, missing mood & energy, partial mood/energy, pending mood/energy, and mood/energy failed categories.",
+  "Mood and energy rows now include compact source and confidence labels where available.",
+  "Data Enrichment now summarizes mood and energy completeness and exposes targeted mood/energy retry actions.",
+  "Smart Builder and Playlist Preview now explain when missing mood or energy may reduce mood preset matches.",
   "v1.3.4 completes BPM Confidence & Source Improvements.",
   "BPM values now show clearer local, API, imported, estimated, manual, and unknown source labels.",
   "Library Health BPM detail views now include effective BPM, source, confidence, source values, and reason text.",
@@ -149,7 +154,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>v1.3.4 delivers BPM Confidence &amp; Source Improvements, making tempo values easier to trust across Library Health, Data Enrichment, Dashboard, diagnostics, and playlist previews.</p>
+          <p>v1.3.5 delivers Mood &amp; Energy Sync Improvements, making mood and energy values easier to trust, repair, and understand across Library Health, Data Enrichment, Smart Builder, and Playlist Preview.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -174,7 +179,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>BPM Confidence &amp; Source Improvements are complete in v1.3.4. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood and BPM transition tools, restore/version workflows, recently added automation, beta experiments, and manual BPM correction.</p>
+        <p className={styles.futureNote}>Mood &amp; Energy Sync Improvements are complete in v1.3.5. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood blending, BPM transition/ramp tools, restore/version workflows, recently added automation, beta experiments, and manual BPM correction.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

@@ -23,6 +23,7 @@ import {
   partialAudioFeatureTrackWhere,
   type AudioFeatureStatus,
 } from "./audioFeatures";
+import { classifyMoodEnergyTracks } from "./moodEnergy";
 import {
   resolveDelayMs,
   resolveLimit,
@@ -1223,6 +1224,26 @@ const localAudioFeatureTrackSelect = {
   audioFeature: true,
 } as const;
 
+async function countMoodEnergyHealth(settings: ReturnType<typeof logMetadataProviderSettings>["audioFeatures"]) {
+  const tracks: any[] = [];
+  await safeTrackBatchIterator<any>({
+    engineName: "LocalAudioFeatureEngineMoodEnergySummary",
+    where: { syncStatus: "active" },
+    orderBy: [{ id: "asc" }],
+    select: localAudioFeatureTrackSelect,
+    process: async (track) => {
+      tracks.push(track);
+      return "processed";
+    },
+  });
+  const classified = classifyMoodEnergyTracks(tracks, settings);
+  return {
+    missingMood: classified.counts.missing_mood,
+    missingEnergy: classified.counts.missing_energy,
+    partialMoodEnergy: classified.counts.partial_mood_energy,
+  };
+}
+
 export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}): Promise<EnrichmentRunSummary> => {
   console.log("[LocalAudioFeatureEngine] Starting local audio feature backfill.");
   let summary: EnrichmentRunSummary & Record<string, any> = { attempted: 0, processed: 0, skipped: 0, failed: 0 };
@@ -1272,6 +1293,7 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
       () => prisma.track.count({ where }),
       () => prisma.track.count({ where: { AND: [{ syncStatus: "active" }, partialAudioFeatureTrackWhere(metadataSettings)] } }),
     ], resolveDbJobConcurrency());
+    const moodEnergyBefore = await countMoodEnergyHealth(metadataSettings);
     await safeTrackBatchIterator<any>({
       engineName: "LocalAudioFeatureEngineCandidatePreview",
       where,
@@ -1304,6 +1326,7 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
     let shutdownLogged = false;
     const skipReasons: Record<string, number> = {};
     console.log(`[LocalAudioFeatureEngine] Candidate preflight matched=${candidateCount} eligible=${candidateCount} skipped=0`);
+    console.log(`[LocalAudioFeatureEngine] Mood/Energy preflight matched=${candidateCount} eligible=${candidateCount} skipped=0`);
     engineBatchSize.observe({ engine: ENGINE }, Math.min(candidateCount, batchSize || candidateCount));
     markEnrichmentJobProgress("audio", {
       phase: "local_audio_analysis",
@@ -1455,6 +1478,7 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
       () => prisma.audioFeature.count({ where: { audioFeatureStatus: { in: ["extraction_failed", "analyzer_failed"] }, track: { syncStatus: "active" } } }),
       () => prisma.track.count({ where: { AND: [{ syncStatus: "active" }, partialAudioFeatureTrackWhere(metadataSettings)] } }),
     ], resolveDbJobConcurrency());
+    const moodEnergyAfter = await countMoodEnergyHealth(metadataSettings);
     const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
     console.log(`[LocalAudioFeatureEngine] Completed matched=${candidateCount} processed=${summary.processed} skipped=${summary.skipped} failed=${summary.failed}`);
     console.log(`[LocalAudioFeatureEngine] Active totals api=${api} local=${local} no_data=${noData} too_short=${tooShort} failed=${failed}`);
@@ -1485,7 +1509,13 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
       skipReasons,
       partialBefore,
       partialAfter,
-      message: `Local audio analysis completed. Matched ${candidateCount} tracks, processed ${summary.processed}, skipped ${summary.skipped}, failed ${summary.failed}. Partial Audio Features changed from ${partialBefore} to ${partialAfter}.`,
+      missingMoodBefore: moodEnergyBefore.missingMood,
+      missingMoodAfter: moodEnergyAfter.missingMood,
+      missingEnergyBefore: moodEnergyBefore.missingEnergy,
+      missingEnergyAfter: moodEnergyAfter.missingEnergy,
+      partialMoodEnergyBefore: moodEnergyBefore.partialMoodEnergy,
+      partialMoodEnergyAfter: moodEnergyAfter.partialMoodEnergy,
+      message: `Mood/Energy sync completed. Matched ${candidateCount} tracks, processed ${summary.processed}, failed ${summary.failed}. Missing mood changed ${moodEnergyBefore.missingMood} -> ${moodEnergyAfter.missingMood}. Missing energy changed ${moodEnergyBefore.missingEnergy} -> ${moodEnergyAfter.missingEnergy}. Partial Audio Features changed from ${partialBefore} to ${partialAfter}.${moodEnergyAfter.partialMoodEnergy > 0 ? ` Processed ${summary.processed} tracks, but ${moodEnergyAfter.partialMoodEnergy} still have incomplete mood/energy values.` : ""}`,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
