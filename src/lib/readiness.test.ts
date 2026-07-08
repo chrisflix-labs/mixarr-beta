@@ -24,7 +24,7 @@ function readiness(overrides: Partial<AppReadiness["checks"]> = {}): AppReadines
     ...overrides,
   };
   return {
-    version: "v1.3.9.2",
+    version: "v1.5.0",
     betaLabel: "Beta",
     releaseChannel: "beta",
     checkedAt: "2026-07-08T00:00:00.000Z",
@@ -77,7 +77,7 @@ describe("readiness diagnostics", () => {
     assert.equal(json.includes("secret-api-key"), false);
     assert.equal(json.includes("secret-password"), false);
     assert.equal(json.includes("C:\\Users\\person\\Music\\song.flac"), false);
-    assert.equal(json.includes("v1.3.9.2"), true);
+    assert.equal(json.includes("v1.5.0"), true);
   });
 
   it("keeps known navigation routes resolvable or redirected", () => {

@@ -243,6 +243,146 @@
   line-height: 1.4;
 }
 
+/* ---- Beta features ---- */
+
+.betaSection {
+  border-color: rgba(242, 181, 46, 0.24);
+}
+
+.betaSettings {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.betaLoading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.betaIntro {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.7rem;
+  align-items: start;
+}
+
+.betaIntroIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(242, 181, 46, 0.24);
+  border-radius: var(--radius-sm);
+  color: var(--warning);
+  background: rgba(242, 181, 46, 0.08);
+}
+
+.betaIntro p {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.betaWarning,
+.sponsorNote {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.55rem;
+  align-items: start;
+  padding: 0.72rem 0.8rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.betaWarning {
+  border: 1px solid rgba(242, 181, 46, 0.28);
+  color: var(--warning);
+  background: rgba(242, 181, 46, 0.1);
+}
+
+.sponsorNote {
+  border: 1px solid rgba(53, 174, 234, 0.24);
+  color: #b9e9ff;
+  background: rgba(53, 174, 234, 0.07);
+}
+
+.betaMasterToggle {
+  border-radius: var(--radius-md);
+}
+
+.betaFlagList {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.betaFlagRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  align-items: start;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.032);
+}
+
+.betaFlagRow[data-disabled="true"] {
+  opacity: 0.62;
+}
+
+.betaFlagRow input {
+  width: 18px;
+  height: 18px;
+  margin-top: 0.1rem;
+  accent-color: var(--accent);
+}
+
+.betaFlagRow strong,
+.betaFlagRow small {
+  display: block;
+}
+
+.betaFlagRow strong {
+  font-size: 0.84rem;
+}
+
+.betaFlagRow small {
+  margin-top: 0.18rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.betaFlagRow em {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 0.24rem 0.48rem;
+  border: 1px solid rgba(242, 181, 46, 0.28);
+  border-radius: 999px;
+  color: var(--warning);
+  background: rgba(242, 181, 46, 0.1);
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.betaActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
 /* ---- Inputs ---- */
 
 .field {
@@ -918,6 +1058,8 @@
 
   .aboutHeader,
   .aboutRows div,
+  .betaFlagRow,
+  .betaIntro,
   .schedulerStatusGrid,
   .schedulerGrid,
     .schedulerRunRows,

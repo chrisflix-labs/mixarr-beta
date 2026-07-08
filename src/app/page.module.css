@@ -123,6 +123,44 @@
   font-size: 0.85rem;
 }
 
+.betaOnlyCard {
+  border-color: rgba(242, 181, 46, 0.28);
+  background:
+    linear-gradient(135deg, rgba(242, 181, 46, 0.08), rgba(53, 174, 234, 0.05)),
+    var(--panel);
+  cursor: default;
+}
+
+.betaCardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.betaBadge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 0.26rem 0.5rem;
+  border: 1px solid rgba(242, 181, 46, 0.3);
+  border-radius: 999px;
+  color: var(--warning);
+  background: rgba(242, 181, 46, 0.1);
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.betaCardNote {
+  margin-top: 0.75rem;
+  color: var(--warning) !important;
+  font-size: 0.76rem !important;
+  line-height: 1.4;
+}
+
 .healthMetricLinks {
   display: flex;
   flex-wrap: wrap;

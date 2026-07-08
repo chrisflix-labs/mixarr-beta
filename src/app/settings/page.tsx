@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Settings as SettingsIcon, Ban, Database, ExternalLink, Github, HeartPulse, Info, Key, LifeBuoy, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
+import { Settings as SettingsIcon, Ban, Database, ExternalLink, FlaskConical, Github, HeartPulse, Info, Key, LifeBuoy, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
 import ProviderTestButton from "@/components/ProviderTestButton";
+import BetaFeatureSettingsForm from "@/components/BetaFeatureSettingsForm";
 import ExternalApiSettingsPanel from "@/components/ExternalApiSettingsPanel";
 import LibraryDefaultSelector from "@/components/LibraryDefaultSelector";
 import SyncOptionsForm from "@/components/SyncOptionsForm";
@@ -124,6 +125,13 @@ export default async function SettingsPage() {
             ))}
           </div>
         )}
+      </section>
+
+      <section className={`glass-panel ${styles.section} ${styles.betaSection}`} aria-labelledby="beta-experimental-features">
+        <h3 id="beta-experimental-features" className={styles.sectionTitle}>
+          <FlaskConical size={20} color="var(--warning)" /> Beta &amp; Experimental Features
+        </h3>
+        <BetaFeatureSettingsForm />
       </section>
 
       {/* API Keys & Integrations */}

@@ -70,6 +70,23 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "1.5.0",
+    title: "Beta Feature Flags & Experimental Access",
+    badges: ["Beta", "Settings", "Dashboard", "Preview", "Support"],
+    changes: [
+      "Added new Beta & Experimental Features settings section.",
+      "Added master experimental feature toggle.",
+      "Added groundwork for individual beta feature flags.",
+      "Added clear beta, preview, and unstable UI labels.",
+      "Added private beta warning text.",
+      "Added GitHub Sponsors beta access messaging.",
+      "Added optional beta-only preview cards for future v2.0.0 features.",
+      "Added safe defaults so experimental features are disabled by default.",
+      "Added backend support for reading and saving beta feature settings.",
+      "Added guardrails so stable users are not affected by beta features.",
+    ],
+  },
+  {
     version: "1.3.9.2",
     title: "External API Settings UI",
     badges: ["Hotfix", "Settings", "External APIs", "Security", "Data Enrichment"],

@@ -1,6 +1,6 @@
 import styles from "./page.module.css";
 import Link from "next/link";
-import { AudioWaveform, BookMarked, BrainCircuit, Fingerprint, Gauge, History, LifeBuoy, ListMusic, ListRestart, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
+import { AudioWaveform, BookMarked, BrainCircuit, Fingerprint, FlaskConical, Gauge, History, LifeBuoy, ListMusic, ListRestart, Map, Radio, Repeat2, ScrollText, ShieldAlert, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
 import LibrarySelector from "@/components/LibrarySelector";
 import SyncProgress from "@/components/SyncProgress";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
@@ -12,6 +12,7 @@ import { APP_VERSION } from "@/lib/appVersion";
 import { getRecentJobSummary } from "@/lib/jobHistory";
 import { getPlaylistHistoryDashboardSummary } from "@/lib/playlistHistory";
 import { getDashboardSummary, type DashboardSummary } from "@/lib/dashboardSummary";
+import { getBetaFeatureSettings, isFeatureEnabled } from "@/lib/betaFeatures";
 
 const previewFeatures = [
   {
@@ -196,9 +197,38 @@ function SmartBuilderCard() {
   );
 }
 
+function BetaDashboardPreviewCards() {
+  return (
+    <>
+      <article className={`${styles.card} ${styles.betaOnlyCard}`}>
+        <div className={styles.betaCardTop}>
+          <FlaskConical size={22} className={styles.cardIcon} />
+          <span className={styles.betaBadge}>Experimental</span>
+        </div>
+        <h3>Experimental Playlist Intelligence</h3>
+        <p>This is an early preview of upcoming Mixarr 2.0.0 playlist intelligence features. Functionality may change before release.</p>
+        <p className={styles.betaCardNote}>Preview only. No playlist behavior is changed by this card.</p>
+      </article>
+
+      <article className={`${styles.card} ${styles.betaOnlyCard}`}>
+        <div className={styles.betaCardTop}>
+          <ShieldAlert size={22} className={styles.cardIcon} />
+          <span className={styles.betaBadge}>Preview</span>
+        </div>
+        <h3>Analysis Dashboard Preview</h3>
+        <p>Future analysis views may bring library health, enrichment coverage, and automation readiness into one testing dashboard.</p>
+        <p className={styles.betaCardNote}>Private beta messaging only. No sponsor or payment checks are enforced.</p>
+      </article>
+    </>
+  );
+}
+
 export default async function Home() {
   const cookieStore = cookies();
   const sessionId = cookieStore.get("mixarr_session")?.value;
+  const betaSettings = await getBetaFeatureSettings();
+  const showExperimentalPreviewCards = isFeatureEnabled("showBetaCards", betaSettings)
+    && isFeatureEnabled("enableV2PreviewCards", betaSettings);
 
   let user = null;
   let dashboardSummary: DashboardSummary | null = null;
@@ -250,6 +280,7 @@ export default async function Home() {
             <PlaylistRegenerationCard count={generatedPlaylistCount} />
             <PlaylistHistoryCard count={playlistHistoryCount} lastEvent={lastPlaylistHistoryEvent} />
             <MixarrVersionCard />
+            {showExperimentalPreviewCards && <BetaDashboardPreviewCards />}
             <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
               <Map size={22} className={styles.cardIcon} />
               <h3>Roadmap to v2.0.0</h3>
@@ -340,6 +371,8 @@ export default async function Home() {
             <PlaylistHistoryCard count={0} lastEvent={null} />
 
             <SmartBuilderCard />
+
+            {showExperimentalPreviewCards && <BetaDashboardPreviewCards />}
 
             <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
               <Map size={24} className={styles.cardIcon} />

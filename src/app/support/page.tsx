@@ -35,7 +35,7 @@ export default async function SupportPage() {
         <Info size={18} />
         <div>
           <h3>Mixarr is currently in beta.</h3>
-          <p>Features may change, and diagnostics help improve reliability.</p>
+          <p>Features may change, and diagnostics help improve reliability. When reporting issues, please include whether experimental features are enabled.</p>
           <div className={styles.inlineLinks}>
             <Link href="/release-notes">Release notes</Link>
             <Link href="/roadmap">Roadmap</Link>

@@ -13,6 +13,7 @@ import { buildBugReportTemplate, buildFeedbackTemplate, buildHealthReport, build
 import { sanitizeDiagnostics, sanitizeErrorText } from "./supportRedaction";
 import { getAppReadiness } from "./readiness";
 import { getExternalApiDiagnostics } from "./externalApiSettings";
+import { getBetaFeatureSettings, getBetaFlags } from "./betaFeatures";
 
 export function getSupportLinks() {
   return {
@@ -95,7 +96,7 @@ function compactJob(job: any) {
 }
 
 export async function getSupportSummary(userId: string) {
-  const [user, settings, worker, recentJobs, readiness, externalApis] = await Promise.all([
+  const [user, settings, worker, recentJobs, readiness, externalApis, betaFeatures] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -116,6 +117,7 @@ export async function getSupportSummary(userId: string) {
     getRecentJobSummary(userId).catch(() => null),
     getAppReadiness({ userId }).catch(() => null),
     getExternalApiDiagnostics().catch(() => null),
+    getBetaFeatureSettings(),
   ]);
   const providerSettings = resolveMetadataProviderSettings(settings);
   const libraries = (user?.servers || []).flatMap((server) =>
@@ -143,6 +145,10 @@ export async function getSupportSummary(userId: string) {
         audioFeatures: metadataProviderModeLabel(providerSettings.audioFeatures),
       },
       externalApis,
+      betaFeatures: {
+        experimentalEnabled: betaFeatures.enableExperimentalFeatures,
+        flags: getBetaFlags(betaFeatures),
+      },
     },
     plex: {
       connected: !!user,

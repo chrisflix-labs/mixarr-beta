@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.5.0 - Beta Feature Flags & Experimental Access
+
+- Added new Beta & Experimental Features settings section.
+- Added master experimental feature toggle.
+- Added groundwork for individual beta feature flags.
+- Added clear beta, preview, and unstable UI labels.
+- Added private beta warning text.
+- Added GitHub Sponsors beta access messaging.
+- Added optional beta-only preview cards for future v2.0.0 features.
+- Added safe defaults so experimental features are disabled by default.
+- Added backend support for reading and saving beta feature settings.
+- Added guardrails so stable users are not affected by beta features.
+
 ## v1.3.9.2 - External API Settings UI
 
 - Rebuilt the External APIs settings section into configurable provider cards.
