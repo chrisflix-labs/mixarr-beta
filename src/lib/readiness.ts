@@ -1,6 +1,6 @@
 import prisma from "./prisma";
 import { APP_VERSION } from "./appVersion";
-import { DEFAULT_GITHUB_REPO_URL, MIXARR_GITHUB_URL, validHttpUrl } from "./appInfo";
+import { DEFAULT_GITHUB_REPO_URL, MIXARR_GITHUB_URL, validDiscordSupportUrl, validHttpUrl } from "./appInfo";
 import { getResolvedSchedulerSettings, isValidSchedulerCron } from "./schedulerSettings";
 import { getUserSyncSettings, resolveMetadataProviderSettings } from "./syncSettings";
 import { getWorkerHealthSummary, isHeartbeatStale } from "./workerHealth";
@@ -126,17 +126,26 @@ function isMissingColumnError(error: unknown) {
   return errorCode(error) === "P2022" || /column .* does not exist|undefined_column/i.test(message);
 }
 
-function supportLinkChecks() {
-  const discordRaw = process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL || "";
-  const discordValid = validHttpUrl(discordRaw);
+function configuredEnvValue(...values: Array<string | undefined>) {
+  return values.map((value) => value?.trim()).find((value): value is string => !!value) || "";
+}
+
+export function supportLinkChecks() {
+  const discordRaw = configuredEnvValue(process.env.DISCORD_SUPPORT_URL, process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL);
+  const discordValid = validDiscordSupportUrl(discordRaw);
   const githubRaw = process.env.GITHUB_REPO_URL || process.env.NEXT_PUBLIC_GITHUB_REPO_URL || MIXARR_GITHUB_URL;
   const githubValid = validHttpUrl(githubRaw);
+  console.log(`[Readiness] Discord support URL configured: ${discordRaw ? "yes" : "no"}`);
 
   return {
     supportLinks: check(
       "Support Links",
       !discordRaw ? "Warning" : discordValid ? "OK" : "Warning",
-      !discordRaw ? "Discord support link is not configured." : discordValid ? "Discord support link is configured." : "Discord support URL is invalid.",
+      !discordRaw
+        ? "Discord support link is not configured."
+        : discordValid
+          ? "Discord support link is configured."
+          : "Discord support link is configured but does not look like a valid Discord URL.",
     ),
     githubRepo: check(
       "GitHub Repo",

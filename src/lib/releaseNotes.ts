@@ -1,6 +1,6 @@
-import { validHttpUrl } from "./appInfo";
+import { validDiscordSupportUrl } from "./appInfo";
 
-export const MIXARR_BETA_DISCORD_URL = validHttpUrl(process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL) || "";
+export const MIXARR_BETA_DISCORD_URL = validDiscordSupportUrl(process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL) || "";
 
 export type ReleaseNoteBadge =
   | "Audio Features"

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { buildDatabaseReadinessCheck, buildReadinessLogLine, buildReadinessMessages, type AppReadiness, type ReadinessCheck } from "./readiness";
+import { buildDatabaseReadinessCheck, buildReadinessLogLine, buildReadinessMessages, supportLinkChecks, type AppReadiness, type ReadinessCheck } from "./readiness";
 import { sanitizeDiagnostics } from "./supportRedaction";
 
 function check(label: string, status: ReadinessCheck["status"], summary: string): ReadinessCheck {
@@ -104,6 +104,77 @@ describe("readiness diagnostics", () => {
       const source = readFileSync(join(process.cwd(), "src", "app", ...route.split("/")), "utf8");
       assert.equal(source.length > 0, true, `${route} should exist`);
     }
+  });
+});
+
+describe("support link readiness", () => {
+  function withDiscordSupportUrl(value: string | undefined, test: () => void) {
+    const originalDiscord = process.env.DISCORD_SUPPORT_URL;
+    const originalPublicDiscord = process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL;
+    delete process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL;
+    if (value === undefined) delete process.env.DISCORD_SUPPORT_URL;
+    else process.env.DISCORD_SUPPORT_URL = value;
+    try {
+      test();
+    } finally {
+      if (originalDiscord === undefined) delete process.env.DISCORD_SUPPORT_URL;
+      else process.env.DISCORD_SUPPORT_URL = originalDiscord;
+      if (originalPublicDiscord === undefined) delete process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL;
+      else process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL = originalPublicDiscord;
+    }
+  }
+
+  it("accepts modern Discord channel URLs", () => {
+    withDiscordSupportUrl("https://discord.com/channels/1522752907378819156/1522764175305080842", () => {
+      const result = supportLinkChecks().supportLinks;
+
+      assert.equal(result.status, "OK");
+      assert.equal(result.summary, "Discord support link is configured.");
+    });
+  });
+
+  it("accepts legacy Discord channel URLs", () => {
+    withDiscordSupportUrl("https://discordapp.com/channels/1522752907378819156/1522764175305080842", () => {
+      const result = supportLinkChecks().supportLinks;
+
+      assert.equal(result.status, "OK");
+      assert.equal(result.summary, "Discord support link is configured.");
+    });
+  });
+
+  it("accepts common Discord invite URLs", () => {
+    const urls = [
+      "https://discord.gg/B7xMvAhaF",
+      "https://discord.com/invite/B7xMvAhaF",
+      "https://discordapp.com/invite/B7xMvAhaF",
+    ];
+
+    for (const url of urls) {
+      withDiscordSupportUrl(url, () => {
+        const result = supportLinkChecks().supportLinks;
+
+        assert.equal(result.status, "OK", url);
+        assert.equal(result.summary, "Discord support link is configured.", url);
+      });
+    }
+  });
+
+  it("keeps missing Discord support as a warning", () => {
+    withDiscordSupportUrl(undefined, () => {
+      const result = supportLinkChecks().supportLinks;
+
+      assert.equal(result.status, "Warning");
+      assert.equal(result.summary, "Discord support link is not configured.");
+    });
+  });
+
+  it("reports invalid non-Discord support URLs clearly", () => {
+    withDiscordSupportUrl("https://example.com/support", () => {
+      const result = supportLinkChecks().supportLinks;
+
+      assert.equal(result.status, "Warning");
+      assert.equal(result.summary, "Discord support link is configured but does not look like a valid Discord URL.");
+    });
   });
 });
 

@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import prisma from "./prisma";
 import { APP_VERSION } from "./appVersion";
-import { APP_NAME, DEFAULT_GITHUB_REPO_URL, MIXARR_GITHUB_URL, validHttpUrl } from "./appInfo";
+import { APP_NAME, DEFAULT_GITHUB_REPO_URL, MIXARR_GITHUB_URL, validDiscordSupportUrl, validHttpUrl } from "./appInfo";
 import { getDashboardSummary } from "./dashboardSummary";
 import { getDataEnrichmentSummary } from "./dataEnrichment";
 import { getRecentJobSummary } from "./jobHistory";
@@ -16,10 +16,11 @@ import { getExternalApiDiagnostics } from "./externalApiSettings";
 import { getBetaFeatureSettings, getBetaFlags } from "./betaFeatures";
 
 export function getSupportLinks() {
+  const discordSupportUrl = validDiscordSupportUrl(process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL);
   return {
     githubRepoUrl: validHttpUrl(process.env.GITHUB_REPO_URL || process.env.NEXT_PUBLIC_GITHUB_REPO_URL) || MIXARR_GITHUB_URL || DEFAULT_GITHUB_REPO_URL,
-    discordSupportUrl: validHttpUrl(process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL),
-    discordConfigured: !!validHttpUrl(process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL),
+    discordSupportUrl,
+    discordConfigured: !!discordSupportUrl,
   };
 }
 
