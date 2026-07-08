@@ -29,7 +29,14 @@ type Category =
   | "failed_analysis"
   | "failed_bpm_analysis"
   | "failed_audio_feature_analysis"
+  | "missing_from_plex"
   | "missing_local_file"
+  | "duplicate_candidates"
+  | "match_conflicts"
+  | "recently_added_tracks"
+  | "recently_updated_tracks"
+  | "moved_files"
+  | "renamed_tracks"
   | "too_short"
   | "skipped"
   | "healthy_tracks";
@@ -75,6 +82,18 @@ type HealthAccuracyDiagnostics = {
     skipped: number | null;
     failed: number | null;
     skipReasons: Record<string, number>;
+  };
+  plexSyncDiagnostics?: {
+    lastSyncTime: string | null;
+    lastStatus: string;
+    lastScannedCount: number | null;
+    activeTrackCount: number;
+    missingFromPlexCount: number;
+    missingLocalFileCount: number;
+    duplicateCandidateCount: number;
+    matchConflictCount: number;
+    lastError: string | null;
+    summary: string | null;
   };
 };
 type Summary = {
@@ -146,7 +165,14 @@ const categoryLabels: Record<Category, string> = {
   failed_analysis: "Failed Analysis",
   failed_bpm_analysis: "Failed BPM Analysis",
   failed_audio_feature_analysis: "Failed Audio Feature Analysis",
+  missing_from_plex: "Missing from Plex",
   missing_local_file: "Missing Local File",
+  duplicate_candidates: "Duplicate Candidates",
+  match_conflicts: "Match Conflicts",
+  recently_added_tracks: "Recently Added Tracks",
+  recently_updated_tracks: "Recently Updated Tracks",
+  moved_files: "Moved Files",
+  renamed_tracks: "Renamed Tracks",
   too_short: "Too Short To Analyze",
   skipped: "Skipped",
   healthy_tracks: "Healthy Tracks",
@@ -175,7 +201,14 @@ const emptyMessages: Record<Category, string> = {
   failed_analysis: "No failed analysis jobs found.",
   failed_bpm_analysis: "No failed BPM analysis jobs found.",
   failed_audio_feature_analysis: "No failed audio feature analysis jobs found.",
+  missing_from_plex: "No tracks are missing from Plex.",
   missing_local_file: "No tracks are missing local files.",
+  duplicate_candidates: "No duplicate candidates found.",
+  match_conflicts: "No match conflicts found.",
+  recently_added_tracks: "No recently added tracks from the latest sync.",
+  recently_updated_tracks: "No recently updated tracks from the latest sync.",
+  moved_files: "No moved files from the latest sync.",
+  renamed_tracks: "No renamed tracks from the latest sync.",
   too_short: "No tracks are too short to analyze.",
   skipped: "No skipped analysis tracks found.",
   healthy_tracks: "No fully healthy tracks found yet.",
@@ -203,7 +236,14 @@ const categoryOrder: Category[] = [
   "failed_analysis",
   "failed_bpm_analysis",
   "failed_audio_feature_analysis",
+  "missing_from_plex",
   "missing_local_file",
+  "duplicate_candidates",
+  "match_conflicts",
+  "recently_added_tracks",
+  "recently_updated_tracks",
+  "moved_files",
+  "renamed_tracks",
   "too_short",
   "skipped",
   "complete_audio_features",
@@ -472,9 +512,17 @@ export default function LibraryHealthDetailsPage() {
 
   const cards = useMemo(() => {
     const counts = summary?.categories;
+    const syncCardKeys = new Set(["missing_from_plex", "duplicate_candidates", "match_conflicts", "recently_added_tracks", "recently_updated_tracks", "moved_files", "renamed_tracks"]);
     return [
       { key: "total", label: "Total Tracks", count: summary?.totalTracks || 0, category: "all_tracks" as Category },
       { key: "healthy", label: "Healthy Tracks", count: counts?.healthy_tracks || 0, category: "healthy_tracks" as Category },
+      { key: "missing_from_plex", label: "Missing from Plex", count: counts?.missing_from_plex || 0, category: "missing_from_plex" as Category },
+      { key: "duplicate_candidates", label: "Duplicate Candidates", count: counts?.duplicate_candidates || 0, category: "duplicate_candidates" as Category },
+      { key: "match_conflicts", label: "Match Conflicts", count: counts?.match_conflicts || 0, category: "match_conflicts" as Category },
+      { key: "moved_files", label: "Moved Files", count: counts?.moved_files || 0, category: "moved_files" as Category },
+      { key: "renamed_tracks", label: "Renamed Tracks", count: counts?.renamed_tracks || 0, category: "renamed_tracks" as Category },
+      { key: "recently_added_tracks", label: "Recently Added", count: counts?.recently_added_tracks || 0, category: "recently_added_tracks" as Category },
+      { key: "recently_updated_tracks", label: "Recently Updated", count: counts?.recently_updated_tracks || 0, category: "recently_updated_tracks" as Category },
       { key: "missing_bpm", label: "Missing BPM", count: counts?.missing_bpm || 0, category: "missing_bpm" as Category },
       { key: "api_bpm", label: "API BPM Only", count: counts?.api_bpm || 0, category: "api_bpm" as Category },
       { key: "local_bpm", label: "Local BPM", count: counts?.local_bpm || 0, category: "local_bpm" as Category },
@@ -494,7 +542,7 @@ export default function LibraryHealthDetailsPage() {
       { key: "mood_energy_failed", label: "Mood/Energy Failed", count: counts?.mood_energy_failed || 0, category: "mood_energy_failed" as Category },
       { key: "failed", label: "Failed Analysis", count: counts?.failed_analysis || 0, category: "failed_analysis" as Category },
       { key: "missing_local_file", label: "Missing Local Files", count: counts?.missing_local_file || 0, category: "missing_local_file" as Category },
-    ];
+    ].filter((card) => !syncCardKeys.has(card.key) || card.count > 0);
   }, [summary]);
 
   function updateCategory(nextCategory: Category) {
@@ -707,6 +755,15 @@ export default function LibraryHealthDetailsPage() {
                 </small>
               </div>
             )}
+            {summary.diagnostics.plexSyncDiagnostics && (
+              <div>
+                <span>Plex Sync Diagnostics: {summary.diagnostics.plexSyncDiagnostics.lastStatus}</span>
+                <small>
+                  last sync: {formatDate(summary.diagnostics.plexSyncDiagnostics.lastSyncTime)} | scanned: {formatNumber(summary.diagnostics.plexSyncDiagnostics.lastScannedCount)} | active: {formatNumber(summary.diagnostics.plexSyncDiagnostics.activeTrackCount)} | missing from Plex: {formatNumber(summary.diagnostics.plexSyncDiagnostics.missingFromPlexCount)} | missing local files: {formatNumber(summary.diagnostics.plexSyncDiagnostics.missingLocalFileCount)} | duplicates: {formatNumber(summary.diagnostics.plexSyncDiagnostics.duplicateCandidateCount)} | conflicts: {formatNumber(summary.diagnostics.plexSyncDiagnostics.matchConflictCount)}
+                  {summary.diagnostics.plexSyncDiagnostics.lastError ? ` | last error: ${summary.diagnostics.plexSyncDiagnostics.lastError}` : ""}
+                </small>
+              </div>
+            )}
           </div>
           <a className={styles.secondaryButton} href={`/api/library-health/diagnostics${filters.libraryId ? `?libraryId=${filters.libraryId}` : ""}`}>
             <Download size={15} /> Export Health Diagnostics
@@ -805,6 +862,9 @@ export default function LibraryHealthDetailsPage() {
               <option value="all">All</option>
               <option value="available">Available</option>
               <option value="missing">Missing</option>
+              <option value="unreadable">Unreadable</option>
+              <option value="unknown">Unknown</option>
+              <option value="not_checked">Not checked</option>
             </select>
           </label>
           <label>

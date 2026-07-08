@@ -49,7 +49,14 @@ function categoryUsesResolvedTrackIds(category: string) {
     || category === "low_confidence_bpm"
     || category === "bpm_source_conflict"
     || category === "failed_analysis"
-    || category === "missing_local_file";
+    || category === "missing_from_plex"
+    || category === "missing_local_file"
+    || category === "duplicate_candidates"
+    || category === "match_conflicts"
+    || category === "recently_added_tracks"
+    || category === "recently_updated_tracks"
+    || category === "moved_files"
+    || category === "renamed_tracks";
 }
 
 function hasAdditionalDetailFilters(params: URLSearchParams) {

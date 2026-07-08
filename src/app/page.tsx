@@ -99,6 +99,46 @@ function RecentJobsCard({ summary }: { summary: Awaited<ReturnType<typeof getRec
   );
 }
 
+function PlexSyncDashboardCard({
+  health,
+  lastPlexJob,
+}: {
+  health: Awaited<ReturnType<typeof getCachedLibraryHealth>>;
+  lastPlexJob: any | null;
+}) {
+  const active = health.reduce((sum, library) => sum + library.activeTracks, 0);
+  const missing = health.reduce((sum, library) => sum + library.missingTracks, 0);
+  const metadata = lastPlexJob?.metadata && typeof lastPlexJob.metadata === "object" && !Array.isArray(lastPlexJob.metadata)
+    ? lastPlexJob.metadata as Record<string, any>
+    : {};
+  const counts = metadata.counts || {};
+  const duplicateCandidates = Number(counts.duplicateCandidates || 0);
+  const conflicts = Number(counts.matchConflicts || 0);
+  const issues = [
+    missing > 0 ? `${missing.toLocaleString()} missing from Plex` : null,
+    duplicateCandidates > 0 ? `${duplicateCandidates.toLocaleString()} duplicate candidate${duplicateCandidates === 1 ? "" : "s"}` : null,
+    conflicts > 0 ? `${conflicts.toLocaleString()} match conflict${conflicts === 1 ? "" : "s"}` : null,
+  ].filter(Boolean);
+
+  return (
+    <Link href="/library-health" className={styles.card}>
+      <ListMusic size={22} className={styles.cardIcon} />
+      <h3>Plex Sync</h3>
+      {lastPlexJob ? (
+        <>
+          <p>Last sync: {lastPlexJob.finishedAt ? lastPlexJob.finishedAt.toLocaleString() : "Still running"}</p>
+          <p>Active tracks: {active.toLocaleString()}</p>
+          <p>New: {Number(counts.newTracks || 0).toLocaleString()} &middot; Updated: {Number(counts.updatedMetadata || 0).toLocaleString()} &middot; Missing: {missing.toLocaleString()}</p>
+          {issues.length > 0 && <p>Plex Sync needs attention: {issues.join(", ")}.</p>}
+        </>
+      ) : (
+        <p>No Plex sync has run yet. Start a library sync to import tracks.</p>
+      )}
+      <span className={styles.cardAction}>Open Diagnostics</span>
+    </Link>
+  );
+}
+
 function DataEnrichmentDashboardCard({
   bpmComplete,
   audioComplete,
@@ -217,6 +257,7 @@ export default async function Home() {
   let user = null;
   let health: Awaited<ReturnType<typeof getCachedLibraryHealth>> = [];
   let jobSummary: Awaited<ReturnType<typeof getRecentJobSummary>> | null = null;
+  let lastPlexJob: any | null = null;
   let recipeCount = 0;
   let generatedPlaylistCount = 0;
   let playlistHistoryCount = 0;
@@ -226,15 +267,20 @@ export default async function Home() {
       where: { id: sessionId },
     });
     if (user) {
-      const [historyResult, jobsResult, recipesResult, generatedPlaylistsResult, playlistHistorySummary] = await Promise.all([
+      const [historyResult, jobsResult, plexJobResult, recipesResult, generatedPlaylistsResult, playlistHistorySummary] = await Promise.all([
         getCachedLibraryHealth(user.id),
         getRecentJobSummary(user.id),
+        prisma.jobHistory.findFirst({
+          where: { OR: [{ userId: user.id }, { userId: null }], type: "plex_sync" },
+          orderBy: { startedAt: "desc" },
+        }),
         prisma.playlistRecipe.count({ where: { userId: user.id, isArchived: false } }),
         prisma.generatedPlaylist.count({ where: { userId: user.id } }),
         getPlaylistHistoryDashboardSummary(user.id),
       ]);
       health = historyResult;
       jobSummary = jobsResult;
+      lastPlexJob = plexJobResult;
       recipeCount = recipesResult;
       generatedPlaylistCount = generatedPlaylistsResult;
       playlistHistoryCount = playlistHistorySummary.count;
@@ -329,6 +375,7 @@ export default async function Home() {
             </Link>
           )}
           <div className={styles.compactCardsGrid}>
+            <PlexSyncDashboardCard health={health} lastPlexJob={lastPlexJob} />
             <RecentJobsCard summary={jobSummary} />
             <DataEnrichmentDashboardCard
               bpmComplete={health.reduce((sum, library) => sum + library.tracksWithBpm, 0)}

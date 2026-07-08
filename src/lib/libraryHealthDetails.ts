@@ -73,7 +73,14 @@ export const libraryHealthDetailCategories = [
   "failed_analysis",
   "failed_bpm_analysis",
   "failed_audio_feature_analysis",
+  "missing_from_plex",
   "missing_local_file",
+  "duplicate_candidates",
+  "match_conflicts",
+  "recently_added_tracks",
+  "recently_updated_tracks",
+  "moved_files",
+  "renamed_tracks",
   "too_short",
   "skipped",
   "healthy_tracks",
@@ -108,7 +115,14 @@ export const libraryHealthDetailLabels: Record<LibraryHealthDetailCategory, stri
   failed_analysis: "Failed Analysis",
   failed_bpm_analysis: "Failed BPM Analysis",
   failed_audio_feature_analysis: "Failed Audio Feature Analysis",
+  missing_from_plex: "Missing from Plex",
   missing_local_file: "Missing Local File",
+  duplicate_candidates: "Duplicate Candidates",
+  match_conflicts: "Match Conflicts",
+  recently_added_tracks: "Recently Added Tracks",
+  recently_updated_tracks: "Recently Updated Tracks",
+  moved_files: "Moved Files",
+  renamed_tracks: "Renamed Tracks",
   too_short: "Too Short To Analyze",
   skipped: "Skipped",
   healthy_tracks: "Healthy Tracks",
@@ -137,7 +151,14 @@ export const libraryHealthEmptyMessages: Record<LibraryHealthDetailCategory, str
   failed_analysis: "No failed analysis jobs found.",
   failed_bpm_analysis: "No failed BPM analysis jobs found.",
   failed_audio_feature_analysis: "No failed audio feature analysis jobs found.",
+  missing_from_plex: "No tracks are missing from Plex.",
   missing_local_file: "No tracks are missing local files.",
+  duplicate_candidates: "No duplicate candidates found.",
+  match_conflicts: "No match conflicts found.",
+  recently_added_tracks: "No recently added tracks from the latest sync.",
+  recently_updated_tracks: "No recently updated tracks from the latest sync.",
+  moved_files: "No moved files from the latest sync.",
+  renamed_tracks: "No renamed tracks from the latest sync.",
   too_short: "No tracks are too short to analyze.",
   skipped: "No skipped analysis tracks found.",
   healthy_tracks: "No fully healthy tracks found yet.",
@@ -157,9 +178,32 @@ function activeUserTrackWhere(userId: string, libraryId?: string): Prisma.TrackW
   };
 }
 
+function userTrackWhereForCategory(userId: string, category: ResolvableLibraryHealthCategory, libraryId?: string): Prisma.TrackWhereInput {
+  if (category === "missing_from_plex") {
+    return {
+      syncStatus: "missing",
+      library: {
+        ...(libraryId ? { id: libraryId } : {}),
+        server: { userId },
+      },
+    };
+  }
+  if (category === "match_conflicts") {
+    return {
+      syncStatus: "match_conflict",
+      library: {
+        ...(libraryId ? { id: libraryId } : {}),
+        server: { userId },
+      },
+    };
+  }
+  return activeUserTrackWhere(userId, libraryId);
+}
+
 export function missingLocalFileWhere(): Prisma.TrackWhereInput {
   return {
     OR: [
+      { localFileStatus: { in: ["missing", "unreadable"] } },
       { mediaPath: null },
       { mediaPath: "" },
       { bpmSource: "local_not_found" },
@@ -239,8 +283,28 @@ export function libraryHealthCategoryWhere(category: LibraryHealthDetailCategory
       return bpmFailedTrackWhere();
     case "failed_audio_feature_analysis":
       return audioFeatureFailedTrackWhere(settings);
+    case "missing_from_plex":
+      return {};
     case "missing_local_file":
       return missingLocalFileWhere();
+    case "duplicate_candidates":
+      return { duplicateWarning: { not: null } };
+    case "match_conflicts":
+      return {};
+    case "recently_added_tracks":
+      return { lastSyncChangeTypes: { contains: "|new_track|" } };
+    case "recently_updated_tracks":
+      return {
+        OR: [
+          { lastSyncChangeTypes: { contains: "|updated_metadata|" } },
+          { lastSyncChangeTypes: { contains: "|changed_album|" } },
+          { lastSyncChangeTypes: { contains: "|changed_artist|" } },
+        ],
+      };
+    case "moved_files":
+      return { lastSyncChangeTypes: { contains: "|moved_file|" } };
+    case "renamed_tracks":
+      return { lastSyncChangeTypes: { contains: "|renamed_track|" } };
     case "too_short":
       return tooShortAnalysisWhere(settings);
     case "skipped":
@@ -334,7 +398,7 @@ export async function resolveBpmMetadataFilteredTrackIds(userId: string, options
   noLocalBpm?: boolean;
   resolvedTrackIds?: string[];
 }) {
-  const active = activeUserTrackWhere(userId, options.libraryId);
+  const active = userTrackWhereForCategory(userId, options.category, options.libraryId);
   const baseCategory: Prisma.TrackWhereInput = options.resolvedTrackIds
     ? options.resolvedTrackIds.length
       ? { id: { in: options.resolvedTrackIds } }
@@ -398,7 +462,7 @@ export async function resolveLibraryHealthTrackIds(userId: string, options: {
   audioFeatureClassification?: AudioFeatureHealthClassification;
 }): Promise<LibraryHealthTrackIdResolution> {
   const category = normalizeResolvableCategory(options.category);
-  const active = activeUserTrackWhere(userId, options.libraryId);
+  const active = userTrackWhereForCategory(userId, options.category, options.libraryId);
   const baseWhere = { AND: [active, resolvableCategoryWhere(category, options.settings)] };
 
   if ((moodEnergyHealthFilters as readonly string[]).includes(category)) {
@@ -570,6 +634,9 @@ export function buildLibraryHealthTrackWhere(userId: string, options: {
   }
   if (options.localFileStatus === "missing") and.push(missingLocalFileWhere());
   if (options.localFileStatus === "available") and.push({ NOT: missingLocalFileWhere() });
+  if (options.localFileStatus === "unreadable") and.push({ localFileStatus: "unreadable" });
+  if (options.localFileStatus === "unknown") and.push({ localFileStatus: "unknown" });
+  if (options.localFileStatus === "not_checked") and.push({ localFileStatus: "not_checked" });
   if (options.failedOnly) {
     and.push({
       OR: [
@@ -601,6 +668,8 @@ export const libraryHealthDetailTrackSelect = {
   ratingKey: true,
   duration: true,
   mediaPath: true,
+  localFileStatus: true,
+  localFileCheckedAt: true,
   bpm: true,
   apiBpm: true,
   localBpm: true,
@@ -613,6 +682,9 @@ export const libraryHealthDetailTrackSelect = {
   bpmAnalyzedAt: true,
   lastSeenAt: true,
   syncStatus: true,
+  lastSyncChangeTypes: true,
+  duplicateWarning: true,
+  syncConflictReason: true,
   library: { select: { id: true, name: true } },
   artist: { select: { title: true } },
   album: { select: { title: true } },
@@ -654,6 +726,8 @@ export const libraryHealthDetailTrackSelect = {
 } satisfies Prisma.TrackSelect;
 
 function localFileStatus(track: any) {
+  if (track.localFileStatus === "missing" || track.localFileStatus === "unreadable") return track.localFileStatus;
+  if (track.localFileStatus === "unknown" || track.localFileStatus === "not_checked") return track.localFileStatus;
   const source = String(track.audioFeature?.source || "").toLowerCase();
   const tempoSource = String(track.audioFeature?.tempoSource || "").toLowerCase();
   const bpmSource = String(track.bpmSource || "").toLowerCase();
@@ -724,8 +798,23 @@ export function reasonForLibraryHealthTrack(category: LibraryHealthDetailCategor
       return track.bpmFailureReason || "Local BPM analysis failed during a previous attempt.";
     case "failed_audio_feature_analysis":
       return track.audioFeature?.audioFeatureFailureReason || "Local audio feature analysis failed during a previous attempt.";
+    case "missing_from_plex":
+      return "This track exists in Mixarr but was not returned by the latest Plex library sync.";
     case "missing_local_file":
-      return "Mixarr could not find a local file path for this active track.";
+      if (track.localFileStatus === "unreadable") return "Plex still has this track, but Mixarr could not read the local file path.";
+      return "Plex still has this track, but Mixarr could not access the local file path.";
+    case "duplicate_candidates":
+      return track.duplicateWarning || "This track appears similar to another Plex item based on metadata, file path, or Plex identifiers.";
+    case "match_conflicts":
+      return track.syncConflictReason || "Multiple Mixarr records matched this Plex item. Mixarr kept them separate for safety.";
+    case "recently_added_tracks":
+      return "This track was added by the latest Plex library sync.";
+    case "recently_updated_tracks":
+      return "Plex reported changed metadata for this track during the latest sync.";
+    case "moved_files":
+      return "Plex reported the same track identity with a new file path during the last sync.";
+    case "renamed_tracks":
+      return "Plex reported changed title, album, or artist metadata for the same track identity.";
     case "too_short":
       return track.bpmFailureReason || track.audioFeature?.audioFeatureFailureReason || "The track is too short for the selected local analysis window.";
     case "skipped":
@@ -867,6 +956,18 @@ export type LibraryHealthAccuracyDiagnostics = {
     skipped: number | null;
     failed: number | null;
     skipReasons: Record<string, number>;
+  };
+  plexSyncDiagnostics?: {
+    lastSyncTime: Date | null;
+    lastStatus: string;
+    lastScannedCount: number | null;
+    activeTrackCount: number;
+    missingFromPlexCount: number;
+    missingLocalFileCount: number;
+    duplicateCandidateCount: number;
+    matchConflictCount: number;
+    lastError: string | null;
+    summary: string | null;
   };
 };
 
@@ -1065,6 +1166,31 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
     skipped: typeof localRun.skipped === "number" ? localRun.skipped : lastLocalAnalysisJob?.skipped ?? null,
     failed: typeof localRun.failed === "number" ? localRun.failed : lastLocalAnalysisJob?.failed ?? null,
     skipReasons: localRun.skipReasons && typeof localRun.skipReasons === "object" && !Array.isArray(localRun.skipReasons) ? localRun.skipReasons : {},
+  };
+  const lastPlexJob = await prisma.jobHistory.findFirst({
+    where: {
+      OR: [{ userId }, { userId: null }],
+      type: "plex_sync",
+    },
+    orderBy: { startedAt: "desc" },
+  });
+  const plexMetadata = lastPlexJob?.metadata && typeof lastPlexJob.metadata === "object" && !Array.isArray(lastPlexJob.metadata)
+    ? lastPlexJob.metadata as Record<string, any>
+    : {};
+  const plexCounts = plexMetadata.counts && typeof plexMetadata.counts === "object" && !Array.isArray(plexMetadata.counts)
+    ? plexMetadata.counts as Record<string, any>
+    : {};
+  diagnostics.plexSyncDiagnostics = {
+    lastSyncTime: lastPlexJob?.finishedAt || lastPlexJob?.startedAt || null,
+    lastStatus: lastPlexJob?.status || "never",
+    lastScannedCount: typeof plexCounts.scanned === "number" ? plexCounts.scanned : null,
+    activeTrackCount: totalTracks,
+    missingFromPlexCount: categories.missing_from_plex,
+    missingLocalFileCount: categories.missing_local_file,
+    duplicateCandidateCount: categories.duplicate_candidates,
+    matchConflictCount: categories.match_conflicts,
+    lastError: lastPlexJob?.error || null,
+    summary: lastPlexJob?.summary || null,
   };
   return {
     totalTracks,

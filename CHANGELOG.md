@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.7 - Plex Matching & Track Sync Polish
+
+- Improved Plex track matching using stable identifiers before metadata fallbacks.
+- Improved handling for moved files, renamed tracks, restored tracks, and missing-from-Plex records.
+- Added clearer Plex sync summaries with scanned, matched, added, updated, moved, missing, duplicate, and conflict counts.
+- Added Plex Sync diagnostics and Library Health visibility for sync-related issues.
+- Improved duplicate candidate and match conflict handling without unsafe automatic merging.
+- Preserved enrichment metadata more reliably during track sync updates.
+
 ## v1.3.6 - Background Worker Reliability
 
 - Added clearer background worker health, heartbeat, and queue visibility.

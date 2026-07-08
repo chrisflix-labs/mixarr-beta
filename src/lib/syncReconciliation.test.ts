@@ -40,7 +40,7 @@ describe("Plex library reconciliation", () => {
         syncStatus: "active",
         OR: [{ lastSeenSyncId: null }, { lastSeenSyncId: { not: "sync-2" } }],
       },
-      data: { syncStatus: "missing", missingSince: seenAt },
+      data: { syncStatus: "missing", missingSince: seenAt, lastSyncChangeTypes: "|missing_from_plex|" },
     }]);
     assert.equal(result.markedMissing, 41);
     assert.equal(result.activeDashboardCount, 33_137);

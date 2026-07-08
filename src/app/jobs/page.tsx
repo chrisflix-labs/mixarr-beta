@@ -63,6 +63,13 @@ function countValue(value: number | null) {
   return (value ?? 0).toLocaleString();
 }
 
+function plexSyncCounts(metadata: unknown) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const counts = (metadata as any).counts;
+  if (!counts || typeof counts !== "object" || Array.isArray(counts)) return null;
+  return counts as Record<string, number>;
+}
+
 export default async function JobHistoryPage({
   searchParams,
 }: {
@@ -118,7 +125,9 @@ export default async function JobHistoryPage({
             <div className={styles.emptyState}>No jobs have been recorded yet. Run a sync, retry, or playlist job to see history here.</div>
           ) : (
             <section className={styles.jobList} aria-label="Recent Mixarr jobs">
-              {jobs.map((job) => (
+              {jobs.map((job) => {
+                const plexCounts = job.type === "plex_sync" ? plexSyncCounts(job.metadata) : null;
+                return (
                 <article key={job.id} className={styles.jobCard}>
                   <div className={styles.jobTop}>
                     <div>
@@ -170,6 +179,21 @@ export default async function JobHistoryPage({
                     <span>Failed {countValue(job.failed)}</span>
                   </div>
 
+                  {plexCounts && (
+                    <div className={styles.counts} aria-label="Plex sync summary">
+                      <span>Scanned {countValue(plexCounts.scanned ?? null)}</span>
+                      <span>Matched {countValue(plexCounts.matched ?? null)}</span>
+                      <span>New {countValue(plexCounts.newTracks ?? null)}</span>
+                      <span>Updated {countValue(plexCounts.updatedMetadata ?? null)}</span>
+                      <span>Moved {countValue(plexCounts.movedFiles ?? null)}</span>
+                      <span>Renamed {countValue(plexCounts.renamedTracks ?? null)}</span>
+                      <span>Missing {countValue(plexCounts.markedMissing ?? null)}</span>
+                      <span>Restored {countValue(plexCounts.restored ?? null)}</span>
+                      <span>Duplicates {countValue(plexCounts.duplicateCandidates ?? null)}</span>
+                      <span>Conflicts {countValue(plexCounts.matchConflicts ?? null)}</span>
+                    </div>
+                  )}
+
                   {job.summary && <p className={styles.summary}>{job.summary}</p>}
                   {job.recoveryHint && ["failed", "interrupted", "stale"].includes(job.status) && (
                     <p className={styles.summary}>Recovery: {job.recoveryHint}</p>
@@ -182,7 +206,7 @@ export default async function JobHistoryPage({
                     </details>
                   )}
                 </article>
-              ))}
+              );})}
             </section>
           )}
         </>

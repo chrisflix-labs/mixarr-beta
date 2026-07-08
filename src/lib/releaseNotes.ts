@@ -24,6 +24,7 @@ export type ReleaseNoteBadge =
   | "Jobs"
   | "Library"
   | "Library Health"
+  | "Library Sync"
   | "Local Analysis"
   | "Matching Rules"
   | "Mood"
@@ -43,6 +44,7 @@ export type ReleaseNoteBadge =
   | "Settings"
   | "Sharing"
   | "Smart Builder"
+  | "Track Matching"
   | "UI"
   | "Reliability"
   | "Worker";
@@ -56,6 +58,19 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.3.7",
+    title: "Plex Matching & Track Sync Polish",
+    badges: ["Plex", "Library Sync", "Track Matching", "Library Health", "Job History"],
+    changes: [
+      "Improved Plex track matching using stable identifiers before metadata fallbacks.",
+      "Improved handling for moved files, renamed tracks, restored tracks, and missing-from-Plex records.",
+      "Added clearer Plex sync summaries with scanned, matched, added, updated, moved, missing, duplicate, and conflict counts.",
+      "Added Plex Sync diagnostics and Library Health visibility for sync-related issues.",
+      "Improved duplicate candidate and match conflict handling without unsafe automatic merging.",
+      "Preserved enrichment metadata more reliably during track sync updates.",
+    ],
+  },
   {
     version: "1.3.6",
     title: "Background Worker Reliability",

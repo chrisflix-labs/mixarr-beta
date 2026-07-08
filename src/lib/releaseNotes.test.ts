@@ -14,13 +14,13 @@ describe("release notes", () => {
   it("sorts release notes from oldest to newest", () => {
     const ordered = getReleaseNotesOldestFirst();
 
-    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2", "1.2.2-hotfix", "1.2.3", "1.2.4", "1.2.5", "1.2.6", "1.2.7", "1.2.8", "1.2.8-hotfix", "1.2.8-hotfix.2", "1.2.8-hotfix.3", "1.2.8-hotfix.4", "1.2.8-hotfix.5", "1.2.8-hotfix.6", "1.2.8-hotfix.7", "1.2.9", "1.2.9.1", "1.3.0", "1.3.0.1", "1.3.1", "1.3.2", "1.3.3", "1.3.4", "1.3.5", "1.3.6"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2", "1.2.2-hotfix", "1.2.3", "1.2.4", "1.2.5", "1.2.6", "1.2.7", "1.2.8", "1.2.8-hotfix", "1.2.8-hotfix.2", "1.2.8-hotfix.3", "1.2.8-hotfix.4", "1.2.8-hotfix.5", "1.2.8-hotfix.6", "1.2.8-hotfix.7", "1.2.9", "1.2.9.1", "1.3.0", "1.3.0.1", "1.3.1", "1.3.2", "1.3.3", "1.3.4", "1.3.5", "1.3.6", "1.3.7"]);
   });
 
   it("sorts release notes from newest to oldest", () => {
     const ordered = getReleaseNotesNewestFirst();
 
-    assert.deepEqual(ordered.map((note) => note.version), ["1.3.6", "1.3.5", "1.3.4", "1.3.3", "1.3.2", "1.3.1", "1.3.0.1", "1.3.0", "1.2.9.1", "1.2.9", "1.2.8-hotfix.7", "1.2.8-hotfix.6", "1.2.8-hotfix.5", "1.2.8-hotfix.4", "1.2.8-hotfix.3", "1.2.8-hotfix.2", "1.2.8-hotfix", "1.2.8", "1.2.7", "1.2.6", "1.2.5", "1.2.4", "1.2.3", "1.2.2-hotfix", "1.2.2", "1.2.1", "1.2.0", "1.1.10", "1.1.9.1", "1.1.9", "1.1.8", "1.1.7", "1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["1.3.7", "1.3.6", "1.3.5", "1.3.4", "1.3.3", "1.3.2", "1.3.1", "1.3.0.1", "1.3.0", "1.2.9.1", "1.2.9", "1.2.8-hotfix.7", "1.2.8-hotfix.6", "1.2.8-hotfix.5", "1.2.8-hotfix.4", "1.2.8-hotfix.3", "1.2.8-hotfix.2", "1.2.8-hotfix", "1.2.8", "1.2.7", "1.2.6", "1.2.5", "1.2.4", "1.2.3", "1.2.2-hotfix", "1.2.2", "1.2.1", "1.2.0", "1.1.10", "1.1.9.1", "1.1.9", "1.1.8", "1.1.7", "1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
   });
 
   it("sorts semantic versions newest first without string ordering", () => {
@@ -74,6 +74,7 @@ describe("release notes", () => {
     assert.equal(compareSemanticVersions("v1.3.4", "v1.3.3") > 0, true);
     assert.equal(compareSemanticVersions("v1.3.5", "v1.3.4") > 0, true);
     assert.equal(compareSemanticVersions("v1.3.6", "v1.3.5") > 0, true);
+    assert.equal(compareSemanticVersions("v1.3.7", "v1.3.6") > 0, true);
     assert.equal(compareSemanticVersions("v1.2.10", "v1.2.9.1") > 0, true);
   });
 
@@ -274,12 +275,22 @@ describe("release notes", () => {
     assert.deepEqual(ordered.map((note) => note.version), ["v1.3.6", "v1.3.5", "v1.3.4"]);
   });
 
-  it("adds the v1.3.6 release note at the top", () => {
+  it("places v1.3.7 above v1.3.6", () => {
+    const ordered = getReleaseNotesNewestFirst([
+      { version: "v1.3.5", title: "Mood & Energy Sync Improvements", badges: ["Mood", "Energy"], changes: ["Mood"] },
+      { version: "v1.3.6", title: "Background Worker Reliability", badges: ["Worker", "Scheduler"], changes: ["Worker"] },
+      { version: "v1.3.7", title: "Plex Matching & Track Sync Polish", badges: ["Plex", "Library Sync"], changes: ["Plex"] },
+    ]);
+
+    assert.deepEqual(ordered.map((note) => note.version), ["v1.3.7", "v1.3.6", "v1.3.5"]);
+  });
+
+  it("adds the v1.3.7 release note at the top", () => {
     const [latest] = getReleaseNotesNewestFirst();
 
-    assert.equal(latest.version, "1.3.6");
-    assert.equal(latest.title, "Background Worker Reliability");
-    assert.deepEqual(latest.badges, ["Worker", "Scheduler", "Job History", "Reliability", "Diagnostics"]);
+    assert.equal(latest.version, "1.3.7");
+    assert.equal(latest.title, "Plex Matching & Track Sync Polish");
+    assert.deepEqual(latest.badges, ["Plex", "Library Sync", "Track Matching", "Library Health", "Job History"]);
   });
 
   it("links the sidebar navigation to the release notes page", () => {

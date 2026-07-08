@@ -209,6 +209,11 @@ model Track {
   bpmFailureReason String?
   plexLibraryId String?
   syncStatus String @default("active")
+  lastSyncChangeTypes String?
+  duplicateWarning String?
+  syncConflictReason String?
+  localFileStatus String @default("not_checked")
+  localFileCheckedAt DateTime?
   lastSeenAt DateTime?
   lastSeenSyncId String?
   missingSince DateTime?
@@ -226,6 +231,7 @@ model Track {
   @@index([libraryId, syncStatus])
   @@index([libraryId, lastSeenSyncId])
   @@index([libraryId, ratingKey])
+  @@index([libraryId, localFileStatus])
 }
 
 model Tag {

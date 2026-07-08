@@ -23,6 +23,12 @@ const nextFeatures = [
 ];
 
 const currentReleaseFeatures = [
+  "v1.3.7 completes Plex Matching & Track Sync Polish.",
+  "Plex sync now prefers stable track identifiers before metadata fallbacks.",
+  "Moved files, renamed tracks, restored tracks, and missing-from-Plex records are handled without unsafe deletion or duplicate creation.",
+  "Plex sync summaries now include scanned, matched, added, updated, moved, renamed, missing, restored, duplicate, and conflict counts.",
+  "Library Health now exposes Plex sync diagnostics for missing-from-Plex tracks, missing local files, duplicate candidates, match conflicts, moved files, and renamed tracks.",
+  "Duplicate candidates and match conflicts are visible without automatic merge or delete actions.",
   "v1.3.6 completes Background Worker Reliability.",
   "Dashboard, Job History, and Settings now show background worker health, heartbeat age, queue depth, stale jobs, active locks, and scheduler diagnostics.",
   "Worker startup now runs a self-check, detects stale or interrupted running jobs, and safely recovers enrichment and analysis work where possible.",
@@ -160,7 +166,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-          <p>v1.3.6 delivers Background Worker Reliability, making syncs, enrichment jobs, scheduled work, stale-job recovery, and worker diagnostics easier to trust after restarts or overlapping requests.</p>
+          <p>v1.3.7 delivers Plex Matching & Track Sync Polish, making Plex library syncs easier to trust when tracks are renamed, moved, restored, duplicated, or missing.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -185,7 +191,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Background Worker Reliability is complete in v1.3.6. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood blending, BPM transition/ramp tools, restore/version workflows, recently added automation, beta experiments, and manual BPM correction.</p>
+        <p className={styles.futureNote}>Plex Matching & Track Sync Polish is complete in v1.3.7. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood blending, BPM transition/ramp tools, restore/version workflows, recently added automation, beta experiments, and manual BPM correction.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">

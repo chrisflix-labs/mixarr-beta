@@ -19,8 +19,9 @@ export const engineLabels: Record<string, string> = {
 };
 
 export function syncJobKeys(engine: string, libraryId?: string) {
-  const keys = [GLOBAL_SYNC_JOB_KEY, engine];
-  if (engine === "plex" && libraryId) keys.push(`plex:${libraryId}`);
+  const keys = engine === "plex" && libraryId
+    ? [`plex-sync:library:${libraryId}`, GLOBAL_SYNC_JOB_KEY, engine]
+    : [GLOBAL_SYNC_JOB_KEY, engine];
   if (engine === "initial") keys.push("popularity", "tags", "audio", "bpm");
   return keys;
 }

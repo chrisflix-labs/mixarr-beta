@@ -57,7 +57,16 @@ export async function POST(req: Request) {
         engine,
         libraryId,
         userId,
-        task: () => runSyncEngine(libraryId, syncSettings),
+        task: async () => {
+          const result = await runSyncEngine(libraryId, syncSettings);
+          await invalidateLibraryHealthCache(userId, { libraryId, reason: "plex_sync_completed" });
+          revalidatePath("/");
+          revalidatePath("/library");
+          revalidatePath("/library-health");
+          revalidatePath("/settings/library-health");
+          revalidatePath("/job-history");
+          return result;
+        },
       });
     } else if (engine === 'popularity') {
       started = startSyncJobInBackground({
