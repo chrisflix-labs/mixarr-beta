@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.9.2 - External API Settings UI
+
+- Rebuilt the External APIs settings section into configurable provider cards.
+- Added web UI configuration for API provider toggles and supported enrichment types.
+- Added encrypted storage for API keys and secrets saved through the UI.
+- Kept .env fallback support while allowing UI-saved credentials to take effect without container restarts.
+- Added safer provider testing, masked credentials, and support diagnostics redaction.
+- Improved local-first behavior when API providers are disabled.
+
 ## v1.3.9.1 - App Readiness Database Check Fix
 
 - Fixed a false App Readiness database error on the Settings page.

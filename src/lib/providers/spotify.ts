@@ -5,6 +5,7 @@ import {
   providerRequestsTotal,
 } from "../metrics";
 import { RateLimitError, parseRetryAfterMs } from "./rateLimit";
+import { getSpotifyCredentials } from "../externalApiSettings";
 
 // See note in audiodb.ts.
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -45,6 +46,7 @@ const SPOTIFY_FAILURE_KEY = "spotify_token_failure_time";
 let spotifyToken: string | null = null;
 let tokenExpirationTime: number = 0;
 let tokenFailureTime: number = 0;
+let tokenCredentialKey: string | null = null;
 let loadStatePromise: Promise<void> | null = null;
 
 const ensureStateLoaded = async (): Promise<void> => {
@@ -88,10 +90,17 @@ const setTokenFailureTime = (failureTime: number): void => {
 };
 
 const getSpotifyToken = async (): Promise<string | null> => {
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  const credentials = await getSpotifyCredentials();
+  const clientId = credentials?.clientId;
+  const clientSecret = credentials?.clientSecret;
 
   if (!clientId || !clientSecret) return null;
+  const credentialKey = `${clientId}:${clientSecret}`;
+  if (tokenCredentialKey !== credentialKey) {
+    spotifyToken = null;
+    tokenExpirationTime = 0;
+    tokenCredentialKey = credentialKey;
+  }
 
   await ensureStateLoaded();
 
@@ -144,7 +153,7 @@ export const getSpotifyPopularity = async (artist: string, track: string): Promi
   // engine falls through to whatever IS configured. We intentionally
   // don't even start the metrics timer in this case — a "Spotify isn't
   // set up" run shouldn't look like a real attempt in Grafana.
-  if (!isSpotifyConfigured()) return null;
+  if (!await getSpotifyCredentials()) return null;
 
   const endTimer = providerRequestDurationSeconds.startTimer({ provider: PROVIDER });
   let result: Outcome = "success";
@@ -210,7 +219,7 @@ export const getSpotifyPopularity = async (artist: string, track: string): Promi
 };
 
 export const getSpotifyTrackTags = async (artist: string, track: string): Promise<string[]> => {
-  if (!isSpotifyTagLookupEnabled()) return [];
+  if (!await getSpotifyCredentials()) return [];
 
   const endTimer = providerRequestDurationSeconds.startTimer({ provider: PROVIDER });
   let result: Outcome = "success";
@@ -300,7 +309,7 @@ export const getSpotifyTrackTags = async (artist: string, track: string): Promis
 export const getSpotifyAudioFeatures = async (artist: string, track: string): Promise<any> => {
   // Not configured: act as if this provider doesn't exist. The audio
   // feature engine ignores `null` and tries Deezer BPM independently.
-  if (!isSpotifyConfigured()) return null;
+  if (!await getSpotifyCredentials()) return null;
 
   const endTimer = providerRequestDurationSeconds.startTimer({ provider: PROVIDER });
   let result: Outcome = "success";

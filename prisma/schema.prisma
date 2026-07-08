@@ -583,3 +583,24 @@ model SystemState {
   value     String
   updatedAt DateTime @updatedAt
 }
+
+model ProviderSetting {
+  providerKey           String   @id
+  enabled               Boolean  @default(false)
+  usesPopularity        Boolean  @default(false)
+  usesTags              Boolean  @default(false)
+  usesBpm               Boolean  @default(false)
+  usesAudioFeatures     Boolean  @default(false)
+  encryptedCredentials  String?
+  lastTestStatus        String?
+  lastTestMessage       String?
+  lastTestAt            DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([enabled])
+  @@index([usesPopularity])
+  @@index([usesTags])
+  @@index([usesBpm])
+  @@index([usesAudioFeatures])
+}

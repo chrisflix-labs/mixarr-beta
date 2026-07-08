@@ -21,7 +21,7 @@ const nextConfig = {
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.externals = config.externals || [];
-      config.externals.push("prom-client", "node-cron", "http", "fs", "fs/promises", "os", "path", "child_process");
+      config.externals.push("prom-client", "node-cron", "http", "fs", "fs/promises", "os", "path", "child_process", "crypto");
     }
     return config;
   },

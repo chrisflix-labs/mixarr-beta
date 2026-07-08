@@ -9,6 +9,7 @@ import {
   resolveRateLimitBackoff,
   type SyncEngineOptions,
 } from "./syncSettings";
+import { getEnabledExternalApiProviders } from "./externalApiSettings";
 import {
   engineBatchSize,
   trackAttemptsTotal,
@@ -58,7 +59,13 @@ async function resolvePopularity(
 ) {
   let rateLimited = false;
 
+  const enabledProviders = await getEnabledExternalApiProviders("popularity");
+  const enabledProviderNames = new Set(enabledProviders.map((provider) =>
+    provider === "deezer_popularity" ? "deezer" : provider,
+  ));
+
   for (const candidate of popularityProviders) {
+    if (!enabledProviderNames.has(candidate.provider)) continue;
     try {
       const score = await candidate.lookup(artist, track);
       if (score != null && !isNaN(score)) {

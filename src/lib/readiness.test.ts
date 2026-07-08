@@ -16,13 +16,15 @@ function readiness(overrides: Partial<AppReadiness["checks"]> = {}): AppReadines
     worker: check("Background Worker", "Warning", "Background worker heartbeat is stale."),
     scheduler: check("Scheduler", "Error", "Scheduler cron schedule is invalid."),
     localAudioAnalysis: check("Local Audio Analysis", "Disabled", "Local audio analysis is disabled."),
+    externalApis: check("External APIs", "Disabled", "Mixarr is configured for local analysis and no API providers are enabled."),
+    secretsEncryption: check("Secrets Encryption", "Warning", "Secret encryption key is not configured. API credentials cannot be saved from the UI."),
     supportLinks: check("Support Links", "Warning", "Discord support link is not configured."),
     githubRepo: check("GitHub Repo", "OK", "GitHub beta repo is configured."),
     environment: check("Environment", "OK", "Environment variables look sane."),
     ...overrides,
   };
   return {
-    version: "v1.3.9.1",
+    version: "v1.3.9.2",
     betaLabel: "Beta",
     releaseChannel: "beta",
     checkedAt: "2026-07-08T00:00:00.000Z",
@@ -40,6 +42,7 @@ describe("readiness diagnostics", () => {
       "[Readiness] Plex token missing. Plex sync will be unavailable until configured.",
       "[Readiness] Background worker heartbeat is stale.",
       "[Readiness] Scheduler cron schedule is invalid.",
+      "[Readiness] Secret encryption key is not configured. API credentials cannot be saved from the UI.",
       "[Readiness] Discord support link is not configured.",
     ]);
   });
@@ -50,11 +53,12 @@ describe("readiness diagnostics", () => {
       worker: check("Background Worker", "OK", "Background worker is idle."),
       scheduler: check("Scheduler", "OK", "Scheduler is enabled (0 3 * * *)."),
       localAudioAnalysis: check("Local Audio Analysis", "OK", "Local Essentia analysis is available."),
+      secretsEncryption: check("Secrets Encryption", "OK", "Secret encryption is configured for UI-saved API credentials."),
     }));
 
     assert.equal(
       logLine,
-      "[Readiness] Startup check completed database=ok plex=connected worker=ok scheduler=ok localAnalysis=enabled discord=not_configured",
+      "[Readiness] Startup check completed database=ok plex=connected worker=ok scheduler=ok localAnalysis=enabled externalApis=disabled discord=not_configured",
     );
   });
 
@@ -73,7 +77,7 @@ describe("readiness diagnostics", () => {
     assert.equal(json.includes("secret-api-key"), false);
     assert.equal(json.includes("secret-password"), false);
     assert.equal(json.includes("C:\\Users\\person\\Music\\song.flac"), false);
-    assert.equal(json.includes("v1.3.9.1"), true);
+    assert.equal(json.includes("v1.3.9.2"), true);
   });
 
   it("keeps known navigation routes resolvable or redirected", () => {

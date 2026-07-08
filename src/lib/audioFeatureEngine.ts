@@ -10,6 +10,7 @@ import {
   resolveRateLimitBackoff,
   type SyncEngineOptions,
 } from "./syncSettings";
+import { getEnabledExternalApiProviders } from "./externalApiSettings";
 import {
   engineBatchSize,
   trackAttemptsTotal,
@@ -99,6 +100,17 @@ export const runAudioFeatureEngine = async (options: SyncEngineOptions = {}): Pr
     const batchSize = resolveLimit(options.audioFeatureBatchSize, "AUDIO_FEATURE_BATCH_SIZE");
     const providerDelayMs = resolveDelayMs(options.providerDelayMs, 250);
     const rateLimitBackoffEnabled = resolveRateLimitBackoff(options.rateLimitBackoffEnabled);
+    const [audioFeatureProviders, bpmProviders] = await Promise.all([
+      getEnabledExternalApiProviders("audioFeatures"),
+      getEnabledExternalApiProviders("bpm"),
+    ]);
+    const spotifyEnabled = audioFeatureProviders.includes("spotify");
+    const audioDbEnabled = audioFeatureProviders.includes("audiodb");
+    const deezerBpmEnabled = bpmProviders.includes("deezer_popularity");
+    if (!spotifyEnabled && !audioDbEnabled && !deezerBpmEnabled) {
+      console.log("[AudioFeatureEngine] No external audio feature or BPM providers are enabled.");
+      return summary;
+    }
     const retryThreshold = new Date(Date.now() - RETRY_MS);
     const where = {
       syncStatus: "active",
@@ -141,12 +153,14 @@ export const runAudioFeatureEngine = async (options: SyncEngineOptions = {}): Pr
         let bpm = null;
 
         try {
-          const spotifyFeatures = await getSpotifyAudioFeatures(track.artist.title, track.title);
-          if (spotifyFeatures) {
-            features = {
-              ...spotifyFeatures,
-              source: "Spotify Audio Features",
-            };
+          if (spotifyEnabled) {
+            const spotifyFeatures = await getSpotifyAudioFeatures(track.artist.title, track.title);
+            if (spotifyFeatures) {
+              features = {
+                ...spotifyFeatures,
+                source: "Spotify Audio Features",
+              };
+            }
           }
         } catch (error) {
           if (!isRateLimitError(error) || rateLimitBackoffEnabled) throw error;
@@ -157,7 +171,7 @@ export const runAudioFeatureEngine = async (options: SyncEngineOptions = {}): Pr
         }
 
         try {
-          if (!features) {
+          if (!features && audioDbEnabled) {
             features = await getAudioDbFeatures(track.artist.title, track.title);
           }
         } catch (error) {
@@ -169,7 +183,9 @@ export const runAudioFeatureEngine = async (options: SyncEngineOptions = {}): Pr
         }
 
         try {
-          bpm = await getDeezerBpm(track.artist.title, track.title);
+          if (deezerBpmEnabled) {
+            bpm = await getDeezerBpm(track.artist.title, track.title);
+          }
         } catch (error) {
           if (!isRateLimitError(error) || rateLimitBackoffEnabled) throw error;
           rateLimited = true;

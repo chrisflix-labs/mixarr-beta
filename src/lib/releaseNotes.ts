@@ -17,6 +17,7 @@ export type ReleaseNoteBadge =
   | "Debugging"
   | "Diagnostics"
   | "Discord"
+  | "External APIs"
   | "Feedback"
   | "Energy"
   | "Essentia"
@@ -49,6 +50,7 @@ export type ReleaseNoteBadge =
   | "Roadmap"
   | "Safety Rules"
   | "Scheduler"
+  | "Security"
   | "Settings"
   | "Sharing"
   | "Smart Builder"
@@ -67,6 +69,19 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.3.9.2",
+    title: "External API Settings UI",
+    badges: ["Hotfix", "Settings", "External APIs", "Security", "Data Enrichment"],
+    changes: [
+      "Rebuilt the External APIs settings section into configurable provider cards.",
+      "Added web UI configuration for API provider toggles and supported enrichment types.",
+      "Added encrypted storage for API keys and secrets saved through the UI.",
+      "Kept .env fallback support while allowing UI-saved credentials to take effect without container restarts.",
+      "Added safer provider testing, masked credentials, and support diagnostics redaction.",
+      "Improved local-first behavior when API providers are disabled.",
+    ],
+  },
   {
     version: "1.3.9.1",
     title: "App Readiness Database Check Fix",

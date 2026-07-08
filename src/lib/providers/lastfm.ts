@@ -5,6 +5,7 @@ import {
   providerRequestsTotal,
 } from "../metrics";
 import { RateLimitError } from "./rateLimit";
+import { getLastFmCredentials } from "../externalApiSettings";
 
 // See note in audiodb.ts.
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -66,7 +67,7 @@ const logAutocorrect = (artist: string, track: string, responseTrack: any) => {
 };
 
 export const getLastFmPopularity = async (artist: string, track: string): Promise<number | null> => {
-  const apiKey = process.env.LASTFM_API_KEY;
+  const apiKey = (await getLastFmCredentials())?.apiKey;
   if (!apiKey) return null;
 
   const endTimer = providerRequestDurationSeconds.startTimer({ provider: PROVIDER });
@@ -110,7 +111,7 @@ export const getLastFmPopularity = async (artist: string, track: string): Promis
 };
 
 export const getLastFmTrackTags = async (artist: string, track: string): Promise<string[]> => {
-  const apiKey = process.env.LASTFM_API_KEY;
+  const apiKey = (await getLastFmCredentials())?.apiKey;
   if (!apiKey) return [];
 
   const endTimer = providerRequestDurationSeconds.startTimer({ provider: PROVIDER });

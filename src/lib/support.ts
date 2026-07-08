@@ -12,6 +12,7 @@ import { getWorkerHealthSummary } from "./workerHealth";
 import { buildBugReportTemplate, buildFeedbackTemplate, buildHealthReport, buildJobFailureReport } from "./supportReports";
 import { sanitizeDiagnostics, sanitizeErrorText } from "./supportRedaction";
 import { getAppReadiness } from "./readiness";
+import { getExternalApiDiagnostics } from "./externalApiSettings";
 
 export function getSupportLinks() {
   return {
@@ -94,7 +95,7 @@ function compactJob(job: any) {
 }
 
 export async function getSupportSummary(userId: string) {
-  const [user, settings, worker, recentJobs, readiness] = await Promise.all([
+  const [user, settings, worker, recentJobs, readiness, externalApis] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -114,6 +115,7 @@ export async function getSupportSummary(userId: string) {
     getWorkerHealthSummary().catch(() => null),
     getRecentJobSummary(userId).catch(() => null),
     getAppReadiness({ userId }).catch(() => null),
+    getExternalApiDiagnostics().catch(() => null),
   ]);
   const providerSettings = resolveMetadataProviderSettings(settings);
   const libraries = (user?.servers || []).flatMap((server) =>
@@ -140,6 +142,7 @@ export async function getSupportSummary(userId: string) {
         bpm: metadataProviderModeLabel(providerSettings.bpm),
         audioFeatures: metadataProviderModeLabel(providerSettings.audioFeatures),
       },
+      externalApis,
     },
     plex: {
       connected: !!user,
@@ -155,7 +158,7 @@ export async function getSupportSummary(userId: string) {
 }
 
 export async function getSupportDiagnostics(userId: string) {
-  const [summary, dashboard, worker, settings, libraries, recentJobs, readiness] = await Promise.all([
+  const [summary, dashboard, worker, settings, libraries, recentJobs, readiness, externalApis] = await Promise.all([
     getSupportSummary(userId),
     getDashboardSummary(userId).catch((error) => ({ error: sanitizeErrorText(error) })),
     getWorkerHealthSummary().catch((error) => ({ error: sanitizeErrorText(error) })),
@@ -171,6 +174,7 @@ export async function getSupportDiagnostics(userId: string) {
       take: 12,
     }),
     getAppReadiness({ userId }).catch((error) => ({ error: sanitizeErrorText(error) })),
+    getExternalApiDiagnostics().catch((error) => ({ error: sanitizeErrorText(error) })),
   ]);
   const providerSettings = resolveMetadataProviderSettings(settings);
   const [libraryHealth, dataEnrichment] = await Promise.all([
@@ -192,6 +196,7 @@ export async function getSupportDiagnostics(userId: string) {
     },
     appReadiness: readiness,
     configuredFeatures: (summary as any).configuredFeatures,
+    externalApis,
     plex: {
       configured: Boolean((summary as any).plex?.connected),
       connected: (readiness as any)?.checks?.plex?.status === "OK",

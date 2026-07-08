@@ -4,6 +4,7 @@ import {
   providerRequestsTotal,
 } from "../metrics";
 import { RateLimitError, parseRetryAfterMs } from "./rateLimit";
+import { getMusicBrainzUserAgent } from "../externalApiSettings";
 
 const PROVIDER = "musicbrainz";
 const API_ROOT = "https://musicbrainz.org/ws/2";
@@ -24,8 +25,8 @@ function classifyError(error: any): "timeout" | "rate_limited" | "error" {
   return "error";
 }
 
-function getUserAgent() {
-  return (process.env.MUSICBRAINZ_USER_AGENT || "Mixarr/1.0 (local self-hosted playlist tool)").trim();
+async function getUserAgent() {
+  return (await getMusicBrainzUserAgent()).trim();
 }
 
 function getMinimumIntervalMs() {
@@ -57,7 +58,7 @@ async function musicBrainzGet<T>(path: string, params: Record<string, string | n
       fmt: "json",
     },
     headers: {
-      "User-Agent": getUserAgent(),
+      "User-Agent": await getUserAgent(),
       Accept: "application/json",
     },
     timeout: 10000,

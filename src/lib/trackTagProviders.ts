@@ -1,16 +1,13 @@
 import { normalizeGenreName } from "./genreFilters";
-import {
-  getDiscogsTrackTags,
-  isDiscogsTagLookupEnabled,
-} from "./providers/discogs";
+import { getDiscogsTrackTags } from "./providers/discogs";
 import { getDeezerTrackTags } from "./providers/deezer";
 import { getLastFmTrackTags } from "./providers/lastfm";
 import { getMusicBrainzTrackTags } from "./providers/musicbrainz";
 import { isRateLimitError } from "./providers/rateLimit";
 import {
   getSpotifyTrackTags,
-  isSpotifyTagLookupEnabled,
 } from "./providers/spotify";
+import { isExternalApiProviderEnabled } from "./externalApiSettings";
 
 export type TrackTagProviderName = "deezer" | "discogs" | "musicbrainz" | "spotify" | "lastfm";
 
@@ -56,30 +53,20 @@ const providerLookups: Record<TrackTagProviderName, (artist: string, track: stri
   lastfm: getLastFmTrackTags,
 };
 
-function envEnabled(name: string, defaultValue: boolean) {
-  const value = process.env[name]?.toLowerCase();
-  if (!value) return defaultValue;
-  return value === "1" || value === "true" || value === "yes" || value === "on";
-}
-
-function hasLastFmCredentials() {
-  return Boolean(process.env.LASTFM_API_KEY);
-}
-
-function providerEnabled(provider: TrackTagProviderName) {
+async function providerEnabled(provider: TrackTagProviderName) {
   if (provider === "deezer") {
-    return envEnabled("DEEZER_TAGS_ENABLED", true);
+    return isExternalApiProviderEnabled("deezer_tags", "tags");
   }
   if (provider === "discogs") {
-    return isDiscogsTagLookupEnabled();
+    return isExternalApiProviderEnabled("discogs_tags", "tags");
   }
   if (provider === "musicbrainz") {
-    return envEnabled("MUSICBRAINZ_TAGS_ENABLED", true);
+    return isExternalApiProviderEnabled("musicbrainz_tags", "tags");
   }
   if (provider === "spotify") {
-    return isSpotifyTagLookupEnabled();
+    return isExternalApiProviderEnabled("spotify_artist_genres", "tags");
   }
-  return envEnabled("LASTFM_TAG_FALLBACK_ENABLED", true) && hasLastFmCredentials();
+  return isExternalApiProviderEnabled("lastfm_tags", "tags");
 }
 
 function resolveProviderOrder() {
@@ -123,7 +110,7 @@ export const resolveTrackGenreTags = async (
   let rateLimited = false;
 
   for (const provider of resolveProviderOrder()) {
-    if (!providerEnabled(provider)) continue;
+    if (!await providerEnabled(provider)) continue;
 
     attemptedProviders.push(provider);
     try {

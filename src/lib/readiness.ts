@@ -5,6 +5,8 @@ import { getResolvedSchedulerSettings, isValidSchedulerCron } from "./schedulerS
 import { getUserSyncSettings, resolveMetadataProviderSettings } from "./syncSettings";
 import { getWorkerHealthSummary, isHeartbeatStale } from "./workerHealth";
 import { sanitizeErrorText } from "./supportRedaction";
+import { getExternalApiSettingsPayload } from "./externalApiSettings";
+import { isSecretEncryptionConfigured } from "./secretStorage";
 
 export type ReadinessStatus = "OK" | "Warning" | "Error" | "Disabled" | "Unknown";
 
@@ -28,6 +30,8 @@ export type AppReadiness = {
     worker: ReadinessCheck;
     scheduler: ReadinessCheck;
     localAudioAnalysis: ReadinessCheck;
+    externalApis: ReadinessCheck;
+    secretsEncryption: ReadinessCheck;
     supportLinks: ReadinessCheck;
     githubRepo: ReadinessCheck;
     environment: ReadinessCheck;
@@ -348,6 +352,51 @@ function environmentCheck() {
   return check("Environment", warnings.length > 0 ? "Warning" : "OK", warnings.length > 0 ? warnings.join(" ") : "Environment variables look sane.");
 }
 
+async function externalApisCheck() {
+  try {
+    const payload = await getExternalApiSettingsPayload();
+    const summary = payload.summary;
+    const anyEnabled = payload.providers.some((provider) => provider.enabled);
+    const missingCredentials = payload.providers.filter((provider) =>
+      provider.enabled && provider.status.toLowerCase().includes("missing")
+    );
+    const diagnostics = {
+      popularityProviders: summary.popularity,
+      tagsProviders: summary.tags,
+      bpmProviders: summary.bpm.length ? summary.bpm : ["local-only"],
+      audioFeatureProviders: summary.audioFeatures.length ? summary.audioFeatures : ["local-only"],
+    };
+
+    if (!anyEnabled) {
+      return check(
+        "External APIs",
+        "Disabled",
+        "Mixarr is configured for local analysis and no API providers are enabled.",
+        null,
+        diagnostics,
+      );
+    }
+    if (missingCredentials.length > 0) {
+      return check(
+        "External APIs",
+        "Warning",
+        "Some enabled API providers are missing credentials.",
+        missingCredentials.map((provider) => provider.name).join(", "),
+        diagnostics,
+      );
+    }
+    return check("External APIs", "OK", "External API provider settings are valid.", null, diagnostics);
+  } catch (error) {
+    return check("External APIs", "Unknown", "Unable to inspect external API settings.", sanitizeErrorText(error));
+  }
+}
+
+function secretsEncryptionCheck() {
+  return isSecretEncryptionConfigured()
+    ? check("Secrets Encryption", "OK", "Secret encryption is configured for UI-saved API credentials.")
+    : check("Secrets Encryption", "Warning", "Secret encryption key is not configured. API credentials cannot be saved from the UI.");
+}
+
 export function buildReadinessMessages(readiness: AppReadiness) {
   return Object.values(readiness.checks)
     .filter((entry) => entry.status === "Warning" || entry.status === "Error")
@@ -361,16 +410,18 @@ export function buildReadinessLogLine(readiness: AppReadiness) {
   const worker = c.worker.status === "OK" ? "ok" : c.worker.status.toLowerCase();
   const scheduler = c.scheduler.status === "OK" ? "ok" : c.scheduler.status.toLowerCase();
   const localAnalysis = c.localAudioAnalysis.status === "OK" ? "enabled" : c.localAudioAnalysis.status.toLowerCase();
+  const externalApis = c.externalApis.status === "OK" ? "ok" : c.externalApis.status.toLowerCase();
   const discord = c.supportLinks.summary.includes("not configured") ? "not_configured" : c.supportLinks.status.toLowerCase();
-  return `[Readiness] Startup check completed database=${db} plex=${plex} worker=${worker} scheduler=${scheduler} localAnalysis=${localAnalysis} discord=${discord}`;
+  return `[Readiness] Startup check completed database=${db} plex=${plex} worker=${worker} scheduler=${scheduler} localAnalysis=${localAnalysis} externalApis=${externalApis} discord=${discord}`;
 }
 
 export async function getAppReadiness(options: { userId?: string | null } = {}): Promise<AppReadiness> {
-  const [database, plex, worker, localAudioAnalysis] = await Promise.all([
+  const [database, plex, worker, localAudioAnalysis, externalApis] = await Promise.all([
     databaseCheck(),
     plexCheck(options.userId),
     workerCheck(),
     localAudioAnalysisCheck(options.userId),
+    externalApisCheck(),
   ]);
   const scheduler = await schedulerCheck(worker);
   const links = supportLinkChecks();
@@ -380,6 +431,8 @@ export async function getAppReadiness(options: { userId?: string | null } = {}):
     worker,
     scheduler,
     localAudioAnalysis,
+    externalApis,
+    secretsEncryption: secretsEncryptionCheck(),
     supportLinks: links.supportLinks,
     githubRepo: links.githubRepo,
     environment: environmentCheck(),

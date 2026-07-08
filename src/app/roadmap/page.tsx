@@ -73,6 +73,7 @@ export default function RoadmapPage() {
             safer diagnostics, clearer configuration validation, and release visibility cleanup.
           </p>
           <p>v1.3.9.1 fixed a false database error in App Readiness.</p>
+          <p>v1.3.9.2 added configurable External API provider settings with encrypted UI-saved credentials.</p>
           <div className={styles.currentReleaseList}>
             {completedV13Items.map((feature) => (
               <span key={feature}>{feature}</span>

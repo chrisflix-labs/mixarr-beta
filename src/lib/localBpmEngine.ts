@@ -30,6 +30,7 @@ import {
   resolveRateLimitBackoff,
   type SyncEngineOptions,
 } from "./syncSettings";
+import { isExternalApiProviderEnabled } from "./externalApiSettings";
 import {
   engineBatchSize,
   trackAttemptsTotal,
@@ -1561,6 +1562,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
     const includeAubioReprocess = localAnalyzer?.name === "essentia" && reprocessAubioWithEssentia;
     const retryNoDataFailed = options.bpmReprocessNoDataFailed ?? defaultReprocessNoDataFailed;
     const localAnalysisScope = metadataSettings.scope;
+    const deezerBpmEnabled = metadataSettings.api && await isExternalApiProviderEnabled("deezer_popularity", "bpm");
 
     console.log(
       `[LocalBpmEngine] Local analyzer selected: ${localAnalyzer?.label || "disabled"} (requested ${localAnalyzerMode}); scope=${localAnalysisScope}; reprocessAubio=${includeAubioReprocess ? "on" : "off"}; reprocessNoDataFailed=${retryNoDataFailed ? "on" : "off"}.`,
@@ -1647,7 +1649,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
           let deezerRateLimited = false;
           let deezerBpm = null;
 
-        if (metadataSettings.api) {
+        if (deezerBpmEnabled) {
           try {
             deezerBpm = validBpm(await getDeezerBpm(track.artist.title, track.title));
           } catch (error) {

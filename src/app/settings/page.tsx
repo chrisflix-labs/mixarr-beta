@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { Settings as SettingsIcon, Ban, Database, ExternalLink, Github, HeartPulse, Info, Key, LifeBuoy, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
 import ProviderTestButton from "@/components/ProviderTestButton";
+import ExternalApiSettingsPanel from "@/components/ExternalApiSettingsPanel";
 import LibraryDefaultSelector from "@/components/LibraryDefaultSelector";
 import SyncOptionsForm from "@/components/SyncOptionsForm";
 import BackgroundSchedulerSettings from "@/components/BackgroundSchedulerSettings";
@@ -9,12 +10,16 @@ import TrackExclusionsManager from "@/components/TrackExclusionsManager";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
 import { APP_DESCRIPTION, APP_NAME, MIXARR_GITHUB_URL } from "@/lib/appInfo";
 import { APP_VERSION } from "@/lib/appVersion";
+import { getExternalApiSettingsPayload } from "@/lib/externalApiSettings";
 import { getAppReadiness } from "@/lib/readiness";
 import styles from "./settings.module.css";
 
 export default async function SettingsPage() {
   const userId = cookies().get("mixarr_session")?.value;
-  const readiness = await getAppReadiness({ userId }).catch(() => null);
+  const [readiness, externalApis] = await Promise.all([
+    getAppReadiness({ userId }).catch(() => null),
+    getExternalApiSettingsPayload().catch(() => null),
+  ]);
   const readinessChecks = readiness?.checks ? Object.values(readiness.checks) : [];
   const validationMessages = readinessChecks
     .filter((item) => item.status === "Warning" || item.status === "Error")
@@ -126,79 +131,11 @@ export default async function SettingsPage() {
         <h3 className={styles.sectionTitle}>
           <Key size={20} color="var(--info)" /> External APIs
         </h3>
-        <div className={styles.providerList}>
-          <ProviderTestButton 
-            provider="spotify"
-            title="Spotify Audio Features"
-            description="Used for high-precision energy and valence analysis."
-            badgeText="Configured via .env"
-            badgeColor="#22c55e"
-          />
-
-          <ProviderTestButton
-            provider="deezer-tags"
-            title="Deezer Genre Tags"
-            description="Primary track-tag seed from matched Deezer album genres."
-            badgeText="Active (Free Tier)"
-            badgeColor="#22c55e"
-          />
-
-          <ProviderTestButton
-            provider="discogs-tags"
-            title="Discogs Genre Tags"
-            description="Opt-in source for release genre and style tags using Discogs Consumer Key and Secret."
-            badgeText="Opt-in"
-            badgeColor="#eab308"
-          />
-
-          <ProviderTestButton
-            provider="musicbrainz-tags"
-            title="MusicBrainz Genre Tags"
-            description="Free genre and tag lookup with a required User-Agent and conservative rate limit."
-            badgeText="No API key"
-            badgeColor="#22c55e"
-          />
-
-          <ProviderTestButton
-            provider="spotify-tags"
-            title="Spotify Artist Genres"
-            description="Optional artist-genre source; enable only after confirming your Spotify policy fit."
-            badgeText="Opt-in"
-            badgeColor="#eab308"
-          />
-          
-          <ProviderTestButton 
-            provider="audiodb"
-            title="AudioDB Fallback"
-            description="Primary source for mood tag analysis and metadata fallback."
-            badgeText="Active (Free Tier)"
-            badgeColor="#22c55e"
-          />
-
-          <ProviderTestButton 
-            provider="lastfm"
-            title="Last.fm Popularity"
-            description="Used for global trending scores and ranking algorithms."
-            badgeText="Configured via .env"
-            badgeColor="#22c55e"
-          />
-
-          <ProviderTestButton
-            provider="lastfm-tags"
-            title="Last.fm Tag Fallback"
-            description="Final genre-tag fallback after Deezer, Discogs, MusicBrainz, and optional Spotify do not return tags."
-            badgeText="Fallback only"
-            badgeColor="#eab308"
-          />
-
-          <ProviderTestButton 
-            provider="deezer"
-            title="Deezer Popularity"
-            description="Secondary source for global trending scores."
-            badgeText="Active (Free Tier)"
-            badgeColor="#22c55e"
-          />
-        </div>
+        {externalApis ? (
+          <ExternalApiSettingsPanel initialPayload={externalApis} />
+        ) : (
+          <p className={styles.errorText}>External API settings are unavailable. Check database readiness and migrations.</p>
+        )}
       </section>
 
       {/* Plex Connection */}

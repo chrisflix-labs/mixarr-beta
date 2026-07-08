@@ -9,6 +9,7 @@ import {
   createThrottle,
   parseRetryAfterMs,
 } from "./rateLimit";
+import { getDiscogsCredentials } from "../externalApiSettings";
 
 const PROVIDER = "discogs";
 
@@ -86,8 +87,11 @@ function getOAuthNonce() {
   return `${Date.now()}${Math.random().toString(16).slice(2)}`;
 }
 
-function buildDiscogsAuthorizationHeader() {
-  const consumer = getDiscogsConsumerCredentials();
+async function buildDiscogsAuthorizationHeader() {
+  const resolved = await getDiscogsCredentials();
+  const consumer = resolved
+    ? { key: resolved.consumerKey, secret: resolved.consumerSecret }
+    : getDiscogsConsumerCredentials();
   const access = getDiscogsOAuthAccessCredentials();
 
   if (!consumer.key || !consumer.secret) return "";
@@ -122,7 +126,7 @@ function collectResultTags(results: any[]) {
 }
 
 export const getDiscogsTrackTags = async (artist: string, track: string): Promise<string[]> => {
-  if (!isDiscogsTagLookupEnabled()) return [];
+  if (!await getDiscogsCredentials()) return [];
 
   const endTimer = providerRequestDurationSeconds.startTimer({ provider: PROVIDER });
   let result: Outcome = "success";
@@ -147,7 +151,7 @@ export const getDiscogsTrackTags = async (artist: string, track: string): Promis
           per_page: 5,
         },
         headers: {
-          Authorization: buildDiscogsAuthorizationHeader(),
+          Authorization: await buildDiscogsAuthorizationHeader(),
           "User-Agent": getDiscogsUserAgent(),
         },
         timeout: 10000,

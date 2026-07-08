@@ -25,6 +25,7 @@ import {
   resolveMetadataProviderSettings,
   type SyncEngineOptions,
 } from "./syncSettings";
+import { getEnabledExternalApiProviders } from "./externalApiSettings";
 
 export type DataEnrichmentAction =
   | "sync_bpm"
@@ -243,6 +244,8 @@ function labelsForReasons(reasons: Record<string, number>) {
 }
 
 async function preflightBpm(userId: string, config: ActionConfig, libraryId: string | undefined, settings: ReturnType<typeof resolveMetadataProviderSettings>["bpm"]): Promise<DataEnrichmentPreflight> {
+  const apiProviders = await getEnabledExternalApiProviders("bpm");
+  const apiAvailable = settings.api && apiProviders.length > 0;
   const providerMode = config.mode === "force_local" ? "force_local" : config.mode === "local_only" ? "local_only" : "configured";
   const matchedWhere = buildBpmRetryBaseWhere(userId, { filter: config.filter as BpmHealthFilter, libraryId });
   const candidateWhere = buildBpmRetryCandidateWhere(userId, {
@@ -256,7 +259,7 @@ async function preflightBpm(userId: string, config: ActionConfig, libraryId: str
     prisma.track.findMany({ where: candidateWhere, select: { id: true } }),
   ]);
   const trackIds = tracks.map((track) => track.id);
-  const disabledReason = !settings.api && !settings.local
+  const disabledReason = !apiAvailable && !settings.local
     ? "No BPM providers are enabled."
     : config.mode === "local_only" && !settings.local
       ? "Local BPM analysis is disabled. Enable local BPM in Settings first."
@@ -270,7 +273,7 @@ async function preflightBpm(userId: string, config: ActionConfig, libraryId: str
     : countReasons(skipped, "not_eligible_for_selected_mode");
   const providerModeLabel = config.mode === "local_only" || config.mode === "force_local"
     ? metadataProviderModeLabel({ ...settings, api: false, local: true, preferLocal: true })
-    : metadataProviderModeLabel(settings);
+    : metadataProviderModeLabel({ ...settings, api: apiAvailable });
 
   return {
     action: "" as DataEnrichmentAction,
@@ -295,6 +298,13 @@ async function preflightBpm(userId: string, config: ActionConfig, libraryId: str
 }
 
 async function preflightMetadata(userId: string, config: ActionConfig, libraryId: string | undefined): Promise<DataEnrichmentPreflight> {
+  const apiUse = config.enrichmentType === "genres" ? "tags" : "popularity";
+  const enabledProviders = await getEnabledExternalApiProviders(apiUse);
+  const disabledReason = enabledProviders.length === 0
+    ? config.enrichmentType === "genres"
+      ? "No tag providers are enabled."
+      : "No popularity providers are enabled."
+    : null;
   const trackIds = await resolveTrackIds(userId, config.filter, libraryId);
   const active = activeUserTrackWhere(userId, libraryId);
   const tracks = trackIds.length
@@ -304,10 +314,10 @@ async function preflightMetadata(userId: string, config: ActionConfig, libraryId
     })
     : [];
   const matched = trackIds.length;
-  const eligible = tracks.length;
+  const eligible = disabledReason ? 0 : tracks.length;
   const skipped = Math.max(0, matched - eligible);
-  const skipReasons = countReasons(skipped, "not_active");
-  const providerMode = "API/imported provider metadata";
+  const skipReasons = disabledReason ? countReasons(matched, "provider_disabled") : countReasons(skipped, "not_active");
+  const providerMode = disabledReason ? "No API providers enabled" : "API/imported provider metadata";
 
   return {
     action: "" as DataEnrichmentAction,
@@ -323,9 +333,9 @@ async function preflightMetadata(userId: string, config: ActionConfig, libraryId
     providerMode,
     estimatedAction: config.estimatedAction,
     canRun: eligible > 0,
-    disabledReason: null,
+    disabledReason,
     summary: formatPreflightSummary({ matched, eligible, skipped, providerMode, estimatedAction: config.estimatedAction, skipReasons }),
-    trackIds: tracks.map((track) => track.id),
+    trackIds: disabledReason ? [] : tracks.map((track) => track.id),
     advanced: config.advanced,
   };
 }
@@ -336,13 +346,21 @@ export async function preflightDataEnrichmentAction(userId: string, action: Data
   let result: DataEnrichmentPreflight;
 
   if (config.enrichmentType === "audio_features" || config.enrichmentType === "local_audio_analysis") {
+    const [audioFeatureProviders, bpmProviders] = await Promise.all([
+      getEnabledExternalApiProviders("audioFeatures"),
+      getEnabledExternalApiProviders("bpm"),
+    ]);
+    const audioFeatureSettings = {
+      ...syncSettings.audioFeatures,
+      api: syncSettings.audioFeatures.api && (audioFeatureProviders.length > 0 || bpmProviders.length > 0),
+    };
     const audio = await preflightAudioFeatureRetry(userId, {
       filter: config.filter,
       mode: config.mode,
       providerMode: config.mode,
       libraryId: options.libraryId,
       force: config.mode === "force_local_reprocess",
-    }, syncSettings.audioFeatures);
+    }, audioFeatureSettings);
     result = {
       action,
       title: config.title,
@@ -354,7 +372,7 @@ export async function preflightDataEnrichmentAction(userId: string, action: Data
       skipped: audio.skipped,
       skipReasons: audio.skipReasons,
       skipReasonLabels: audio.skipReasonLabels,
-      providerMode: metadataProviderModeLabel(syncSettings.audioFeatures),
+      providerMode: metadataProviderModeLabel(audioFeatureSettings),
       estimatedAction: config.estimatedAction,
       canRun: audio.canRun,
       disabledReason: audio.disabledReason,
@@ -362,7 +380,7 @@ export async function preflightDataEnrichmentAction(userId: string, action: Data
         matched: audio.matched,
         eligible: audio.eligible,
         skipped: audio.skipped,
-        providerMode: metadataProviderModeLabel(syncSettings.audioFeatures),
+        providerMode: metadataProviderModeLabel(audioFeatureSettings),
         estimatedAction: config.estimatedAction,
         skipReasons: audio.skipReasons,
       }),
@@ -409,11 +427,17 @@ async function lastJob(userId: string, where: Prisma.JobHistoryWhereInput) {
 export async function getDataEnrichmentSummary(userId: string, libraryId?: string) {
   const rawSettings = await getUserSyncSettings(userId);
   const settings = resolveMetadataProviderSettings(rawSettings);
+  const [bpmApiProviders, audioApiProviders] = await Promise.all([
+    getEnabledExternalApiProviders("bpm"),
+    getEnabledExternalApiProviders("audioFeatures"),
+  ]);
+  const effectiveBpmSettings = { ...settings.bpm, api: settings.bpm.api && bpmApiProviders.length > 0 };
+  const effectiveAudioSettings = { ...settings.audioFeatures, api: settings.audioFeatures.api && (audioApiProviders.length > 0 || bpmApiProviders.length > 0) };
   const [health, bpm, audio, moodEnergy, genres, popularity, libraries, localStatus, lastRuns] = await Promise.all([
-    getLibraryHealthDetailSummary(userId, libraryId, settings.audioFeatures),
+    getLibraryHealthDetailSummary(userId, libraryId, effectiveAudioSettings),
     getBpmHealthSummary(userId, libraryId),
-    getAudioFeatureHealthSummary(userId, libraryId, settings.audioFeatures),
-    buildMoodEnergyHealthSummary(userId, { libraryId, settings: settings.audioFeatures }),
+    getAudioFeatureHealthSummary(userId, libraryId, effectiveAudioSettings),
+    buildMoodEnergyHealthSummary(userId, { libraryId, settings: effectiveAudioSettings }),
     getGenreHealthSummary(userId, libraryId),
     getPopularityHealthSummary(userId, libraryId),
     prisma.library.findMany({
@@ -421,7 +445,7 @@ export async function getDataEnrichmentSummary(userId: string, libraryId?: strin
       select: { id: true, name: true, server: { select: { id: true, name: true } } },
       orderBy: [{ server: { name: "asc" } }, { name: "asc" }],
     }),
-    getLocalAnalyzerStatus(settings.audioFeatures),
+    getLocalAnalyzerStatus(effectiveAudioSettings),
     Promise.all([
       lastJob(userId, { type: { in: ["bpm"] } }),
       lastJob(userId, { type: { in: ["audio_features"] } }),
@@ -435,14 +459,14 @@ export async function getDataEnrichmentSummary(userId: string, libraryId?: strin
     totalTracks: health.totalTracks,
     libraries,
     providerModes: {
-      bpm: metadataProviderModeLabel(settings.bpm),
-      audioFeatures: metadataProviderModeLabel(settings.audioFeatures),
-      preferLocalBpm: formatPreferLocalLabel(settings.bpm.preferLocal),
-      preferLocalAudioFeatures: formatPreferLocalLabel(settings.audioFeatures.preferLocal),
-      apiBpm: formatProviderEnabledLabel("API BPM", settings.bpm.api),
-      localBpm: formatProviderEnabledLabel("Local BPM", settings.bpm.local),
-      apiAudioFeatures: formatProviderEnabledLabel("API enrichment", settings.audioFeatures.api),
-      localAudioFeatures: formatProviderEnabledLabel("Local Essentia", settings.audioFeatures.local),
+      bpm: metadataProviderModeLabel(effectiveBpmSettings),
+      audioFeatures: metadataProviderModeLabel(effectiveAudioSettings),
+      preferLocalBpm: formatPreferLocalLabel(effectiveBpmSettings.preferLocal),
+      preferLocalAudioFeatures: formatPreferLocalLabel(effectiveAudioSettings.preferLocal),
+      apiBpm: formatProviderEnabledLabel("API BPM", effectiveBpmSettings.api),
+      localBpm: formatProviderEnabledLabel("Local BPM", effectiveBpmSettings.local),
+      apiAudioFeatures: formatProviderEnabledLabel("API enrichment", effectiveAudioSettings.api),
+      localAudioFeatures: formatProviderEnabledLabel("Local Essentia", effectiveAudioSettings.local),
     },
     bpm,
     audioFeatures: {
@@ -457,12 +481,12 @@ export async function getDataEnrichmentSummary(userId: string, libraryId?: strin
     genres,
     popularity,
     localAudioAnalysis: {
-      enabled: settings.audioFeatures.local,
+      enabled: effectiveAudioSettings.local,
       analyzer: "Essentia",
       analyzerAvailable: localStatus.analyzerAvailable,
       analyzerError: localStatus.analyzerError,
-      scope: settings.audioFeatures.scope,
-      scopeLabel: settings.audioFeatures.scope === "whole_track" ? "Whole track" : "Sample window",
+      scope: effectiveAudioSettings.scope,
+      scopeLabel: effectiveAudioSettings.scope === "whole_track" ? "Whole track" : "Sample window",
       lastDiagnostics: health.diagnostics.localAnalysisDiagnostics || null,
     },
     libraryHealth: {
@@ -483,8 +507,8 @@ export async function getDataEnrichmentSummary(userId: string, libraryId?: strin
       localAudioAnalysis: health.diagnostics.localAnalysisDiagnostics || null,
     },
     settings: {
-      bpm: settings.bpm,
-      audioFeatures: settings.audioFeatures,
+      bpm: effectiveBpmSettings,
+      audioFeatures: effectiveAudioSettings,
       raw: rawSettings,
     },
   };
