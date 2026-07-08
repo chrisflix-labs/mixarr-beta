@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Settings as SettingsIcon, Ban, Database, ExternalLink, Github, HeartPulse, Info, Key, Map, RefreshCw, ScrollText, Server } from "lucide-react";
+import { Settings as SettingsIcon, Ban, Database, ExternalLink, Github, HeartPulse, Info, Key, LifeBuoy, Map, RefreshCw, ScrollText, Server } from "lucide-react";
 import ProviderTestButton from "@/components/ProviderTestButton";
 import LibraryDefaultSelector from "@/components/LibraryDefaultSelector";
 import SyncOptionsForm from "@/components/SyncOptionsForm";
@@ -58,6 +58,10 @@ export default function SettingsPage() {
           <Link href="/roadmap" className={styles.secondaryButton}>
             <Map size={16} />
             View Roadmap
+          </Link>
+          <Link href="/support" className={styles.secondaryButton}>
+            <LifeBuoy size={16} />
+            Beta Support
           </Link>
           <a href={MIXARR_GITHUB_URL} target="_blank" rel="noopener noreferrer" className={styles.secondaryButton}>
             <Github size={16} />

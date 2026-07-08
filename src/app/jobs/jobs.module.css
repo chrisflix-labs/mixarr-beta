@@ -243,6 +243,30 @@
   line-height: 1.5;
 }
 
+.supportActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.supportActions small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.supportActions textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  background: rgba(0, 0, 0, 0.22);
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
 .errorDetails {
   margin-top: 0.75rem;
   border: 1px solid rgba(215, 91, 91, 0.24);

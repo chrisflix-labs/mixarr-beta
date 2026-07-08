@@ -20,9 +20,17 @@ const nextFeatures = [
   "Recently added automation",
   "Beta experimental features",
   "Manual BPM correction",
+  "Discord announcements/integration, future optional",
 ];
 
 const currentReleaseFeatures = [
+  "v1.3.8 completes Beta Feedback & Discord Support Polish.",
+  "Beta Support now collects Discord, GitHub, release notes, roadmap, template copy, and safe diagnostics actions in one place.",
+  "Bug report and feedback templates now include app version and safe context without secrets.",
+  "Support diagnostics now export curated health, worker, enrichment, sync, and job summaries with secret redaction.",
+  "Failed Job History entries can copy a sanitized failure report.",
+  "Library Health diagnostics can copy a concise health report and export diagnostics.",
+  "Discord support URL handling is configurable and disabled gracefully when no URL is configured.",
   "v1.3.7.2 fixed Dashboard Library Health and Data Enrichment card refresh issues.",
   "v1.3.7.1 removed the Healthy Tracks card from Library Health to improve page performance.",
   "v1.3.7 completes Plex Matching & Track Sync Polish.",
@@ -168,7 +176,7 @@ export default function RoadmapPage() {
         <div>
           <span className={styles.badge}>Current release</span>
           <h3 id="current-release">Mixarr {APP_VERSION}</h3>
-        <p>v1.3.7.2 fixes Dashboard Library Health and Data Enrichment card refresh issues while keeping the v1.3.7 Plex Matching & Track Sync Polish work intact.</p>
+        <p>v1.3.8 adds Beta Support, copyable report templates, safe diagnostics export, and configurable Discord support handling.</p>
           <div className={styles.currentReleaseList}>
             {currentReleaseFeatures.map((feature) => (
               <span key={feature}>{feature}</span>
@@ -193,7 +201,7 @@ export default function RoadmapPage() {
             </article>
           ))}
         </div>
-        <p className={styles.futureNote}>Plex Matching & Track Sync Polish is complete in v1.3.7, with v1.3.7.1 adding a small Library Health performance hotfix and v1.3.7.2 fixing Dashboard card refresh issues. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood blending, BPM transition/ramp tools, restore/version workflows, recently added automation, beta experiments, and manual BPM correction.</p>
+        <p className={styles.futureNote}>Beta Feedback & Discord Support Polish is complete in v1.3.8. The rest of v1.3.x will focus on recommendation quality, discovery tuning, playlist scoring, Smart Mix Engine groundwork, mood blending, BPM transition/ramp tools, restore/version workflows, recently added automation, beta experiments, manual BPM correction, and future optional Discord announcements or integration.</p>
       </section>
 
       <section className={styles.teaser} aria-labelledby="v2-teaser">
@@ -223,9 +231,13 @@ export default function RoadmapPage() {
           <div>
             <h3>Community feedback</h3>
             <p>Join Discord to follow development, give feedback, report bugs, and suggest roadmap ideas.</p>
-            <a href={MIXARR_BETA_DISCORD_URL} target="_blank" rel="noopener noreferrer">
-              {MIXARR_BETA_DISCORD_URL}
-            </a>
+            {MIXARR_BETA_DISCORD_URL ? (
+              <a href={MIXARR_BETA_DISCORD_URL} target="_blank" rel="noopener noreferrer">
+                {MIXARR_BETA_DISCORD_URL}
+              </a>
+            ) : (
+              <Link href="/support">Open Beta Support</Link>
+            )}
           </div>
         </article>
 

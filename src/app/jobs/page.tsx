@@ -4,6 +4,7 @@ import { Activity } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { getJobHistory } from "@/lib/jobHistory";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
+import CopySupportButton from "@/components/CopySupportButton";
 import styles from "./jobs.module.css";
 
 export const metadata = {
@@ -197,6 +198,17 @@ export default async function JobHistoryPage({
                   {job.summary && <p className={styles.summary}>{job.summary}</p>}
                   {job.recoveryHint && ["failed", "interrupted", "stale"].includes(job.status) && (
                     <p className={styles.summary}>Recovery: {job.recoveryHint}</p>
+                  )}
+
+                  {["failed", "interrupted", "stale"].includes(job.status) && (
+                    <div className={styles.supportActions}>
+                      <CopySupportButton
+                        url={`/api/support/job-report/${job.id}`}
+                        label="Copy Failure Report"
+                        className={styles.secondaryButton}
+                      />
+                      <Link href="/support" className={styles.secondaryButton}>Report this issue</Link>
+                    </div>
                   )}
 
                   {job.error && (

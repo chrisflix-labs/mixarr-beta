@@ -20,6 +20,9 @@
 .checkboxRow input { width: auto; }
 .buttonRow, .tableTop, .pagination { display: flex; justify-content: space-between; align-items: center; gap: .65rem; flex-wrap: wrap; }
 .buttonGroup { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.supportActions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; }
+.supportActions small { color: var(--muted); font-size: .72rem; }
+.supportActions textarea { width: 100%; min-height: 180px; padding: .65rem; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--fg); background: rgba(0,0,0,.22); font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .primaryButton, .secondaryButton, .tableAction { display: inline-flex; align-items: center; justify-content: center; gap: .38rem; padding: .58rem .72rem; border-radius: var(--radius-md); font-size: .78rem; font-weight: 750; cursor: pointer; }
 .primaryButton { border: 1px solid var(--accent); background: var(--accent); color: #fff; }
 .secondaryButton, .tableAction { border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--fg); }

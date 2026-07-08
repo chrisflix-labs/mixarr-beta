@@ -1,6 +1,6 @@
 import styles from "./page.module.css";
 import Link from "next/link";
-import { AudioWaveform, BookMarked, BrainCircuit, Fingerprint, Gauge, History, ListMusic, ListRestart, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
+import { AudioWaveform, BookMarked, BrainCircuit, Fingerprint, Gauge, History, LifeBuoy, ListMusic, ListRestart, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
 import LibrarySelector from "@/components/LibrarySelector";
 import SyncProgress from "@/components/SyncProgress";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
@@ -68,6 +68,7 @@ function MixarrVersionCard() {
       <div className={styles.versionCardActions}>
         <Link href="/release-notes" className={styles.cardAction}>Release Notes</Link>
         <Link href="/roadmap" className={`${styles.cardAction} ${styles.secondaryCardAction}`}>Roadmap</Link>
+        <Link href="/support" className={`${styles.cardAction} ${styles.secondaryCardAction}`}><LifeBuoy size={14} /> Beta Support</Link>
       </div>
     </article>
   );

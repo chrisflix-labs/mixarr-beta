@@ -14,13 +14,13 @@ describe("release notes", () => {
   it("sorts release notes from oldest to newest", () => {
     const ordered = getReleaseNotesOldestFirst();
 
-    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2", "1.2.2-hotfix", "1.2.3", "1.2.4", "1.2.5", "1.2.6", "1.2.7", "1.2.8", "1.2.8-hotfix", "1.2.8-hotfix.2", "1.2.8-hotfix.3", "1.2.8-hotfix.4", "1.2.8-hotfix.5", "1.2.8-hotfix.6", "1.2.8-hotfix.7", "1.2.9", "1.2.9.1", "1.3.0", "1.3.0.1", "1.3.1", "1.3.2", "1.3.3", "1.3.4", "1.3.5", "1.3.6", "1.3.7", "1.3.7.1", "1.3.7.2"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2", "1.2.2-hotfix", "1.2.3", "1.2.4", "1.2.5", "1.2.6", "1.2.7", "1.2.8", "1.2.8-hotfix", "1.2.8-hotfix.2", "1.2.8-hotfix.3", "1.2.8-hotfix.4", "1.2.8-hotfix.5", "1.2.8-hotfix.6", "1.2.8-hotfix.7", "1.2.9", "1.2.9.1", "1.3.0", "1.3.0.1", "1.3.1", "1.3.2", "1.3.3", "1.3.4", "1.3.5", "1.3.6", "1.3.7", "1.3.7.1", "1.3.7.2", "1.3.8"]);
   });
 
   it("sorts release notes from newest to oldest", () => {
     const ordered = getReleaseNotesNewestFirst();
 
-    assert.deepEqual(ordered.map((note) => note.version), ["1.3.7.2", "1.3.7.1", "1.3.7", "1.3.6", "1.3.5", "1.3.4", "1.3.3", "1.3.2", "1.3.1", "1.3.0.1", "1.3.0", "1.2.9.1", "1.2.9", "1.2.8-hotfix.7", "1.2.8-hotfix.6", "1.2.8-hotfix.5", "1.2.8-hotfix.4", "1.2.8-hotfix.3", "1.2.8-hotfix.2", "1.2.8-hotfix", "1.2.8", "1.2.7", "1.2.6", "1.2.5", "1.2.4", "1.2.3", "1.2.2-hotfix", "1.2.2", "1.2.1", "1.2.0", "1.1.10", "1.1.9.1", "1.1.9", "1.1.8", "1.1.7", "1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
+    assert.deepEqual(ordered.map((note) => note.version), ["1.3.8", "1.3.7.2", "1.3.7.1", "1.3.7", "1.3.6", "1.3.5", "1.3.4", "1.3.3", "1.3.2", "1.3.1", "1.3.0.1", "1.3.0", "1.2.9.1", "1.2.9", "1.2.8-hotfix.7", "1.2.8-hotfix.6", "1.2.8-hotfix.5", "1.2.8-hotfix.4", "1.2.8-hotfix.3", "1.2.8-hotfix.2", "1.2.8-hotfix", "1.2.8", "1.2.7", "1.2.6", "1.2.5", "1.2.4", "1.2.3", "1.2.2-hotfix", "1.2.2", "1.2.1", "1.2.0", "1.1.10", "1.1.9.1", "1.1.9", "1.1.8", "1.1.7", "1.1.6-hotfix", "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.5", "1.0.4", "1.0.3"]);
   });
 
   it("sorts semantic versions newest first without string ordering", () => {
@@ -166,8 +166,8 @@ describe("release notes", () => {
     assert.deepEqual(ordered.map((note) => note.version), ["v1.2.8-hotfix.6", "v1.2.8-hotfix.5", "v1.2.8-hotfix.4", "v1.2.8-hotfix.3", "v1.2.8-hotfix.2"]);
   });
 
-  it("keeps the beta Discord invite exact", () => {
-    assert.equal(MIXARR_BETA_DISCORD_URL, "https://discord.com/invite/B7xMvAhaF");
+  it("keeps the beta Discord invite configurable", () => {
+    assert.equal(typeof MIXARR_BETA_DISCORD_URL, "string");
   });
 
   it("includes changes for each seeded version", () => {
@@ -299,12 +299,12 @@ describe("release notes", () => {
     assert.deepEqual(ordered.map((note) => note.version), ["v1.3.8", "v1.3.7.2", "v1.3.7.1", "v1.3.7"]);
   });
 
-  it("adds the v1.3.7.2 release note at the top", () => {
+  it("adds the v1.3.8 release note at the top", () => {
     const [latest] = getReleaseNotesNewestFirst();
 
-    assert.equal(latest.version, "1.3.7.2");
-    assert.equal(latest.title, "Dashboard Card Refresh Fix");
-    assert.deepEqual(latest.badges, ["Hotfix", "Dashboard", "Library Health", "Data Enrichment", "Refresh"]);
+    assert.equal(latest.version, "1.3.8");
+    assert.equal(latest.title, "Beta Feedback & Discord Support Polish");
+    assert.deepEqual(latest.badges, ["Beta", "Support", "Discord", "Diagnostics", "Feedback"]);
   });
 
   it("links the sidebar navigation to the release notes page", () => {
@@ -321,6 +321,14 @@ describe("release notes", () => {
 
     assert.match(sidebar, /href: "\/roadmap"/);
     assert.match(sidebar, /Roadmap/);
+  });
+
+  it("links the sidebar navigation to the beta support page", () => {
+    const sidebarPath = join(process.cwd(), "src", "components", "Sidebar.tsx");
+    const sidebar = readFileSync(sidebarPath, "utf8");
+
+    assert.match(sidebar, /href: "\/support"/);
+    assert.match(sidebar, /Beta Support/);
   });
 
   it("links the sidebar navigation to the job history page", () => {

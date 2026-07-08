@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Download, HeartPulse, Loader2, RefreshCw, Settings, X } from "lucide-react";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
+import CopySupportButton from "@/components/CopySupportButton";
 import styles from "./library-health.module.css";
 
 type Category =
@@ -400,6 +401,7 @@ export default function LibraryHealthDetailsPage() {
 
   const selectedCount = selected.size;
   const allVisibleSelected = tracks.length > 0 && tracks.every((track) => selected.has(track.id));
+  const healthSupportQuery = filters.libraryId ? `?libraryId=${encodeURIComponent(filters.libraryId)}` : "";
 
   const buildParams = useCallback((requestedPage: number, requestedCategory = category) => {
     const params = new URLSearchParams({ filter: requestedCategory, page: String(requestedPage), pageSize: "50" });
@@ -763,9 +765,17 @@ export default function LibraryHealthDetailsPage() {
               </div>
             )}
           </div>
-          <a className={styles.secondaryButton} href={`/api/library-health/diagnostics${filters.libraryId ? `?libraryId=${filters.libraryId}` : ""}`}>
-            <Download size={15} /> Export Health Diagnostics
-          </a>
+          <div className={styles.supportActions}>
+            <CopySupportButton
+              url={`/api/support/health-report${healthSupportQuery}`}
+              label="Copy Health Report"
+              className={styles.secondaryButton}
+            />
+            <a className={styles.secondaryButton} href={`/api/library-health/diagnostics${filters.libraryId ? `?libraryId=${filters.libraryId}` : ""}`}>
+              <Download size={15} /> Export Health Diagnostics
+            </a>
+            <Link className={styles.secondaryButton} href="/support">Need help? Open Beta Support</Link>
+          </div>
         </details>
       )}
 

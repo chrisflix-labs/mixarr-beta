@@ -1,4 +1,5 @@
 import styles from "./release-notes.module.css";
+import Link from "next/link";
 import { CalendarDays, MessageCircle, ScrollText } from "lucide-react";
 import { getReleaseNotesNewestFirst, MIXARR_BETA_DISCORD_URL } from "@/lib/releaseNotes";
 
@@ -33,9 +34,13 @@ export default function ReleaseNotesPage() {
             Mixarr is actively developed, and some features listed here are beta or experimental. If you run into bugs,
             missing metadata, retry issues, or unexpected results, please report them in the Mixarr beta Discord.
           </p>
-          <a href={MIXARR_BETA_DISCORD_URL} target="_blank" rel="noopener noreferrer">
-            {MIXARR_BETA_DISCORD_URL}
-          </a>
+          {MIXARR_BETA_DISCORD_URL ? (
+            <a href={MIXARR_BETA_DISCORD_URL} target="_blank" rel="noopener noreferrer">
+              {MIXARR_BETA_DISCORD_URL}
+            </a>
+          ) : (
+            <Link href="/support">Need help? Open Beta Support</Link>
+          )}
         </div>
       </section>
 

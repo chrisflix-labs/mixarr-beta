@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { APP_VERSION } from "@/lib/appVersion";
 import { getLibraryHealthDetailSummary } from "@/lib/libraryHealthDetails";
 import { getUserSyncSettings, metadataProviderModeKey, resolveMetadataProviderSettings } from "@/lib/syncSettings";
+import { sanitizeDiagnostics } from "@/lib/supportRedaction";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
       categoryCounts: summary.categories,
     };
 
-    return new NextResponse(JSON.stringify(payload, null, 2), {
+    return new NextResponse(JSON.stringify(sanitizeDiagnostics(payload), null, 2), {
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "Content-Disposition": `attachment; filename="mixarr-health-diagnostics-${Date.now()}.json"`,

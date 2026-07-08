@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.8 - Beta Feedback & Discord Support Polish
+
+- Added a Beta Support page with Discord, GitHub, feedback, and diagnostics actions.
+- Added copyable bug report and feedback templates.
+- Added safe support diagnostics export with secret redaction.
+- Added support actions for failed jobs and Library Health diagnostics.
+- Added configurable Discord support URL handling.
+- Improved beta version/about details and links to release notes and roadmap.
+
 ## v1.3.7.2 - Dashboard Card Refresh Fix
 
 - Fixed the Dashboard Library Health card staying stuck in a Refreshing state after health data was available.

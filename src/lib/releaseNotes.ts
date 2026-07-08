@@ -1,4 +1,4 @@
-export const MIXARR_BETA_DISCORD_URL = "https://discord.com/invite/B7xMvAhaF";
+export const MIXARR_BETA_DISCORD_URL = process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL || "";
 
 export type ReleaseNoteBadge =
   | "Audio Features"
@@ -13,6 +13,8 @@ export type ReleaseNoteBadge =
   | "Data Enrichment"
   | "Debugging"
   | "Diagnostics"
+  | "Discord"
+  | "Feedback"
   | "Energy"
   | "Essentia"
   | "Hotfix"
@@ -46,6 +48,7 @@ export type ReleaseNoteBadge =
   | "Settings"
   | "Sharing"
   | "Smart Builder"
+  | "Support"
   | "Track Matching"
   | "UI"
   | "Reliability"
@@ -60,6 +63,19 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.3.8",
+    title: "Beta Feedback & Discord Support Polish",
+    badges: ["Beta", "Support", "Discord", "Diagnostics", "Feedback"],
+    changes: [
+      "Added a Beta Support page with Discord, GitHub, feedback, and diagnostics actions.",
+      "Added copyable bug report and feedback templates.",
+      "Added safe support diagnostics export with secret redaction.",
+      "Added support actions for failed jobs and Library Health diagnostics.",
+      "Added configurable Discord support URL handling.",
+      "Improved beta version/about details and links to release notes and roadmap.",
+    ],
+  },
   {
     version: "1.3.7.2",
     title: "Dashboard Card Refresh Fix",
