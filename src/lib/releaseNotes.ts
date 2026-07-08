@@ -38,6 +38,7 @@ export type ReleaseNoteBadge =
   | "Recipes"
   | "Regeneration"
   | "Release Notes"
+  | "Refresh"
   | "Retry"
   | "Roadmap"
   | "Safety Rules"
@@ -59,6 +60,18 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "1.3.7.2",
+    title: "Dashboard Card Refresh Fix",
+    badges: ["Hotfix", "Dashboard", "Library Health", "Data Enrichment", "Refresh"],
+    changes: [
+      "Fixed the Dashboard Library Health card staying stuck in a Refreshing state after health data was available.",
+      "Fixed Dashboard Data Enrichment showing zero counts when enrichment data existed.",
+      "Aligned Dashboard Library Health and Data Enrichment cards with their shared summary sources.",
+      "Improved dashboard loading, error, and stale refresh states.",
+      "Improved dashboard refresh behavior after sync, enrichment, and worker jobs complete.",
+    ],
+  },
   {
     version: "1.3.7.1",
     title: "Remove Healthy Tracks Card",

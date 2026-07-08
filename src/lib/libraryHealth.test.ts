@@ -202,7 +202,7 @@ describe("library health", () => {
   });
 
   it("dashboard audio-feature progress shows incomplete counts without rounded 100 percent hiding gaps", async () => {
-    const dashboard = await readFile(path.join(process.cwd(), "src/app/page.tsx"), "utf8");
+    const dashboard = await readFile(path.join(process.cwd(), "src/components/DashboardSummaryCards.tsx"), "utf8");
     const syncProgress = await readFile(path.join(process.cwd(), "src/components/SyncProgress.tsx"), "utf8");
 
     assert.match(dashboard, /audioPercent\.toFixed\(1\)/);
@@ -317,10 +317,18 @@ describe("library health", () => {
 
   it("does not block homepage SSR on fresh Library Health calculation", async () => {
     const page = await readFile(path.join(process.cwd(), "src/app/page.tsx"), "utf8");
+    const dashboardSummary = await readFile(path.join(process.cwd(), "src/lib/dashboardSummary.ts"), "utf8");
+    const dashboardCards = await readFile(path.join(process.cwd(), "src/components/DashboardSummaryCards.tsx"), "utf8");
 
-    assert.match(page, /getCachedLibraryHealth/);
+    assert.match(page, /getDashboardSummary/);
+    assert.match(dashboardSummary, /resolveLibraryHealthTrackIds/);
+    assert.match(dashboardSummary, /complete_audio_features/);
+    assert.doesNotMatch(dashboardSummary, /healthy_tracks/);
     assert.doesNotMatch(page, /getLibraryHealth\(user\.id\)/);
-    assert.match(page, /Library Health is refreshing/);
+    assert.doesNotMatch(page, /getCachedLibraryHealth/);
+    assert.doesNotMatch(page, /Library Health is refreshing/);
+    assert.match(dashboardCards, /health\.message/);
+    assert.match(dashboardSummary, /Library Health refresh running/);
   });
 
   it("refreshes stale cached audio feature health before dashboard snapshots are returned", async () => {

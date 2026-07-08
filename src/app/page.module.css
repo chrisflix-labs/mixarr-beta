@@ -29,6 +29,49 @@
   margin-bottom: 1.5rem;
 }
 
+.dashboardSummaryToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.dashboardSummaryToolbar span,
+.dashboardSummaryError {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.dashboardSummaryToolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.dashboardSummaryToolbar button:hover {
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.dashboardSummaryToolbar button:disabled {
+  cursor: wait;
+  opacity: 0.75;
+}
+
+.dashboardSummaryError {
+  margin: -0.5rem 0 1rem;
+  color: #ffb0b0;
+}
+
 @media (max-width: 768px) {
   .cardsGrid {
     grid-template-columns: 1fr;
@@ -39,6 +82,15 @@
   .compactCardsGrid {
     grid-template-columns: 1fr;
     gap: 0.75rem;
+  }
+
+  .dashboardSummaryToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboardSummaryToolbar button {
+    width: fit-content;
   }
 }
 

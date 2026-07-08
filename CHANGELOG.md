@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.7.2 - Dashboard Card Refresh Fix
+
+- Fixed the Dashboard Library Health card staying stuck in a Refreshing state after health data was available.
+- Fixed Dashboard Data Enrichment showing zero counts when enrichment data existed.
+- Aligned Dashboard Library Health and Data Enrichment cards with their shared summary sources.
+- Improved dashboard loading, error, and stale refresh states.
+- Improved dashboard refresh behavior after sync, enrichment, and worker jobs complete.
+
 ## v1.3.7.1 - Remove Healthy Tracks Card
 
 - Removed the expensive Healthy Tracks card from the Library Health summary page.

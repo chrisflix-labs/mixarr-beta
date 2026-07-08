@@ -1,16 +1,17 @@
 import styles from "./page.module.css";
 import Link from "next/link";
-import { AudioWaveform, BookMarked, BrainCircuit, Fingerprint, Gauge, HeartPulse, History, ListMusic, ListRestart, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
+import { AudioWaveform, BookMarked, BrainCircuit, Fingerprint, Gauge, History, ListMusic, ListRestart, Map, Radio, Repeat2, ScrollText, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
 import LibrarySelector from "@/components/LibrarySelector";
 import SyncProgress from "@/components/SyncProgress";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
 import PlexLoginButton from "@/components/PlexLoginButton";
+import DashboardSummaryCards from "@/components/DashboardSummaryCards";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
-import { getCachedLibraryHealth } from "@/lib/libraryHealth";
 import { APP_VERSION } from "@/lib/appVersion";
 import { getRecentJobSummary } from "@/lib/jobHistory";
 import { getPlaylistHistoryDashboardSummary } from "@/lib/playlistHistory";
+import { getDashboardSummary, type DashboardSummary } from "@/lib/dashboardSummary";
 
 const previewFeatures = [
   {
@@ -99,68 +100,12 @@ function RecentJobsCard({ summary }: { summary: Awaited<ReturnType<typeof getRec
   );
 }
 
-function PlexSyncDashboardCard({
-  health,
-  lastPlexJob,
-}: {
-  health: Awaited<ReturnType<typeof getCachedLibraryHealth>>;
-  lastPlexJob: any | null;
-}) {
-  const active = health.reduce((sum, library) => sum + library.activeTracks, 0);
-  const missing = health.reduce((sum, library) => sum + library.missingTracks, 0);
-  const metadata = lastPlexJob?.metadata && typeof lastPlexJob.metadata === "object" && !Array.isArray(lastPlexJob.metadata)
-    ? lastPlexJob.metadata as Record<string, any>
-    : {};
-  const counts = metadata.counts || {};
-  const duplicateCandidates = Number(counts.duplicateCandidates || 0);
-  const conflicts = Number(counts.matchConflicts || 0);
-  const issues = [
-    missing > 0 ? `${missing.toLocaleString()} missing from Plex` : null,
-    duplicateCandidates > 0 ? `${duplicateCandidates.toLocaleString()} duplicate candidate${duplicateCandidates === 1 ? "" : "s"}` : null,
-    conflicts > 0 ? `${conflicts.toLocaleString()} match conflict${conflicts === 1 ? "" : "s"}` : null,
-  ].filter(Boolean);
-
-  return (
-    <Link href="/library-health" className={styles.card}>
-      <ListMusic size={22} className={styles.cardIcon} />
-      <h3>Plex Sync</h3>
-      {lastPlexJob ? (
-        <>
-          <p>Last sync: {lastPlexJob.finishedAt ? lastPlexJob.finishedAt.toLocaleString() : "Still running"}</p>
-          <p>Active tracks: {active.toLocaleString()}</p>
-          <p>New: {Number(counts.newTracks || 0).toLocaleString()} &middot; Updated: {Number(counts.updatedMetadata || 0).toLocaleString()} &middot; Missing: {missing.toLocaleString()}</p>
-          {issues.length > 0 && <p>Plex Sync needs attention: {issues.join(", ")}.</p>}
-        </>
-      ) : (
-        <p>No Plex sync has run yet. Start a library sync to import tracks.</p>
-      )}
-      <span className={styles.cardAction}>Open Diagnostics</span>
-    </Link>
-  );
-}
-
-function DataEnrichmentDashboardCard({
-  bpmComplete,
-  audioComplete,
-  genresComplete,
-  popularityComplete,
-}: {
-  bpmComplete: number;
-  audioComplete: number;
-  genresComplete: number;
-  popularityComplete: number;
-}) {
+function GuestDataEnrichmentDashboardCard() {
   return (
     <Link href="/data-enrichment" className={styles.card}>
       <AudioWaveform size={22} className={styles.cardIcon} />
       <h3>Data Enrichment</h3>
-      <p>BPM, audio features, genres, and popularity metadata used by Mixarr playlists.</p>
-      <div className={styles.enrichmentStats}>
-        <span>BPM <b>{bpmComplete.toLocaleString()}</b></span>
-        <span>Audio <b>{audioComplete.toLocaleString()}</b></span>
-        <span>Genres <b>{genresComplete.toLocaleString()}</b></span>
-        <span>Popularity <b>{popularityComplete.toLocaleString()}</b></span>
-      </div>
+      <p>Sign in with Plex to load BPM, audio features, genres, and popularity metadata summaries.</p>
       <span className={styles.cardAction}>Manage Enrichment</span>
     </Link>
   );
@@ -255,9 +200,8 @@ export default async function Home() {
   const sessionId = cookieStore.get("mixarr_session")?.value;
 
   let user = null;
-  let health: Awaited<ReturnType<typeof getCachedLibraryHealth>> = [];
+  let dashboardSummary: DashboardSummary | null = null;
   let jobSummary: Awaited<ReturnType<typeof getRecentJobSummary>> | null = null;
-  let lastPlexJob: any | null = null;
   let recipeCount = 0;
   let generatedPlaylistCount = 0;
   let playlistHistoryCount = 0;
@@ -267,20 +211,18 @@ export default async function Home() {
       where: { id: sessionId },
     });
     if (user) {
-      const [historyResult, jobsResult, plexJobResult, recipesResult, generatedPlaylistsResult, playlistHistorySummary] = await Promise.all([
-        getCachedLibraryHealth(user.id),
-        getRecentJobSummary(user.id),
-        prisma.jobHistory.findFirst({
-          where: { OR: [{ userId: user.id }, { userId: null }], type: "plex_sync" },
-          orderBy: { startedAt: "desc" },
+      const [dashboardResult, jobsResult, recipesResult, generatedPlaylistsResult, playlistHistorySummary] = await Promise.all([
+        getDashboardSummary(user.id).catch((error) => {
+          console.error("[Dashboard] Initial summary failed", error);
+          return null;
         }),
+        getRecentJobSummary(user.id),
         prisma.playlistRecipe.count({ where: { userId: user.id, isArchived: false } }),
         prisma.generatedPlaylist.count({ where: { userId: user.id } }),
         getPlaylistHistoryDashboardSummary(user.id),
       ]);
-      health = historyResult;
+      dashboardSummary = dashboardResult;
       jobSummary = jobsResult;
-      lastPlexJob = plexJobResult;
       recipeCount = recipesResult;
       generatedPlaylistCount = generatedPlaylistsResult;
       playlistHistoryCount = playlistHistorySummary.count;
@@ -299,90 +241,9 @@ export default async function Home() {
         <div style={{ marginBottom: "3rem" }}>
           <SyncProgress />
           <WorkerHealthCard />
-          {health.length > 0 ? (() => {
-            const active = health.reduce((sum, library) => sum + library.activeTracks, 0);
-            const missing = health.reduce((sum, library) => sum + library.missingTracks, 0);
-            const bpmComplete = health.reduce((sum, library) => sum + library.tracksWithBpm, 0);
-            const bpmApi = health.reduce((sum, library) => sum + (library as any).bpmApi, 0);
-            const bpmLocal = health.reduce((sum, library) => sum + (library as any).bpmLocal, 0);
-            const bpmImported = health.reduce((sum, library) => sum + (library as any).bpmImported, 0);
-            const bpmLowConfidence = health.reduce((sum, library) => sum + ((library as any).bpmLowConfidence || 0), 0);
-            const bpmSourceConflicts = health.reduce((sum, library) => sum + ((library as any).bpmSourceConflicts || 0), 0);
-            const bpmMissing = health.reduce((sum, library) => sum + library.missingBpm, 0);
-            const bpmFailed = health.reduce((sum, library) => sum + library.bpmFailed, 0);
-            const audioComplete = health.reduce((sum, library) => sum + library.audioFeaturesComplete, 0);
-            const audioApi = health.reduce((sum, library) => sum + library.audioFeaturesApi, 0);
-            const audioLocal = health.reduce((sum, library) => sum + library.audioFeaturesLocal, 0);
-            const audioEstimated = health.reduce((sum, library) => sum + library.audioFeaturesHeuristic, 0);
-            const audioPartial = health.reduce((sum, library) => sum + library.audioFeaturesPartial, 0);
-            const audioMissing = health.reduce((sum, library) => sum + library.audioFeaturesMissing, 0);
-            const audioFailed = health.reduce((sum, library) => sum + library.audioFeaturesFailed, 0);
-            const audioIncomplete = Math.max(0, active - audioComplete);
-            const audioPercent = active > 0 ? (audioComplete / active) * 100 : 0;
-            const audioPercentLabel = audioIncomplete > 0
-              ? `${audioPercent.toFixed(1)}%`
-              : `${Math.round(audioPercent)}%`;
-            const status = health.some((library) => library.status === "error") ? "Error" : health.some((library) => library.status === "warning") ? "Warning" : "Healthy";
-            const latest = health.map((library) => library.lastFullSyncAt).filter(Boolean).sort().at(-1) || null;
-            const healthUpdatedAt = health.map((library) => library.healthUpdatedAt).filter(Boolean).sort((left, right) => left.getTime() - right.getTime()).at(-1) || null;
-            const bpmMode = (health[0] as any).bpmProviderMode || "API + Local, API preferred";
-            const audioMode = (health[0] as any).audioFeatureProviderMode || "API + Local, API preferred";
-            return <>
-              <Link href="/library-health" className={`glass-panel ${styles.healthWidget}`}>
-                <HeartPulse size={22} />
-                <div><strong>Library Health</strong><span>Active: {active.toLocaleString()} &middot; Missing: {missing.toLocaleString()} &middot; Audio incomplete: {audioIncomplete.toLocaleString()} &middot; Last sync: {latest ? new Date(latest).toLocaleString() : "Never"} &middot; Updated: {healthUpdatedAt ? healthUpdatedAt.toLocaleString() : "Snapshot"}</span></div>
-                <b data-status={status.toLowerCase()}>{status}</b>
-              </Link>
-              <div className={styles.cardsGrid} style={{ marginBottom: "1.5rem" }}>
-                <article className={styles.card}>
-                  <h3>BPM / Tempo</h3>
-                  <p>{bpmComplete.toLocaleString()} / {active.toLocaleString()} with BPM</p>
-                  <p>Local: {bpmLocal.toLocaleString()} &middot; Imported/API: {(bpmApi + bpmImported).toLocaleString()} &middot; Low confidence: {bpmLowConfidence.toLocaleString()}</p>
-                  <p>Imported: {bpmImported.toLocaleString()} &middot; Missing: {bpmMissing.toLocaleString()} &middot; Failed: {bpmFailed.toLocaleString()}</p>
-                  {bpmSourceConflicts > 0 && <p>{bpmSourceConflicts.toLocaleString()} possible BPM source conflict{bpmSourceConflicts === 1 ? "" : "s"}</p>}
-                  <p>Mode: {bpmMode}</p>
-                  <div className={styles.healthMetricLinks}>
-                    <Link href="/library-health?filter=missing_bpm">Missing BPM</Link>
-                    <Link href="/library-health?filter=api_bpm">API BPM Only</Link>
-                    <Link href="/library-health?filter=low_confidence_bpm">Low Confidence</Link>
-                    <Link href="/library-health?filter=bpm_source_conflict">Conflicts</Link>
-                    <Link href="/library-health?filter=failed_bpm_analysis">Failed</Link>
-                  </div>
-                </article>
-                <article className={styles.card}>
-                  <h3>Audio Features</h3>
-                  <p>{audioComplete.toLocaleString()} / {active.toLocaleString()} complete</p>
-                  <p>{audioPercentLabel} complete{audioIncomplete > 0 ? ` - ${audioIncomplete.toLocaleString()} incomplete` : ""}</p>
-                  <p>API: {audioApi.toLocaleString()} &middot; Local Essentia: {audioLocal.toLocaleString()}</p>
-                  <p>Estimated: {audioEstimated.toLocaleString()} &middot; Partial: {audioPartial.toLocaleString()} &middot; Missing: {audioMissing.toLocaleString()} &middot; Failed: {audioFailed.toLocaleString()}</p>
-                  <p>Mode: {audioMode}</p>
-                  <div className={styles.healthMetricLinks}>
-                    <Link href="/library-health?filter=missing_audio_features">Missing Features</Link>
-                    <Link href="/library-health?filter=partial_audio_features">Partial Features</Link>
-                    <Link href="/library-health?filter=failed_audio_feature_analysis">Failed</Link>
-                  </div>
-                </article>
-              </div>
-            </>;
-          })() : (
-            <Link href="/library-health" className={`glass-panel ${styles.healthWidget}`}>
-              <HeartPulse size={22} />
-              <div>
-                <strong>Library Health</strong>
-                <span>Library Health is refreshing. Open Library Health for current details.</span>
-              </div>
-              <b data-status="warning">Refreshing</b>
-            </Link>
-          )}
+          <DashboardSummaryCards initialSummary={dashboardSummary} />
           <div className={styles.compactCardsGrid}>
-            <PlexSyncDashboardCard health={health} lastPlexJob={lastPlexJob} />
             <RecentJobsCard summary={jobSummary} />
-            <DataEnrichmentDashboardCard
-              bpmComplete={health.reduce((sum, library) => sum + library.tracksWithBpm, 0)}
-              audioComplete={health.reduce((sum, library) => sum + library.audioFeaturesComplete, 0)}
-              genresComplete={health.reduce((sum, library) => sum + (library as any).tracksWithGenres, 0)}
-              popularityComplete={health.reduce((sum, library) => sum + (library as any).tracksWithPopularity, 0)}
-            />
             <SmartBuilderCard />
             <PlaylistRecipesCard count={recipeCount} />
             <PlaylistRegenerationCard count={generatedPlaylistCount} />
@@ -469,7 +330,7 @@ export default async function Home() {
 
             <RecentJobsCard summary={null} />
 
-            <DataEnrichmentDashboardCard bpmComplete={0} audioComplete={0} genresComplete={0} popularityComplete={0} />
+            <GuestDataEnrichmentDashboardCard />
 
             <PlaylistRecipesCard count={0} />
 
