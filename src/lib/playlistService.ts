@@ -10,6 +10,13 @@ import { safeFinishJobHistory, safeRecordJobHistory, safeStartJobHistory } from 
 import { recordPlaylistHistoryEntry } from "./playlistHistory";
 import { filterManualTrackExclusions, getManualTrackExclusionIds } from "./trackExclusions";
 import {
+  runSmartMixEngineV2,
+  smartMixEngineLabel,
+  SMART_MIX_ENGINE_V1,
+  SMART_MIX_ENGINE_V2,
+  type SmartMixEngineVersion,
+} from "./smartMixEngine/v2";
+import {
   playlistExportDurationSeconds,
   playlistExportsTotal,
   playlistGenerationDurationSeconds,
@@ -24,6 +31,8 @@ const fields = ["popularity", "energy", "valence", "tempo", "year", "duration", 
 const operators = ["eq", "contains", "not_contains", "gt", "lt", "gte", "lte"] as const;
 const combinators = ["AND", "OR"] as const;
 const duplicateStrategies = ["allow", "song_artist"] as const;
+const smartMixEngineVersions = [SMART_MIX_ENGINE_V1, SMART_MIX_ENGINE_V2] as const;
+const v2SoftMetadataFilterFields = new Set<string>(["popularity", "energy", "valence", "tempo"]);
 
 const maxPlaylistSize = Number(process.env.MAX_PLAYLIST_SIZE || 5000);
 const supportedRegenerationModes = ["replace_all", "keep_some"] as const;
@@ -108,6 +117,7 @@ export const playlistConfigSchema = z.object({
   bpmPresetName: z.string().trim().max(120).optional(),
   bpmPresetVersion: z.string().trim().max(40).optional(),
   bpmPresetModified: z.boolean().default(false),
+  engineVersion: z.enum(smartMixEngineVersions).default(SMART_MIX_ENGINE_V1),
 }).merge(playlistOptionsSchema);
 
 export const savedPlaylistSchema = playlistConfigSchema.extend({
@@ -165,8 +175,16 @@ function collectRules(node: RuleNode | undefined, fallbackRules: PlaylistRuleInp
   return node.children.reduce<PlaylistRuleInput[]>((rules, child) => rules.concat(collectRules(child, [])), []);
 }
 
-function buildRuleCondition(rule: PlaylistRuleInput, audioFeatureFilterOptions: AudioFeatureFilterOptions = {}) {
+function buildRuleCondition(
+  rule: PlaylistRuleInput,
+  audioFeatureFilterOptions: AudioFeatureFilterOptions = {},
+  softMetadataFilters = false,
+) {
   const { field, operator, value } = rule;
+  if (softMetadataFilters && v2SoftMetadataFilterFields.has(field)) {
+    return null;
+  }
+
   let prismaCondition: any;
 
   if (isNumericField(field)) {
@@ -236,13 +254,24 @@ function buildRuleCondition(rule: PlaylistRuleInput, audioFeatureFilterOptions: 
   throw new Error(`Unsupported field ${field}`);
 }
 
-function buildRuleNodeCondition(node: RuleNode, audioFeatureFilterOptions: AudioFeatureFilterOptions = {}): any {
+function buildRuleNodeCondition(
+  node: RuleNode,
+  audioFeatureFilterOptions: AudioFeatureFilterOptions = {},
+  softMetadataFilters = false,
+): any | null {
   if (node.type === "group") {
-    const childConditions = node.children.map((child) => buildRuleNodeCondition(child, audioFeatureFilterOptions));
+    const childConditions = node.children
+      .map((child) => buildRuleNodeCondition(child, audioFeatureFilterOptions, softMetadataFilters))
+      .filter(Boolean);
+    if (childConditions.length === 0) return null;
+    if (softMetadataFilters && node.combinator === "OR" && childConditions.length < node.children.length) {
+      return null;
+    }
     return { [node.combinator]: childConditions };
   }
 
-  const condition = buildRuleCondition(node, audioFeatureFilterOptions);
+  const condition = buildRuleCondition(node, audioFeatureFilterOptions, softMetadataFilters);
+  if (!condition) return null;
   return node.operator === "not_contains" ? { NOT: condition } : condition;
 }
 
@@ -271,6 +300,7 @@ export function buildTrackWhereClause(
   config: PlaylistConfigInput,
   omitIds: string[] = [],
   audioFeatureFilterOptions: AudioFeatureFilterOptions = {},
+  options: { softMetadataFilters?: boolean } = {},
 ) {
   const scope: any = {
     library: {
@@ -282,14 +312,23 @@ export function buildTrackWhereClause(
     },
   };
 
+  const softMetadataFilters = options.softMetadataFilters === true;
   const ruleCondition = config.ruleTree
-    ? buildRuleNodeCondition(config.ruleTree, audioFeatureFilterOptions)
-    : { AND: config.rules.map((rule) => {
-      const condition = buildRuleCondition(rule, audioFeatureFilterOptions);
-      return rule.operator === "not_contains" ? { NOT: condition } : condition;
-    }) };
+    ? buildRuleNodeCondition(config.ruleTree, audioFeatureFilterOptions, softMetadataFilters)
+    : (() => {
+      const conditions = config.rules
+        .map((rule) => {
+          const condition = buildRuleCondition(rule, audioFeatureFilterOptions, softMetadataFilters);
+          if (!condition) return null;
+          return rule.operator === "not_contains" ? { NOT: condition } : condition;
+        })
+        .filter(Boolean);
+      return conditions.length ? { AND: conditions } : null;
+    })();
 
-  const conditions = [activeSyncStatusWhere(), scope, ruleCondition].concat(buildNegativeConditions(config));
+  const conditions = [activeSyncStatusWhere(), scope]
+    .concat(ruleCondition ? [ruleCondition] : [])
+    .concat(buildNegativeConditions(config));
   if (omitIds.length > 0) conditions.push({ id: { notIn: omitIds } });
 
   return { AND: conditions };
@@ -515,13 +554,14 @@ const playlistTrackInclude = {
   library: { include: { server: true } },
 } as const;
 
-function annotateTrack(track: any, reasons: string[]) {
+function annotateTrack(track: any, reasons: string[], engineVersion: SmartMixEngineVersion = SMART_MIX_ENGINE_V1) {
   const effectiveBpm = getEffectiveBpm(track);
   const bpmDisplay = getBpmDisplayMetadata(track);
   const moodEnergyDisplay = getMoodEnergyDisplayMetadata(track);
 
   return {
     ...track,
+    engineVersion,
     bpm: effectiveBpm,
     effectiveBpm,
     bpmDisplay,
@@ -587,6 +627,11 @@ function publicPreviewTrack(track: any) {
     isExplicit: track.isExplicit,
     matchReasons: track.matchReasons,
     metadataConfidence: track.metadataConfidence,
+    engineVersion: track.engineVersion || SMART_MIX_ENGINE_V1,
+    score: typeof track.score === "number" ? track.score : undefined,
+    scoreBreakdown: track.scoreBreakdown || undefined,
+    metadataStatus: track.metadataStatus || undefined,
+    fallbacksApplied: track.fallbacksApplied || undefined,
   };
 }
 
@@ -596,12 +641,13 @@ async function queryCandidateTracks(
   omitIds: string[],
   take: number,
   audioFeatureFilterOptions: AudioFeatureFilterOptions,
+  softMetadataFilters = false,
 ) {
   return prisma.track.findMany({
-    where: buildTrackWhereClause(userId, config, omitIds, audioFeatureFilterOptions),
+    where: buildTrackWhereClause(userId, config, omitIds, audioFeatureFilterOptions, { softMetadataFilters }),
     include: playlistTrackInclude,
     take,
-    orderBy: { popularity: { score: "desc" } },
+    orderBy: softMetadataFilters ? [{ popularity: { score: "desc" } }, { updatedAt: "desc" }] : { popularity: { score: "desc" } },
   });
 }
 
@@ -635,28 +681,50 @@ async function resolvePlaylistGenerationInputs(userId: string, config: PlaylistC
   };
 }
 
+type PlaylistGenerationSafetyMetadata = ReturnType<typeof applyPlaylistSafetyRules>["metadata"] & {
+  manualExclusionsRemoved: number;
+};
+
+type PlaylistGenerationStats = {
+  tracks: any[];
+  manualExclusionsApplied: number;
+  safety: PlaylistGenerationSafetyMetadata;
+  engineVersion: SmartMixEngineVersion;
+  engine: {
+    version: SmartMixEngineVersion;
+    label: string;
+    diagnostics: any;
+  };
+};
+
 export async function generatePlaylistTracksWithStats({
   userId,
   config,
 }: {
   userId: string;
   config: PlaylistConfigInput;
-}) {
+}): Promise<PlaylistGenerationStats> {
   const endTimer = playlistGenerationDurationSeconds.startTimer();
   let result: "success" | "failed" = "success";
   try {
     const { pinnedTracks, omittedIds, blockedTrackIds, manualExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
+    const engineVersion = config.engineVersion || SMART_MIX_ENGINE_V1;
+    const useSmartMixV2 = engineVersion === SMART_MIX_ENGINE_V2;
     const remainingLimit = Math.max(0, config.limit - pinnedTracks.length);
     const safetyCandidateLimit = safetyRulesAreEnabled(config)
       ? Math.min(maxPlaylistSize, Math.max(remainingLimit * 5, remainingLimit + 25))
       : remainingLimit;
     const take = Math.min(
       maxPlaylistSize,
-      config.duplicateStrategy === "allow" ? safetyCandidateLimit : Math.max(safetyCandidateLimit * 5, safetyCandidateLimit + 25),
+      useSmartMixV2
+        ? Math.max(safetyCandidateLimit * 8, safetyCandidateLimit + 50)
+        : config.duplicateStrategy === "allow"
+        ? safetyCandidateLimit
+        : Math.max(safetyCandidateLimit * 5, safetyCandidateLimit + 25),
     );
-    const candidates = remainingLimit > 0 ? await queryCandidateTracks(userId, config, omittedIds, take, audioFeatureFilterOptions) : [];
-    const generatedTracks = applyDuplicatePolicy(candidates, config, safetyCandidateLimit);
-    const safetyResult = applyPlaylistSafetyRules(pinnedTracks.concat(generatedTracks), config);
+    const candidates = remainingLimit > 0
+      ? await queryCandidateTracks(userId, config, omittedIds, take, audioFeatureFilterOptions, useSmartMixV2)
+      : [];
     const reasons = collectRuleReasons(config.ruleTree, config.rules);
 
     const baseOmittedIds = config.excludedTrackIds
@@ -664,18 +732,54 @@ export async function generatePlaylistTracksWithStats({
       .concat(pinnedTracks.map((track) => track.id))
       .filter((id, index, ids) => id && ids.indexOf(id) === index);
     const matchedBeforeManualExclusions = await prisma.track.count({
-      where: buildTrackWhereClause(userId, config, baseOmittedIds, audioFeatureFilterOptions),
+      where: buildTrackWhereClause(userId, config, baseOmittedIds, audioFeatureFilterOptions, { softMetadataFilters: useSmartMixV2 }),
     });
     const matchedAfterManualExclusions = await prisma.track.count({
-      where: buildTrackWhereClause(userId, config, baseOmittedIds.concat(manualExcludedTrackIds), audioFeatureFilterOptions),
+      where: buildTrackWhereClause(userId, config, baseOmittedIds.concat(manualExcludedTrackIds), audioFeatureFilterOptions, { softMetadataFilters: useSmartMixV2 }),
     });
+    const manualExclusionsApplied = Math.max(0, matchedBeforeManualExclusions - matchedAfterManualExclusions);
+
+    if (useSmartMixV2) {
+      const engineResult = runSmartMixEngineV2({
+        config,
+        pinnedTracks,
+        candidates,
+        safetyCandidateLimit,
+        applyDuplicatePolicy: (tracks, runConfig, limit) => applyDuplicatePolicy(tracks, runConfig as PlaylistConfigInput, limit),
+        applyPlaylistSafetyRules: (tracks, runConfig) => applyPlaylistSafetyRules(tracks, runConfig as PlaylistConfigInput),
+      });
+
+      return {
+        tracks: engineResult.tracks.map((track) => annotateTrack(track, reasons, SMART_MIX_ENGINE_V2)),
+        manualExclusionsApplied,
+        safety: {
+          ...engineResult.safety.metadata,
+          manualExclusionsRemoved: manualExclusionsApplied,
+        } as PlaylistGenerationSafetyMetadata,
+        engineVersion: SMART_MIX_ENGINE_V2,
+        engine: {
+          version: SMART_MIX_ENGINE_V2,
+          label: smartMixEngineLabel(SMART_MIX_ENGINE_V2),
+          diagnostics: engineResult.diagnostics,
+        },
+      };
+    }
+
+    const generatedTracks = applyDuplicatePolicy(candidates, config, safetyCandidateLimit);
+    const safetyResult = applyPlaylistSafetyRules(pinnedTracks.concat(generatedTracks), config);
 
     return {
-      tracks: safetyResult.tracks.map((track) => annotateTrack(track, reasons)),
-      manualExclusionsApplied: Math.max(0, matchedBeforeManualExclusions - matchedAfterManualExclusions),
+      tracks: safetyResult.tracks.map((track) => annotateTrack(track, reasons, SMART_MIX_ENGINE_V1)),
+      manualExclusionsApplied,
       safety: {
         ...safetyResult.metadata,
-        manualExclusionsRemoved: Math.max(0, matchedBeforeManualExclusions - matchedAfterManualExclusions),
+        manualExclusionsRemoved: manualExclusionsApplied,
+      } as PlaylistGenerationSafetyMetadata,
+      engineVersion: SMART_MIX_ENGINE_V1,
+      engine: {
+        version: SMART_MIX_ENGINE_V1,
+        label: smartMixEngineLabel(SMART_MIX_ENGINE_V1),
+        diagnostics: null,
       },
     };
   } catch (error) {
@@ -854,11 +958,12 @@ export async function previewPlaylistTracks({
 }) {
   const { blockedTrackIds, manualExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
   const baseOmittedIds = config.excludedTrackIds.concat(blockedTrackIds);
+  const useSmartMixV2 = config.engineVersion === SMART_MIX_ENGINE_V2;
   const matchedBeforeManualExclusions = await prisma.track.count({
-    where: buildTrackWhereClause(userId, config, baseOmittedIds, audioFeatureFilterOptions),
+    where: buildTrackWhereClause(userId, config, baseOmittedIds, audioFeatureFilterOptions, { softMetadataFilters: useSmartMixV2 }),
   });
   const matchedTrackCount = await prisma.track.count({
-    where: buildTrackWhereClause(userId, config, baseOmittedIds.concat(manualExcludedTrackIds), audioFeatureFilterOptions),
+    where: buildTrackWhereClause(userId, config, baseOmittedIds.concat(manualExcludedTrackIds), audioFeatureFilterOptions, { softMetadataFilters: useSmartMixV2 }),
   });
   const generation = await generatePlaylistTracksWithStats({ userId, config });
   const tracks = generation.tracks;
@@ -894,6 +999,9 @@ export async function previewPlaylistTracks({
     bpmPresetName: config.bpmPresetName || null,
     bpmPresetVersion: config.bpmPresetVersion || null,
     bpmPresetModified: config.bpmPresetModified || false,
+    engineVersion: generation.engineVersion,
+    engineLabel: generation.engine.label,
+    engineDiagnostics: generation.engine.diagnostics,
     artistLimitApplied: generation.safety.artistLimitApplied,
     albumLimitApplied: generation.safety.albumLimitApplied,
     artistSpacingApplied: generation.safety.artistSpacingApplied,
@@ -932,6 +1040,7 @@ export async function previewPlaylistTracks({
     { label: "Negative filters", value: formatNegativeFilters(config.negativeFilters) },
     ...(summary.manualExclusionsRemoved > 0 ? [{ label: "Manual exclusions", value: `${summary.manualExclusionsRemoved} removed` }] : []),
     { label: "Safety rules", value: summary.safetyRuleSummary },
+    { label: "Smart Mix Engine", value: generation.engine.label.replace(/^Smart Mix Engine: /, "") },
     { label: "Rules", value: collectRuleReasons(config.ruleTree, config.rules).join("; ") || "All active tracks" },
   ];
 
@@ -968,6 +1077,8 @@ export async function previewPlaylistTracks({
     warnings,
     messages,
     safety: generation.safety,
+    engineVersion: generation.engineVersion,
+    engine: generation.engine,
   };
 }
 
@@ -1145,8 +1256,14 @@ function generatedPlaylistSourceType(config: Partial<PlaylistConfigInput>, fallb
   return "manual_builder";
 }
 
-function normalizeGeneratedPlaylistConfig(filters: unknown) {
-  return playlistConfigSchema.parse(filters || {});
+function normalizeGeneratedPlaylistConfig(filters: unknown, engineVersion?: string | null) {
+  const source = filters && typeof filters === "object" && !Array.isArray(filters)
+    ? filters as Record<string, unknown>
+    : {};
+  return playlistConfigSchema.parse({
+    ...source,
+    engineVersion: source.engineVersion || engineVersion || SMART_MIX_ENGINE_V1,
+  });
 }
 
 function rulesJsonFromConfig(config: PlaylistConfigInput) {
@@ -1208,6 +1325,7 @@ export async function recordGeneratedPlaylist({
     moodPresetName: config.moodPresetName || null,
     bpmPresetId: config.bpmPresetId || null,
     bpmPresetName: config.bpmPresetName || null,
+    engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
     filtersJson: config as any,
     safetyRulesJson: config.safetyRules as any,
     trackCount: tracks.length,
@@ -1300,6 +1418,7 @@ async function filterCurrentTracksForKeep({
 
   const { blockedTrackIds, manualExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
   const currentTrackIds = tracks.map((track) => track.id);
+  const useSmartMixV2 = config.engineVersion === SMART_MIX_ENGINE_V2;
   const eligibleTracks = await prisma.track.findMany({
     where: {
       AND: [
@@ -1309,6 +1428,7 @@ async function filterCurrentTracksForKeep({
           config,
           uniqueTrackIds([...(config.excludedTrackIds || []), ...blockedTrackIds, ...manualExcludedTrackIds]),
           audioFeatureFilterOptions,
+          { softMetadataFilters: useSmartMixV2 },
         ),
       ],
     },
@@ -1413,10 +1533,13 @@ function buildRegenerationPreviewPayload({
       removedBySafetyRules: safety.removedBySafetyRules || 0,
       safetyRearrangedTrackCount: safety.rearrangedTrackCount || 0,
       safetyRuleSummary: safety.summary || summarizePlaylistSafetyRules(config),
+      engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
+      engineLabel: smartMixEngineLabel(config.engineVersion),
     },
     filterSummary: [
       { label: "Limit", value: `${config.limit} tracks` },
       { label: "Safety rules", value: safety.summary || summarizePlaylistSafetyRules(config) },
+      { label: "Smart Mix Engine", value: smartMixEngineLabel(config.engineVersion).replace(/^Smart Mix Engine: /, "") },
     ],
     manualExclusionsApplied: safety.manualExclusionsRemoved || 0,
     safetyRulesApplied: safety.safetyRulesApplied,
@@ -1424,6 +1547,7 @@ function buildRegenerationPreviewPayload({
     manualExclusionsRemoved: safety.manualExclusionsRemoved || 0,
     warnings: warnings.filter((warning, index, list) => list.indexOf(warning) === index),
     safety,
+    engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
     regeneration,
   };
 }
@@ -1452,7 +1576,7 @@ export async function previewGeneratedPlaylistRegeneration({
     throw new Error("Generated playlist not found");
   }
 
-  const savedConfig = normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson);
+  const savedConfig = normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson, generatedPlaylist.engineVersion);
   const snapshotTrackIds = generatedPlaylist.tracks.map((track) => track.trackId).filter((trackId): trackId is string => Boolean(trackId));
   const previousIds = new Set(snapshotTrackIds);
   const server = await resolveGeneratedPlaylistServer({ userId, generatedPlaylist, config: savedConfig });
@@ -1670,11 +1794,12 @@ export async function regenerateGeneratedPlaylistFromPreview({
       playlistId: generatedPlaylist.plexPlaylistRatingKey,
     });
 
-    const config = normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson);
+    const config = normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson, generatedPlaylist.engineVersion);
     await prisma.generatedPlaylist.update({
       where: { id: generatedPlaylist.id },
       data: {
         serverId: targetServer.id,
+        engineVersion: config.engineVersion,
         trackCount: tracks.length,
         lastRegeneratedAt: new Date(),
         lastGeneratedAt: new Date(),
@@ -1722,6 +1847,7 @@ export async function regenerateGeneratedPlaylistFromPreview({
       moodPresetName: generatedPlaylist.moodPresetName,
       bpmPresetId: generatedPlaylist.bpmPresetId,
       bpmPresetName: generatedPlaylist.bpmPresetName,
+      engineVersion: config.engineVersion,
       regenerationMode,
       keepPercent: normalizedKeepPercent,
       preferDifferentTracks,
@@ -1768,6 +1894,7 @@ export async function regenerateGeneratedPlaylistFromPreview({
         moodPresetName: generatedPlaylist.moodPresetName,
         bpmPresetId: generatedPlaylist.bpmPresetId,
         bpmPresetName: generatedPlaylist.bpmPresetName,
+        engineVersion: config.engineVersion,
         trackCount: tracks.length,
         manualExclusionsRemoved,
         safetyRules: config.safetyRules,
@@ -1823,6 +1950,7 @@ export async function regenerateGeneratedPlaylistFromPreview({
         moodPresetName: generatedPlaylist.moodPresetName,
         bpmPresetId: generatedPlaylist.bpmPresetId,
         bpmPresetName: generatedPlaylist.bpmPresetName,
+        engineVersion: generatedPlaylist.engineVersion || SMART_MIX_ENGINE_V1,
         trackCount: 0,
         warnings,
         previewId: previewId || null,
@@ -1997,6 +2125,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
   let trackCount = 0;
   let manualExclusionsApplied = 0;
   let safetyMetadata: Awaited<ReturnType<typeof generatePlaylistTracksWithStats>>["safety"] | null = null;
+  let refreshEngineVersion: SmartMixEngineVersion = SMART_MIX_ENGINE_V1;
   let refreshError: string | undefined;
   try {
     const savedRules = JSON.parse(rule.rulesJson);
@@ -2007,6 +2136,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
       libraryId: rule.libraryId,
       ...JSON.parse(rule.optionsJson || "{}"),
     });
+    refreshEngineVersion = parsed.engineVersion;
     const generation = await generatePlaylistTracksWithStats({
       userId: rule.userId,
       config: parsed,
@@ -2065,6 +2195,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
       moodPresetName: generatedPlaylist.moodPresetName,
       bpmPresetId: generatedPlaylist.bpmPresetId,
       bpmPresetName: generatedPlaylist.bpmPresetName,
+      engineVersion: parsed.engineVersion,
       regenerationMode: "replace_all",
       trackCount: tracks.length,
       previousTrackCount: rule.plexPlaylistId ? null : 0,
@@ -2137,6 +2268,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
         safetyRuleSummary: safetyMetadata?.summary || "Safety rules: off",
         removedBySafetyRules: safetyMetadata?.removedBySafetyRules || 0,
         finalTrackCount: trackCount,
+        engineVersion: refreshEngineVersion,
       },
     });
     inflightRefreshes.delete(ruleId);

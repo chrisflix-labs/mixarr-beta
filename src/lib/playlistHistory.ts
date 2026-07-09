@@ -1,5 +1,6 @@
 import prisma from "./prisma";
 import { getEffectiveBpm } from "./bpm";
+import { normalizeSmartMixEngineVersion } from "./smartMixEngine/v2";
 
 export const PLAYLIST_HISTORY_RETENTION_LIMIT = 500;
 
@@ -48,6 +49,7 @@ async function ensurePlaylistHistoryTables() {
           "playlistName" TEXT NOT NULL,
           "eventType" TEXT NOT NULL,
           "sourceType" TEXT NOT NULL DEFAULT 'unknown',
+          "engineVersion" TEXT NOT NULL DEFAULT 'v1',
           "recipeId" TEXT,
           "recipeName" TEXT,
           "smartPresetId" TEXT,
@@ -104,6 +106,7 @@ async function ensurePlaylistHistoryTables() {
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "PlaylistHistoryEntry_plexPlaylistRatingKey_createdAt_idx" ON "PlaylistHistoryEntry"("plexPlaylistRatingKey", "createdAt")`);
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "PlaylistHistoryTrack_historyEntryId_position_idx" ON "PlaylistHistoryTrack"("historyEntryId", "position")`);
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "PlaylistHistoryTrack_trackId_idx" ON "PlaylistHistoryTrack"("trackId")`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "PlaylistHistoryEntry" ADD COLUMN IF NOT EXISTS "engineVersion" TEXT NOT NULL DEFAULT 'v1'`);
 
       await prisma.$executeRawUnsafe(`
         DO $$
@@ -152,6 +155,7 @@ function mapHistoryListRow(row: any) {
   const { serverName, snapshotTrackCount, ...entry } = row;
   return {
     ...entry,
+    engineVersion: normalizeSmartMixEngineVersion(entry.engineVersion),
     server: serverName ? { name: serverName } : null,
     _count: { tracks: Number(snapshotTrackCount) || 0 },
   };
@@ -255,6 +259,7 @@ export async function recordPlaylistHistoryEntry({
   playlistName,
   eventType,
   sourceType,
+  engineVersion,
   recipeId,
   recipeName,
   smartPresetId,
@@ -289,6 +294,7 @@ export async function recordPlaylistHistoryEntry({
   playlistName: string;
   eventType: PlaylistHistoryEventType | string;
   sourceType?: PlaylistHistorySourceType | string | null;
+  engineVersion?: string | null;
   recipeId?: string | null;
   recipeName?: string | null;
   smartPresetId?: string | null;
@@ -325,18 +331,18 @@ export async function recordPlaylistHistoryEntry({
     const [created] = await tx.$queryRawUnsafe<any[]>(
       `INSERT INTO "PlaylistHistoryEntry" (
         "id", "userId", "generatedPlaylistId", "serverId", "plexPlaylistRatingKey", "playlistName",
-        "eventType", "sourceType", "recipeId", "recipeName", "smartPresetId", "smartPresetName",
+        "eventType", "sourceType", "engineVersion", "recipeId", "recipeName", "smartPresetId", "smartPresetName",
         "moodPresetId", "moodPresetName", "bpmPresetId", "bpmPresetName", "regenerationMode",
         "keepPercent", "preferDifferentTracks", "trackCount", "previousTrackCount", "keptCount",
         "replacedCount", "newCount", "removedCount", "manualExclusionsRemoved", "safetyRulesApplied",
         "safetyRulesRemoved", "warningsJson", "filtersJson", "safetyRulesJson", "summary"
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10, $11, $12,
-        $13, $14, $15, $16, $17,
-        $18, $19, $20, $21, $22,
-        $23, $24, $25, $26, $27,
-        $28, $29::jsonb, $30::jsonb, $31::jsonb, $32
+        $7, $8, $9, $10, $11, $12, $13,
+        $14, $15, $16, $17, $18,
+        $19, $20, $21, $22, $23,
+        $24, $25, $26, $27, $28,
+        $29, $30::jsonb, $31::jsonb, $32::jsonb, $33
       ) RETURNING *`,
       entryId,
       userId,
@@ -346,6 +352,7 @@ export async function recordPlaylistHistoryEntry({
       playlistName,
       normalizeEventType(eventType),
       normalizePlaylistHistorySourceType(sourceType),
+      normalizeSmartMixEngineVersion(engineVersion),
       recipeId || null,
       recipeName || null,
       smartPresetId || null,
@@ -461,7 +468,8 @@ export async function getPlaylistHistoryEntry(userId: string, id: string) {
     `SELECT h.*, s."name" AS "serverName",
       gp."id" AS "generatedPlaylistDbId",
       gp."plexPlaylistTitle" AS "generatedPlaylistTitle",
-      gp."plexPlaylistRatingKey" AS "generatedPlaylistRatingKey"
+      gp."plexPlaylistRatingKey" AS "generatedPlaylistRatingKey",
+      gp."engineVersion" AS "generatedPlaylistEngineVersion"
      FROM "PlaylistHistoryEntry" h
      LEFT JOIN "Server" s ON s."id" = h."serverId"
      LEFT JOIN "GeneratedPlaylist" gp ON gp."id" = h."generatedPlaylistId"
@@ -482,16 +490,19 @@ export async function getPlaylistHistoryEntry(userId: string, id: string) {
     generatedPlaylistDbId,
     generatedPlaylistTitle,
     generatedPlaylistRatingKey,
+    generatedPlaylistEngineVersion,
     ...historyEntry
   } = entry;
 
   return {
     ...historyEntry,
+    engineVersion: normalizeSmartMixEngineVersion(historyEntry.engineVersion),
     server: serverName ? { name: serverName } : null,
     generatedPlaylist: generatedPlaylistDbId ? {
       id: generatedPlaylistDbId,
       plexPlaylistTitle: generatedPlaylistTitle,
       plexPlaylistRatingKey: generatedPlaylistRatingKey,
+      engineVersion: normalizeSmartMixEngineVersion(generatedPlaylistEngineVersion),
     } : null,
     tracks,
   };

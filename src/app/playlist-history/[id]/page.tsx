@@ -27,6 +27,10 @@ function sourceTypeLabel(sourceType: string) {
   return "Unknown";
 }
 
+function engineLabel(engineVersion?: string | null) {
+  return engineVersion === "v2" ? "Smart Mix Engine: v2 Foundation" : "Smart Mix Engine: v1 Legacy";
+}
+
 function formatDate(value: Date) {
   return value.toLocaleString();
 }
@@ -107,6 +111,7 @@ export default async function PlaylistHistoryDetailPage({ params }: { params: { 
           <dl className={styles.detailStats}>
             <div><dt>Date</dt><dd>{formatDate(entry.createdAt)}</dd></div>
             <div><dt>Source</dt><dd>{sourceTypeLabel(entry.sourceType)}</dd></div>
+            <div><dt>Engine</dt><dd>{engineLabel(entry.engineVersion)}</dd></div>
             <div><dt>Track count</dt><dd>{entry.trackCount.toLocaleString()}</dd></div>
             <div><dt>Plex rating key</dt><dd>{entry.plexPlaylistRatingKey || "—"}</dd></div>
             <div><dt>Recipe</dt><dd>{entry.recipeName || "—"}</dd></div>

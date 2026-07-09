@@ -400,6 +400,7 @@ model GeneratedPlaylist {
   plexPlaylistRatingKey String?
   plexPlaylistTitle     String
   sourceType            String   @default("unknown")
+  engineVersion         String   @default("v1")
   recipeId              String?
   recipeName            String?
   smartPresetId         String?
@@ -449,6 +450,7 @@ model PlaylistHistoryEntry {
   playlistName             String
   eventType                String
   sourceType               String   @default("unknown")
+  engineVersion            String   @default("v1")
   recipeId                 String?
   recipeName               String?
   smartPresetId            String?

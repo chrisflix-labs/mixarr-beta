@@ -126,6 +126,7 @@ export async function POST(req: Request) {
       moodPresetName,
       bpmPresetId: parsedOptions?.bpmPresetId || null,
       bpmPresetName,
+      engineVersion: parsedOptions?.engineVersion || "v1",
       trackCount: result.trackCount,
       manualExclusionsRemoved: excludedTrackCount,
       safetyRulesApplied: Boolean(safetySummary),
@@ -175,11 +176,12 @@ export async function POST(req: Request) {
         safetyRulesApplied: Boolean(safetySummary),
         removedBySafetyRules: Math.max(0, Number(removedBySafetyRules) || 0),
         finalTrackCount: result.trackCount,
+        engineVersion: parsedOptions?.engineVersion || "v1",
         filters: filters || optionsSnapshot || null,
       },
     });
 
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true, ...result, engineVersion: parsedOptions?.engineVersion || "v1" });
   } catch (error: any) {
     console.error("Create from preview failed:", error.response?.data || error.message);
     const message = error.message || "Failed to create playlist from preview";

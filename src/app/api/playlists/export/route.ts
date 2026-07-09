@@ -63,6 +63,7 @@ export async function POST(req: Request) {
       moodPresetName: safetyConfig?.success ? safetyConfig.data.moodPresetName || null : null,
       bpmPresetId: safetyConfig?.success ? safetyConfig.data.bpmPresetId || null : null,
       bpmPresetName: safetyConfig?.success ? safetyConfig.data.bpmPresetName || null : null,
+      engineVersion: safetyConfig?.success ? safetyConfig.data.engineVersion : "v1",
       trackCount: result.trackCount,
       manualExclusionsRemoved: result.excludedTrackCount,
       safetyRulesApplied: Boolean(safetySummary),
@@ -92,10 +93,11 @@ export async function POST(req: Request) {
         safetyRuleSummary,
         safetyRulesApplied: Boolean(safetySummary),
         finalTrackCount: result.trackCount,
+        engineVersion: safetyConfig?.success ? safetyConfig.data.engineVersion : "v1",
       },
     });
 
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ success: true, ...result, engineVersion: safetyConfig?.success ? safetyConfig.data.engineVersion : "v1" });
 
   } catch (error: any) {
     console.error("Export to Plex failed:", error.response?.data || error.message);

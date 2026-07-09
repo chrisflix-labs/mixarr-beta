@@ -12,6 +12,7 @@ type GeneratedPlaylist = {
   plexPlaylistRatingKey?: string | null;
   plexPlaylistTitle: string;
   sourceType: string;
+  engineVersion?: "v1" | "v2" | null;
   recipeName?: string | null;
   smartPresetName?: string | null;
   moodPresetName?: string | null;
@@ -34,6 +35,8 @@ type PreviewState = {
     manualExclusionsRemoved?: number;
     removedBySafetyRules?: number;
     safetyRuleSummary?: string;
+    engineVersion?: "v1" | "v2";
+    engineLabel?: string;
   };
   regeneration: {
     mode: "replace_all" | "keep_some";
@@ -88,6 +91,10 @@ function sourceLabel(sourceType: string) {
   if (sourceType === "smart_builder") return "Smart Builder";
   if (sourceType === "manual_builder") return "Builder";
   return "Unknown";
+}
+
+function engineLabel(engineVersion?: string | null) {
+  return engineVersion === "v2" ? "Smart Mix Engine: v2 Foundation" : "Smart Mix Engine: v1 Legacy";
 }
 
 export default function GeneratedPlaylistsPage() {
@@ -262,6 +269,7 @@ export default function GeneratedPlaylistsPage() {
             const isBusy = busyId === playlist.id;
             const regenerationOptions = getRegenerationOptions(playlist.id);
             const presets = [
+              engineLabel(playlist.engineVersion),
               playlist.recipeName ? `Recipe: ${playlist.recipeName}` : "",
               playlist.smartPresetName ? `Smart: ${playlist.smartPresetName}` : "",
               playlist.moodPresetName ? `Mood: ${playlist.moodPresetName}` : "",
@@ -413,6 +421,7 @@ export default function GeneratedPlaylistsPage() {
             {preview.regeneration.smartPresetName && <span>Smart preset: {preview.regeneration.smartPresetName}</span>}
             {preview.regeneration.moodPresetName && <span>Mood preset: {preview.regeneration.moodPresetName}</span>}
             {preview.regeneration.bpmPresetName && <span>BPM preset: {preview.regeneration.bpmPresetName}</span>}
+            <span>{preview.summary.engineLabel || engineLabel(preview.summary.engineVersion)}</span>
             <span>{preview.summary.safetyRuleSummary || "Safety rules: off"}</span>
           </div>
 

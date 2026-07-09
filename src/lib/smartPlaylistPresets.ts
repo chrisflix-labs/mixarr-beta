@@ -221,6 +221,7 @@ export function buildSmartPresetConfig(preset: SmartPlaylistPreset): PlaylistCon
     smartPresetVersion: SMART_PRESET_VERSION,
     moodPresetModified: false,
     bpmPresetModified: false,
+    engineVersion: "v2",
     serverId: undefined,
     libraryId: undefined,
     pinnedTrackIds: [],

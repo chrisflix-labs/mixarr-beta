@@ -42,10 +42,12 @@ export async function POST(req: Request) {
         safetyRuleSummary: result.safety.summary,
         removedBySafetyRules: result.safety.removedBySafetyRules,
         finalTrackCount: tracks.length,
+        engineVersion: result.engineVersion,
+        engine: result.engine,
       },
     });
 
-    return NextResponse.json({ tracks });
+    return NextResponse.json({ tracks, engineVersion: result.engineVersion, engine: result.engine });
   } catch (error: any) {
     const status = error.name === "ZodError" ? 400 : 500;
     if (status === 400) {

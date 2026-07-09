@@ -62,6 +62,8 @@ type BpmPresetMetadata = {
   bpmPresetModified?: boolean;
 };
 
+type EngineVersion = "v1" | "v2";
+
 type SavedRule = {
   id: string;
   name: string;
@@ -99,6 +101,8 @@ type PlaylistPreviewSummary = {
   removedBySafetyRules?: number;
   safetyRearrangedTrackCount?: number;
   safetyRuleSummary?: string;
+  engineVersion?: EngineVersion;
+  engineLabel?: string;
   artistLimitApplied?: boolean;
   albumLimitApplied?: boolean;
   artistSpacingApplied?: boolean;
@@ -189,6 +193,7 @@ export default function BuilderPage() {
   const [smartPresetMetadata, setSmartPresetMetadata] = useState<SmartPresetMetadata>({});
   const [moodPresetMetadata, setMoodPresetMetadata] = useState<MoodPresetMetadata>({});
   const [bpmPresetMetadata, setBpmPresetMetadata] = useState<BpmPresetMetadata>({});
+  const [engineVersion, setEngineVersion] = useState<EngineVersion>("v1");
   const [pinnedTrackIds, setPinnedTrackIds] = useState<string[]>([]);
   const [excludedTrackIds, setExcludedTrackIds] = useState<string[]>([]);
   const [draggedTrackId, setDraggedTrackId] = useState("");
@@ -393,6 +398,7 @@ export default function BuilderPage() {
       warnIfFewerThan: safetyRules.warnIfFewerThan,
       minimumTrackCount: safetyRules.minimumTrackCount || undefined,
     },
+    engineVersion,
     ...smartPresetMetadata,
     ...moodPresetMetadata,
     ...bpmPresetMetadata,
@@ -439,6 +445,7 @@ export default function BuilderPage() {
     bpmPresetName: filters.bpmPresetName,
     bpmPresetVersion: filters.bpmPresetVersion,
     bpmPresetModified: filters.bpmPresetModified || false,
+    engineVersion: (filters.engineVersion === "v2" ? "v2" : "v1") as EngineVersion,
     pinnedTrackIds: filters.pinnedTrackIds || [],
     excludedTrackIds: filters.excludedTrackIds || [],
   });
@@ -549,6 +556,7 @@ export default function BuilderPage() {
     setSmartPresetMetadata({});
     setMoodPresetMetadata({});
     setBpmPresetMetadata({});
+    setEngineVersion("v1");
     if (!id) return;
 
     const savedRule = savedRules.find(rule => rule.id === id);
@@ -592,6 +600,7 @@ export default function BuilderPage() {
       bpmPresetVersion: savedRule.options?.bpmPresetVersion,
       bpmPresetModified: savedRule.options?.bpmPresetModified || false,
     });
+    setEngineVersion(savedRule.options?.engineVersion === "v2" ? "v2" : "v1");
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
     setTracks([]);
@@ -647,6 +656,7 @@ export default function BuilderPage() {
       bpmPresetVersion: filters.bpmPresetVersion,
       bpmPresetModified: filters.bpmPresetModified || false,
     });
+    setEngineVersion(filters.engineVersion === "v2" ? "v2" : "v1");
     setPinnedTrackIds(filters.pinnedTrackIds || []);
     setExcludedTrackIds(filters.excludedTrackIds || []);
     setTracks([]);
@@ -792,6 +802,7 @@ export default function BuilderPage() {
     setSmartPresetMetadata({});
     setMoodPresetMetadata({});
     setBpmPresetMetadata({});
+    setEngineVersion("v1");
     if (templateName === "deep_cuts") {
       setRules([{ field: "popularity", operator: "lt", value: "30" }]);
       setPlaylistName("Deep Cuts Discovered");
@@ -1461,6 +1472,10 @@ export default function BuilderPage() {
               <div className={styles.statCard}>
                 <span>Target</span>
                 <strong>{playlistPreview.summary.targetTrackCount}</strong>
+              </div>
+              <div className={styles.statCard}>
+                <span>Engine</span>
+                <strong>{playlistPreview.summary.engineLabel?.replace("Smart Mix Engine: ", "") || "v1 Legacy"}</strong>
               </div>
               <div className={styles.statCard}>
                 <span>Matched</span>

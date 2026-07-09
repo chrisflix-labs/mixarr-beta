@@ -70,6 +70,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.0.0",
+    title: "Smart Mix Engine v2 Foundation",
+    badges: ["Beta", "Smart Builder", "Playlists", "BPM", "History"],
+    changes: [
+      "Added the Smart Mix Engine v2 foundation with a separate ordered generation pipeline.",
+      "Added engine version tracking for generated playlists and playlist history.",
+      "Added v2 metadata fallback handling for missing BPM, mood, energy, and popularity.",
+      "Added internal v2 scoring fields with score breakdowns for future tuning.",
+      "Added Smart Mix Engine v1 Legacy and v2 Foundation labels in playlist preview, generated playlists, and history.",
+      "Preserved the existing v1 playlist generation path for the standard builder.",
+    ],
+  },
+  {
     version: "1.5.0",
     title: "Beta Feature Flags & Experimental Access",
     badges: ["Beta", "Settings", "Dashboard", "Preview", "Support"],

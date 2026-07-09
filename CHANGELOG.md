@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.0.0 - Smart Mix Engine v2 Foundation
+
+- Added a separate Smart Mix Engine v2 foundation with an ordered generation pipeline.
+- Added v1/v2 engine version tracking for generated playlists and playlist history.
+- Added v2 metadata fallback handling for missing BPM, mood, energy, and popularity.
+- Added internal v2 score and score breakdown fields for generated preview tracks.
+- Added Smart Mix Engine v1 Legacy and v2 Foundation labels in preview, generated playlists, and history UI.
+- Preserved the existing v1 playlist builder path as the standard legacy generation behavior.
+
 ## v1.5.1 - Job History Cleanup
 
 - Added a Clear History action to the Job History page.

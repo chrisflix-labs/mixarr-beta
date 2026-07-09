@@ -12,6 +12,7 @@ type PlaylistHistoryEntry = {
   playlistName: string;
   eventType: string;
   sourceType: string;
+  engineVersion?: "v1" | "v2" | null;
   recipeName?: string | null;
   smartPresetName?: string | null;
   moodPresetName?: string | null;
@@ -63,6 +64,10 @@ function sourceTypeLabel(sourceType: string) {
   if (sourceType === "recipe") return "Recipe";
   if (sourceType === "regeneration") return "Regeneration";
   return "Unknown";
+}
+
+function engineLabel(engineVersion?: string | null) {
+  return engineVersion === "v2" ? "Smart Mix Engine: v2 Foundation" : "Smart Mix Engine: v1 Legacy";
 }
 
 function formatDate(value: string) {
@@ -221,6 +226,7 @@ export default function PlaylistHistoryPage() {
           {history.map((entry) => {
             const modeLabel = regenerationModeLabel(entry);
             const presets = [
+              engineLabel(entry.engineVersion),
               entry.recipeName ? `Recipe: ${entry.recipeName}` : "",
               entry.smartPresetName ? `Smart: ${entry.smartPresetName}` : "",
               entry.moodPresetName ? `Mood: ${entry.moodPresetName}` : "",

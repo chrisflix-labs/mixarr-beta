@@ -58,6 +58,8 @@ type PlaylistPreviewSummary = {
   moodPresetModified?: boolean;
   bpmPresetName?: string | null;
   bpmPresetModified?: boolean;
+  engineVersion?: "v1" | "v2";
+  engineLabel?: string;
   bpmRange: string;
   energyRange: string;
   moodRange: string;
@@ -371,6 +373,7 @@ export default function SmartBuilderPage() {
         warnIfFewerThan: safetyRules.warnIfFewerThan,
         minimumTrackCount: safetyRules.minimumTrackCount || undefined,
       },
+      engineVersion: "v2" as const,
       ...(selectedPreset
         ? {
             smartPresetId: selectedPreset.id,
@@ -727,6 +730,7 @@ export default function SmartBuilderPage() {
                       <div><span>BPM preset</span><strong>{playlistPreview.summary.bpmPresetName === bpmPresetMetadata.bpmPresetName ? displayedBpmPreset : (playlistPreview.summary.bpmPresetName ? bpmPresetLabel(playlistPreview.summary.bpmPresetName, playlistPreview.summary.bpmPresetModified) : displayedBpmPreset)}</strong></div>
                     )}
                     <div><span>Target</span><strong>{playlistPreview.summary.targetTrackCount}</strong></div>
+                    <div><span>Engine</span><strong>{playlistPreview.summary.engineLabel?.replace("Smart Mix Engine: ", "") || "v2 Foundation"}</strong></div>
                     <div><span>Matched</span><strong>{playlistPreview.summary.matchingTrackCount}</strong></div>
                     <div><span>Preview</span><strong>{playlistPreview.summary.finalTrackCount}</strong></div>
                     <div><span>Duration</span><strong>{formatEstimatedDuration(playlistPreview.summary.estimatedDurationMinutes)}</strong></div>

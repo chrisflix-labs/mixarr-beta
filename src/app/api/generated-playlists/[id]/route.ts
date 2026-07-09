@@ -60,6 +60,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
       moodPresetName: playlist.moodPresetName,
       bpmPresetId: playlist.bpmPresetId,
       bpmPresetName: playlist.bpmPresetName,
+      engineVersion: playlist.engineVersion || "v1",
       trackCount: playlist.trackCount,
       filters: playlist.filtersJson,
       safetyRules: playlist.safetyRulesJson,
@@ -81,6 +82,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
         plexPlaylistRatingKey: playlist.plexPlaylistRatingKey,
         playlistName: playlist.plexPlaylistTitle,
         sourceType: playlist.sourceType,
+        engineVersion: playlist.engineVersion || "v1",
         plexPlaylistDeleted: false,
       },
     });
