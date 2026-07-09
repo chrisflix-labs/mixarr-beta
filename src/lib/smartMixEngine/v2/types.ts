@@ -1,3 +1,5 @@
+import type { SmartMixTuningConfig } from "./tuning";
+
 export const SMART_MIX_ENGINE_V1 = "v1";
 export const SMART_MIX_ENGINE_V2 = "v2";
 
@@ -33,6 +35,8 @@ export type SmartMixEngineV2Config = {
   limit: number;
   rules?: SmartMixRuleLike[];
   ruleTree?: SmartMixRuleTree;
+  tuningConfig?: SmartMixTuningConfig;
+  recentlyUsedTrackIds?: string[];
   [key: string]: unknown;
 };
 
@@ -63,6 +67,8 @@ export type SmartMixScoreBreakdown = {
   mood?: number;
   energy?: number;
   popularity?: number;
+  tuning?: number;
+  recentlyUsedPenalty?: number;
   fallbackPenalty?: number;
   diversity?: number;
 };

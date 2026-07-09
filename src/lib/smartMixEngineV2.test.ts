@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   getSmartMixMetadataFallbacks,
+  normalizeSmartMixTuningConfig,
   runSmartMixEngineV2,
   scoreSmartMixTrack,
   smartMixEngineLabel,
@@ -96,5 +97,85 @@ describe("Smart Mix Engine v2 foundation", () => {
     assert.equal(result.tracks.some((item) => item.id === "missing-bpm"), true);
     assert.equal(result.diagnostics.fallbackSummary.bpm, 1);
     assert.equal(smartMixEngineLabel(result.engineVersion), "Smart Mix Engine: v2 Foundation");
+  });
+
+  it("normalizes tuning configs with backward-compatible defaults", () => {
+    const tuning = normalizeSmartMixTuningConfig({ bpmWeight: 90, recommendationStrength: 200 });
+
+    assert.equal(tuning.bpmWeight, 90);
+    assert.equal(tuning.recommendationStrength, 100);
+    assert.equal(tuning.artistVariety, 50);
+    assert.equal(tuning.tuningVersion, "2.0.2");
+  });
+
+  it("lets discovery tuning favor lower popularity candidates without filtering popular tracks", () => {
+    const discoveryConfig = {
+      ...config,
+      tuningConfig: {
+        recommendationStrength: 65,
+        familiarityDiscoveryBalance: 0,
+        popularityWeight: 100,
+        moodWeight: 50,
+        energyWeight: 50,
+        bpmWeight: 50,
+        artistVariety: 50,
+        albumVariety: 50,
+        avoidRecentlyUsedTracks: false,
+        presetName: "Deep Cuts",
+        tuningVersion: "2.0.2",
+      },
+    };
+    const popular = scoreSmartMixTrack(track("popular", {
+      bpm: 120,
+      popularity: { score: 95 },
+      audioFeature: { effectiveEnergy: 0.75, effectiveMood: 0.6 },
+    }), discoveryConfig);
+    const deepCut = scoreSmartMixTrack(track("deep", {
+      bpm: 120,
+      popularity: { score: 18 },
+      audioFeature: { effectiveEnergy: 0.75, effectiveMood: 0.6 },
+    }), discoveryConfig);
+
+    assert.ok(deepCut.score > popular.score);
+    assert.equal(popular.metadataStatus.hasPopularity, true);
+  });
+
+  it("softly penalizes recently used tracks instead of removing them", () => {
+    const result = runSmartMixEngineV2({
+      config: {
+        ...config,
+        tuningConfig: normalizeSmartMixTuningConfig({ avoidRecentlyUsedTracks: true }),
+        recentlyUsedTrackIds: ["recent"],
+      },
+      pinnedTracks: [],
+      candidates: [
+        track("recent", {
+          bpm: 120,
+          popularity: { score: 90 },
+          audioFeature: { effectiveEnergy: 0.75, effectiveMood: 0.6 },
+        }),
+        track("fresh", {
+          bpm: 120,
+          popularity: { score: 70 },
+          audioFeature: { effectiveEnergy: 0.75, effectiveMood: 0.6 },
+        }),
+      ],
+      safetyCandidateLimit: 2,
+      applyDuplicatePolicy: (tracks, _config, limit) => tracks.slice(0, limit),
+      applyPlaylistSafetyRules: (tracks, runConfig) => ({
+        tracks: tracks.slice(0, runConfig.limit),
+        metadata: {
+          safetyRulesApplied: false,
+          removedBySafetyRules: 0,
+          warnings: [],
+          infos: [],
+          summary: "Safety rules: off",
+        },
+      }),
+    });
+
+    assert.equal(result.tracks.length, 2);
+    assert.equal(result.tracks.some((item) => item.id === "recent"), true);
+    assert.equal(result.tracks[0].id, "fresh");
   });
 });

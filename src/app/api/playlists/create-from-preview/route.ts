@@ -81,9 +81,11 @@ export async function POST(req: Request) {
     const moodPresetDisplayName = moodPresetName ? `${moodPresetName}${parsedOptions?.moodPresetModified ? " modified" : ""}` : null;
     const bpmPresetName = parsedOptions?.bpmPresetName || null;
     const bpmPresetDisplayName = bpmPresetName ? `${bpmPresetName}${parsedOptions?.bpmPresetModified ? " modified" : ""}` : null;
+    const tuningPresetName = parsedOptions?.engineVersion === "v2" ? parsedOptions.tuningConfig?.presetName || "Custom" : null;
     const presetSummaries = [
       ...(moodPresetDisplayName ? [`mood preset "${moodPresetDisplayName}"`] : []),
       ...(bpmPresetDisplayName ? [`BPM preset "${bpmPresetDisplayName}"`] : []),
+      ...(tuningPresetName ? [`tuning preset "${tuningPresetName}"`] : []),
     ];
     const presetSummary = presetSummaries.length ? ` with ${presetSummaries.join(" and ")}` : "";
     const trackCountSummary = presetSummary ? ` and ${result.trackCount} tracks` : ` with ${result.trackCount} tracks`;
@@ -165,6 +167,8 @@ export async function POST(req: Request) {
         bpmPresetName,
         bpmPresetVersion: parsedOptions?.bpmPresetVersion || null,
         bpmPresetModified: parsedOptions?.bpmPresetModified || false,
+        tuningPresetName,
+        tuningConfig: parsedOptions?.tuningConfig || null,
         bpmMin: bpmRange.bpmMin,
         bpmMax: bpmRange.bpmMax,
         playlistName: trimmedName,

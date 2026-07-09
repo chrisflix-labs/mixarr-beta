@@ -339,6 +339,38 @@
   line-height: 1;
 }
 
+.tuningDetails {
+  margin: -0.35rem 0 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.tuningDetails summary {
+  cursor: pointer;
+  padding: 0.55rem 0.65rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.tuningDetails div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0 0.65rem 0.65rem;
+}
+
+.tuningDetails span {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.22rem 0.38rem;
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 0.66rem;
+  font-weight: 750;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

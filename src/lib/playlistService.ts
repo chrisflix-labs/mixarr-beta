@@ -15,6 +15,9 @@ import {
   smartMixEngineLabel,
   SMART_MIX_ENGINE_V1,
   SMART_MIX_ENGINE_V2,
+  DEFAULT_SMART_MIX_TUNING,
+  normalizeSmartMixTuningConfig,
+  SMART_MIX_RECENTLY_USED_WINDOW_DAYS,
   type SmartMixEngineVersion,
 } from "./smartMixEngine/v2";
 import {
@@ -118,6 +121,7 @@ export const playlistConfigSchema = z.object({
   bpmPresetName: z.string().trim().max(120).optional(),
   bpmPresetVersion: z.string().trim().max(40).optional(),
   bpmPresetModified: z.boolean().default(false),
+  tuningConfig: z.unknown().optional().transform((value) => normalizeSmartMixTuningConfig(value ?? DEFAULT_SMART_MIX_TUNING)),
   engineVersion: z.enum(smartMixEngineVersions).default(SMART_MIX_ENGINE_V1),
 }).merge(playlistOptionsSchema);
 
@@ -682,6 +686,26 @@ async function resolvePlaylistGenerationInputs(userId: string, config: PlaylistC
   };
 }
 
+async function getRecentlyGeneratedTrackIds(userId: string, windowDays = SMART_MIX_RECENTLY_USED_WINDOW_DAYS) {
+  const since = new Date(Date.now() - Math.max(1, windowDays) * 24 * 60 * 60 * 1000);
+  const recentTracks = await prisma.generatedPlaylistTrack.findMany({
+    where: {
+      trackId: { not: null },
+      generatedPlaylist: {
+        userId,
+        lastGeneratedAt: { gte: since },
+      },
+    },
+    select: { trackId: true },
+    take: maxPlaylistSize,
+  });
+
+  return recentTracks
+    .map((track) => track.trackId)
+    .filter((trackId): trackId is string => Boolean(trackId))
+    .filter((trackId, index, ids) => ids.indexOf(trackId) === index);
+}
+
 type PlaylistGenerationSafetyMetadata = ReturnType<typeof applyPlaylistSafetyRules>["metadata"] & {
   manualExclusionsRemoved: number;
 };
@@ -712,6 +736,13 @@ export async function generatePlaylistTracksWithStats({
     const { pinnedTracks, omittedIds, blockedTrackIds, manualExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
     const engineVersion = config.engineVersion || SMART_MIX_ENGINE_V1;
     const useSmartMixV2 = engineVersion === SMART_MIX_ENGINE_V2;
+    const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
+    const recentlyUsedTrackIds = useSmartMixV2 && tuningConfig.avoidRecentlyUsedTracks
+      ? await getRecentlyGeneratedTrackIds(userId)
+      : [];
+    const runConfig = useSmartMixV2
+      ? { ...config, tuningConfig, recentlyUsedTrackIds }
+      : config;
     const remainingLimit = Math.max(0, config.limit - pinnedTracks.length);
     const safetyCandidateLimit = safetyRulesAreEnabled(config)
       ? Math.min(maxPlaylistSize, Math.max(remainingLimit * 5, remainingLimit + 25))
@@ -743,7 +774,7 @@ export async function generatePlaylistTracksWithStats({
 
     if (useSmartMixV2) {
       const engineResult = runSmartMixEngineV2({
-        config,
+        config: runConfig,
         pinnedTracks,
         candidates,
         safetyCandidateLimit,
@@ -757,6 +788,10 @@ export async function generatePlaylistTracksWithStats({
         manualExclusionsApplied,
         safety: {
           ...engineResult.safety.metadata,
+          warnings: [
+            ...(engineResult.safety.metadata.warnings || []),
+            ...engineResult.diagnostics.tuningWarnings,
+          ].filter((warning, index, list) => list.indexOf(warning) === index),
           manualExclusionsRemoved: manualExclusionsApplied,
         } as PlaylistGenerationSafetyMetadata,
         qualityScore: scorePlaylist(tracks),
@@ -976,6 +1011,7 @@ export async function previewPlaylistTracks({
   const server = config.serverId ? await prisma.server.findFirst({ where: { id: config.serverId, userId }, select: { name: true } }) : null;
   const library = config.libraryId ? await prisma.library.findFirst({ where: { id: config.libraryId, server: { userId } }, select: { name: true } }) : null;
   const previewTracks = tracks.slice(0, displayLimit);
+  const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
 
   const summary = {
     targetTrackCount: config.limit,
@@ -1007,6 +1043,8 @@ export async function previewPlaylistTracks({
     engineVersion: generation.engineVersion,
     engineLabel: generation.engine.label,
     engineDiagnostics: generation.engine.diagnostics,
+    tuningPresetName: tuningConfig.presetName || null,
+    tuningConfig,
     qualityScore: generation.qualityScore,
     artistLimitApplied: generation.safety.artistLimitApplied,
     albumLimitApplied: generation.safety.albumLimitApplied,
@@ -1033,6 +1071,7 @@ export async function previewPlaylistTracks({
     ...(config.smartPresetName ? [{ label: "Smart preset", value: config.smartPresetName }] : []),
     ...(config.moodPresetName ? [{ label: "Mood preset", value: `${config.moodPresetName}${config.moodPresetModified ? " modified" : ""}` }] : []),
     ...(config.bpmPresetName ? [{ label: "BPM preset", value: `${config.bpmPresetName}${config.bpmPresetModified ? " modified" : ""}` }] : []),
+    ...(useSmartMixV2 ? [{ label: "Tuning preset", value: tuningConfig.presetName || "Custom" }] : []),
     { label: "Server", value: server?.name || (config.serverId ? "Selected server" : "Any connected server") },
     { label: "Library", value: library?.name || (config.libraryId ? "Selected library" : "Any music library") },
     { label: "Genres", value: summary.genreFilters },
@@ -1319,6 +1358,7 @@ export async function recordGeneratedPlaylist({
   const tracks = trackIds.length ? await fetchOwnedTracksInOrder(userId, trackIds) : [];
   const resolvedSourceType = generatedPlaylistSourceType(config, sourceType);
   const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks) : null;
+  const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
   const data = {
     userId,
     serverId: serverId || tracks[0]?.library?.server?.id || null,
@@ -1333,6 +1373,8 @@ export async function recordGeneratedPlaylist({
     moodPresetName: config.moodPresetName || null,
     bpmPresetId: config.bpmPresetId || null,
     bpmPresetName: config.bpmPresetName || null,
+    tuningPresetName: tuningConfig.presetName || null,
+    tuningConfigJson: tuningConfig as any,
     engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
     filtersJson: config as any,
     safetyRulesJson: config.safetyRules as any,
@@ -1524,6 +1566,7 @@ function buildRegenerationPreviewPayload({
 }) {
   const previewTracks = tracks.slice(0, previewDisplayLimit);
   const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks) : null;
+  const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
   const finalTrackCount = previewTracks.length;
   const estimatedDurationMs = previewTracks.reduce((sum, track) => sum + (track.duration || 0), 0);
   return {
@@ -1545,12 +1588,15 @@ function buildRegenerationPreviewPayload({
       safetyRuleSummary: safety.summary || summarizePlaylistSafetyRules(config),
       engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
       engineLabel: smartMixEngineLabel(config.engineVersion),
+      tuningPresetName: tuningConfig.presetName || null,
+      tuningConfig,
       qualityScore,
     },
     filterSummary: [
       { label: "Limit", value: `${config.limit} tracks` },
       { label: "Safety rules", value: safety.summary || summarizePlaylistSafetyRules(config) },
       { label: "Smart Mix Engine", value: smartMixEngineLabel(config.engineVersion).replace(/^Smart Mix Engine: /, "") },
+      ...(config.engineVersion === SMART_MIX_ENGINE_V2 ? [{ label: "Tuning preset", value: tuningConfig.presetName || "Custom" }] : []),
     ],
     manualExclusionsApplied: safety.manualExclusionsRemoved || 0,
     safetyRulesApplied: safety.safetyRulesApplied,
@@ -1656,6 +1702,7 @@ export async function previewGeneratedPlaylistRegeneration({
           smartPresetName: generatedPlaylist.smartPresetName,
           moodPresetName: generatedPlaylist.moodPresetName,
           bpmPresetName: generatedPlaylist.bpmPresetName,
+          tuningPresetName: normalizeSmartMixTuningConfig(savedConfig.tuningConfig).presetName || generatedPlaylist.tuningPresetName,
           recipeName: generatedPlaylist.recipeName,
           snapshotAvailable: snapshotTrackIds.length > 0,
         },
@@ -1735,6 +1782,7 @@ export async function previewGeneratedPlaylistRegeneration({
         smartPresetName: generatedPlaylist.smartPresetName,
         moodPresetName: generatedPlaylist.moodPresetName,
         bpmPresetName: generatedPlaylist.bpmPresetName,
+        tuningPresetName: normalizeSmartMixTuningConfig(savedConfig.tuningConfig).presetName || generatedPlaylist.tuningPresetName,
         recipeName: generatedPlaylist.recipeName,
         snapshotAvailable: snapshotTrackIds.length > 0,
       },

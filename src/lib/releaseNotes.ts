@@ -70,6 +70,30 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.0.2",
+    title: "Recommendation Tuning",
+    badges: ["Playlists", "Smart Builder", "BPM", "Popularity", "UI"],
+    changes: [
+      "Added Smart Mix v2 recommendation tuning controls for recommendation strength, familiarity vs discovery, popularity, mood, energy, BPM, artist variety, and album variety.",
+      "Added built-in tuning presets: Balanced, More Familiar, More Discovery, High-Energy, Chill, DJ-Friendly, and Deep Cuts.",
+      "Added saved custom tuning presets with basic create, select, and delete support.",
+      "Applied tuning to v2 candidate scoring, transition ordering, soft variety controls, recent-use avoidance, and fallback warnings.",
+      "Generated playlists now store the tuning preset and tuning config snapshot used at creation time.",
+      "Generated playlist cards now show the tuning preset and key tuning values without cluttering the page.",
+    ],
+  },
+  {
+    version: "2.0.1",
+    title: "Playlist Scoring",
+    badges: ["Playlists", "BPM", "Energy", "Mood", "Preview"],
+    changes: [
+      "Added playlist quality scoring for Smart Mix v2 generated playlists.",
+      "Added BPM flow, energy curve, mood consistency, discovery balance, and weak-spot scoring.",
+      "Added quality score storage and display for generated playlists and regeneration previews.",
+      "Added warnings for missing metadata and transition weak spots.",
+    ],
+  },
+  {
     version: "2.0.0",
     title: "Smart Mix Engine v2 Foundation",
     badges: ["Beta", "Smart Builder", "Playlists", "BPM", "History"],

@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.0.2 - Recommendation Tuning
+
+- Added Smart Mix v2 recommendation tuning with built-in Balanced, More Familiar, More Discovery, High-Energy, Chill, DJ-Friendly, and Deep Cuts presets.
+- Added user-facing tuning controls for recommendation strength, familiar/discovery balance, popularity, mood, energy, BPM, artist variety, album variety, and recently used tracks.
+- Added saved custom tuning presets with basic create, select, and delete support.
+- Applied tuning to v2 candidate scoring, transition ordering, artist/album variety, recent-use fallback, and preview warnings.
+- Stored the tuning preset and config snapshot used for generated playlists.
+- Added generated playlist display for the tuning preset and key tuning values.
+
+## v2.0.1 - Playlist Scoring
+
+- Added playlist quality scoring for Smart Mix v2 generated playlists.
+- Added BPM flow, energy curve, mood consistency, discovery balance, and weak-spot scoring.
+- Added quality score storage and display for generated playlists and regeneration previews.
+- Added warnings for missing metadata and transition weak spots.
+
 ## v2.0.0 - Smart Mix Engine v2 Foundation
 
 - Added a separate Smart Mix Engine v2 foundation with an ordered generation pipeline.

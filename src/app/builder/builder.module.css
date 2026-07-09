@@ -172,6 +172,9 @@
   padding: 0.5rem 0.85rem;
   border-radius: var(--radius-md);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   font-weight: 600;
   font-size: 0.8rem;
   transition: background-color 0.15s ease;
@@ -484,6 +487,72 @@
 .safetyControl input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.tuningPresetRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin-top: 0.9rem;
+}
+
+.tuningPresetActions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tuningGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.tuningControl {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.tuningControlHeader,
+.tuningScale {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.tuningControlHeader span {
+  color: var(--fg);
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.tuningControlHeader strong {
+  color: var(--accent);
+  font-size: 0.78rem;
+}
+
+.tuningControl input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.tuningControl small,
+.tuningScale {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.tuningCheck {
+  margin-top: 0.85rem;
 }
 
 /* ---- Rule builder ---- */
@@ -1262,6 +1331,20 @@
 
   .safetyControl {
     grid-template-columns: 1fr;
+  }
+
+  .tuningPresetRow,
+  .tuningGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .tuningPresetActions {
+    width: 100%;
+  }
+
+  .tuningPresetActions button {
+    flex: 1;
+    justify-content: center;
   }
 
   .previewActions {

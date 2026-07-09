@@ -1,4 +1,5 @@
 import type { PlaylistConfigInput, PlaylistRuleInput } from "./playlistService";
+import { DEFAULT_SMART_MIX_TUNING } from "./smartMixEngine/v2";
 
 export const SMART_PRESET_VERSION = "v1";
 
@@ -222,6 +223,7 @@ export function buildSmartPresetConfig(preset: SmartPlaylistPreset): PlaylistCon
     moodPresetModified: false,
     bpmPresetModified: false,
     engineVersion: "v2",
+    tuningConfig: DEFAULT_SMART_MIX_TUNING,
     serverId: undefined,
     libraryId: undefined,
     pinnedTrackIds: [],

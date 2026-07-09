@@ -25,6 +25,7 @@ model User {
   playlistHistory PlaylistHistory[]
   playlistHistoryEntries PlaylistHistoryEntry[]
   generatedPlaylists GeneratedPlaylist[]
+  smartMixTuningPresets SmartMixTuningPreset[]
   blockedTracks BlockedTrack[]
   trackExclusions TrackExclusion[]
   syncSettings  SyncSettings?
@@ -409,6 +410,8 @@ model GeneratedPlaylist {
   moodPresetName        String?
   bpmPresetId           String?
   bpmPresetName         String?
+  tuningPresetName      String?
+  tuningConfigJson      Json?
   filtersJson           Json
   safetyRulesJson       Json?
   qualityScoreJson      Json?
@@ -424,6 +427,20 @@ model GeneratedPlaylist {
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
   @@index([userId, sourceType])
+}
+
+model SmartMixTuningPreset {
+  id            String   @id @default(uuid())
+  userId        String
+  name          String
+  configJson    Json
+  tuningVersion String   @default("2.0.2")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId, updatedAt])
 }
 
 model GeneratedPlaylistTrack {

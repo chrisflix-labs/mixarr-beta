@@ -2,10 +2,17 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks, Ban, ShieldCheck, Sparkles, Info } from "lucide-react";
+import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks, Ban, ShieldCheck, Sparkles, Info, SlidersHorizontal } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import { isMoodPresetRuleField, moodPresetLabel } from "@/lib/moodPresets";
+import {
+  builtInSmartMixTuningPresets,
+  DEFAULT_SMART_MIX_TUNING,
+  normalizeSmartMixTuningConfig,
+  type SmartMixTuningConfig,
+  type SmartMixTuningPreset,
+} from "@/lib/smartMixEngine/v2/tuning";
 import styles from "./builder.module.css";
 
 type Rule = {
@@ -63,6 +70,7 @@ type BpmPresetMetadata = {
 };
 
 type EngineVersion = "v1" | "v2";
+type TuningSliderKey = Exclude<keyof SmartMixTuningConfig, "avoidRecentlyUsedTracks" | "presetName" | "tuningVersion">;
 
 type SavedRule = {
   id: string;
@@ -103,6 +111,8 @@ type PlaylistPreviewSummary = {
   safetyRuleSummary?: string;
   engineVersion?: EngineVersion;
   engineLabel?: string;
+  tuningPresetName?: string | null;
+  tuningConfig?: SmartMixTuningConfig;
   artistLimitApplied?: boolean;
   albumLimitApplied?: boolean;
   artistSpacingApplied?: boolean;
@@ -156,6 +166,15 @@ function formatEstimatedDuration(minutes?: number | null) {
   return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
 }
 
+function tuningPresetSelectValue(preset: SmartMixTuningPreset) {
+  return `${preset.builtIn ? "builtin" : "custom"}:${preset.id}`;
+}
+
+function presetValueForConfig(config: SmartMixTuningConfig, customPresets: SmartMixTuningPreset[]) {
+  const preset = [...builtInSmartMixTuningPresets, ...customPresets].find((item) => item.name === config.presetName);
+  return preset ? tuningPresetSelectValue(preset) : "custom";
+}
+
 export default function BuilderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -194,6 +213,11 @@ export default function BuilderPage() {
   const [moodPresetMetadata, setMoodPresetMetadata] = useState<MoodPresetMetadata>({});
   const [bpmPresetMetadata, setBpmPresetMetadata] = useState<BpmPresetMetadata>({});
   const [engineVersion, setEngineVersion] = useState<EngineVersion>("v1");
+  const [tuningConfig, setTuningConfig] = useState<SmartMixTuningConfig>(() => normalizeSmartMixTuningConfig(DEFAULT_SMART_MIX_TUNING));
+  const [customTuningPresets, setCustomTuningPresets] = useState<SmartMixTuningPreset[]>([]);
+  const [selectedTuningPreset, setSelectedTuningPreset] = useState(tuningPresetSelectValue(builtInSmartMixTuningPresets[0]));
+  const [customTuningPresetName, setCustomTuningPresetName] = useState("");
+  const [savingTuningPreset, setSavingTuningPreset] = useState(false);
   const [pinnedTrackIds, setPinnedTrackIds] = useState<string[]>([]);
   const [excludedTrackIds, setExcludedTrackIds] = useState<string[]>([]);
   const [draggedTrackId, setDraggedTrackId] = useState("");
@@ -221,7 +245,12 @@ export default function BuilderPage() {
     fetchSavedRules();
     fetchDefaults();
     fetchHistory();
+    fetchTuningPresets();
   }, []);
+
+  useEffect(() => {
+    setSelectedTuningPreset(presetValueForConfig(tuningConfig, customTuningPresets));
+  }, [customTuningPresets, tuningConfig]);
 
   useEffect(() => {
     const sourceParams = new URLSearchParams(window.location.search);
@@ -295,6 +324,15 @@ export default function BuilderPage() {
       setHistory(res.data.history || []);
     } catch (e) {
       console.error("Failed to load playlist history", e);
+    }
+  };
+
+  const fetchTuningPresets = async () => {
+    try {
+      const res = await axios.get("/api/smart-mix-tuning-presets");
+      setCustomTuningPresets(res.data.customPresets || []);
+    } catch (e) {
+      console.error("Failed to load Smart Mix tuning presets", e);
     }
   };
 
@@ -373,6 +411,84 @@ export default function BuilderPage() {
     setBpmPresetMetadata({});
   };
 
+  const restoreTuningConfig = (incoming: unknown) => {
+    const normalized = normalizeSmartMixTuningConfig(incoming ?? DEFAULT_SMART_MIX_TUNING);
+    setTuningConfig(normalized);
+    setSelectedTuningPreset(presetValueForConfig(normalized, customTuningPresets));
+    setCustomTuningPresetName(normalized.presetName && normalized.presetName !== "Balanced" ? normalized.presetName : "");
+  };
+
+  const updateTuningConfig = (patch: Partial<SmartMixTuningConfig>) => {
+    setEngineVersion("v2");
+    setTuningConfig((current) => normalizeSmartMixTuningConfig({
+      ...current,
+      ...patch,
+      presetName: patch.presetName ?? "Custom",
+    }));
+    setSelectedTuningPreset("custom");
+    clearPreview();
+  };
+
+  const selectTuningPreset = (value: string) => {
+    setSelectedTuningPreset(value);
+    if (value === "custom") {
+      setEngineVersion("v2");
+      setTuningConfig((current) => normalizeSmartMixTuningConfig({ ...current, presetName: "Custom" }));
+      clearPreview();
+      return;
+    }
+
+    const preset = [...builtInSmartMixTuningPresets, ...customTuningPresets].find((item) => tuningPresetSelectValue(item) === value);
+    if (!preset) return;
+
+    setEngineVersion("v2");
+    setTuningConfig(normalizeSmartMixTuningConfig(preset.config));
+    setCustomTuningPresetName(preset.builtIn ? "" : preset.name);
+    clearPreview();
+  };
+
+  const saveTuningPreset = async () => {
+    const name = customTuningPresetName.trim();
+    if (!name) {
+      alert("Enter a tuning preset name.");
+      return;
+    }
+
+    setSavingTuningPreset(true);
+    try {
+      const res = await axios.post("/api/smart-mix-tuning-presets", {
+        name,
+        tuningConfig: { ...tuningConfig, presetName: name },
+      });
+      const preset = res.data.preset as SmartMixTuningPreset;
+      setCustomTuningPresets((current) => [preset, ...current.filter((item) => item.id !== preset.id && item.name !== preset.name)]);
+      setTuningConfig(normalizeSmartMixTuningConfig(preset.config));
+      setSelectedTuningPreset(tuningPresetSelectValue(preset));
+      setEngineVersion("v2");
+      clearPreview();
+    } catch (e: any) {
+      console.error(e);
+      alert(e.response?.data?.error || "Failed to save tuning preset");
+    } finally {
+      setSavingTuningPreset(false);
+    }
+  };
+
+  const deleteSelectedTuningPreset = async () => {
+    const preset = customTuningPresets.find((item) => tuningPresetSelectValue(item) === selectedTuningPreset);
+    if (!preset) return;
+    if (!window.confirm(`Delete tuning preset "${preset.name}"?`)) return;
+
+    try {
+      await axios.delete(`/api/smart-mix-tuning-presets/${preset.id}`);
+      setCustomTuningPresets((current) => current.filter((item) => item.id !== preset.id));
+      selectTuningPreset(tuningPresetSelectValue(builtInSmartMixTuningPresets[0]));
+    } catch (e: any) {
+      console.error(e);
+      alert(e.response?.data?.error || "Failed to delete tuning preset");
+    }
+  };
+
   const playlistPayload = (extra: Record<string, any> = {}) => ({
     rules,
     ruleTree: buildRuleTree(),
@@ -399,6 +515,7 @@ export default function BuilderPage() {
       minimumTrackCount: safetyRules.minimumTrackCount || undefined,
     },
     engineVersion,
+    tuningConfig: normalizeSmartMixTuningConfig(tuningConfig),
     ...smartPresetMetadata,
     ...moodPresetMetadata,
     ...bpmPresetMetadata,
@@ -445,6 +562,7 @@ export default function BuilderPage() {
     bpmPresetName: filters.bpmPresetName,
     bpmPresetVersion: filters.bpmPresetVersion,
     bpmPresetModified: filters.bpmPresetModified || false,
+    tuningConfig: normalizeSmartMixTuningConfig(filters.tuningConfig),
     engineVersion: (filters.engineVersion === "v2" ? "v2" : "v1") as EngineVersion,
     pinnedTrackIds: filters.pinnedTrackIds || [],
     excludedTrackIds: filters.excludedTrackIds || [],
@@ -557,6 +675,7 @@ export default function BuilderPage() {
     setMoodPresetMetadata({});
     setBpmPresetMetadata({});
     setEngineVersion("v1");
+    restoreTuningConfig(DEFAULT_SMART_MIX_TUNING);
     if (!id) return;
 
     const savedRule = savedRules.find(rule => rule.id === id);
@@ -600,6 +719,7 @@ export default function BuilderPage() {
       bpmPresetVersion: savedRule.options?.bpmPresetVersion,
       bpmPresetModified: savedRule.options?.bpmPresetModified || false,
     });
+    restoreTuningConfig(savedRule.options?.tuningConfig);
     setEngineVersion(savedRule.options?.engineVersion === "v2" ? "v2" : "v1");
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
@@ -656,6 +776,7 @@ export default function BuilderPage() {
       bpmPresetVersion: filters.bpmPresetVersion,
       bpmPresetModified: filters.bpmPresetModified || false,
     });
+    restoreTuningConfig(filters.tuningConfig);
     setEngineVersion(filters.engineVersion === "v2" ? "v2" : "v1");
     setPinnedTrackIds(filters.pinnedTrackIds || []);
     setExcludedTrackIds(filters.excludedTrackIds || []);
@@ -803,6 +924,7 @@ export default function BuilderPage() {
     setMoodPresetMetadata({});
     setBpmPresetMetadata({});
     setEngineVersion("v1");
+    restoreTuningConfig(DEFAULT_SMART_MIX_TUNING);
     if (templateName === "deep_cuts") {
       setRules([{ field: "popularity", operator: "lt", value: "30" }]);
       setPlaylistName("Deep Cuts Discovered");
@@ -1023,6 +1145,35 @@ export default function BuilderPage() {
     }
   };
 
+  const tuningSlider = (
+    key: TuningSliderKey,
+    label: string,
+    helper: string,
+    leftLabel?: string,
+    rightLabel?: string,
+  ) => (
+    <label className={styles.tuningControl}>
+      <span className={styles.tuningControlHeader}>
+        <span>{label}</span>
+        <strong>{Math.round(tuningConfig[key])}</strong>
+      </span>
+      <input
+        type="range"
+        min="0"
+        max="100"
+        value={tuningConfig[key]}
+        onChange={(event) => updateTuningConfig({ [key]: Number(event.target.value) } as Partial<SmartMixTuningConfig>)}
+      />
+      {(leftLabel || rightLabel) && (
+        <span className={styles.tuningScale}>
+          <span>{leftLabel}</span>
+          <span>{rightLabel}</span>
+        </span>
+      )}
+      <small>{helper}</small>
+    </label>
+  );
+
   return (
     <>
     <div className="builder-container">
@@ -1175,6 +1326,13 @@ export default function BuilderPage() {
                 </select>
               </label>
               <label className={styles.optionLabel}>
+                Smart Mix Engine
+                <select value={engineVersion} onChange={(e) => { setEngineVersion(e.target.value as EngineVersion); clearPreview(); }} className={styles.select}>
+                  <option value="v1">v1 Legacy</option>
+                  <option value="v2">v2 Recommendation Tuning</option>
+                </select>
+              </label>
+              <label className={styles.optionLabel}>
                 Top-Level Groups
                 <select value={rootCombinator} onChange={(e) => { setRootCombinator(e.target.value as "AND" | "OR"); clearPreview(); }} className={styles.select}>
                   <option value="AND">Match all groups</option>
@@ -1197,6 +1355,77 @@ export default function BuilderPage() {
               <label className={styles.optionLabel}>Max Minutes<input value={negativeFilters.maxDurationMinutes} onChange={(e) => { setNegativeFilters({ ...negativeFilters, maxDurationMinutes: e.target.value }); clearPreview(); }} placeholder="8" className={styles.input} /></label>
             </div>
           </div>
+        </div>
+
+        {/* Smart Mix Tuning */}
+        <div className={`glass-panel ${styles.panel}`}>
+          <div className={styles.sectionTitleRow}>
+            <h3>Smart Mix Tuning</h3>
+            <SlidersHorizontal size={18} />
+          </div>
+          <p className={styles.panelSubtext}>Tune how Smart Mix v2 chooses, ranks, and orders tracks.</p>
+          <div className={styles.tuningPresetRow}>
+            <label className={styles.optionLabel}>
+              Preset
+              <select value={selectedTuningPreset} onChange={(e) => selectTuningPreset(e.target.value)} className={styles.select}>
+                <option value="custom">Custom</option>
+                <optgroup label="Built-in presets">
+                  {builtInSmartMixTuningPresets.map((preset) => (
+                    <option key={preset.id} value={tuningPresetSelectValue(preset)}>{preset.name}</option>
+                  ))}
+                </optgroup>
+                {customTuningPresets.length > 0 && (
+                  <optgroup label="Saved presets">
+                    {customTuningPresets.map((preset) => (
+                      <option key={preset.id} value={tuningPresetSelectValue(preset)}>{preset.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </label>
+            <label className={styles.optionLabel}>
+              Save as preset
+              <input
+                value={customTuningPresetName}
+                onChange={(e) => setCustomTuningPresetName(e.target.value)}
+                placeholder={tuningConfig.presetName && tuningConfig.presetName !== "Custom" ? `${tuningConfig.presetName} copy` : "My tuning preset"}
+                className={styles.input}
+              />
+            </label>
+            <div className={styles.tuningPresetActions}>
+              <button type="button" onClick={saveTuningPreset} disabled={savingTuningPreset} className={styles.btnSecondary}>
+                {savingTuningPreset ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={deleteSelectedTuningPreset}
+                disabled={!selectedTuningPreset.startsWith("custom:")}
+                className={styles.btnDanger}
+              >
+                <Trash2 size={15} />
+                Delete
+              </button>
+            </div>
+          </div>
+          <div className={styles.tuningGrid}>
+            {tuningSlider("recommendationStrength", "Recommendation Strength", "How strongly Mixarr should follow its matching logic.", "Relaxed", "Strict")}
+            {tuningSlider("familiarityDiscoveryBalance", "Familiar vs Discovery", "Choose safer favorites or deeper cuts.", "Discovery", "Familiar")}
+            {tuningSlider("popularityWeight", "Popularity Weight", "Control how much popularity affects ranking.", "Light", "Strong")}
+            {tuningSlider("moodWeight", "Mood Weight", "Higher values keep the emotional feel more consistent.", "Flexible", "Consistent")}
+            {tuningSlider("energyWeight", "Energy Weight", "Higher values create smoother energy movement.", "Flexible", "Smooth")}
+            {tuningSlider("bpmWeight", "BPM Weight", "Higher values create smoother tempo flow.", "Light", "DJ-style")}
+            {tuningSlider("artistVariety", "Artist Variety", "Higher values reduce repeated artists.", "Repeat OK", "More variety")}
+            {tuningSlider("albumVariety", "Album Variety", "Higher values reduce repeated albums.", "Repeat OK", "More variety")}
+          </div>
+          <label className={`${styles.checkLabel} ${styles.tuningCheck}`}>
+            <input
+              type="checkbox"
+              checked={tuningConfig.avoidRecentlyUsedTracks}
+              onChange={(e) => updateTuningConfig({ avoidRecentlyUsedTracks: e.target.checked })}
+            />
+            Avoid recently used tracks
+          </label>
         </div>
 
         {/* Safety Rules */}
@@ -1477,6 +1706,12 @@ export default function BuilderPage() {
                 <span>Engine</span>
                 <strong>{playlistPreview.summary.engineLabel?.replace("Smart Mix Engine: ", "") || "v1 Legacy"}</strong>
               </div>
+              {playlistPreview.summary.engineVersion === "v2" && (
+                <div className={styles.statCard}>
+                  <span>Tuning</span>
+                  <strong>{playlistPreview.summary.tuningPresetName || "Custom"}</strong>
+                </div>
+              )}
               <div className={styles.statCard}>
                 <span>Matched</span>
                 <strong>{playlistPreview.summary.matchingTrackCount}</strong>

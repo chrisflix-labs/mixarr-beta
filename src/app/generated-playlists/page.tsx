@@ -18,6 +18,15 @@ type GeneratedPlaylist = {
   smartPresetName?: string | null;
   moodPresetName?: string | null;
   bpmPresetName?: string | null;
+  tuningPresetName?: string | null;
+  tuningConfigJson?: {
+    recommendationStrength?: number;
+    familiarityDiscoveryBalance?: number;
+    bpmWeight?: number;
+    energyWeight?: number;
+    artistVariety?: number;
+    albumVariety?: number;
+  } | null;
   trackCount: number;
   lastGeneratedAt: string;
   lastRegeneratedAt?: string | null;
@@ -61,6 +70,7 @@ type PreviewState = {
     smartPresetName?: string | null;
     moodPresetName?: string | null;
     bpmPresetName?: string | null;
+    tuningPresetName?: string | null;
   };
 };
 
@@ -124,6 +134,10 @@ function isPlaylistQualityScore(value: unknown): value is PlaylistQualityScore {
 
 function qualityScoreForDisplay(value: unknown) {
   return isPlaylistQualityScore(value) ? value : null;
+}
+
+function roundedValue(value?: number) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : null;
 }
 
 function PlaylistQualityCard({ score }: { score?: PlaylistQualityScore | null }) {
@@ -345,6 +359,7 @@ export default function GeneratedPlaylistsPage() {
               playlist.smartPresetName ? `Smart: ${playlist.smartPresetName}` : "",
               playlist.moodPresetName ? `Mood: ${playlist.moodPresetName}` : "",
               playlist.bpmPresetName ? `BPM: ${playlist.bpmPresetName}` : "",
+              playlist.tuningPresetName ? `Tuning Preset: ${playlist.tuningPresetName}` : "",
             ].filter(Boolean);
 
             return (
@@ -369,6 +384,19 @@ export default function GeneratedPlaylistsPage() {
                 <div className={styles.badgeRow}>
                   {presets.length ? presets.map((preset) => <span key={preset}>{preset}</span>) : <span>Saved filters</span>}
                 </div>
+                {playlist.engineVersion === "v2" && playlist.tuningConfigJson && (
+                  <details className={styles.tuningDetails}>
+                    <summary>Tuning values</summary>
+                    <div>
+                      <span>Strength {roundedValue(playlist.tuningConfigJson.recommendationStrength) ?? "-"}</span>
+                      <span>Discovery {roundedValue(playlist.tuningConfigJson.familiarityDiscoveryBalance) ?? "-"}</span>
+                      <span>BPM {roundedValue(playlist.tuningConfigJson.bpmWeight) ?? "-"}</span>
+                      <span>Energy {roundedValue(playlist.tuningConfigJson.energyWeight) ?? "-"}</span>
+                      <span>Artist variety {roundedValue(playlist.tuningConfigJson.artistVariety) ?? "-"}</span>
+                      <span>Album variety {roundedValue(playlist.tuningConfigJson.albumVariety) ?? "-"}</span>
+                    </div>
+                  </details>
+                )}
                 <PlaylistQualityCard score={qualityScoreForDisplay(playlist.qualityScoreJson)} />
                 <div className={styles.controls} aria-label={`Regeneration options for ${playlist.plexPlaylistTitle}`}>
                   <div className={styles.modeGroup}>
@@ -493,6 +521,7 @@ export default function GeneratedPlaylistsPage() {
             {preview.regeneration.smartPresetName && <span>Smart preset: {preview.regeneration.smartPresetName}</span>}
             {preview.regeneration.moodPresetName && <span>Mood preset: {preview.regeneration.moodPresetName}</span>}
             {preview.regeneration.bpmPresetName && <span>BPM preset: {preview.regeneration.bpmPresetName}</span>}
+            {preview.regeneration.tuningPresetName && <span>Tuning Preset: {preview.regeneration.tuningPresetName}</span>}
             <span>{preview.summary.engineLabel || engineLabel(preview.summary.engineVersion)}</span>
             <span>{preview.summary.safetyRuleSummary || "Safety rules: off"}</span>
           </div>

@@ -44,6 +44,8 @@ export async function POST(req: Request) {
         finalTrackCount: tracks.length,
         engineVersion: result.engineVersion,
         engine: result.engine,
+        tuningPresetName: config.engineVersion === "v2" ? config.tuningConfig?.presetName || "Custom" : null,
+        tuningConfig: config.engineVersion === "v2" ? config.tuningConfig : null,
       },
     });
 
