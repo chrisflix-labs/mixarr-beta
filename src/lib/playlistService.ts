@@ -9,6 +9,7 @@ import { getUserSyncSettings } from "./syncSettings";
 import { safeFinishJobHistory, safeRecordJobHistory, safeStartJobHistory } from "./jobHistory";
 import { recordPlaylistHistoryEntry } from "./playlistHistory";
 import { filterManualTrackExclusions, getManualTrackExclusionIds } from "./trackExclusions";
+import { scorePlaylist, type PlaylistScoreSummary } from "./playlistScoring";
 import {
   runSmartMixEngineV2,
   smartMixEngineLabel,
@@ -689,6 +690,7 @@ type PlaylistGenerationStats = {
   tracks: any[];
   manualExclusionsApplied: number;
   safety: PlaylistGenerationSafetyMetadata;
+  qualityScore: PlaylistScoreSummary | null;
   engineVersion: SmartMixEngineVersion;
   engine: {
     version: SmartMixEngineVersion;
@@ -749,13 +751,15 @@ export async function generatePlaylistTracksWithStats({
         applyPlaylistSafetyRules: (tracks, runConfig) => applyPlaylistSafetyRules(tracks, runConfig as PlaylistConfigInput),
       });
 
+      const tracks = engineResult.tracks.map((track) => annotateTrack(track, reasons, SMART_MIX_ENGINE_V2));
       return {
-        tracks: engineResult.tracks.map((track) => annotateTrack(track, reasons, SMART_MIX_ENGINE_V2)),
+        tracks,
         manualExclusionsApplied,
         safety: {
           ...engineResult.safety.metadata,
           manualExclusionsRemoved: manualExclusionsApplied,
         } as PlaylistGenerationSafetyMetadata,
+        qualityScore: scorePlaylist(tracks),
         engineVersion: SMART_MIX_ENGINE_V2,
         engine: {
           version: SMART_MIX_ENGINE_V2,
@@ -775,6 +779,7 @@ export async function generatePlaylistTracksWithStats({
         ...safetyResult.metadata,
         manualExclusionsRemoved: manualExclusionsApplied,
       } as PlaylistGenerationSafetyMetadata,
+      qualityScore: null,
       engineVersion: SMART_MIX_ENGINE_V1,
       engine: {
         version: SMART_MIX_ENGINE_V1,
@@ -1002,6 +1007,7 @@ export async function previewPlaylistTracks({
     engineVersion: generation.engineVersion,
     engineLabel: generation.engine.label,
     engineDiagnostics: generation.engine.diagnostics,
+    qualityScore: generation.qualityScore,
     artistLimitApplied: generation.safety.artistLimitApplied,
     albumLimitApplied: generation.safety.albumLimitApplied,
     artistSpacingApplied: generation.safety.artistSpacingApplied,
@@ -1079,6 +1085,7 @@ export async function previewPlaylistTracks({
     safety: generation.safety,
     engineVersion: generation.engineVersion,
     engine: generation.engine,
+    qualityScore: generation.qualityScore,
   };
 }
 
@@ -1311,6 +1318,7 @@ export async function recordGeneratedPlaylist({
   const config = normalizeGeneratedPlaylistConfig(filters);
   const tracks = trackIds.length ? await fetchOwnedTracksInOrder(userId, trackIds) : [];
   const resolvedSourceType = generatedPlaylistSourceType(config, sourceType);
+  const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks) : null;
   const data = {
     userId,
     serverId: serverId || tracks[0]?.library?.server?.id || null,
@@ -1328,6 +1336,7 @@ export async function recordGeneratedPlaylist({
     engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
     filtersJson: config as any,
     safetyRulesJson: config.safetyRules as any,
+    qualityScoreJson: qualityScore as any,
     trackCount: tracks.length,
     lastGeneratedAt: new Date(),
   };
@@ -1514,6 +1523,7 @@ function buildRegenerationPreviewPayload({
   regeneration: any;
 }) {
   const previewTracks = tracks.slice(0, previewDisplayLimit);
+  const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks) : null;
   const finalTrackCount = previewTracks.length;
   const estimatedDurationMs = previewTracks.reduce((sum, track) => sum + (track.duration || 0), 0);
   return {
@@ -1535,6 +1545,7 @@ function buildRegenerationPreviewPayload({
       safetyRuleSummary: safety.summary || summarizePlaylistSafetyRules(config),
       engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
       engineLabel: smartMixEngineLabel(config.engineVersion),
+      qualityScore,
     },
     filterSummary: [
       { label: "Limit", value: `${config.limit} tracks` },
@@ -1548,6 +1559,7 @@ function buildRegenerationPreviewPayload({
     warnings: warnings.filter((warning, index, list) => list.indexOf(warning) === index),
     safety,
     engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
+    qualityScore,
     regeneration,
   };
 }
@@ -1795,11 +1807,13 @@ export async function regenerateGeneratedPlaylistFromPreview({
     });
 
     const config = normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson, generatedPlaylist.engineVersion);
+    const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks) : null;
     await prisma.generatedPlaylist.update({
       where: { id: generatedPlaylist.id },
       data: {
         serverId: targetServer.id,
         engineVersion: config.engineVersion,
+        qualityScoreJson: qualityScore as any,
         trackCount: tracks.length,
         lastRegeneratedAt: new Date(),
         lastGeneratedAt: new Date(),
@@ -1863,6 +1877,7 @@ export async function regenerateGeneratedPlaylistFromPreview({
       warnings,
       filters: config,
       safetyRules: config.safetyRules,
+      qualityScore,
       summary: `${modeSummary}${preferDifferentSummary}`,
       tracks,
     });
@@ -1898,6 +1913,7 @@ export async function regenerateGeneratedPlaylistFromPreview({
         trackCount: tracks.length,
         manualExclusionsRemoved,
         safetyRules: config.safetyRules,
+        qualityScore,
         warnings,
         previewId: previewId || null,
       },
@@ -2126,6 +2142,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
   let manualExclusionsApplied = 0;
   let safetyMetadata: Awaited<ReturnType<typeof generatePlaylistTracksWithStats>>["safety"] | null = null;
   let refreshEngineVersion: SmartMixEngineVersion = SMART_MIX_ENGINE_V1;
+  let refreshQualityScore: PlaylistScoreSummary | null = null;
   let refreshError: string | undefined;
   try {
     const savedRules = JSON.parse(rule.rulesJson);
@@ -2181,6 +2198,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
       filters: parsed,
       trackIds: tracks.map((track) => track.id),
     });
+    refreshQualityScore = (generatedPlaylist.qualityScoreJson as any) || null;
     await recordPlaylistHistoryEntry({
       userId: rule.userId,
       generatedPlaylistId: generatedPlaylist.id,
@@ -2205,6 +2223,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
       warnings: safetyMetadata?.warnings || [],
       filters: parsed,
       safetyRules: parsed.safetyRules,
+      qualityScore: refreshQualityScore,
       summary: `Regenerated "${rule.name}" from saved playlist refresh with ${tracks.length} track${tracks.length === 1 ? "" : "s"}.`,
       tracks,
     });
@@ -2267,6 +2286,7 @@ export async function refreshSavedPlaylist(ruleId: string, mode: RefreshMode = "
         safetyRules: safetyMetadata?.enabledRules || null,
         safetyRuleSummary: safetyMetadata?.summary || "Safety rules: off",
         removedBySafetyRules: safetyMetadata?.removedBySafetyRules || 0,
+        qualityScore: refreshQualityScore,
         finalTrackCount: trackCount,
         engineVersion: refreshEngineVersion,
       },

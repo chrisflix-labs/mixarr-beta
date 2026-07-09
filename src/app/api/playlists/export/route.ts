@@ -71,6 +71,7 @@ export async function POST(req: Request) {
       warnings: [],
       filters,
       safetyRules: safetyConfig?.success ? safetyConfig.data.safetyRules : null,
+      qualityScore: (generatedPlaylist.qualityScoreJson as any) || null,
       summary: creationSummary,
       trackIds: result.exportedTrackIds || trackIds,
     });
@@ -94,6 +95,7 @@ export async function POST(req: Request) {
         safetyRulesApplied: Boolean(safetySummary),
         finalTrackCount: result.trackCount,
         engineVersion: safetyConfig?.success ? safetyConfig.data.engineVersion : "v1",
+        qualityScore: generatedPlaylist.qualityScoreJson || null,
       },
     });
 

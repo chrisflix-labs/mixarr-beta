@@ -411,6 +411,7 @@ model GeneratedPlaylist {
   bpmPresetName         String?
   filtersJson           Json
   safetyRulesJson       Json?
+  qualityScoreJson      Json?
   trackCount            Int      @default(0)
   lastGeneratedAt       DateTime @default(now())
   lastRegeneratedAt     DateTime?
@@ -474,6 +475,7 @@ model PlaylistHistoryEntry {
   warningsJson             Json?
   filtersJson              Json?
   safetyRulesJson          Json?
+  qualityScoreJson         Json?
   summary                  String?
   createdAt                DateTime @default(now())
   user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)

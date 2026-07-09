@@ -383,6 +383,7 @@
 .warningList {
   display: grid;
   gap: 0.45rem;
+  margin-top: 0.75rem;
 }
 
 .warningList p {

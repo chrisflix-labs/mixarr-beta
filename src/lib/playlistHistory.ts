@@ -1,6 +1,7 @@
 import prisma from "./prisma";
 import { getEffectiveBpm } from "./bpm";
 import { normalizeSmartMixEngineVersion } from "./smartMixEngine/v2";
+import type { PlaylistScoreSummary } from "./playlistScoring";
 
 export const PLAYLIST_HISTORY_RETENTION_LIMIT = 500;
 
@@ -73,6 +74,7 @@ async function ensurePlaylistHistoryTables() {
           "warningsJson" JSONB,
           "filtersJson" JSONB,
           "safetyRulesJson" JSONB,
+          "qualityScoreJson" JSONB,
           "summary" TEXT,
           "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT "PlaylistHistoryEntry_pkey" PRIMARY KEY ("id")
@@ -107,6 +109,7 @@ async function ensurePlaylistHistoryTables() {
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "PlaylistHistoryTrack_historyEntryId_position_idx" ON "PlaylistHistoryTrack"("historyEntryId", "position")`);
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "PlaylistHistoryTrack_trackId_idx" ON "PlaylistHistoryTrack"("trackId")`);
       await prisma.$executeRawUnsafe(`ALTER TABLE "PlaylistHistoryEntry" ADD COLUMN IF NOT EXISTS "engineVersion" TEXT NOT NULL DEFAULT 'v1'`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "PlaylistHistoryEntry" ADD COLUMN IF NOT EXISTS "qualityScoreJson" JSONB`);
 
       await prisma.$executeRawUnsafe(`
         DO $$
@@ -283,6 +286,7 @@ export async function recordPlaylistHistoryEntry({
   warnings,
   filters,
   safetyRules,
+  qualityScore,
   summary,
   tracks,
   trackIds,
@@ -318,6 +322,7 @@ export async function recordPlaylistHistoryEntry({
   warnings?: unknown;
   filters?: unknown;
   safetyRules?: unknown;
+  qualityScore?: PlaylistScoreSummary | null;
   summary?: string | null;
   tracks?: any[];
   trackIds?: string[];
@@ -335,14 +340,14 @@ export async function recordPlaylistHistoryEntry({
         "moodPresetId", "moodPresetName", "bpmPresetId", "bpmPresetName", "regenerationMode",
         "keepPercent", "preferDifferentTracks", "trackCount", "previousTrackCount", "keptCount",
         "replacedCount", "newCount", "removedCount", "manualExclusionsRemoved", "safetyRulesApplied",
-        "safetyRulesRemoved", "warningsJson", "filtersJson", "safetyRulesJson", "summary"
+        "safetyRulesRemoved", "warningsJson", "filtersJson", "safetyRulesJson", "qualityScoreJson", "summary"
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10, $11, $12, $13,
         $14, $15, $16, $17, $18,
         $19, $20, $21, $22, $23,
         $24, $25, $26, $27, $28,
-        $29, $30::jsonb, $31::jsonb, $32::jsonb, $33
+        $29, $30::jsonb, $31::jsonb, $32::jsonb, $33::jsonb, $34
       ) RETURNING *`,
       entryId,
       userId,
@@ -376,6 +381,7 @@ export async function recordPlaylistHistoryEntry({
       jsonParam(warnings),
       jsonParam(filters),
       jsonParam(safetyRules),
+      jsonParam(qualityScore),
       summary || null,
     );
 

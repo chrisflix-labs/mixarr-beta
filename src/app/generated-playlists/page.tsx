@@ -13,6 +13,7 @@ type GeneratedPlaylist = {
   plexPlaylistTitle: string;
   sourceType: string;
   engineVersion?: "v1" | "v2" | null;
+  qualityScoreJson?: PlaylistQualityScore | null;
   recipeName?: string | null;
   smartPresetName?: string | null;
   moodPresetName?: string | null;
@@ -28,6 +29,7 @@ type PreviewState = {
   trackIds: string[];
   tracks: any[];
   warnings: string[];
+  qualityScore?: PlaylistQualityScore | null;
   summary: {
     targetTrackCount: number;
     matchingTrackCount: number;
@@ -37,6 +39,7 @@ type PreviewState = {
     safetyRuleSummary?: string;
     engineVersion?: "v1" | "v2";
     engineLabel?: string;
+    qualityScore?: PlaylistQualityScore | null;
   };
   regeneration: {
     mode: "replace_all" | "keep_some";
@@ -58,6 +61,24 @@ type PreviewState = {
     smartPresetName?: string | null;
     moodPresetName?: string | null;
     bpmPresetName?: string | null;
+  };
+};
+
+type PlaylistQualityScore = {
+  overallScore: number;
+  bpmConsistencyScore: number;
+  energyFlowScore: number;
+  moodConsistencyScore: number;
+  discoveryBalanceScore: number;
+  weakSpotCount: number;
+  warnings?: string[];
+  scoreVersion?: string;
+  labels?: {
+    overall?: string;
+    bpmConsistency?: string;
+    energyFlow?: string;
+    moodConsistency?: string;
+    discoveryBalance?: string;
   };
 };
 
@@ -95,6 +116,56 @@ function sourceLabel(sourceType: string) {
 
 function engineLabel(engineVersion?: string | null) {
   return engineVersion === "v2" ? "Smart Mix Engine: v2 Foundation" : "Smart Mix Engine: v1 Legacy";
+}
+
+function isPlaylistQualityScore(value: unknown): value is PlaylistQualityScore {
+  return Boolean(value && typeof value === "object" && typeof (value as PlaylistQualityScore).overallScore === "number");
+}
+
+function qualityScoreForDisplay(value: unknown) {
+  return isPlaylistQualityScore(value) ? value : null;
+}
+
+function PlaylistQualityCard({ score }: { score?: PlaylistQualityScore | null }) {
+  if (!score) {
+    return (
+      <div className={styles.qualityPanel}>
+        <div className={styles.qualityHeader}>
+          <ShieldCheck size={15} />
+          <strong>Playlist Quality</strong>
+        </div>
+        <p className={styles.qualityUnavailable}>Scoring unavailable for this playlist.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.qualityPanel}>
+      <div className={styles.qualityHeader}>
+        <ShieldCheck size={15} />
+        <strong>Playlist Quality</strong>
+        {score.scoreVersion && <span>v{score.scoreVersion}</span>}
+      </div>
+      <dl className={styles.qualityGrid}>
+        <div><dt>Playlist Score</dt><dd>{score.overallScore}% {score.labels?.overall ? `(${score.labels.overall})` : ""}</dd></div>
+        <div><dt>BPM Flow</dt><dd>{score.labels?.bpmConsistency || `${score.bpmConsistencyScore}%`}</dd></div>
+        <div><dt>Mood Match</dt><dd>{score.labels?.moodConsistency || `${score.moodConsistencyScore}%`}</dd></div>
+        <div><dt>Energy Curve</dt><dd>{score.labels?.energyFlow || `${score.energyFlowScore}%`}</dd></div>
+        <div><dt>Discovery Balance</dt><dd>{score.labels?.discoveryBalance || `${score.discoveryBalanceScore}%`}</dd></div>
+        <div><dt>Weak Spots</dt><dd>{score.weakSpotCount} track{score.weakSpotCount === 1 ? "" : "s"}</dd></div>
+      </dl>
+      {score.warnings && score.warnings.length > 0 && (
+        <div className={styles.qualityWarnings}>
+          {score.warnings.map((warning) => (
+            <p key={warning}>
+              <AlertTriangle size={14} />
+              {warning}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function GeneratedPlaylistsPage() {
@@ -298,6 +369,7 @@ export default function GeneratedPlaylistsPage() {
                 <div className={styles.badgeRow}>
                   {presets.length ? presets.map((preset) => <span key={preset}>{preset}</span>) : <span>Saved filters</span>}
                 </div>
+                <PlaylistQualityCard score={qualityScoreForDisplay(playlist.qualityScoreJson)} />
                 <div className={styles.controls} aria-label={`Regeneration options for ${playlist.plexPlaylistTitle}`}>
                   <div className={styles.modeGroup}>
                     <label className={styles.radioOption}>
@@ -424,6 +496,8 @@ export default function GeneratedPlaylistsPage() {
             <span>{preview.summary.engineLabel || engineLabel(preview.summary.engineVersion)}</span>
             <span>{preview.summary.safetyRuleSummary || "Safety rules: off"}</span>
           </div>
+
+          <PlaylistQualityCard score={qualityScoreForDisplay(preview.qualityScore || preview.summary.qualityScore)} />
 
           {preview.warnings.length > 0 && (
             <div className={styles.warningPanel}>

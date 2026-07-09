@@ -134,6 +134,7 @@ export async function POST(req: Request) {
       warnings: [],
       filters: generationFilters || null,
       safetyRules: parsedOptions?.safetyRules || null,
+      qualityScore: (generatedPlaylist?.qualityScoreJson as any) || null,
       summary: creationSummary,
       trackIds: result.exportedTrackIds || trackIds,
     });
@@ -178,6 +179,7 @@ export async function POST(req: Request) {
         finalTrackCount: result.trackCount,
         engineVersion: parsedOptions?.engineVersion || "v1",
         filters: filters || optionsSnapshot || null,
+        qualityScore: generatedPlaylist?.qualityScoreJson || null,
       },
     });
 

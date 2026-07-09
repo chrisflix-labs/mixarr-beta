@@ -64,6 +64,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
       trackCount: playlist.trackCount,
       filters: playlist.filtersJson,
       safetyRules: playlist.safetyRulesJson,
+      qualityScore: (playlist.qualityScoreJson as any) || null,
       summary: `Removed "${playlist.plexPlaylistTitle}" from Generated Playlists tracking. Plex playlist was not deleted.`,
       trackIds: playlist.tracks.map((track) => track.trackId).filter((trackId): trackId is string => Boolean(trackId)),
     });

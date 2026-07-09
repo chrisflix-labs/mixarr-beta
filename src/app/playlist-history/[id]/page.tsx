@@ -48,6 +48,28 @@ function formatNumber(value?: number | null, digits = 0) {
   return value.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 }
 
+type PlaylistQualityScore = {
+  overallScore: number;
+  bpmConsistencyScore: number;
+  energyFlowScore: number;
+  moodConsistencyScore: number;
+  discoveryBalanceScore: number;
+  weakSpotCount: number;
+  warnings?: string[];
+  scoreVersion?: string;
+  labels?: {
+    overall?: string;
+    bpmConsistency?: string;
+    energyFlow?: string;
+    moodConsistency?: string;
+    discoveryBalance?: string;
+  };
+};
+
+function isPlaylistQualityScore(value: unknown): value is PlaylistQualityScore {
+  return Boolean(value && typeof value === "object" && typeof (value as PlaylistQualityScore).overallScore === "number");
+}
+
 function JsonBlock({ value, emptyLabel }: { value: unknown; emptyLabel: string }) {
   if (value == null) return <div className={styles.detailEmpty}>{emptyLabel}</div>;
   return <pre className={styles.jsonBlock}>{JSON.stringify(value, null, 2)}</pre>;
@@ -81,6 +103,7 @@ export default async function PlaylistHistoryDetailPage({ params }: { params: { 
   if (!entry) notFound();
 
   const warnings = Array.isArray(entry.warningsJson) ? entry.warningsJson as string[] : [];
+  const qualityScore = isPlaylistQualityScore(entry.qualityScoreJson) ? entry.qualityScoreJson : null;
   const tracks = entry.tracks as HistoryTrackRow[];
   const hasComparison = entry.previousTrackCount != null
     || entry.keptCount != null
@@ -154,6 +177,37 @@ export default async function PlaylistHistoryDetailPage({ params }: { params: { 
           )}
         </section>
       )}
+
+      <section className={styles.detailPanel}>
+        <span className={styles.panelTitle}>
+          <ShieldCheck size={15} />
+          Playlist Quality
+        </span>
+        {qualityScore ? (
+          <>
+            <div className={styles.comparisonGrid}>
+              <div><span>Playlist Score</span><strong>{qualityScore.overallScore}% {qualityScore.labels?.overall ? `(${qualityScore.labels.overall})` : ""}</strong></div>
+              <div><span>BPM Flow</span><strong>{qualityScore.labels?.bpmConsistency || formatNumber(qualityScore.bpmConsistencyScore)}</strong></div>
+              <div><span>Mood Match</span><strong>{qualityScore.labels?.moodConsistency || formatNumber(qualityScore.moodConsistencyScore)}</strong></div>
+              <div><span>Energy Curve</span><strong>{qualityScore.labels?.energyFlow || formatNumber(qualityScore.energyFlowScore)}</strong></div>
+              <div><span>Discovery Balance</span><strong>{qualityScore.labels?.discoveryBalance || formatNumber(qualityScore.discoveryBalanceScore)}</strong></div>
+              <div><span>Weak Spots</span><strong>{qualityScore.weakSpotCount} track{qualityScore.weakSpotCount === 1 ? "" : "s"}</strong></div>
+            </div>
+            {qualityScore.warnings && qualityScore.warnings.length > 0 && (
+              <div className={styles.warningList}>
+                {qualityScore.warnings.map((warning: string) => (
+                  <p key={warning}>
+                    <AlertTriangle size={15} />
+                    {warning}
+                  </p>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className={styles.detailEmpty}>Scoring unavailable for this playlist.</div>
+        )}
+      </section>
 
       <section className={styles.detailPanel}>
         <span className={styles.panelTitle}>Warnings</span>
