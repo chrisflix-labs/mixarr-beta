@@ -18,6 +18,9 @@ import {
   DEFAULT_SMART_MIX_TUNING,
   normalizeSmartMixTuningConfig,
   SMART_MIX_RECENTLY_USED_WINDOW_DAYS,
+  moodBlendModeLabel,
+  normalizeMoodBlendConfig,
+  summarizeMoodBlend,
   type SmartMixEngineVersion,
 } from "./smartMixEngine/v2";
 import {
@@ -36,6 +39,7 @@ const operators = ["eq", "contains", "not_contains", "gt", "lt", "gte", "lte"] a
 const combinators = ["AND", "OR"] as const;
 const duplicateStrategies = ["allow", "song_artist"] as const;
 const smartMixEngineVersions = [SMART_MIX_ENGINE_V1, SMART_MIX_ENGINE_V2] as const;
+const moodBlendModes = ["off", "smooth_transition", "strict_matching", "mixed_mood"] as const;
 const v2SoftMetadataFilterFields = new Set<string>(["popularity", "energy", "valence", "tempo"]);
 
 const maxPlaylistSize = Number(process.env.MAX_PLAYLIST_SIZE || 5000);
@@ -122,6 +126,9 @@ export const playlistConfigSchema = z.object({
   bpmPresetVersion: z.string().trim().max(40).optional(),
   bpmPresetModified: z.boolean().default(false),
   tuningConfig: z.unknown().optional().transform((value) => normalizeSmartMixTuningConfig(value ?? DEFAULT_SMART_MIX_TUNING)),
+  moodBlendMode: z.enum(moodBlendModes).default("off"),
+  selectedMoodPath: z.array(z.string().trim().min(1).max(40)).max(12).default([]),
+  allowedMoods: z.array(z.string().trim().min(1).max(40)).max(12).default([]),
   engineVersion: z.enum(smartMixEngineVersions).default(SMART_MIX_ENGINE_V1),
 }).merge(playlistOptionsSchema);
 
@@ -637,6 +644,8 @@ function publicPreviewTrack(track: any) {
     scoreBreakdown: track.scoreBreakdown || undefined,
     metadataStatus: track.metadataStatus || undefined,
     fallbacksApplied: track.fallbacksApplied || undefined,
+    moodTags: track.moodBlend?.moodTags || (track.tags || []).filter((tag: any) => tag.type === "mood").map((tag: any) => tag.name).slice(0, 6),
+    moodBlend: track.moodBlend || undefined,
   };
 }
 
@@ -791,6 +800,7 @@ export async function generatePlaylistTracksWithStats({
           warnings: [
             ...(engineResult.safety.metadata.warnings || []),
             ...engineResult.diagnostics.tuningWarnings,
+            ...engineResult.diagnostics.moodWarnings,
           ].filter((warning, index, list) => list.indexOf(warning) === index),
           manualExclusionsRemoved: manualExclusionsApplied,
         } as PlaylistGenerationSafetyMetadata,
@@ -1012,6 +1022,8 @@ export async function previewPlaylistTracks({
   const library = config.libraryId ? await prisma.library.findFirst({ where: { id: config.libraryId, server: { userId } }, select: { name: true } }) : null;
   const previewTracks = tracks.slice(0, displayLimit);
   const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
+  const moodBlend = normalizeMoodBlendConfig(config);
+  const moodDiagnostics = generation.engine.diagnostics || {};
 
   const summary = {
     targetTrackCount: config.limit,
@@ -1045,6 +1057,17 @@ export async function previewPlaylistTracks({
     engineDiagnostics: generation.engine.diagnostics,
     tuningPresetName: tuningConfig.presetName || null,
     tuningConfig,
+    moodBlendMode: moodDiagnostics.moodBlendMode || moodBlend.moodBlendMode,
+    moodBlendLabel: moodBlendModeLabel(moodDiagnostics.moodBlendMode || moodBlend.moodBlendMode),
+    selectedMoodPath: moodDiagnostics.selectedMoodPath || moodBlend.selectedMoodPath,
+    allowedMoods: moodDiagnostics.allowedMoods || moodBlend.allowedMoods,
+    moodCurve: moodDiagnostics.moodCurve || null,
+    moodCoverage: moodDiagnostics.moodCoverage || null,
+    moodWarnings: moodDiagnostics.moodWarnings || [],
+    moodFallbackCount: moodDiagnostics.moodFallbackCount || 0,
+    moodConflictCount: moodDiagnostics.moodConflictCount || 0,
+    multiMoodBridgeTracks: moodDiagnostics.multiMoodBridgeTracks || [],
+    missingMoodCount: moodDiagnostics.missingMoodCount || 0,
     qualityScore: generation.qualityScore,
     artistLimitApplied: generation.safety.artistLimitApplied,
     albumLimitApplied: generation.safety.albumLimitApplied,
@@ -1072,6 +1095,11 @@ export async function previewPlaylistTracks({
     ...(config.moodPresetName ? [{ label: "Mood preset", value: `${config.moodPresetName}${config.moodPresetModified ? " modified" : ""}` }] : []),
     ...(config.bpmPresetName ? [{ label: "BPM preset", value: `${config.bpmPresetName}${config.bpmPresetModified ? " modified" : ""}` }] : []),
     ...(useSmartMixV2 ? [{ label: "Tuning preset", value: tuningConfig.presetName || "Custom" }] : []),
+    ...(moodBlend.enabled ? [{ label: "Mood blend", value: moodBlendModeLabel(moodBlend.moodBlendMode) }] : []),
+    ...(moodBlend.moodBlendMode === "smooth_transition" || moodBlend.moodBlendMode === "strict_matching"
+      ? [{ label: "Mood path", value: moodBlend.selectedMoodPath.join(" > ") || "None" }]
+      : []),
+    ...(moodBlend.moodBlendMode === "mixed_mood" ? [{ label: "Allowed moods", value: moodBlend.allowedMoods.join(", ") || "None" }] : []),
     { label: "Server", value: server?.name || (config.serverId ? "Selected server" : "Any connected server") },
     { label: "Library", value: library?.name || (config.libraryId ? "Selected library" : "Any music library") },
     { label: "Genres", value: summary.genreFilters },
@@ -1567,6 +1595,10 @@ function buildRegenerationPreviewPayload({
   const previewTracks = tracks.slice(0, previewDisplayLimit);
   const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks) : null;
   const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
+  const moodBlend = normalizeMoodBlendConfig(config);
+  const moodBlendSummary = config.engineVersion === SMART_MIX_ENGINE_V2
+    ? summarizeMoodBlend({ tracks, candidates: tracks, config })
+    : null;
   const finalTrackCount = previewTracks.length;
   const estimatedDurationMs = previewTracks.reduce((sum, track) => sum + (track.duration || 0), 0);
   return {
@@ -1590,6 +1622,16 @@ function buildRegenerationPreviewPayload({
       engineLabel: smartMixEngineLabel(config.engineVersion),
       tuningPresetName: tuningConfig.presetName || null,
       tuningConfig,
+      moodBlendMode: moodBlendSummary?.moodBlendMode || moodBlend.moodBlendMode,
+      moodBlendLabel: moodBlendModeLabel(moodBlendSummary?.moodBlendMode || moodBlend.moodBlendMode),
+      selectedMoodPath: moodBlendSummary?.selectedMoodPath || moodBlend.selectedMoodPath,
+      allowedMoods: moodBlendSummary?.allowedMoods || moodBlend.allowedMoods,
+      moodCurve: moodBlendSummary?.moodCurve || null,
+      moodCoverage: moodBlendSummary?.moodCoverage || null,
+      moodWarnings: moodBlendSummary?.moodWarnings || [],
+      moodFallbackCount: moodBlendSummary?.moodFallbackCount || 0,
+      moodConflictCount: moodBlendSummary?.moodConflictCount || 0,
+      missingMoodCount: moodBlendSummary?.missingMoodCount || 0,
       qualityScore,
     },
     filterSummary: [
@@ -1597,12 +1639,13 @@ function buildRegenerationPreviewPayload({
       { label: "Safety rules", value: safety.summary || summarizePlaylistSafetyRules(config) },
       { label: "Smart Mix Engine", value: smartMixEngineLabel(config.engineVersion).replace(/^Smart Mix Engine: /, "") },
       ...(config.engineVersion === SMART_MIX_ENGINE_V2 ? [{ label: "Tuning preset", value: tuningConfig.presetName || "Custom" }] : []),
+      ...(moodBlend.enabled ? [{ label: "Mood blend", value: moodBlendModeLabel(moodBlend.moodBlendMode) }] : []),
     ],
     manualExclusionsApplied: safety.manualExclusionsRemoved || 0,
     safetyRulesApplied: safety.safetyRulesApplied,
     removedBySafetyRules: safety.removedBySafetyRules || 0,
     manualExclusionsRemoved: safety.manualExclusionsRemoved || 0,
-    warnings: warnings.filter((warning, index, list) => list.indexOf(warning) === index),
+    warnings: [...warnings, ...(moodBlendSummary?.moodWarnings || [])].filter((warning, index, list) => list.indexOf(warning) === index),
     safety,
     engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
     qualityScore,

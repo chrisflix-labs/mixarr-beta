@@ -296,6 +296,64 @@
   line-height: 1;
 }
 
+.moodBlendBox,
+.moodCurvePanel {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.moodBlendHeader,
+.moodCurveHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.moodBlendHeader h4 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.moodBlendHeader p,
+.moodCurvePanel p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.moodBlendHeader span,
+.moodCurveHeader span {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.moodCurveHeader strong {
+  color: var(--fg);
+  font-size: 0.86rem;
+}
+
+.moodCurveStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.moodCurveStats span {
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--faint);
+  font-size: 0.66rem;
+}
+
 .formGrid,
 .rangeGrid {
   display: grid;
@@ -628,7 +686,9 @@
   .previewHeader,
   .trackHeader,
   .moodPresetHeader,
-  .moodPresetFooter {
+  .moodPresetFooter,
+  .moodBlendHeader,
+  .moodCurveHeader {
     flex-direction: column;
   }
 

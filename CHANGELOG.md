@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.0.3 - Mood Blending
+
+- Added Smart Mix v2 mood blend modes for Smooth Transition, Strict Matching, and Mixed Mood playlists.
+- Added mood path and allowed-mood controls in Builder and Smart Builder.
+- Improved mood-aware ordering so smooth paths can move through zones like Happy -> Energetic -> Party.
+- Added scoring support for multi-mood bridge tracks, compatible mixed moods, conflicting mood penalties, and missing mood-tag fallbacks.
+- Added mood warnings and mood curve preview data to playlist previews and regeneration previews.
+- Extended Smart Mix v2 diagnostics with mood blend mode, selected mood path, allowed moods, coverage, fallback counts, conflict counts, bridge tracks, and missing mood counts.
+
 ## v2.0.2 - Recommendation Tuning
 
 - Added Smart Mix v2 recommendation tuning with built-in Balanced, More Familiar, More Discovery, High-Energy, Chill, DJ-Friendly, and Deep Cuts presets.

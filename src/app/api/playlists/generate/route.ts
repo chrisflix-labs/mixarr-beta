@@ -46,6 +46,10 @@ export async function POST(req: Request) {
         engine: result.engine,
         tuningPresetName: config.engineVersion === "v2" ? config.tuningConfig?.presetName || "Custom" : null,
         tuningConfig: config.engineVersion === "v2" ? config.tuningConfig : null,
+        moodBlendMode: config.engineVersion === "v2" ? config.moodBlendMode : null,
+        selectedMoodPath: config.engineVersion === "v2" ? config.selectedMoodPath : [],
+        allowedMoods: config.engineVersion === "v2" ? config.allowedMoods : [],
+        moodBlendDiagnostics: config.engineVersion === "v2" ? result.engine.diagnostics : null,
       },
     });
 

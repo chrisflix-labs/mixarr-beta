@@ -37,7 +37,49 @@ export type SmartMixEngineV2Config = {
   ruleTree?: SmartMixRuleTree;
   tuningConfig?: SmartMixTuningConfig;
   recentlyUsedTrackIds?: string[];
+  moodBlendMode?: SmartMixMoodBlendMode;
+  selectedMoodPath?: string[];
+  allowedMoods?: string[];
   [key: string]: unknown;
+};
+
+export type SmartMixMoodBlendMode =
+  | "off"
+  | "smooth_transition"
+  | "strict_matching"
+  | "mixed_mood";
+
+export type SmartMixMoodCurveSection = {
+  start: number;
+  end: number;
+  mood: string;
+  matchedTrackCount?: number;
+};
+
+export type SmartMixMoodCurve =
+  | {
+      mode: "smooth_transition" | "strict_matching";
+      sections: SmartMixMoodCurveSection[];
+    }
+  | {
+      mode: "mixed_mood";
+      primaryMoods: string[];
+      dominantMood: string | null;
+      secondaryMoodCoverage: string[];
+    }
+  | null;
+
+export type SmartMixMoodBlendTrackData = {
+  mode: SmartMixMoodBlendMode;
+  moodTags: string[];
+  targetMood?: string | null;
+  matchingMoods: string[];
+  adjacentMoods: string[];
+  moodMatchLevel: "exact" | "alias" | "adjacent" | "family" | "energy_bpm" | "generic" | "none";
+  moodMatchScore: number;
+  isMoodFallback: boolean;
+  isMoodConflict: boolean;
+  isMultiMoodBridge: boolean;
 };
 
 export type SmartMixMetadataField = "bpm" | "mood" | "energy" | "popularity";
@@ -68,6 +110,7 @@ export type SmartMixScoreBreakdown = {
   energy?: number;
   popularity?: number;
   tuning?: number;
+  moodBlend?: number;
   recentlyUsedPenalty?: number;
   fallbackPenalty?: number;
   diversity?: number;
@@ -79,6 +122,7 @@ export type SmartMixScoredTrack<TTrack = any> = TTrack & {
   scoreBreakdown: SmartMixScoreBreakdown;
   metadataStatus: SmartMixMetadataStatus;
   fallbacksApplied: string[];
+  moodBlend?: SmartMixMoodBlendTrackData;
 };
 
 export type SmartMixEngineV2StageKey =

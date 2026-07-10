@@ -28,6 +28,8 @@ type SafetyRules = {
   minimumTrackCount: string;
 };
 
+type MoodBlendMode = "off" | "smooth_transition" | "strict_matching" | "mixed_mood";
+
 type RangeState = {
   bpmMin: string;
   bpmMax: string;
@@ -60,6 +62,16 @@ type PlaylistPreviewSummary = {
   bpmPresetModified?: boolean;
   engineVersion?: "v1" | "v2";
   engineLabel?: string;
+  moodBlendMode?: MoodBlendMode;
+  moodBlendLabel?: string;
+  selectedMoodPath?: string[];
+  allowedMoods?: string[];
+  moodCurve?: any;
+  moodCoverage?: any;
+  moodWarnings?: string[];
+  moodFallbackCount?: number;
+  moodConflictCount?: number;
+  missingMoodCount?: number;
   bpmRange: string;
   energyRange: string;
   moodRange: string;
@@ -173,6 +185,46 @@ function bpmRangeMatchesPreset(ranges: RangeState, preset?: BpmPreset | null) {
   return ranges.bpmMin === min && ranges.bpmMax === max;
 }
 
+function parseMoodList(value: string) {
+  return value
+    .split(/->|>|,|\n/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((item, index, items) => items.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
+    .slice(0, 12);
+}
+
+function moodBlendLabel(mode?: MoodBlendMode) {
+  if (mode === "smooth_transition") return "Smooth Transition";
+  if (mode === "strict_matching") return "Strict Matching";
+  if (mode === "mixed_mood") return "Mixed Mood";
+  return "Off";
+}
+
+function moodCurveLines(curve: any): string[] {
+  if (!curve) return [];
+  if (curve.mode === "mixed_mood") {
+    return [
+      `Primary moods: ${(curve.primaryMoods || []).join(", ") || "None"}`,
+      `Dominant mood: ${curve.dominantMood || "None"}`,
+      `Secondary mood coverage: ${(curve.secondaryMoodCoverage || []).join(", ") || "None"}`,
+    ];
+  }
+  return (curve.sections || []).map((section: any) => (
+    `${section.start}-${section.end}: ${section.mood}${typeof section.matchedTrackCount === "number" ? ` (${section.matchedTrackCount} matched)` : ""}`
+  ));
+}
+
+function moodCoverageLines(coverage: any): string[] {
+  const preview = coverage?.preview;
+  if (!preview || typeof preview !== "object") return [];
+  return Object.entries(preview).map(([mood, value]) => {
+    const counts = value as { exact?: number; alias?: number; adjacent?: number; related?: number; fallbackCompatible?: number };
+    const related = (counts.alias || 0) + (counts.adjacent || 0) + (counts.related || 0);
+    return `${mood}: ${counts.exact || 0} exact / ${related} related / ${counts.fallbackCompatible || 0} fallback-compatible`;
+  });
+}
+
 export default function SmartBuilderPage() {
   const [selectedPresetId, setSelectedPresetId] = useState("");
   const selectedPreset = useMemo(
@@ -185,6 +237,9 @@ export default function SmartBuilderPage() {
   const [ranges, setRanges] = useState<RangeState>(emptyRanges);
   const [moodPresetMetadata, setMoodPresetMetadata] = useState<MoodPresetMetadata>({});
   const [bpmPresetMetadata, setBpmPresetMetadata] = useState<BpmPresetMetadata>({});
+  const [moodBlendMode, setMoodBlendMode] = useState<MoodBlendMode>("off");
+  const [moodPathInput, setMoodPathInput] = useState("");
+  const [allowedMoodsInput, setAllowedMoodsInput] = useState("");
   const [safetyRules, setSafetyRules] = useState<SafetyRules>({
     avoidSameArtistBackToBack: true,
     limitTracksPerArtist: true,
@@ -374,6 +429,9 @@ export default function SmartBuilderPage() {
         minimumTrackCount: safetyRules.minimumTrackCount || undefined,
       },
       engineVersion: "v2" as const,
+      moodBlendMode,
+      selectedMoodPath: moodBlendMode === "smooth_transition" || moodBlendMode === "strict_matching" ? parseMoodList(moodPathInput) : [],
+      allowedMoods: moodBlendMode === "mixed_mood" ? parseMoodList(allowedMoodsInput) : [],
       ...(selectedPreset
         ? {
             smartPresetId: selectedPreset.id,
@@ -645,6 +703,37 @@ export default function SmartBuilderPage() {
               <label className={styles.fieldLabel}>Popularity min<input value={ranges.popularityMin} onChange={(event) => updateRange("popularityMin", event.target.value)} className={styles.input} /></label>
               <label className={styles.fieldLabel}>Popularity max<input value={ranges.popularityMax} onChange={(event) => updateRange("popularityMax", event.target.value)} className={styles.input} /></label>
             </div>
+            <div className={styles.moodBlendBox}>
+              <div className={styles.moodBlendHeader}>
+                <div>
+                  <h4>Mood Blending</h4>
+                  <p>Guide how Smart Mix v2 moves between mood tags while keeping BPM, energy, and tuning active.</p>
+                </div>
+                <span>{moodBlendLabel(moodBlendMode)}</span>
+              </div>
+              <div className={styles.formGrid}>
+                <label className={styles.fieldLabel}>
+                  Mood Blend Mode
+                  <select value={moodBlendMode} onChange={(event) => { setMoodBlendMode(event.target.value as MoodBlendMode); clearPreview(); }} className={styles.select}>
+                    <option value="off">Off</option>
+                    <option value="smooth_transition">Smooth Transition</option>
+                    <option value="strict_matching">Strict Matching</option>
+                    <option value="mixed_mood">Mixed Mood</option>
+                  </select>
+                </label>
+                {moodBlendMode === "mixed_mood" ? (
+                  <label className={styles.fieldLabel}>
+                    Allowed Moods
+                    <input value={allowedMoodsInput} onChange={(event) => { setAllowedMoodsInput(event.target.value); clearPreview(); }} placeholder="Chill, Focus, Ambient" className={styles.input} />
+                  </label>
+                ) : (
+                  <label className={styles.fieldLabel}>
+                    Mood Path
+                    <input value={moodPathInput} onChange={(event) => { setMoodPathInput(event.target.value); clearPreview(); }} placeholder="Happy -> Energetic -> Party" className={styles.input} />
+                  </label>
+                )}
+              </div>
+            </div>
             </div>
 
             <div className={styles.panel}>
@@ -737,6 +826,21 @@ export default function SmartBuilderPage() {
                     <div><span>Manual exclusions</span><strong>{playlistPreview.summary.manualExclusionsRemoved || 0}</strong></div>
                   </div>
                   {playlistPreview.summary.safetyRuleSummary && <p className={styles.helperText}>{playlistPreview.summary.safetyRuleSummary}</p>}
+                  {playlistPreview.summary.moodBlendMode && playlistPreview.summary.moodBlendMode !== "off" && (
+                    <div className={styles.moodCurvePanel}>
+                      <div className={styles.moodCurveHeader}>
+                        <strong>Mood Curve</strong>
+                        <span>{playlistPreview.summary.moodBlendLabel || moodBlendLabel(playlistPreview.summary.moodBlendMode)}</span>
+                      </div>
+                      {moodCurveLines(playlistPreview.summary.moodCurve).map((line) => <p key={line}>{line}</p>)}
+                      {moodCoverageLines(playlistPreview.summary.moodCoverage).map((line) => <p key={line}>{line}</p>)}
+                      <div className={styles.moodCurveStats}>
+                        <span>Fallbacks {playlistPreview.summary.moodFallbackCount || 0}</span>
+                        <span>Conflicts {playlistPreview.summary.moodConflictCount || 0}</span>
+                        <span>Missing tags {playlistPreview.summary.missingMoodCount || 0}</span>
+                      </div>
+                    </div>
+                  )}
                   {playlistPreview.warnings.length > 0 && (
                     <div className={styles.warningPanel}>
                       <div><AlertTriangle size={16} /> Warnings</div>

@@ -70,6 +70,7 @@ type BpmPresetMetadata = {
 };
 
 type EngineVersion = "v1" | "v2";
+type MoodBlendMode = "off" | "smooth_transition" | "strict_matching" | "mixed_mood";
 type TuningSliderKey = Exclude<keyof SmartMixTuningConfig, "avoidRecentlyUsedTracks" | "presetName" | "tuningVersion">;
 
 type SavedRule = {
@@ -113,6 +114,16 @@ type PlaylistPreviewSummary = {
   engineLabel?: string;
   tuningPresetName?: string | null;
   tuningConfig?: SmartMixTuningConfig;
+  moodBlendMode?: MoodBlendMode;
+  moodBlendLabel?: string;
+  selectedMoodPath?: string[];
+  allowedMoods?: string[];
+  moodCurve?: any;
+  moodCoverage?: any;
+  moodWarnings?: string[];
+  moodFallbackCount?: number;
+  moodConflictCount?: number;
+  missingMoodCount?: number;
   artistLimitApplied?: boolean;
   albumLimitApplied?: boolean;
   artistSpacingApplied?: boolean;
@@ -175,6 +186,46 @@ function presetValueForConfig(config: SmartMixTuningConfig, customPresets: Smart
   return preset ? tuningPresetSelectValue(preset) : "custom";
 }
 
+function parseMoodList(value: string) {
+  return value
+    .split(/->|>|,|\n/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((item, index, items) => items.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
+    .slice(0, 12);
+}
+
+function moodBlendLabel(mode?: MoodBlendMode) {
+  if (mode === "smooth_transition") return "Smooth Transition";
+  if (mode === "strict_matching") return "Strict Matching";
+  if (mode === "mixed_mood") return "Mixed Mood";
+  return "Off";
+}
+
+function moodCurveLines(curve: any): string[] {
+  if (!curve) return [];
+  if (curve.mode === "mixed_mood") {
+    return [
+      `Primary moods: ${(curve.primaryMoods || []).join(", ") || "None"}`,
+      `Dominant mood: ${curve.dominantMood || "None"}`,
+      `Secondary mood coverage: ${(curve.secondaryMoodCoverage || []).join(", ") || "None"}`,
+    ];
+  }
+  return (curve.sections || []).map((section: any) => (
+    `${section.start}-${section.end}: ${section.mood}${typeof section.matchedTrackCount === "number" ? ` (${section.matchedTrackCount} matched)` : ""}`
+  ));
+}
+
+function moodCoverageLines(coverage: any): string[] {
+  const preview = coverage?.preview;
+  if (!preview || typeof preview !== "object") return [];
+  return Object.entries(preview).map(([mood, value]) => {
+    const counts = value as { exact?: number; alias?: number; adjacent?: number; related?: number; fallbackCompatible?: number };
+    const related = (counts.alias || 0) + (counts.adjacent || 0) + (counts.related || 0);
+    return `${mood}: ${counts.exact || 0} exact / ${related} related / ${counts.fallbackCompatible || 0} fallback-compatible`;
+  });
+}
+
 export default function BuilderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -214,6 +265,9 @@ export default function BuilderPage() {
   const [bpmPresetMetadata, setBpmPresetMetadata] = useState<BpmPresetMetadata>({});
   const [engineVersion, setEngineVersion] = useState<EngineVersion>("v1");
   const [tuningConfig, setTuningConfig] = useState<SmartMixTuningConfig>(() => normalizeSmartMixTuningConfig(DEFAULT_SMART_MIX_TUNING));
+  const [moodBlendMode, setMoodBlendMode] = useState<MoodBlendMode>("off");
+  const [moodPathInput, setMoodPathInput] = useState("");
+  const [allowedMoodsInput, setAllowedMoodsInput] = useState("");
   const [customTuningPresets, setCustomTuningPresets] = useState<SmartMixTuningPreset[]>([]);
   const [selectedTuningPreset, setSelectedTuningPreset] = useState(tuningPresetSelectValue(builtInSmartMixTuningPresets[0]));
   const [customTuningPresetName, setCustomTuningPresetName] = useState("");
@@ -418,6 +472,15 @@ export default function BuilderPage() {
     setCustomTuningPresetName(normalized.presetName && normalized.presetName !== "Balanced" ? normalized.presetName : "");
   };
 
+  const restoreMoodBlend = (incoming: any = {}) => {
+    const mode = incoming.moodBlendMode === "smooth_transition" || incoming.moodBlendMode === "strict_matching" || incoming.moodBlendMode === "mixed_mood"
+      ? incoming.moodBlendMode as MoodBlendMode
+      : "off";
+    setMoodBlendMode(mode);
+    setMoodPathInput(Array.isArray(incoming.selectedMoodPath) ? incoming.selectedMoodPath.join(" -> ") : "");
+    setAllowedMoodsInput(Array.isArray(incoming.allowedMoods) ? incoming.allowedMoods.join(", ") : "");
+  };
+
   const updateTuningConfig = (patch: Partial<SmartMixTuningConfig>) => {
     setEngineVersion("v2");
     setTuningConfig((current) => normalizeSmartMixTuningConfig({
@@ -516,6 +579,9 @@ export default function BuilderPage() {
     },
     engineVersion,
     tuningConfig: normalizeSmartMixTuningConfig(tuningConfig),
+    moodBlendMode,
+    selectedMoodPath: moodBlendMode === "smooth_transition" || moodBlendMode === "strict_matching" ? parseMoodList(moodPathInput) : [],
+    allowedMoods: moodBlendMode === "mixed_mood" ? parseMoodList(allowedMoodsInput) : [],
     ...smartPresetMetadata,
     ...moodPresetMetadata,
     ...bpmPresetMetadata,
@@ -563,6 +629,9 @@ export default function BuilderPage() {
     bpmPresetVersion: filters.bpmPresetVersion,
     bpmPresetModified: filters.bpmPresetModified || false,
     tuningConfig: normalizeSmartMixTuningConfig(filters.tuningConfig),
+    moodBlendMode: filters.moodBlendMode || "off",
+    selectedMoodPath: filters.selectedMoodPath || [],
+    allowedMoods: filters.allowedMoods || [],
     engineVersion: (filters.engineVersion === "v2" ? "v2" : "v1") as EngineVersion,
     pinnedTrackIds: filters.pinnedTrackIds || [],
     excludedTrackIds: filters.excludedTrackIds || [],
@@ -676,6 +745,7 @@ export default function BuilderPage() {
     setBpmPresetMetadata({});
     setEngineVersion("v1");
     restoreTuningConfig(DEFAULT_SMART_MIX_TUNING);
+    restoreMoodBlend({});
     if (!id) return;
 
     const savedRule = savedRules.find(rule => rule.id === id);
@@ -720,6 +790,7 @@ export default function BuilderPage() {
       bpmPresetModified: savedRule.options?.bpmPresetModified || false,
     });
     restoreTuningConfig(savedRule.options?.tuningConfig);
+    restoreMoodBlend(savedRule.options);
     setEngineVersion(savedRule.options?.engineVersion === "v2" ? "v2" : "v1");
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
@@ -777,6 +848,7 @@ export default function BuilderPage() {
       bpmPresetModified: filters.bpmPresetModified || false,
     });
     restoreTuningConfig(filters.tuningConfig);
+    restoreMoodBlend(filters);
     setEngineVersion(filters.engineVersion === "v2" ? "v2" : "v1");
     setPinnedTrackIds(filters.pinnedTrackIds || []);
     setExcludedTrackIds(filters.excludedTrackIds || []);
@@ -925,6 +997,7 @@ export default function BuilderPage() {
     setBpmPresetMetadata({});
     setEngineVersion("v1");
     restoreTuningConfig(DEFAULT_SMART_MIX_TUNING);
+    restoreMoodBlend({});
     if (templateName === "deep_cuts") {
       setRules([{ field: "popularity", operator: "lt", value: "30" }]);
       setPlaylistName("Deep Cuts Discovered");
@@ -1428,6 +1501,63 @@ export default function BuilderPage() {
           </label>
         </div>
 
+        {/* Mood Blending */}
+        <div className={`glass-panel ${styles.panel}`}>
+          <div className={styles.sectionTitleRow}>
+            <h3>Mood Blending</h3>
+            <Sparkles size={18} />
+          </div>
+          <p className={styles.panelSubtext}>Guide Smart Mix v2 through mood tags without replacing BPM, energy, or recommendation tuning.</p>
+          <div className={styles.moodBlendGrid}>
+            <label className={styles.optionLabel}>
+              Mood Blend Mode
+              <select
+                value={moodBlendMode}
+                onChange={(e) => {
+                  setMoodBlendMode(e.target.value as MoodBlendMode);
+                  setEngineVersion("v2");
+                  clearPreview();
+                }}
+                className={styles.select}
+              >
+                <option value="off">Off</option>
+                <option value="smooth_transition">Smooth Transition</option>
+                <option value="strict_matching">Strict Matching</option>
+                <option value="mixed_mood">Mixed Mood</option>
+              </select>
+            </label>
+            {moodBlendMode === "mixed_mood" ? (
+              <label className={styles.optionLabel}>
+                Allowed Moods
+                <input
+                  value={allowedMoodsInput}
+                  onChange={(e) => {
+                    setAllowedMoodsInput(e.target.value);
+                    setEngineVersion("v2");
+                    clearPreview();
+                  }}
+                  placeholder="Chill, Focus, Ambient"
+                  className={styles.input}
+                />
+              </label>
+            ) : (
+              <label className={styles.optionLabel}>
+                Mood Path
+                <input
+                  value={moodPathInput}
+                  onChange={(e) => {
+                    setMoodPathInput(e.target.value);
+                    setEngineVersion("v2");
+                    clearPreview();
+                  }}
+                  placeholder="Happy -> Energetic -> Party"
+                  className={styles.input}
+                />
+              </label>
+            )}
+          </div>
+        </div>
+
         {/* Safety Rules */}
         <div className={`glass-panel ${styles.panel}`}>
           <div className={styles.sectionTitleRow}>
@@ -1759,6 +1889,22 @@ export default function BuilderPage() {
               <p className={styles.manualExclusionText}>
                 {playlistPreview.summary.safetyRuleSummary}
               </p>
+            )}
+
+            {playlistPreview.summary.moodBlendMode && playlistPreview.summary.moodBlendMode !== "off" && (
+              <div className={styles.moodCurvePanel}>
+                <div className={styles.moodCurveHeader}>
+                  <strong>Mood Curve</strong>
+                  <span>{playlistPreview.summary.moodBlendLabel || moodBlendLabel(playlistPreview.summary.moodBlendMode)}</span>
+                </div>
+                {moodCurveLines(playlistPreview.summary.moodCurve).map((line) => <p key={line}>{line}</p>)}
+                {moodCoverageLines(playlistPreview.summary.moodCoverage).map((line) => <p key={line}>{line}</p>)}
+                <div className={styles.moodCurveStats}>
+                  <span>Fallbacks {playlistPreview.summary.moodFallbackCount || 0}</span>
+                  <span>Conflicts {playlistPreview.summary.moodConflictCount || 0}</span>
+                  <span>Missing tags {playlistPreview.summary.missingMoodCount || 0}</span>
+                </div>
+              </div>
             )}
 
             {playlistPreview.messages.length > 0 && (

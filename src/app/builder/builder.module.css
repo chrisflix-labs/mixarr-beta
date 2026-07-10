@@ -555,6 +555,60 @@
   margin-top: 0.85rem;
 }
 
+.moodBlendGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.moodCurvePanel {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.moodCurveHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.moodCurveHeader strong {
+  color: var(--fg);
+  font-size: 0.86rem;
+}
+
+.moodCurveHeader span {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.moodCurvePanel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.moodCurveStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.moodCurveStats span {
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--faint);
+  font-size: 0.66rem;
+}
+
 /* ---- Rule builder ---- */
 
 .rulePanel {
@@ -1334,7 +1388,8 @@
   }
 
   .tuningPresetRow,
-  .tuningGrid {
+  .tuningGrid,
+  .moodBlendGrid {
     grid-template-columns: 1fr;
   }
 

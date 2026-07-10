@@ -1,5 +1,6 @@
 import { SMART_MIX_ENGINE_V2_PIPELINE } from "./pipeline";
 import { scoreSmartMixTrack } from "./scoring";
+import { normalizeMoodBlendConfig, scoreMoodBlendForTrack, summarizeMoodBlend } from "./moodBlending";
 import {
   applyTuningToTransitionScore,
   buildTuningWarnings,
@@ -9,6 +10,7 @@ import {
 import { SMART_MIX_ENGINE_V2, type SmartMixEngineV2Config, type SmartMixScoredTrack } from "./types";
 
 export * from "./metadataFallbacks";
+export * from "./moodBlending";
 export * from "./pipeline";
 export * from "./scoring";
 export * from "./tuning";
@@ -41,6 +43,16 @@ export type SmartMixEngineV2RunResult<TTrack extends Record<string, any>> = {
     fallbackSummary: Record<string, number>;
     tuningPreset?: string;
     tuningWarnings: string[];
+    moodBlendMode: string;
+    selectedMoodPath: string[];
+    allowedMoods: string[];
+    moodCurve: any;
+    moodCoverage: any;
+    moodWarnings: string[];
+    moodFallbackCount: number;
+    moodConflictCount: number;
+    multiMoodBridgeTracks: string[];
+    missingMoodCount: number;
   };
 };
 
@@ -69,27 +81,46 @@ function selectTunedCandidates<TTrack extends Record<string, any>>(
   limit: number,
 ) {
   const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
+  const moodBlend = normalizeMoodBlendConfig(config);
   const remaining = [...sortedCandidates];
   const selected: Array<SmartMixScoredTrack<TTrack> & { smartMixV2OriginalIndex: number }> = [];
 
   while (remaining.length > 0 && selected.length < limit) {
-    const poolSize = Math.min(remaining.length, Math.max(12, limit * 3));
+    const poolSize = moodBlend.enabled
+      ? Math.min(remaining.length, Math.max(50, limit * 8))
+      : Math.min(remaining.length, Math.max(12, limit * 3));
     const pool = remaining.slice(0, poolSize);
     const previousTrack = selected[selected.length - 1];
     let bestTrack = pool[0];
     let bestScore = Number.NEGATIVE_INFINITY;
 
     for (const candidate of pool) {
+      const position = selected.length;
+      const moodBlendScore = moodBlend.enabled
+        ? scoreMoodBlendForTrack({ track: candidate, config, position, limit })
+        : null;
       const transitionScore = previousTrack
         ? applyTuningToTransitionScore({ leftTrack: previousTrack, rightTrack: candidate, tuningConfig: tuning })
         : 0;
       const varietyPenalty = tuningVarietyPenalty({ track: candidate, selectedTracks: selected, tuningConfig: tuning });
-      const candidateScore = candidate.score + transitionScore - varietyPenalty;
+      const existingMoodBlend = candidate.scoreBreakdown.moodBlend || 0;
+      const positionMoodBlend = moodBlendScore?.score || existingMoodBlend;
+      const candidateScore = candidate.score - existingMoodBlend + positionMoodBlend + transitionScore - varietyPenalty;
       if (
         candidateScore > bestScore
         || (candidateScore === bestScore && candidate.smartMixV2OriginalIndex < bestTrack.smartMixV2OriginalIndex)
       ) {
-        bestTrack = candidate;
+        bestTrack = moodBlendScore
+          ? {
+              ...candidate,
+              score: Math.round((candidate.score - existingMoodBlend + positionMoodBlend) * 1000) / 1000,
+              scoreBreakdown: {
+                ...candidate.scoreBreakdown,
+                moodBlend: moodBlendScore.score,
+              },
+              moodBlend: moodBlendScore.data,
+            }
+          : candidate;
         bestScore = candidateScore;
       }
     }
@@ -127,6 +158,22 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
   const tracks = safety.tracks.map(removeInternalSortIndex);
   const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
   const tuningWarnings = buildTuningWarnings({ tracks, tuningConfig: tuning });
+  const moodBlendSummary = summarizeMoodBlend({
+    tracks,
+    candidates: scoredCandidates,
+    config,
+  });
+  if (moodBlendSummary.moodBlendMode !== "off") {
+    console.info("[SmartMixV2:MoodBlend]", {
+      selectedMoodPath: moodBlendSummary.selectedMoodPath,
+      allowedMoods: moodBlendSummary.allowedMoods,
+      normalizedTargetMoods: moodBlendSummary.activeMoods,
+      moodCoverage: moodBlendSummary.moodCoverage?.preview || moodBlendSummary.moodCoverage,
+      missingMoodCount: moodBlendSummary.missingMoodCount,
+      moodFallbackCount: moodBlendSummary.moodFallbackCount,
+      moodConflictCount: moodBlendSummary.moodConflictCount,
+    });
+  }
 
   return {
     engineVersion: SMART_MIX_ENGINE_V2,
@@ -144,6 +191,16 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
       fallbackSummary: fallbackSummary(tracks),
       tuningPreset: tuning.presetName,
       tuningWarnings,
+      moodBlendMode: moodBlendSummary.moodBlendMode,
+      selectedMoodPath: moodBlendSummary.selectedMoodPath,
+      allowedMoods: moodBlendSummary.allowedMoods,
+      moodCurve: moodBlendSummary.moodCurve,
+      moodCoverage: moodBlendSummary.moodCoverage,
+      moodWarnings: moodBlendSummary.moodWarnings,
+      moodFallbackCount: moodBlendSummary.moodFallbackCount,
+      moodConflictCount: moodBlendSummary.moodConflictCount,
+      multiMoodBridgeTracks: moodBlendSummary.multiMoodBridgeTracks,
+      missingMoodCount: moodBlendSummary.missingMoodCount,
     },
   };
 }

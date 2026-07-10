@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import Link from "next/link";
-import { AlertTriangle, Ban, CheckCircle2, History, ListRestart, RefreshCw, Repeat2, ShieldCheck, Trash2, Wand2 } from "lucide-react";
+import { AlertTriangle, Ban, CheckCircle2, History, ListRestart, RefreshCw, Repeat2, ShieldCheck, Sparkles, Trash2, Wand2 } from "lucide-react";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import styles from "./generated-playlists.module.css";
 
@@ -19,6 +19,11 @@ type GeneratedPlaylist = {
   moodPresetName?: string | null;
   bpmPresetName?: string | null;
   tuningPresetName?: string | null;
+  filtersJson?: {
+    moodBlendMode?: "off" | "smooth_transition" | "strict_matching" | "mixed_mood";
+    selectedMoodPath?: string[];
+    allowedMoods?: string[];
+  } | null;
   tuningConfigJson?: {
     recommendationStrength?: number;
     familiarityDiscoveryBalance?: number;
@@ -49,6 +54,13 @@ type PreviewState = {
     engineVersion?: "v1" | "v2";
     engineLabel?: string;
     qualityScore?: PlaylistQualityScore | null;
+    moodBlendMode?: "off" | "smooth_transition" | "strict_matching" | "mixed_mood";
+    moodBlendLabel?: string;
+    moodCurve?: any;
+    moodCoverage?: any;
+    moodFallbackCount?: number;
+    moodConflictCount?: number;
+    missingMoodCount?: number;
   };
   regeneration: {
     mode: "replace_all" | "keep_some";
@@ -128,6 +140,14 @@ function engineLabel(engineVersion?: string | null) {
   return engineVersion === "v2" ? "Smart Mix Engine: v2 Foundation" : "Smart Mix Engine: v1 Legacy";
 }
 
+function moodBlendLabel(filters?: GeneratedPlaylist["filtersJson"]) {
+  if (!filters || !filters.moodBlendMode || filters.moodBlendMode === "off") return "";
+  if (filters.moodBlendMode === "smooth_transition") return `Mood Blend: Smooth (${(filters.selectedMoodPath || []).join(" -> ")})`;
+  if (filters.moodBlendMode === "strict_matching") return `Mood Blend: Strict (${(filters.selectedMoodPath || []).join(" -> ")})`;
+  if (filters.moodBlendMode === "mixed_mood") return `Mood Blend: Mixed (${(filters.allowedMoods || []).join(", ")})`;
+  return "";
+}
+
 function isPlaylistQualityScore(value: unknown): value is PlaylistQualityScore {
   return Boolean(value && typeof value === "object" && typeof (value as PlaylistQualityScore).overallScore === "number");
 }
@@ -138,6 +158,30 @@ function qualityScoreForDisplay(value: unknown) {
 
 function roundedValue(value?: number) {
   return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : null;
+}
+
+function moodCurveLines(curve: any): string[] {
+  if (!curve) return [];
+  if (curve.mode === "mixed_mood") {
+    return [
+      `Primary moods: ${(curve.primaryMoods || []).join(", ") || "None"}`,
+      `Dominant mood: ${curve.dominantMood || "None"}`,
+      `Secondary mood coverage: ${(curve.secondaryMoodCoverage || []).join(", ") || "None"}`,
+    ];
+  }
+  return (curve.sections || []).map((section: any) => (
+    `${section.start}-${section.end}: ${section.mood}${typeof section.matchedTrackCount === "number" ? ` (${section.matchedTrackCount} matched)` : ""}`
+  ));
+}
+
+function moodCoverageLines(coverage: any): string[] {
+  const preview = coverage?.preview;
+  if (!preview || typeof preview !== "object") return [];
+  return Object.entries(preview).map(([mood, value]) => {
+    const counts = value as { exact?: number; alias?: number; adjacent?: number; related?: number; fallbackCompatible?: number };
+    const related = (counts.alias || 0) + (counts.adjacent || 0) + (counts.related || 0);
+    return `${mood}: ${counts.exact || 0} exact / ${related} related / ${counts.fallbackCompatible || 0} fallback-compatible`;
+  });
 }
 
 function PlaylistQualityCard({ score }: { score?: PlaylistQualityScore | null }) {
@@ -360,6 +404,7 @@ export default function GeneratedPlaylistsPage() {
               playlist.moodPresetName ? `Mood: ${playlist.moodPresetName}` : "",
               playlist.bpmPresetName ? `BPM: ${playlist.bpmPresetName}` : "",
               playlist.tuningPresetName ? `Tuning Preset: ${playlist.tuningPresetName}` : "",
+              moodBlendLabel(playlist.filtersJson),
             ].filter(Boolean);
 
             return (
@@ -527,6 +572,21 @@ export default function GeneratedPlaylistsPage() {
           </div>
 
           <PlaylistQualityCard score={qualityScoreForDisplay(preview.qualityScore || preview.summary.qualityScore)} />
+
+          {preview.summary.moodBlendMode && preview.summary.moodBlendMode !== "off" && (
+            <div className={styles.qualityPanel}>
+              <div className={styles.qualityHeader}>
+                <Sparkles size={15} />
+                <strong>Mood Curve</strong>
+                <span>{preview.summary.moodBlendLabel}</span>
+              </div>
+              <div className={styles.moodCurveList}>
+                {moodCurveLines(preview.summary.moodCurve).map((line) => <p key={line}>{line}</p>)}
+                {moodCoverageLines(preview.summary.moodCoverage).map((line) => <p key={line}>{line}</p>)}
+                <p>Fallbacks {preview.summary.moodFallbackCount || 0} | Conflicts {preview.summary.moodConflictCount || 0} | Missing tags {preview.summary.missingMoodCount || 0}</p>
+              </div>
+            </div>
+          )}
 
           {preview.warnings.length > 0 && (
             <div className={styles.warningPanel}>

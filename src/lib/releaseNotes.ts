@@ -70,6 +70,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.0.3",
+    title: "Mood Blending",
+    badges: ["Playlists", "Smart Builder", "Mood", "Preview", "UI"],
+    changes: [
+      "Added Smooth Transition, Strict Matching, and Mixed Mood blend modes for Smart Mix v2 playlists.",
+      "Added mood path and allowed-mood controls in Builder and Smart Builder.",
+      "Improved mood-aware ordering so smooth mood paths can move through visible playlist zones.",
+      "Added scoring support for multi-mood bridge tracks, compatible mixed moods, conflicting mood penalties, and missing mood-tag fallbacks.",
+      "Added mood warnings and mood curve preview data to playlist previews and regeneration previews.",
+      "Extended Smart Mix v2 diagnostics with mood coverage, fallback counts, conflict counts, bridge tracks, and missing mood counts.",
+    ],
+  },
+  {
     version: "2.0.2",
     title: "Recommendation Tuning",
     badges: ["Playlists", "Smart Builder", "BPM", "Popularity", "UI"],

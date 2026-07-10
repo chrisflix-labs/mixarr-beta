@@ -6,6 +6,7 @@ import {
   getTrackPopularity,
   NEUTRAL_POPULARITY_SCORE,
 } from "./metadataFallbacks";
+import { normalizeMoodBlendConfig, scoreMoodBlendForTrack } from "./moodBlending";
 import { applyTuningToCandidateScore, normalizeSmartMixTuningConfig, tuningWeightFactor } from "./tuning";
 import { SMART_MIX_ENGINE_V2, type SmartMixEngineV2Config, type SmartMixRuleLike, type SmartMixRuleTree, type SmartMixScoredTrack, type SmartMixScoreBreakdown } from "./types";
 
@@ -82,6 +83,7 @@ export function scoreSmartMixTrack<TTrack extends Record<string, any>>(
   const fallback = getSmartMixMetadataFallbacks(track);
   const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
   const recentlyUsedTrackIds = new Set(Array.isArray(config.recentlyUsedTrackIds) ? config.recentlyUsedTrackIds : []);
+  const moodBlend = normalizeMoodBlendConfig(config);
   const popularity = getTrackPopularity(track);
   const basePopularityScore = clamp(popularity ?? NEUTRAL_POPULARITY_SCORE, 0, 100) / 10;
   const recentlyUsedPenalty = tuning.avoidRecentlyUsedTracks && track.id && recentlyUsedTrackIds.has(track.id)
@@ -115,6 +117,10 @@ export function scoreSmartMixTrack<TTrack extends Record<string, any>>(
     recentlyUsedPenalty,
     diversity: 0,
   };
+  const moodBlendScore = moodBlend.enabled && moodBlend.moodBlendMode !== "smooth_transition"
+    ? scoreMoodBlendForTrack({ track, config, position: 0, limit: config.limit })
+    : null;
+  if (moodBlendScore) scoreBreakdown.moodBlend = moodBlendScore.score;
 
   const untunedScore = Object.values(scoreBreakdown)
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
@@ -139,5 +145,6 @@ export function scoreSmartMixTrack<TTrack extends Record<string, any>>(
     scoreBreakdown,
     metadataStatus: fallback.metadataStatus,
     fallbacksApplied,
+    ...(moodBlendScore ? { moodBlend: moodBlendScore.data } : {}),
   };
 }
