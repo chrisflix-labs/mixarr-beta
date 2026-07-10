@@ -9,6 +9,7 @@ import MoodBlendingBetaPanel, {
   DEFAULT_MOOD_BLEND_BETA_SETTINGS,
   type MoodBlendBetaSettings,
 } from "@/components/MoodBlendingBetaPanel";
+import { moodBlendValidationMessage } from "@/lib/moodBlendingUi";
 import { isMoodPresetRuleField, moodPresetLabel } from "@/lib/moodPresets";
 import {
   builtInSmartMixTuningPresets,
@@ -678,6 +679,7 @@ export default function BuilderPage() {
   const isPreviewCurrent = playlistPreview?.signature === previewConfigSignature();
   const createTrackIds = tracks.map((track) => track.id);
   const playlistNameReady = playlistName.trim().length > 0;
+  const moodValidationMessage = moodBlendValidationMessage(moodBlendSettings);
   const canCreateFromPreview = Boolean(playlistNameReady && playlistPreview && isPreviewCurrent && createTrackIds.length > 0);
   const isRecipeDirty = Boolean(
     activeRecipe
@@ -1066,6 +1068,10 @@ export default function BuilderPage() {
   };
 
   const runPreview = async (config = playlistPayload(), signature = previewConfigSignature(), recipeForUsage: PlaylistRecipe | null = isEditingRecipe ? null : activeRecipe) => {
+    if (moodValidationMessage) {
+      setPreviewError(moodValidationMessage);
+      return;
+    }
     setLoading(true);
     setPreviewError("");
     setExclusionNotice("");
@@ -1329,7 +1335,7 @@ export default function BuilderPage() {
                 <p>{isEditingRecipe ? "Update the saved recipe details and current builder filters." : `Editing recipe: ${activeRecipe.name}`}</p>
               </div>
               <div className={styles.recipeEditActions}>
-                <button type="button" onClick={previewPlaylist} disabled={loading} className={styles.btnSecondary}>
+                <button type="button" onClick={previewPlaylist} disabled={loading || Boolean(moodValidationMessage)} className={styles.btnSecondary}>
                   <Play size={16} />
                   Preview Recipe
                 </button>
@@ -1751,7 +1757,7 @@ export default function BuilderPage() {
               <label>Track Limit:</label>
               <input type="number" value={limit} onChange={(e) => { setLimit(Number(e.target.value)); clearPreview(); }} className={styles.limitInput} />
             </div>
-            <button onClick={previewPlaylist} disabled={loading} className={`${styles.btnPrimary} ${styles.rulePreviewButton}`}>
+            <button onClick={previewPlaylist} disabled={loading || Boolean(moodValidationMessage)} className={`${styles.btnPrimary} ${styles.rulePreviewButton}`}>
               <Play size={16} /> {loading ? "Querying..." : "Preview Playlist"}
             </button>
           </div>
@@ -1766,7 +1772,7 @@ export default function BuilderPage() {
             <p>Review the exact playlist order before Mixarr writes to Plex.</p>
           </div>
           <div className={styles.previewActions}>
-            <button onClick={previewPlaylist} disabled={loading} className={styles.btnSecondary}>
+            <button onClick={previewPlaylist} disabled={loading || Boolean(moodValidationMessage)} className={styles.btnSecondary}>
               <Play size={14} /> Preview Playlist
             </button>
             <button onClick={regenerateUnpinned} disabled={loading || !playlistPreview} className={styles.btnSecondary}>

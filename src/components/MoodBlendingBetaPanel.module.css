@@ -134,6 +134,13 @@
   gap: 0.75rem;
 }
 
+.selectorActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
 .sectionHeader h4 {
   margin: 0;
   color: var(--fg);
@@ -249,9 +256,51 @@
 }
 
 .emptyState {
+  display: grid;
+  gap: 0.55rem;
   padding: 0.7rem;
   border: 1px dashed var(--line);
   border-radius: var(--radius-md);
+}
+
+.emptyState p {
+  margin: 0;
+}
+
+.errorState {
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.libraryMoodSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.libraryMoodSummary span {
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 0.68rem;
+}
+
+.libraryMoodSummary strong {
+  color: var(--fg);
+}
+
+.noticeText,
+.validationText {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.validationText {
+  color: var(--warning);
 }
 
 .suggestionGroups {
@@ -380,6 +429,11 @@
     flex-direction: column;
   }
 
+  .selectorActions {
+    justify-content: stretch;
+    width: 100%;
+  }
+
   .pickerRow,
   .sliderGrid,
   .previewGrid {
@@ -388,5 +442,9 @@
 
   .pickerRow button {
     width: 100%;
+  }
+
+  .selectorActions button {
+    flex: 1 1 8rem;
   }
 }

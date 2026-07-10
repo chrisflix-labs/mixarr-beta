@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { AlertTriangle, ArrowDown, ArrowUp, Plus, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Plus, RefreshCw, Sparkles, X } from "lucide-react";
+import {
+  activeMoodSelection,
+  moodBlendValidationMessage,
+  pruneUnavailableMoodSelections,
+} from "@/lib/moodBlendingUi";
 import styles from "./MoodBlendingBetaPanel.module.css";
 
 export type MoodBlendMode = "off" | "smooth_transition" | "strict_matching" | "mixed_mood";
@@ -23,7 +28,27 @@ export type MoodBlendBetaSettings = {
 
 type MoodOption = {
   name: string;
+  normalizedName: string;
   count: number;
+  percentage: number;
+};
+
+type MoodIndexStatus = "not_enriched" | "pending" | "available" | "empty" | "error";
+
+type MoodIndexResponse = {
+  status: MoodIndexStatus;
+  totalTracks: number;
+  tracksWithMood: number;
+  tracksWithoutMood: number;
+  uniqueMoodCount: number;
+  pendingTracks: number;
+  moods: Array<{
+    name: string;
+    normalizedName: string;
+    trackCount: number;
+    percentage: number;
+  }>;
+  error?: string;
 };
 
 type Props = {
@@ -172,32 +197,51 @@ function curvePreview(settings: MoodBlendBetaSettings) {
 
 export default function MoodBlendingBetaPanel({ settings, onChange, serverId, libraryId, disabled = false }: Props) {
   const [moodOptions, setMoodOptions] = useState<MoodOption[]>([]);
-  const [activeTrackCount, setActiveTrackCount] = useState(0);
-  const [missingMoodTrackCount, setMissingMoodTrackCount] = useState(0);
+  const [moodStatus, setMoodStatus] = useState<MoodIndexStatus>("pending");
+  const [totalTracks, setTotalTracks] = useState(0);
+  const [tracksWithMood, setTracksWithMood] = useState(0);
+  const [tracksWithoutMood, setTracksWithoutMood] = useState(0);
+  const [pendingTracks, setPendingTracks] = useState(0);
+  const [moodError, setMoodError] = useState("");
   const [loadingMoods, setLoadingMoods] = useState(false);
   const [moodQuery, setMoodQuery] = useState("");
   const [selectedAddMood, setSelectedAddMood] = useState("");
+  const [selectionNotice, setSelectionNotice] = useState("");
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     const loadMoods = async () => {
       setLoadingMoods(true);
+      setMoodError("");
       try {
         const params = new URLSearchParams();
         if (serverId) params.set("serverId", serverId);
         if (libraryId) params.set("libraryId", libraryId);
-        const response = await axios.get(`/api/mood-tags${params.toString() ? `?${params.toString()}` : ""}`);
+        const response = await axios.get<MoodIndexResponse>(`/api/mood-tags${params.toString() ? `?${params.toString()}` : ""}`);
         if (!cancelled) {
-          setMoodOptions(response.data.moods || []);
-          setActiveTrackCount(Number(response.data.activeTrackCount) || 0);
-          setMissingMoodTrackCount(Number(response.data.missingMoodTrackCount) || 0);
+          setMoodStatus(response.data.status || "empty");
+          setMoodOptions((response.data.moods || []).map((mood) => ({
+            name: mood.name,
+            normalizedName: mood.normalizedName,
+            count: mood.trackCount,
+            percentage: mood.percentage,
+          })));
+          setTotalTracks(response.data.totalTracks || 0);
+          setTracksWithMood(response.data.tracksWithMood || 0);
+          setTracksWithoutMood(response.data.tracksWithoutMood || 0);
+          setPendingTracks(response.data.pendingTracks || 0);
         }
       } catch (error) {
         console.error("Failed to load mood tags", error);
         if (!cancelled) {
           setMoodOptions([]);
-          setActiveTrackCount(0);
-          setMissingMoodTrackCount(0);
+          setMoodStatus("error");
+          setTotalTracks(0);
+          setTracksWithMood(0);
+          setTracksWithoutMood(0);
+          setPendingTracks(0);
+          setMoodError("Moods could not be loaded. Retry or check the server logs.");
         }
       } finally {
         if (!cancelled) setLoadingMoods(false);
@@ -207,25 +251,37 @@ export default function MoodBlendingBetaPanel({ settings, onChange, serverId, li
     return () => {
       cancelled = true;
     };
-  }, [serverId, libraryId]);
+  }, [serverId, libraryId, retryNonce]);
 
   const enabled = settings.moodBlendMode !== "off" && !disabled;
-  const canPickMoods = enabled && moodOptions.length > 0;
-  const activeMoods = activeMoodsFor(settings);
+  const canPickMoods = enabled && moodStatus === "available" && moodOptions.length > 0;
+  const activeMoods = activeMoodSelection(settings);
   const selectedKeys = new Set(activeMoods.map((mood) => mood.toLowerCase()));
   const filteredMoodOptions = moodOptions
-    .filter((mood) => !selectedKeys.has(mood.name.toLowerCase()))
-    .filter((mood) => !moodQuery.trim() || mood.name.toLowerCase().includes(moodQuery.trim().toLowerCase()))
+    .filter((mood) => !selectedKeys.has(mood.normalizedName))
+    .filter((mood) => !moodQuery.trim() || mood.normalizedName.includes(moodQuery.trim().toLowerCase()) || mood.name.toLowerCase().includes(moodQuery.trim().toLowerCase()))
     .slice(0, 12);
-  const moodCounts = useMemo(() => new Map(moodOptions.map((mood) => [mood.name.toLowerCase(), mood.count])), [moodOptions]);
+  const moodCounts = useMemo(() => new Map(moodOptions.map((mood) => [mood.normalizedName, mood.count])), [moodOptions]);
   const availableSuggestedGroups = suggestedGroups
     .map((group) => ({ ...group, moods: group.moods.filter((mood) => moodCounts.has(mood.toLowerCase())) }))
     .filter((group) => group.moods.length > 0);
-  const missingMoodPercent = activeTrackCount > 0 ? Math.round(missingMoodTrackCount / activeTrackCount * 100) : 0;
+  const missingMoodPercent = totalTracks > 0 ? Math.round(tracksWithoutMood / totalTracks * 100) : 0;
   const zeroCoverageMood = activeMoods.find((mood) => (moodCounts.get(mood.toLowerCase()) || 0) === 0);
+  const validationMessage = moodBlendValidationMessage(settings);
+
+  useEffect(() => {
+    if (moodStatus !== "available" || moodOptions.length === 0) return;
+    const { settings: nextSettings, removed } = pruneUnavailableMoodSelections(settings, moodOptions.map((mood) => mood.normalizedName));
+    if (removed.length === 0) return;
+    setSelectionNotice(`Removed unavailable mood${removed.length === 1 ? "" : "s"} for this library: ${removed.map(titleCase).join(", ")}.`);
+    onChange({
+      selectedMoodPath: nextSettings.selectedMoodPath,
+      allowedMoods: nextSettings.allowedMoods,
+    });
+  }, [moodStatus, moodOptions, libraryId, serverId]);
+
   const warnings = [
-    ...(enabled && settings.moodBlendMode === "smooth_transition" && activeMoods.length < 2 ? ["Smooth Transition works best with at least 2 moods selected."] : []),
-    ...(enabled && settings.moodBlendMode === "mixed_mood" && activeMoods.length < 2 ? ["Mixed Mood works best with at least 2 allowed moods."] : []),
+    ...(enabled && validationMessage ? [validationMessage] : []),
     ...(enabled && zeroCoverageMood ? [`${titleCase(zeroCoverageMood)} is not represented in this library yet. Choose a nearby mood or increase Fallback Tolerance.`] : []),
     ...(enabled && activeMoods.some((mood) => (moodCounts.get(mood.toLowerCase()) || 0) > 0 && (moodCounts.get(mood.toLowerCase()) || 0) < 15)
       ? [`${titleCase(activeMoods.find((mood) => (moodCounts.get(mood.toLowerCase()) || 0) > 0 && (moodCounts.get(mood.toLowerCase()) || 0) < 15) || "A selected mood")} has low coverage. Consider lowering Strictness or increasing Fallback Tolerance.`]
@@ -263,12 +319,23 @@ export default function MoodBlendingBetaPanel({ settings, onChange, serverId, li
     onChange(settings.moodBlendMode === "mixed_mood" ? { allowedMoods: [] } : { selectedMoodPath: [] });
   };
 
+  const selectAllMoods = () => {
+    const next = moodOptions.map((mood) => mood.normalizedName).slice(0, 12);
+    onChange(settings.moodBlendMode === "mixed_mood" ? { allowedMoods: next } : { selectedMoodPath: next });
+  };
+
+  const reverseMoods = () => {
+    const next = [...activeMoods].reverse();
+    onChange(settings.moodBlendMode === "mixed_mood" ? { allowedMoods: next } : { selectedMoodPath: next });
+  };
+
   const applyPreset = (presetId: string) => {
     const preset = moodBlendPresets.find((item) => item.id === presetId);
     if (!preset) return;
+    const availablePresetMoods = preset.moods.filter((mood) => moodCounts.has(mood.toLowerCase()));
     const moodPatch = preset.mode === "mixed_mood"
-      ? { allowedMoods: preset.moods.length ? preset.moods : settings.allowedMoods }
-      : { selectedMoodPath: preset.moods.length ? preset.moods : settings.selectedMoodPath };
+      ? { allowedMoods: availablePresetMoods.length ? availablePresetMoods : settings.allowedMoods }
+      : { selectedMoodPath: availablePresetMoods.length ? availablePresetMoods : settings.selectedMoodPath };
     onChange({
       moodBlendMode: preset.mode,
       selectedMoodPreset: preset.id,
@@ -280,6 +347,15 @@ export default function MoodBlendingBetaPanel({ settings, onChange, serverId, li
   const updateSlider = (key: keyof Pick<MoodBlendBetaSettings, "moodStrength" | "transitionSmoothness" | "moodStrictness" | "fallbackTolerance" | "bridgeTrackPreference" | "moodVariety" | "conflictSensitivity">, value: number) => {
     onChange({ [key]: value, selectedMoodPreset: "custom" } as Partial<MoodBlendBetaSettings>);
   };
+
+  const emptyMessage = (() => {
+    if (loadingMoods) return "Loading selectable moods...";
+    if (moodStatus === "not_enriched") return "Mood enrichment has not been run for this library.";
+    if (moodStatus === "pending") return "Mood enrichment is still running. Selectable moods will appear when processing finishes.";
+    if (moodStatus === "empty") return "Mood enrichment is complete, but no usable mood values were found.";
+    if (moodStatus === "error") return moodError || "Moods could not be loaded. Retry or check the server logs.";
+    return "";
+  })();
 
   return (
     <section className={styles.panel} aria-label="Mood Blending Beta">
@@ -316,11 +392,22 @@ export default function MoodBlendingBetaPanel({ settings, onChange, serverId, li
             <h4>{settings.moodBlendMode === "mixed_mood" ? "Allowed Moods" : "Mood Flow"}</h4>
             <p className={styles.helper}>Choose how the playlist should move from one mood to the next.</p>
           </div>
-          <button type="button" className={styles.secondaryButton} onClick={clearMoods} disabled={!enabled || activeMoods.length === 0}>Clear</button>
+          <div className={styles.selectorActions}>
+            <button type="button" className={styles.secondaryButton} onClick={selectAllMoods} disabled={!canPickMoods || moodOptions.length === 0}>Select all</button>
+            <button type="button" className={styles.secondaryButton} onClick={reverseMoods} disabled={!enabled || activeMoods.length < 2}>Reverse</button>
+            <button type="button" className={styles.secondaryButton} onClick={clearMoods} disabled={!enabled || activeMoods.length === 0}>Clear</button>
+          </div>
         </div>
 
-        {moodOptions.length === 0 && !loadingMoods ? (
-          <p className={styles.emptyState}>Run mood enrichment to unlock selectable mood blending.</p>
+        {emptyMessage ? (
+          <div className={`${styles.emptyState} ${moodStatus === "error" ? styles.errorState : ""}`}>
+            <p>{emptyMessage}</p>
+            {moodStatus === "error" && (
+              <button type="button" className={styles.secondaryButton} onClick={() => setRetryNonce((current) => current + 1)}>
+                <RefreshCw size={14} /> Retry
+              </button>
+            )}
+          </div>
         ) : (
           <div className={styles.pickerRow}>
             <label className={styles.field}>
@@ -338,7 +425,7 @@ export default function MoodBlendingBetaPanel({ settings, onChange, serverId, li
               <select className={styles.select} value={selectedAddMood} onChange={(event) => setSelectedAddMood(event.target.value)} disabled={!canPickMoods}>
                 <option value="">{loadingMoods ? "Loading..." : "Choose mood"}</option>
                 {filteredMoodOptions.map((mood) => (
-                  <option key={mood.name} value={mood.name}>{titleCase(mood.name)} ({mood.count})</option>
+                  <option key={mood.normalizedName} value={mood.normalizedName}>{mood.name} ({mood.count})</option>
                 ))}
               </select>
             </label>
@@ -351,13 +438,25 @@ export default function MoodBlendingBetaPanel({ settings, onChange, serverId, li
         {filteredMoodOptions.length > 0 && canPickMoods && (
           <div className={styles.chipRow}>
             {filteredMoodOptions.slice(0, 8).map((mood) => (
-              <button key={mood.name} type="button" className={styles.chip} onClick={() => addMood(mood.name)}>
-                <span>{titleCase(mood.name)}</span>
+              <button key={mood.normalizedName} type="button" className={styles.chip} onClick={() => addMood(mood.normalizedName)} aria-label={`Add ${mood.name}, ${mood.count} tracks`}>
+                <span>{mood.name}</span>
                 <small>{mood.count}</small>
               </button>
             ))}
           </div>
         )}
+
+        {moodStatus === "available" && (
+          <div className={styles.libraryMoodSummary}>
+            <span><strong>{tracksWithMood.toLocaleString()}</strong> with mood</span>
+            <span><strong>{tracksWithoutMood.toLocaleString()}</strong> without mood</span>
+            <span><strong>{moodOptions.length.toLocaleString()}</strong> unique moods</span>
+            {pendingTracks > 0 && <span><strong>{pendingTracks.toLocaleString()}</strong> pending</span>}
+          </div>
+        )}
+
+        {selectionNotice && <p className={styles.noticeText}>{selectionNotice}</p>}
+        {enabled && validationMessage && <p className={styles.validationText}>{validationMessage}</p>}
 
         <div className={styles.flowRow}>
           {activeMoods.length === 0 ? (
@@ -420,15 +519,30 @@ export default function MoodBlendingBetaPanel({ settings, onChange, serverId, li
             <div className={styles.innerCard}>
               <strong>Mood Coverage</strong>
               <div className={styles.coverageList}>
-                {activeMoods.length === 0 ? <p className={styles.helper}>Select moods to see coverage.</p> : activeMoods.map((mood) => (
-                  <div key={mood} className={styles.coverageItem}>
-                    <strong>{titleCase(mood)}</strong>
-                    <span>{(moodCounts.get(mood.toLowerCase()) || 0).toLocaleString()} tracks</span>
-                  </div>
-                ))}
-                {activeTrackCount > 0 && (
+                {activeMoods.length === 0 ? (
+                  <>
+                    <div className={styles.coverageItem}>
+                      <strong>Tracks with mood</strong>
+                      <span>{tracksWithMood.toLocaleString()}</span>
+                    </div>
+                    <div className={styles.coverageItem}>
+                      <strong>Unique moods</strong>
+                      <span>{moodOptions.length.toLocaleString()}</span>
+                    </div>
+                  </>
+                ) : activeMoods.map((mood) => {
+                  const count = moodCounts.get(mood.toLowerCase()) || 0;
+                  const percent = totalTracks > 0 ? Math.round(count / totalTracks * 10000) / 100 : 0;
+                  return (
+                    <div key={mood} className={styles.coverageItem}>
+                      <strong>{titleCase(mood)}</strong>
+                      <span>{count.toLocaleString()} tracks ({percent}%)</span>
+                    </div>
+                  );
+                })}
+                {totalTracks > 0 && (
                   <div className={styles.coverageItem}>
-                    <strong>Missing mood tags</strong>
+                    <strong>Missing mood metadata</strong>
                     <span>{missingMoodPercent}%</span>
                   </div>
                 )}

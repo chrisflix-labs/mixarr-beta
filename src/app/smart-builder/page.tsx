@@ -10,6 +10,7 @@ import MoodBlendingBetaPanel, {
   DEFAULT_MOOD_BLEND_BETA_SETTINGS,
   type MoodBlendBetaSettings,
 } from "@/components/MoodBlendingBetaPanel";
+import { moodBlendValidationMessage } from "@/lib/moodBlendingUi";
 import { BPM_PRESET_VERSION, bpmPresetLabel, bpmPresetRangeLabel, getBpmPreset, type BpmPreset } from "@/lib/bpmPresets";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import { getMoodPreset, moodPresetLabel, MOOD_PRESET_VERSION, type MoodPreset } from "@/lib/moodPresets";
@@ -456,7 +457,8 @@ export default function SmartBuilderPage() {
   const previewSignature = () => JSON.stringify(playlistPayload());
   const isPreviewCurrent = Boolean(playlistPreview && playlistPreview.signature === previewSignature());
   const playlistNameReady = playlistName.trim().length > 0;
-  const canPreview = !loading;
+  const moodValidationMessage = moodBlendValidationMessage(moodBlendSettings);
+  const canPreview = !loading && !moodValidationMessage;
   const canCreate = Boolean(playlistNameReady && playlistPreview && isPreviewCurrent && tracks.length > 0);
 
   const updateRange = (key: keyof RangeState, value: string) => {
@@ -472,6 +474,10 @@ export default function SmartBuilderPage() {
   };
 
   const previewPlaylist = async () => {
+    if (moodValidationMessage) {
+      setPreviewError(moodValidationMessage);
+      return;
+    }
     const payload = playlistPayload();
     if (!payload) return;
     setLoading(true);
