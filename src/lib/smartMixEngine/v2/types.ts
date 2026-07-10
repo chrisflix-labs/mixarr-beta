@@ -40,6 +40,14 @@ export type SmartMixEngineV2Config = {
   moodBlendMode?: SmartMixMoodBlendMode;
   selectedMoodPath?: string[];
   allowedMoods?: string[];
+  moodStrength?: number;
+  transitionSmoothness?: number;
+  moodStrictness?: number;
+  fallbackTolerance?: number;
+  bridgeTrackPreference?: number;
+  moodVariety?: number;
+  conflictSensitivity?: number;
+  selectedMoodPreset?: string;
   [key: string]: unknown;
 };
 

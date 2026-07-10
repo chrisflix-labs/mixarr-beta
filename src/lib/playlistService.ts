@@ -45,6 +45,7 @@ const v2SoftMetadataFilterFields = new Set<string>(["popularity", "energy", "val
 const maxPlaylistSize = Number(process.env.MAX_PLAYLIST_SIZE || 5000);
 const supportedRegenerationModes = ["replace_all", "keep_some"] as const;
 const supportedKeepPercents = [25, 50] as const;
+const moodBlendSliderSchema = z.coerce.number().int().min(0).max(100);
 
 export type RegenerationMode = typeof supportedRegenerationModes[number];
 export type RegenerationKeepPercent = typeof supportedKeepPercents[number];
@@ -129,6 +130,14 @@ export const playlistConfigSchema = z.object({
   moodBlendMode: z.enum(moodBlendModes).default("off"),
   selectedMoodPath: z.array(z.string().trim().min(1).max(40)).max(12).default([]),
   allowedMoods: z.array(z.string().trim().min(1).max(40)).max(12).default([]),
+  moodStrength: moodBlendSliderSchema.default(65),
+  transitionSmoothness: moodBlendSliderSchema.default(70),
+  moodStrictness: moodBlendSliderSchema.default(60),
+  fallbackTolerance: moodBlendSliderSchema.default(35),
+  bridgeTrackPreference: moodBlendSliderSchema.default(60),
+  moodVariety: moodBlendSliderSchema.default(45),
+  conflictSensitivity: moodBlendSliderSchema.default(70),
+  selectedMoodPreset: z.string().trim().max(80).default("balanced_flow"),
   engineVersion: z.enum(smartMixEngineVersions).default(SMART_MIX_ENGINE_V1),
 }).merge(playlistOptionsSchema);
 
@@ -1064,6 +1073,14 @@ export async function previewPlaylistTracks({
     moodCurve: moodDiagnostics.moodCurve || null,
     moodCoverage: moodDiagnostics.moodCoverage || null,
     moodWarnings: moodDiagnostics.moodWarnings || [],
+    moodStrength: moodDiagnostics.moodStrength || config.moodStrength,
+    transitionSmoothness: moodDiagnostics.transitionSmoothness || config.transitionSmoothness,
+    moodStrictness: moodDiagnostics.moodStrictness || config.moodStrictness,
+    fallbackTolerance: moodDiagnostics.fallbackTolerance || config.fallbackTolerance,
+    bridgeTrackPreference: moodDiagnostics.bridgeTrackPreference || config.bridgeTrackPreference,
+    moodVariety: moodDiagnostics.moodVariety || config.moodVariety,
+    conflictSensitivity: moodDiagnostics.conflictSensitivity || config.conflictSensitivity,
+    selectedMoodPreset: moodDiagnostics.selectedMoodPreset || config.selectedMoodPreset,
     moodFallbackCount: moodDiagnostics.moodFallbackCount || 0,
     moodConflictCount: moodDiagnostics.moodConflictCount || 0,
     multiMoodBridgeTracks: moodDiagnostics.multiMoodBridgeTracks || [],
@@ -1629,6 +1646,14 @@ function buildRegenerationPreviewPayload({
       moodCurve: moodBlendSummary?.moodCurve || null,
       moodCoverage: moodBlendSummary?.moodCoverage || null,
       moodWarnings: moodBlendSummary?.moodWarnings || [],
+      moodStrength: moodBlendSummary?.moodStrength || config.moodStrength,
+      transitionSmoothness: moodBlendSummary?.transitionSmoothness || config.transitionSmoothness,
+      moodStrictness: moodBlendSummary?.moodStrictness || config.moodStrictness,
+      fallbackTolerance: moodBlendSummary?.fallbackTolerance || config.fallbackTolerance,
+      bridgeTrackPreference: moodBlendSummary?.bridgeTrackPreference || config.bridgeTrackPreference,
+      moodVariety: moodBlendSummary?.moodVariety || config.moodVariety,
+      conflictSensitivity: moodBlendSummary?.conflictSensitivity || config.conflictSensitivity,
+      selectedMoodPreset: moodBlendSummary?.selectedMoodPreset || config.selectedMoodPreset,
       moodFallbackCount: moodBlendSummary?.moodFallbackCount || 0,
       moodConflictCount: moodBlendSummary?.moodConflictCount || 0,
       missingMoodCount: moodBlendSummary?.missingMoodCount || 0,

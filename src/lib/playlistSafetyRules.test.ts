@@ -98,6 +98,35 @@ describe("playlist safety rules", () => {
     assert.equal(summarizePlaylistSafetyRules(config), "Safety rules: avoid back-to-back artists, warn below 10 tracks");
   });
 
+  it("saves beta mood blending settings in playlist configs", () => {
+    const config = playlistConfigSchema.parse({
+      rules: [],
+      limit: 25,
+      engineVersion: "v2",
+      moodBlendMode: "smooth_transition",
+      selectedMoodPath: ["Happy", "Energetic", "Party"],
+      moodStrength: 77,
+      transitionSmoothness: 88,
+      moodStrictness: 62,
+      fallbackTolerance: 28,
+      bridgeTrackPreference: 74,
+      moodVariety: 41,
+      conflictSensitivity: 79,
+      selectedMoodPreset: "high_energy_ramp",
+    });
+
+    assert.equal(config.moodBlendMode, "smooth_transition");
+    assert.deepEqual(config.selectedMoodPath, ["Happy", "Energetic", "Party"]);
+    assert.equal(config.moodStrength, 77);
+    assert.equal(config.transitionSmoothness, 88);
+    assert.equal(config.moodStrictness, 62);
+    assert.equal(config.fallbackTolerance, 28);
+    assert.equal(config.bridgeTrackPreference, 74);
+    assert.equal(config.moodVariety, 41);
+    assert.equal(config.conflictSensitivity, 79);
+    assert.equal(config.selectedMoodPreset, "high_energy_ramp");
+  });
+
   it("does not warn about repeated artists when repeats are within max tracks per artist", () => {
     const config = configWithSafety({
       avoidSameArtistBackToBack: false,

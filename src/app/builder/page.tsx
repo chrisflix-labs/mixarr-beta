@@ -5,6 +5,10 @@ import axios from "axios";
 import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks, Ban, ShieldCheck, Sparkles, Info, SlidersHorizontal } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
+import MoodBlendingBetaPanel, {
+  DEFAULT_MOOD_BLEND_BETA_SETTINGS,
+  type MoodBlendBetaSettings,
+} from "@/components/MoodBlendingBetaPanel";
 import { isMoodPresetRuleField, moodPresetLabel } from "@/lib/moodPresets";
 import {
   builtInSmartMixTuningPresets,
@@ -70,7 +74,7 @@ type BpmPresetMetadata = {
 };
 
 type EngineVersion = "v1" | "v2";
-type MoodBlendMode = "off" | "smooth_transition" | "strict_matching" | "mixed_mood";
+type MoodBlendMode = MoodBlendBetaSettings["moodBlendMode"];
 type TuningSliderKey = Exclude<keyof SmartMixTuningConfig, "avoidRecentlyUsedTracks" | "presetName" | "tuningVersion">;
 
 type SavedRule = {
@@ -186,15 +190,6 @@ function presetValueForConfig(config: SmartMixTuningConfig, customPresets: Smart
   return preset ? tuningPresetSelectValue(preset) : "custom";
 }
 
-function parseMoodList(value: string) {
-  return value
-    .split(/->|>|,|\n/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .filter((item, index, items) => items.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
-    .slice(0, 12);
-}
-
 function moodBlendLabel(mode?: MoodBlendMode) {
   if (mode === "smooth_transition") return "Smooth Transition";
   if (mode === "strict_matching") return "Strict Matching";
@@ -265,9 +260,7 @@ export default function BuilderPage() {
   const [bpmPresetMetadata, setBpmPresetMetadata] = useState<BpmPresetMetadata>({});
   const [engineVersion, setEngineVersion] = useState<EngineVersion>("v1");
   const [tuningConfig, setTuningConfig] = useState<SmartMixTuningConfig>(() => normalizeSmartMixTuningConfig(DEFAULT_SMART_MIX_TUNING));
-  const [moodBlendMode, setMoodBlendMode] = useState<MoodBlendMode>("off");
-  const [moodPathInput, setMoodPathInput] = useState("");
-  const [allowedMoodsInput, setAllowedMoodsInput] = useState("");
+  const [moodBlendSettings, setMoodBlendSettings] = useState<MoodBlendBetaSettings>(DEFAULT_MOOD_BLEND_BETA_SETTINGS);
   const [customTuningPresets, setCustomTuningPresets] = useState<SmartMixTuningPreset[]>([]);
   const [selectedTuningPreset, setSelectedTuningPreset] = useState(tuningPresetSelectValue(builtInSmartMixTuningPresets[0]));
   const [customTuningPresetName, setCustomTuningPresetName] = useState("");
@@ -476,9 +469,31 @@ export default function BuilderPage() {
     const mode = incoming.moodBlendMode === "smooth_transition" || incoming.moodBlendMode === "strict_matching" || incoming.moodBlendMode === "mixed_mood"
       ? incoming.moodBlendMode as MoodBlendMode
       : "off";
-    setMoodBlendMode(mode);
-    setMoodPathInput(Array.isArray(incoming.selectedMoodPath) ? incoming.selectedMoodPath.join(" -> ") : "");
-    setAllowedMoodsInput(Array.isArray(incoming.allowedMoods) ? incoming.allowedMoods.join(", ") : "");
+    setMoodBlendSettings({
+      ...DEFAULT_MOOD_BLEND_BETA_SETTINGS,
+      moodBlendMode: mode,
+      selectedMoodPath: Array.isArray(incoming.selectedMoodPath) ? incoming.selectedMoodPath : [],
+      allowedMoods: Array.isArray(incoming.allowedMoods) ? incoming.allowedMoods : [],
+      moodStrength: Number.isFinite(Number(incoming.moodStrength)) ? Number(incoming.moodStrength) : DEFAULT_MOOD_BLEND_BETA_SETTINGS.moodStrength,
+      transitionSmoothness: Number.isFinite(Number(incoming.transitionSmoothness)) ? Number(incoming.transitionSmoothness) : DEFAULT_MOOD_BLEND_BETA_SETTINGS.transitionSmoothness,
+      moodStrictness: Number.isFinite(Number(incoming.moodStrictness)) ? Number(incoming.moodStrictness) : mode === "strict_matching" ? 85 : mode === "mixed_mood" ? 50 : DEFAULT_MOOD_BLEND_BETA_SETTINGS.moodStrictness,
+      fallbackTolerance: Number.isFinite(Number(incoming.fallbackTolerance)) ? Number(incoming.fallbackTolerance) : DEFAULT_MOOD_BLEND_BETA_SETTINGS.fallbackTolerance,
+      bridgeTrackPreference: Number.isFinite(Number(incoming.bridgeTrackPreference)) ? Number(incoming.bridgeTrackPreference) : DEFAULT_MOOD_BLEND_BETA_SETTINGS.bridgeTrackPreference,
+      moodVariety: Number.isFinite(Number(incoming.moodVariety)) ? Number(incoming.moodVariety) : DEFAULT_MOOD_BLEND_BETA_SETTINGS.moodVariety,
+      conflictSensitivity: Number.isFinite(Number(incoming.conflictSensitivity)) ? Number(incoming.conflictSensitivity) : DEFAULT_MOOD_BLEND_BETA_SETTINGS.conflictSensitivity,
+      selectedMoodPreset: typeof incoming.selectedMoodPreset === "string" ? incoming.selectedMoodPreset : DEFAULT_MOOD_BLEND_BETA_SETTINGS.selectedMoodPreset,
+    });
+  };
+
+  const updateMoodBlendSettings = (patch: Partial<MoodBlendBetaSettings>) => {
+    setMoodBlendSettings((current) => {
+      const next = { ...current, ...patch };
+      if (current.moodBlendMode !== "off" || next.moodBlendMode !== "off") {
+        setEngineVersion("v2");
+      }
+      return next;
+    });
+    clearPreview();
   };
 
   const updateTuningConfig = (patch: Partial<SmartMixTuningConfig>) => {
@@ -579,9 +594,17 @@ export default function BuilderPage() {
     },
     engineVersion,
     tuningConfig: normalizeSmartMixTuningConfig(tuningConfig),
-    moodBlendMode,
-    selectedMoodPath: moodBlendMode === "smooth_transition" || moodBlendMode === "strict_matching" ? parseMoodList(moodPathInput) : [],
-    allowedMoods: moodBlendMode === "mixed_mood" ? parseMoodList(allowedMoodsInput) : [],
+    moodBlendMode: moodBlendSettings.moodBlendMode,
+    selectedMoodPath: moodBlendSettings.moodBlendMode === "mixed_mood" ? [] : moodBlendSettings.selectedMoodPath,
+    allowedMoods: moodBlendSettings.moodBlendMode === "mixed_mood" ? moodBlendSettings.allowedMoods : [],
+    moodStrength: moodBlendSettings.moodStrength,
+    transitionSmoothness: moodBlendSettings.transitionSmoothness,
+    moodStrictness: moodBlendSettings.moodStrictness,
+    fallbackTolerance: moodBlendSettings.fallbackTolerance,
+    bridgeTrackPreference: moodBlendSettings.bridgeTrackPreference,
+    moodVariety: moodBlendSettings.moodVariety,
+    conflictSensitivity: moodBlendSettings.conflictSensitivity,
+    selectedMoodPreset: moodBlendSettings.selectedMoodPreset,
     ...smartPresetMetadata,
     ...moodPresetMetadata,
     ...bpmPresetMetadata,
@@ -632,6 +655,14 @@ export default function BuilderPage() {
     moodBlendMode: filters.moodBlendMode || "off",
     selectedMoodPath: filters.selectedMoodPath || [],
     allowedMoods: filters.allowedMoods || [],
+    moodStrength: filters.moodStrength ?? DEFAULT_MOOD_BLEND_BETA_SETTINGS.moodStrength,
+    transitionSmoothness: filters.transitionSmoothness ?? DEFAULT_MOOD_BLEND_BETA_SETTINGS.transitionSmoothness,
+    moodStrictness: filters.moodStrictness ?? DEFAULT_MOOD_BLEND_BETA_SETTINGS.moodStrictness,
+    fallbackTolerance: filters.fallbackTolerance ?? DEFAULT_MOOD_BLEND_BETA_SETTINGS.fallbackTolerance,
+    bridgeTrackPreference: filters.bridgeTrackPreference ?? DEFAULT_MOOD_BLEND_BETA_SETTINGS.bridgeTrackPreference,
+    moodVariety: filters.moodVariety ?? DEFAULT_MOOD_BLEND_BETA_SETTINGS.moodVariety,
+    conflictSensitivity: filters.conflictSensitivity ?? DEFAULT_MOOD_BLEND_BETA_SETTINGS.conflictSensitivity,
+    selectedMoodPreset: filters.selectedMoodPreset || DEFAULT_MOOD_BLEND_BETA_SETTINGS.selectedMoodPreset,
     engineVersion: (filters.engineVersion === "v2" ? "v2" : "v1") as EngineVersion,
     pinnedTrackIds: filters.pinnedTrackIds || [],
     excludedTrackIds: filters.excludedTrackIds || [],
@@ -1501,62 +1532,12 @@ export default function BuilderPage() {
           </label>
         </div>
 
-        {/* Mood Blending */}
-        <div className={`glass-panel ${styles.panel}`}>
-          <div className={styles.sectionTitleRow}>
-            <h3>Mood Blending</h3>
-            <Sparkles size={18} />
-          </div>
-          <p className={styles.panelSubtext}>Guide Smart Mix v2 through mood tags without replacing BPM, energy, or recommendation tuning.</p>
-          <div className={styles.moodBlendGrid}>
-            <label className={styles.optionLabel}>
-              Mood Blend Mode
-              <select
-                value={moodBlendMode}
-                onChange={(e) => {
-                  setMoodBlendMode(e.target.value as MoodBlendMode);
-                  setEngineVersion("v2");
-                  clearPreview();
-                }}
-                className={styles.select}
-              >
-                <option value="off">Off</option>
-                <option value="smooth_transition">Smooth Transition</option>
-                <option value="strict_matching">Strict Matching</option>
-                <option value="mixed_mood">Mixed Mood</option>
-              </select>
-            </label>
-            {moodBlendMode === "mixed_mood" ? (
-              <label className={styles.optionLabel}>
-                Allowed Moods
-                <input
-                  value={allowedMoodsInput}
-                  onChange={(e) => {
-                    setAllowedMoodsInput(e.target.value);
-                    setEngineVersion("v2");
-                    clearPreview();
-                  }}
-                  placeholder="Chill, Focus, Ambient"
-                  className={styles.input}
-                />
-              </label>
-            ) : (
-              <label className={styles.optionLabel}>
-                Mood Path
-                <input
-                  value={moodPathInput}
-                  onChange={(e) => {
-                    setMoodPathInput(e.target.value);
-                    setEngineVersion("v2");
-                    clearPreview();
-                  }}
-                  placeholder="Happy -> Energetic -> Party"
-                  className={styles.input}
-                />
-              </label>
-            )}
-          </div>
-        </div>
+        <MoodBlendingBetaPanel
+          settings={moodBlendSettings}
+          onChange={updateMoodBlendSettings}
+          serverId={serverId}
+          libraryId={libraryId}
+        />
 
         {/* Safety Rules */}
         <div className={`glass-panel ${styles.panel}`}>

@@ -19,6 +19,14 @@ type NormalizedMoodBlendConfig = {
   allowedMoods: string[];
   activeMoods: string[];
   enabled: boolean;
+  moodStrength: number;
+  transitionSmoothness: number;
+  moodStrictness: number;
+  fallbackTolerance: number;
+  bridgeTrackPreference: number;
+  moodVariety: number;
+  conflictSensitivity: number;
+  selectedMoodPreset: string;
 };
 
 type MoodBlendScoreResult = {
@@ -108,6 +116,42 @@ function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
 }
 
+function normalizeSlider(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.round(clamp(parsed, 0, 100));
+}
+
+function normalizePreset(value: unknown) {
+  return typeof value === "string" && value.trim()
+    ? value.trim().slice(0, 80)
+    : "custom";
+}
+
+function moodStrengthFactor(value: number) {
+  return 0.35 + value / 100;
+}
+
+function strictnessFactor(value: number) {
+  return 0.4 + value / 100;
+}
+
+function fallbackPenaltyFactor(value: number) {
+  return clamp(1 + (35 - value) / 100, 0.35, 1.9);
+}
+
+function bridgePreferenceFactor(value: number) {
+  return 0.4 + value / 100;
+}
+
+function varietyFactor(value: number) {
+  return 0.55 + value / 100;
+}
+
+function conflictSensitivityFactor(value: number) {
+  return 0.3 + value / 100;
+}
+
 function roundScore(value: number) {
   return Math.round(value * 1000) / 1000;
 }
@@ -177,6 +221,7 @@ export function normalizeMoodBlendConfig(config: Partial<SmartMixEngineV2Config>
   const mixedMoods = allowedMoods.length > 0 ? allowedMoods : selectedMoodPath;
   const activeMoods = moodBlendMode === "mixed_mood" ? mixedMoods : pathMoods;
   const enabled = moodBlendMode !== "off" && activeMoods.length > 0;
+  const defaultStrictness = moodBlendMode === "strict_matching" ? 85 : moodBlendMode === "mixed_mood" ? 50 : 60;
 
   return {
     moodBlendMode: enabled ? moodBlendMode : "off",
@@ -184,6 +229,14 @@ export function normalizeMoodBlendConfig(config: Partial<SmartMixEngineV2Config>
     allowedMoods: mixedMoods,
     activeMoods,
     enabled,
+    moodStrength: normalizeSlider(config.moodStrength, 65),
+    transitionSmoothness: normalizeSlider(config.transitionSmoothness, 70),
+    moodStrictness: normalizeSlider(config.moodStrictness, defaultStrictness),
+    fallbackTolerance: normalizeSlider(config.fallbackTolerance, 35),
+    bridgeTrackPreference: normalizeSlider(config.bridgeTrackPreference, 60),
+    moodVariety: normalizeSlider(config.moodVariety, 45),
+    conflictSensitivity: normalizeSlider(config.conflictSensitivity, 70),
+    selectedMoodPreset: normalizePreset(config.selectedMoodPreset),
   };
 }
 
@@ -316,7 +369,7 @@ function selectedMoodsMayConflict(moods: string[], adjacentOnly = false) {
   return false;
 }
 
-export function moodZoneForPosition(position: number, limit: number, selectedMoodPath: string[]) {
+export function moodZoneForPosition(position: number, limit: number, selectedMoodPath: string[], transitionSmoothness = 70) {
   if (selectedMoodPath.length === 0) {
     return { targetMood: null, adjacentMoods: [] as string[], sectionIndex: 0 };
   }
@@ -326,9 +379,10 @@ export function moodZoneForPosition(position: number, limit: number, selectedMoo
   const sectionStart = sectionIndex / selectedMoodPath.length;
   const sectionEnd = (sectionIndex + 1) / selectedMoodPath.length;
   const progress = sectionEnd === sectionStart ? 0 : ((position + 0.5) / safeLimit - sectionStart) / (sectionEnd - sectionStart);
+  const blendWindow = 0.15 + normalizeSlider(transitionSmoothness, 70) / 100 * 0.25;
   const adjacentMoods = [
-    ...(sectionIndex > 0 && progress < 0.35 ? [selectedMoodPath[sectionIndex - 1]] : []),
-    ...(sectionIndex < selectedMoodPath.length - 1 && progress > 0.65 ? [selectedMoodPath[sectionIndex + 1]] : []),
+    ...(sectionIndex > 0 && progress < blendWindow ? [selectedMoodPath[sectionIndex - 1]] : []),
+    ...(sectionIndex < selectedMoodPath.length - 1 && progress > 1 - blendWindow ? [selectedMoodPath[sectionIndex + 1]] : []),
   ];
 
   return {
@@ -458,7 +512,12 @@ export function scoreMoodBlendForTrack<TTrack extends Record<string, any>>({
   const normalizedMoodTags = getNormalizedTrackMoods(track);
   const moodTags = normalizedMoodTags.map((tag) => tag.canonical);
   const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
-  const factor = tuningWeightFactor(tuning.moodWeight);
+  const factor = tuningWeightFactor(tuning.moodWeight) * moodStrengthFactor(blend.moodStrength);
+  const strictFactor = strictnessFactor(blend.moodStrictness);
+  const fallbackFactor = fallbackPenaltyFactor(blend.fallbackTolerance);
+  const bridgeFactor = bridgePreferenceFactor(blend.bridgeTrackPreference);
+  const variety = varietyFactor(blend.moodVariety);
+  const conflictFactor = conflictSensitivityFactor(blend.conflictSensitivity);
   const emptyData: SmartMixMoodBlendTrackData = {
     mode: blend.moodBlendMode,
     moodTags,
@@ -475,7 +534,7 @@ export function scoreMoodBlendForTrack<TTrack extends Record<string, any>>({
   if (!blend.enabled) return { score: 0, data: emptyData };
 
   if (blend.moodBlendMode === "smooth_transition") {
-    const zone = moodZoneForPosition(position, limit, blend.selectedMoodPath);
+    const zone = moodZoneForPosition(position, limit, blend.selectedMoodPath, blend.transitionSmoothness);
     const zoneMoods = [zone.targetMood, ...zone.adjacentMoods].filter((mood): mood is string => Boolean(mood));
     const match = bestMoodMatch({
       track,
@@ -493,10 +552,10 @@ export function scoreMoodBlendForTrack<TTrack extends Record<string, any>>({
     let score = moodScoreToBonus(match.score, factor) + scoreByProfileDistance(profileDistance, 2.5) * factor;
 
     if (targetMatches.length > 0) score += 1.5 * factor;
-    if (bridge) score += 3.5 * factor;
+    if (bridge) score += 3.5 * factor * bridgeFactor;
     if (match.level === "energy_bpm") score += 1 * factor;
-    if (isFinalMoodFallback(match.level)) score -= 2 * factor;
-    if (conflict) score -= 5 * factor;
+    if (isFinalMoodFallback(match.level)) score -= 2 * factor * fallbackFactor;
+    if (conflict) score -= 5 * factor * conflictFactor;
 
     return {
       score: roundScore(score),
@@ -531,15 +590,16 @@ export function scoreMoodBlendForTrack<TTrack extends Record<string, any>>({
 
   if (blend.moodBlendMode === "strict_matching") {
     if (match.level === "exact" || match.level === "alias") score += Math.min(2, match.matchingMoods.length - 1) * 1.75 * factor;
-    else if (moodTags.length > 0) score -= 6 * factor;
-    else score -= 2.5 * factor;
-    if (conflict) score -= 5 * factor;
+    else if (moodTags.length > 0) score -= 6 * factor * strictFactor;
+    else score -= 2.5 * factor * fallbackFactor * strictFactor;
+    if (conflict) score -= 5 * factor * conflictFactor;
   } else {
-    if (matches.length > 0) score += Math.min(3, matches.length - 1) * 2 * factor;
+    if (matches.length > 0) score += Math.min(3, matches.length - 1) * 2 * factor * variety;
     else if (match.level === "energy_bpm") score += 1 * factor;
-    else if (isFinalMoodFallback(match.level)) score -= 2 * factor;
-    if (multiMatch) score += 2.5 * factor;
-    if (conflict) score -= 4.5 * factor;
+    else if (isFinalMoodFallback(match.level)) score -= 2 * factor * fallbackFactor;
+    if (multiMatch) score += 2.5 * factor * bridgeFactor;
+    if (conflict) score -= 4.5 * factor * conflictFactor;
+    if (!multiMatch && matches.length > 0 && blend.moodVariety < 30) score += 1.25 * factor;
   }
 
   return {
@@ -718,6 +778,12 @@ export function buildMoodWarnings<TTrack extends Record<string, any>>({
   if (missingTagCount > 0) {
     warnings.push("Some tracks are missing mood tags. Smart Mix used energy/BPM scoring for those tracks where possible.");
   }
+  if (blend.moodStrength > 80 && missingTagCount / Math.max(1, tracks.length) > 0.3) {
+    warnings.push("Mood Strength is high, but many candidate tracks are missing mood tags.");
+  }
+  if (blend.moodStrictness > 80 && blend.fallbackTolerance < 25) {
+    warnings.push("Strictness is high and fallback tolerance is low. Consider relaxing one of them if the preview feels too narrow.");
+  }
   if (fallbackCount > 0) {
     warnings.push(`Smart Mix used ${fallbackCount} generic fallback track${fallbackCount === 1 ? "" : "s"} after relaxing mood matching.`);
   }
@@ -731,7 +797,9 @@ export function buildMoodWarnings<TTrack extends Record<string, any>>({
       const relatedCoverage = moodCoverage
         ? moodCoverage.exact + moodCoverage.alias + moodCoverage.adjacent + moodCoverage.related + moodCoverage.fallbackCompatible
         : coverage.library[mood] || 0;
-      return relatedCoverage < Math.max(2, Math.ceil(config.limit / Math.max(1, activeMoods.length) * 0.4));
+      const strictMultiplier = 0.25 + blend.moodStrictness / 100;
+      const fallbackRelief = blend.fallbackTolerance / 250;
+      return relatedCoverage < Math.max(2, Math.ceil(config.limit / Math.max(1, activeMoods.length) * (strictMultiplier - fallbackRelief)));
     });
     if (weakMood) warnings.push(`Mood transition may feel uneven because ${weakMood} has low library coverage.`);
   } else if (blend.moodBlendMode === "strict_matching") {
@@ -766,6 +834,14 @@ export function summarizeMoodBlend<TTrack extends Record<string, any>>({
     moodCurve: buildMoodCurve({ tracks, config }),
     moodCoverage,
     moodWarnings,
+    moodStrength: blend.moodStrength,
+    transitionSmoothness: blend.transitionSmoothness,
+    moodStrictness: blend.moodStrictness,
+    fallbackTolerance: blend.fallbackTolerance,
+    bridgeTrackPreference: blend.bridgeTrackPreference,
+    moodVariety: blend.moodVariety,
+    conflictSensitivity: blend.conflictSensitivity,
+    selectedMoodPreset: blend.selectedMoodPreset,
     moodFallbackCount: tracks.filter((track) => track.moodBlend?.isMoodFallback).length,
     moodConflictCount: tracks.filter((track) => track.moodBlend?.isMoodConflict).length,
     multiMoodBridgeTracks: tracks.filter((track) => track.moodBlend?.isMultiMoodBridge).map((track) => track.id || track.title).filter(Boolean),

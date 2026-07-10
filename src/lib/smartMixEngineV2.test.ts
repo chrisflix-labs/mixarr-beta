@@ -4,6 +4,7 @@ import {
   getNormalizedTrackMoods,
   getSmartMixMetadataFallbacks,
   getTrackMoodTags,
+  normalizeMoodBlendConfig,
   normalizeSmartMixTuningConfig,
   runSmartMixEngineV2,
   scoreSmartMixTrack,
@@ -298,6 +299,90 @@ describe("Smart Mix Engine v2 foundation", () => {
     assert.equal(result.diagnostics.moodBlendMode, "off");
     assert.equal(result.diagnostics.moodCurve, null);
     assert.deepEqual(result.diagnostics.moodWarnings, []);
+  });
+
+  it("normalizes beta mood blending controls with defaults", () => {
+    const blend = normalizeMoodBlendConfig({
+      moodBlendMode: "strict_matching",
+      selectedMoodPath: ["Happy", "Party"],
+      moodStrength: 150,
+      fallbackTolerance: -10,
+      selectedMoodPreset: "strict_mood_lock",
+    });
+
+    assert.equal(blend.moodBlendMode, "strict_matching");
+    assert.deepEqual(blend.selectedMoodPath, ["happy", "party"]);
+    assert.equal(blend.moodStrength, 100);
+    assert.equal(blend.transitionSmoothness, 70);
+    assert.equal(blend.moodStrictness, 85);
+    assert.equal(blend.fallbackTolerance, 0);
+    assert.equal(blend.bridgeTrackPreference, 60);
+    assert.equal(blend.moodVariety, 45);
+    assert.equal(blend.conflictSensitivity, 70);
+    assert.equal(blend.selectedMoodPreset, "strict_mood_lock");
+  });
+
+  it("passes beta mood blending controls into engine diagnostics", () => {
+    const result = runV2([
+      moodTrack("happy", ["Happy"]),
+      moodTrack("party", ["Party"]),
+    ], {
+      ...config,
+      limit: 2,
+      moodBlendMode: "smooth_transition",
+      selectedMoodPath: ["Happy", "Party"],
+      moodStrength: 82,
+      transitionSmoothness: 90,
+      moodStrictness: 68,
+      fallbackTolerance: 22,
+      bridgeTrackPreference: 75,
+      moodVariety: 35,
+      conflictSensitivity: 81,
+      selectedMoodPreset: "smooth_journey",
+    });
+
+    assert.equal(result.diagnostics.moodStrength, 82);
+    assert.equal(result.diagnostics.transitionSmoothness, 90);
+    assert.equal(result.diagnostics.moodStrictness, 68);
+    assert.equal(result.diagnostics.fallbackTolerance, 22);
+    assert.equal(result.diagnostics.bridgeTrackPreference, 75);
+    assert.equal(result.diagnostics.moodVariety, 35);
+    assert.equal(result.diagnostics.conflictSensitivity, 81);
+    assert.equal(result.diagnostics.selectedMoodPreset, "smooth_journey");
+  });
+
+  it("uses mood strength and fallback tolerance to tune mood blend scores", () => {
+    const weak = scoreSmartMixTrack(moodTrack("happy", ["Happy"]), {
+      ...config,
+      limit: 1,
+      moodBlendMode: "strict_matching",
+      selectedMoodPath: ["Happy"],
+      moodStrength: 20,
+    });
+    const strong = scoreSmartMixTrack(moodTrack("happy", ["Happy"]), {
+      ...config,
+      limit: 1,
+      moodBlendMode: "strict_matching",
+      selectedMoodPath: ["Happy"],
+      moodStrength: 95,
+    });
+    const lowFallback = scoreSmartMixTrack(moodTrack("missing", []), {
+      ...config,
+      limit: 1,
+      moodBlendMode: "strict_matching",
+      selectedMoodPath: ["Happy"],
+      fallbackTolerance: 0,
+    });
+    const highFallback = scoreSmartMixTrack(moodTrack("missing", []), {
+      ...config,
+      limit: 1,
+      moodBlendMode: "strict_matching",
+      selectedMoodPath: ["Happy"],
+      fallbackTolerance: 100,
+    });
+
+    assert.ok((strong.scoreBreakdown.moodBlend || 0) > (weak.scoreBreakdown.moodBlend || 0));
+    assert.ok((highFallback.scoreBreakdown.moodBlend || 0) > (lowFallback.scoreBreakdown.moodBlend || 0));
   });
 
   it("normalizes mood metadata from strings, arrays, separators, casing, aliases, and nested fields", () => {

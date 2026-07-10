@@ -6,6 +6,10 @@ import Link from "next/link";
 import { AlertTriangle, ArrowLeft, Ban, BookMarked, CheckCircle2, ListChecks, Play, RefreshCw, Save, Sparkles, Upload } from "lucide-react";
 import BpmPresetPicker from "@/components/BpmPresetPicker";
 import MoodPresetPicker from "@/components/MoodPresetPicker";
+import MoodBlendingBetaPanel, {
+  DEFAULT_MOOD_BLEND_BETA_SETTINGS,
+  type MoodBlendBetaSettings,
+} from "@/components/MoodBlendingBetaPanel";
 import { BPM_PRESET_VERSION, bpmPresetLabel, bpmPresetRangeLabel, getBpmPreset, type BpmPreset } from "@/lib/bpmPresets";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import { getMoodPreset, moodPresetLabel, MOOD_PRESET_VERSION, type MoodPreset } from "@/lib/moodPresets";
@@ -28,7 +32,7 @@ type SafetyRules = {
   minimumTrackCount: string;
 };
 
-type MoodBlendMode = "off" | "smooth_transition" | "strict_matching" | "mixed_mood";
+type MoodBlendMode = MoodBlendBetaSettings["moodBlendMode"];
 
 type RangeState = {
   bpmMin: string;
@@ -185,15 +189,6 @@ function bpmRangeMatchesPreset(ranges: RangeState, preset?: BpmPreset | null) {
   return ranges.bpmMin === min && ranges.bpmMax === max;
 }
 
-function parseMoodList(value: string) {
-  return value
-    .split(/->|>|,|\n/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .filter((item, index, items) => items.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
-    .slice(0, 12);
-}
-
 function moodBlendLabel(mode?: MoodBlendMode) {
   if (mode === "smooth_transition") return "Smooth Transition";
   if (mode === "strict_matching") return "Strict Matching";
@@ -237,9 +232,7 @@ export default function SmartBuilderPage() {
   const [ranges, setRanges] = useState<RangeState>(emptyRanges);
   const [moodPresetMetadata, setMoodPresetMetadata] = useState<MoodPresetMetadata>({});
   const [bpmPresetMetadata, setBpmPresetMetadata] = useState<BpmPresetMetadata>({});
-  const [moodBlendMode, setMoodBlendMode] = useState<MoodBlendMode>("off");
-  const [moodPathInput, setMoodPathInput] = useState("");
-  const [allowedMoodsInput, setAllowedMoodsInput] = useState("");
+  const [moodBlendSettings, setMoodBlendSettings] = useState<MoodBlendBetaSettings>(DEFAULT_MOOD_BLEND_BETA_SETTINGS);
   const [safetyRules, setSafetyRules] = useState<SafetyRules>({
     avoidSameArtistBackToBack: true,
     limitTracksPerArtist: true,
@@ -280,6 +273,11 @@ export default function SmartBuilderPage() {
     setPlaylistPreview(null);
     setPreviewError("");
     setNotice("");
+  };
+
+  const updateMoodBlendSettings = (patch: Partial<MoodBlendBetaSettings>) => {
+    setMoodBlendSettings((current) => ({ ...current, ...patch }));
+    clearPreview();
   };
 
   const selectPreset = (preset: SmartPlaylistPreset) => {
@@ -429,9 +427,17 @@ export default function SmartBuilderPage() {
         minimumTrackCount: safetyRules.minimumTrackCount || undefined,
       },
       engineVersion: "v2" as const,
-      moodBlendMode,
-      selectedMoodPath: moodBlendMode === "smooth_transition" || moodBlendMode === "strict_matching" ? parseMoodList(moodPathInput) : [],
-      allowedMoods: moodBlendMode === "mixed_mood" ? parseMoodList(allowedMoodsInput) : [],
+      moodBlendMode: moodBlendSettings.moodBlendMode,
+      selectedMoodPath: moodBlendSettings.moodBlendMode === "mixed_mood" ? [] : moodBlendSettings.selectedMoodPath,
+      allowedMoods: moodBlendSettings.moodBlendMode === "mixed_mood" ? moodBlendSettings.allowedMoods : [],
+      moodStrength: moodBlendSettings.moodStrength,
+      transitionSmoothness: moodBlendSettings.transitionSmoothness,
+      moodStrictness: moodBlendSettings.moodStrictness,
+      fallbackTolerance: moodBlendSettings.fallbackTolerance,
+      bridgeTrackPreference: moodBlendSettings.bridgeTrackPreference,
+      moodVariety: moodBlendSettings.moodVariety,
+      conflictSensitivity: moodBlendSettings.conflictSensitivity,
+      selectedMoodPreset: moodBlendSettings.selectedMoodPreset,
       ...(selectedPreset
         ? {
             smartPresetId: selectedPreset.id,
@@ -703,37 +709,12 @@ export default function SmartBuilderPage() {
               <label className={styles.fieldLabel}>Popularity min<input value={ranges.popularityMin} onChange={(event) => updateRange("popularityMin", event.target.value)} className={styles.input} /></label>
               <label className={styles.fieldLabel}>Popularity max<input value={ranges.popularityMax} onChange={(event) => updateRange("popularityMax", event.target.value)} className={styles.input} /></label>
             </div>
-            <div className={styles.moodBlendBox}>
-              <div className={styles.moodBlendHeader}>
-                <div>
-                  <h4>Mood Blending</h4>
-                  <p>Guide how Smart Mix v2 moves between mood tags while keeping BPM, energy, and tuning active.</p>
-                </div>
-                <span>{moodBlendLabel(moodBlendMode)}</span>
-              </div>
-              <div className={styles.formGrid}>
-                <label className={styles.fieldLabel}>
-                  Mood Blend Mode
-                  <select value={moodBlendMode} onChange={(event) => { setMoodBlendMode(event.target.value as MoodBlendMode); clearPreview(); }} className={styles.select}>
-                    <option value="off">Off</option>
-                    <option value="smooth_transition">Smooth Transition</option>
-                    <option value="strict_matching">Strict Matching</option>
-                    <option value="mixed_mood">Mixed Mood</option>
-                  </select>
-                </label>
-                {moodBlendMode === "mixed_mood" ? (
-                  <label className={styles.fieldLabel}>
-                    Allowed Moods
-                    <input value={allowedMoodsInput} onChange={(event) => { setAllowedMoodsInput(event.target.value); clearPreview(); }} placeholder="Chill, Focus, Ambient" className={styles.input} />
-                  </label>
-                ) : (
-                  <label className={styles.fieldLabel}>
-                    Mood Path
-                    <input value={moodPathInput} onChange={(event) => { setMoodPathInput(event.target.value); clearPreview(); }} placeholder="Happy -> Energetic -> Party" className={styles.input} />
-                  </label>
-                )}
-              </div>
-            </div>
+            <MoodBlendingBetaPanel
+              settings={moodBlendSettings}
+              onChange={updateMoodBlendSettings}
+              serverId={serverId}
+              libraryId={libraryId}
+            />
             </div>
 
             <div className={styles.panel}>

@@ -49,6 +49,14 @@ export type SmartMixEngineV2RunResult<TTrack extends Record<string, any>> = {
     moodCurve: any;
     moodCoverage: any;
     moodWarnings: string[];
+    moodStrength: number;
+    transitionSmoothness: number;
+    moodStrictness: number;
+    fallbackTolerance: number;
+    bridgeTrackPreference: number;
+    moodVariety: number;
+    conflictSensitivity: number;
+    selectedMoodPreset: string;
     moodFallbackCount: number;
     moodConflictCount: number;
     multiMoodBridgeTracks: string[];
@@ -197,6 +205,14 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
       moodCurve: moodBlendSummary.moodCurve,
       moodCoverage: moodBlendSummary.moodCoverage,
       moodWarnings: moodBlendSummary.moodWarnings,
+      moodStrength: moodBlendSummary.moodStrength,
+      transitionSmoothness: moodBlendSummary.transitionSmoothness,
+      moodStrictness: moodBlendSummary.moodStrictness,
+      fallbackTolerance: moodBlendSummary.fallbackTolerance,
+      bridgeTrackPreference: moodBlendSummary.bridgeTrackPreference,
+      moodVariety: moodBlendSummary.moodVariety,
+      conflictSensitivity: moodBlendSummary.conflictSensitivity,
+      selectedMoodPreset: moodBlendSummary.selectedMoodPreset,
       moodFallbackCount: moodBlendSummary.moodFallbackCount,
       moodConflictCount: moodBlendSummary.moodConflictCount,
       multiMoodBridgeTracks: moodBlendSummary.multiMoodBridgeTracks,
