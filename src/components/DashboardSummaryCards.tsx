@@ -101,7 +101,7 @@ function LibraryHealthCards({ summary }: { summary: DashboardSummary }) {
         <div>
           <strong>Library Health</strong>
           <span>
-            Active: {formatNumber(active)} &middot; Missing: {formatNumber(health.missingLocalFiles)} &middot; Audio incomplete: {formatNumber(health.audioIncomplete)} &middot; Last sync: {formatDate(health.lastSyncAt)} &middot; Updated: {formatDate(health.updatedAt)}
+            Active: {formatNumber(active)} &middot; Audio incomplete: {formatNumber(health.audioIncomplete)} &middot; Last sync: {formatDate(health.lastSyncAt)} &middot; Updated: {formatDate(health.updatedAt)}
           </span>
           {health.status !== "healthy" && <span>{health.message}</span>}
         </div>
@@ -147,7 +147,6 @@ function PlexSyncCard({ summary }: { summary: DashboardSummary }) {
   const duplicateCandidates = counts.duplicateCandidates;
   const conflicts = counts.matchConflicts;
   const issues = [
-    health.missingLocalFiles > 0 ? `${formatNumber(health.missingLocalFiles)} missing local file${health.missingLocalFiles === 1 ? "" : "s"}` : null,
     duplicateCandidates > 0 ? `${formatNumber(duplicateCandidates)} duplicate candidate${duplicateCandidates === 1 ? "" : "s"}` : null,
     conflicts > 0 ? `${formatNumber(conflicts)} match conflict${conflicts === 1 ? "" : "s"}` : null,
   ].filter(Boolean);
@@ -160,7 +159,7 @@ function PlexSyncCard({ summary }: { summary: DashboardSummary }) {
         <>
           <p>Last sync: {formatDate(summary.plexSync.lastJob.finishedAt || summary.plexSync.lastJob.startedAt)}</p>
           <p>Active tracks: {formatNumber(health.activeTracks)}</p>
-          <p>New: {formatNumber(counts.newTracks)} &middot; Updated: {formatNumber(counts.updatedMetadata)} &middot; Missing: {formatNumber(health.missingLocalFiles)}</p>
+          <p>New: {formatNumber(counts.newTracks)} &middot; Updated: {formatNumber(counts.updatedMetadata)}</p>
           {issues.length > 0 && <p>Plex Sync needs attention: {issues.join(", ")}.</p>}
         </>
       ) : (

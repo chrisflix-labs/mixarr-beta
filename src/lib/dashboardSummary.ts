@@ -6,7 +6,7 @@ import {
   getGenreHealthSummary,
   getPopularityHealthSummary,
 } from "./libraryHealth";
-import { resolveLibraryHealthTrackIds } from "./libraryHealthDetails";
+import { buildLibraryHealthTrackWhere } from "./libraryHealthDetails";
 import { getEnrichmentJobStatuses } from "./enrichmentJobStatus";
 import { getUserSyncSettings, resolveMetadataProviderSettings } from "./syncSettings";
 import { isHeartbeatStale, workerStaleThresholdMs } from "./workerHealth";
@@ -69,7 +69,6 @@ export async function getDashboardSummary(userId: string) {
 
   const [
     activeTracks,
-    missingLocalFiles,
     missingBpm,
     missingAudioFeatures,
     partialAudioFeatures,
@@ -86,13 +85,12 @@ export async function getDashboardSummary(userId: string) {
     lastPlexJob,
   ] = await Promise.all([
     prisma.track.count({ where: activeTrackWhere(userId) }),
-    resolveLibraryHealthTrackIds(userId, { category: "missing_local_file", settings: settings.audioFeatures }),
-    resolveLibraryHealthTrackIds(userId, { category: "missing_bpm", settings: settings.audioFeatures }),
-    resolveLibraryHealthTrackIds(userId, { category: "missing_audio_features", settings: settings.audioFeatures, audioFeatureClassification }),
-    resolveLibraryHealthTrackIds(userId, { category: "partial_audio_features", settings: settings.audioFeatures, audioFeatureClassification }),
-    resolveLibraryHealthTrackIds(userId, { category: "pending_audio_features", settings: settings.audioFeatures, audioFeatureClassification }),
-    resolveLibraryHealthTrackIds(userId, { category: "failed_analysis", settings: settings.audioFeatures }),
-    resolveLibraryHealthTrackIds(userId, { category: "complete_audio_features", settings: settings.audioFeatures, audioFeatureClassification }),
+    prisma.track.count({ where: buildLibraryHealthTrackWhere(userId, { category: "missing_bpm", settings: settings.audioFeatures }) }),
+    prisma.track.count({ where: buildLibraryHealthTrackWhere(userId, { category: "missing_audio_features", settings: settings.audioFeatures }) }),
+    prisma.track.count({ where: buildLibraryHealthTrackWhere(userId, { category: "partial_audio_features", settings: settings.audioFeatures }) }),
+    prisma.track.count({ where: buildLibraryHealthTrackWhere(userId, { category: "pending_audio_features", settings: settings.audioFeatures }) }),
+    prisma.track.count({ where: buildLibraryHealthTrackWhere(userId, { category: "failed_analysis", settings: settings.audioFeatures }) }),
+    prisma.track.count({ where: buildLibraryHealthTrackWhere(userId, { category: "complete_audio_features", settings: settings.audioFeatures }) }),
     getBpmHealthSummary(userId),
     getGenreHealthSummary(userId),
     getPopularityHealthSummary(userId),
@@ -129,13 +127,12 @@ export async function getDashboardSummary(userId: string) {
   ]);
 
   const runningHealthJobIsStale = activeHealthJob ? jobIsStale(activeHealthJob) : false;
-  const audioIncomplete = Math.max(0, activeTracks - completeAudioFeatures.count);
-  const hasIssues = missingLocalFiles.count > 0
-    || missingBpm.count > 0
-    || missingAudioFeatures.count > 0
-    || partialAudioFeatures.count > 0
-    || pendingAudioFeatures.count > 0
-    || failedAnalysis.count > 0;
+  const audioIncomplete = Math.max(0, activeTracks - completeAudioFeatures);
+  const hasIssues = missingBpm > 0
+    || missingAudioFeatures > 0
+    || partialAudioFeatures > 0
+    || pendingAudioFeatures > 0
+    || failedAnalysis > 0;
   const lastRefreshFailed = !!lastHealthFailure && (!activeHealthJob || lastHealthFailure.startedAt > activeHealthJob.startedAt);
 
   let status: DashboardStatus = activeTracks > 0 ? "healthy" : "empty";
@@ -180,8 +177,8 @@ export async function getDashboardSummary(userId: string) {
   const plexCounts = summarizeJobMetadata(plexMetadata.counts);
 
   if (process.env.DASHBOARD_DEBUG === "1") {
-    console.log(`[Dashboard] Loaded Library Health summary active=${activeTracks} missing=${missingLocalFiles.count} partialAudio=${partialAudioFeatures.count} pendingAudio=${pendingAudioFeatures.count} status=${status}`);
-    console.log(`[Dashboard] Loaded Data Enrichment summary bpm=${bpm.tracksWithBpm} audio=${completeAudioFeatures.count} genres=${genres.tracksWithGenres} popularity=${popularity.tracksWithPopularity}`);
+    console.log(`[Dashboard] Loaded Library Health summary active=${activeTracks} missingBpm=${missingBpm} partialAudio=${partialAudioFeatures} pendingAudio=${pendingAudioFeatures} status=${status}`);
+    console.log(`[Dashboard] Loaded Data Enrichment summary bpm=${bpm.tracksWithBpm} audio=${completeAudioFeatures} genres=${genres.tracksWithGenres} popularity=${popularity.tracksWithPopularity}`);
   }
 
   return {
@@ -193,13 +190,12 @@ export async function getDashboardSummary(userId: string) {
       statusLabel,
       message,
       activeTracks,
-      missingLocalFiles: missingLocalFiles.count,
-      missingBpm: missingBpm.count,
-      missingAudioFeatures: missingAudioFeatures.count,
-      partialAudioFeatures: partialAudioFeatures.count,
-      pendingAudioFeatures: pendingAudioFeatures.count,
-      failedAnalysis: failedAnalysis.count,
-      completeAudioFeatures: completeAudioFeatures.count,
+      missingBpm,
+      missingAudioFeatures,
+      partialAudioFeatures,
+      pendingAudioFeatures,
+      failedAnalysis,
+      completeAudioFeatures,
       audioIncomplete,
       lastSyncAt: lastSyncLog?.endedAt?.toISOString() ?? lastSyncLog?.startedAt?.toISOString() ?? null,
       lastSyncStatus: lastSyncLog?.status ?? null,
@@ -211,17 +207,17 @@ export async function getDashboardSummary(userId: string) {
     dataEnrichment: {
       totalTracks: activeTracks,
       bpmComplete: bpm.tracksWithBpm,
-      audioComplete: completeAudioFeatures.count,
+      audioComplete: completeAudioFeatures,
       genresComplete: genres.tracksWithGenres,
       popularityComplete: popularity.tracksWithPopularity,
       running: runningEnrichment,
       details: {
         bpm,
         audioFeatures: {
-          complete: completeAudioFeatures.count,
-          partial: partialAudioFeatures.count,
-          missing: missingAudioFeatures.count,
-          pending: pendingAudioFeatures.count,
+          complete: completeAudioFeatures,
+          partial: partialAudioFeatures,
+          missing: missingAudioFeatures,
+          pending: pendingAudioFeatures,
           failed: audioFeatureClassification.failed,
           api: audioFeatureClassification.api,
           local: audioFeatureClassification.local,

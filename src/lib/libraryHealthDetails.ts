@@ -45,7 +45,6 @@ import {
 import {
   getMoodEnergyDisplayMetadata,
   moodEnergyHealthFilters,
-  resolveMoodEnergyTrackIds,
   type MoodEnergyHealthFilter,
 } from "./moodEnergy";
 import { metadataProviderModeKey } from "./syncSettings";
@@ -74,7 +73,6 @@ export const libraryHealthDetailCategories = [
   "failed_bpm_analysis",
   "failed_audio_feature_analysis",
   "missing_from_plex",
-  "missing_local_file",
   "duplicate_candidates",
   "match_conflicts",
   "recently_added_tracks",
@@ -120,7 +118,6 @@ export const libraryHealthDetailLabels: Record<LibraryHealthDetailCategory, stri
   failed_bpm_analysis: "Failed BPM Analysis",
   failed_audio_feature_analysis: "Failed Audio Feature Analysis",
   missing_from_plex: "Missing from Plex",
-  missing_local_file: "Missing Local File",
   duplicate_candidates: "Duplicate Candidates",
   match_conflicts: "Match Conflicts",
   recently_added_tracks: "Recently Added Tracks",
@@ -156,7 +153,6 @@ export const libraryHealthEmptyMessages: Record<LibraryHealthDetailCategory, str
   failed_bpm_analysis: "No failed BPM analysis jobs found.",
   failed_audio_feature_analysis: "No failed audio feature analysis jobs found.",
   missing_from_plex: "No tracks are missing from Plex.",
-  missing_local_file: "No tracks are missing local files.",
   duplicate_candidates: "No duplicate candidates found.",
   match_conflicts: "No match conflicts found.",
   recently_added_tracks: "No recently added tracks from the latest sync.",
@@ -204,18 +200,6 @@ function userTrackWhereForCategory(userId: string, category: ResolvableLibraryHe
   return activeUserTrackWhere(userId, libraryId);
 }
 
-export function missingLocalFileWhere(): Prisma.TrackWhereInput {
-  return {
-    OR: [
-      { localFileStatus: { in: ["missing", "unreadable"] } },
-      { mediaPath: null },
-      { mediaPath: "" },
-      { bpmSource: "local_not_found" },
-      { audioFeature: { is: { OR: [{ source: "local_not_found" }, { tempoSource: "local_not_found" }] } } },
-    ],
-  };
-}
-
 export function skippedAnalysisWhere(settings?: EffectiveAudioFeatureSettings): Prisma.TrackWhereInput {
   return {
     OR: [
@@ -239,11 +223,162 @@ export function healthyTrackWhere(settings?: EffectiveAudioFeatureSettings): Pri
     AND: [
       effectiveBpmTrackWhere(),
       completeAudioFeatureTrackWhere(settings),
-      { NOT: missingLocalFileWhere() },
       { NOT: bpmFailedTrackWhere() },
       { NOT: audioFeatureFailedTrackWhere(settings) },
       { NOT: tooShortAnalysisWhere(settings) },
       { NOT: skippedAnalysisWhere(settings) },
+    ],
+  };
+}
+
+const moodEnergyUnitFieldWhere = { not: null, gte: 0, lte: 1 } as const;
+const usableMoodEnergyStatusWhere: Prisma.AudioFeatureWhereInput = {
+  OR: [
+    { audioFeatureStatus: null },
+    { audioFeatureStatus: { notIn: ["pending", "no_data", "extraction_failed", "analyzer_failed", "too_short"] } },
+  ],
+};
+const nonPlaceholderMoodEnergyWhere: Prisma.AudioFeatureWhereInput = {
+  NOT: {
+    OR: [
+      { source: { in: ["not_found", "estimated", "local_not_found"] } },
+      { source: { contains: "Unknown Mood", mode: "insensitive" } },
+      { audioFeatureSource: { in: ["not_found", "local_not_found"] } },
+    ],
+  },
+};
+
+function moodEnergyFieldWhere(field: "energy" | "mood", settings?: EffectiveAudioFeatureSettings): Prisma.TrackWhereInput {
+  const api = settings?.api ?? settings?.enableApiAudioFeatures ?? true;
+  const local = settings?.local ?? settings?.enableLocalAudioFeatures ?? true;
+  const allowEstimated = settings?.allowEstimated ?? true;
+  const localField = field === "energy" ? "localEnergy" : "localMood";
+  const apiField = field === "energy" ? "apiEnergy" : "apiMood";
+  const effectiveField = field === "energy" ? "effectiveEnergy" : "effectiveMood";
+  const baseField = field === "energy" ? "energy" : "valence";
+  const sourceField = field === "energy" ? "energySource" : "valenceSource";
+  const candidates: Prisma.AudioFeatureWhereInput[] = [];
+
+  if (local) {
+    candidates.push({
+      AND: [
+        usableMoodEnergyStatusWhere,
+        {
+          OR: [
+            { [localField]: moodEnergyUnitFieldWhere } as Prisma.AudioFeatureWhereInput,
+            { AND: [{ [sourceField]: "local_essentia" } as Prisma.AudioFeatureWhereInput, { [baseField]: moodEnergyUnitFieldWhere } as Prisma.AudioFeatureWhereInput] },
+          ],
+        },
+      ],
+    });
+    if (allowEstimated) {
+      candidates.push({
+        AND: [
+          nonPlaceholderMoodEnergyWhere,
+          {
+            OR: [
+              { audioFeatureSource: "local_heuristic" },
+              { [sourceField]: "local_heuristic" } as Prisma.AudioFeatureWhereInput,
+            ],
+          },
+          field === "mood"
+            ? { OR: [{ localMood: moodEnergyUnitFieldWhere }, { valence: moodEnergyUnitFieldWhere }] }
+            : { energy: moodEnergyUnitFieldWhere },
+        ],
+      });
+    }
+  }
+
+  if (api) {
+    candidates.push({
+      AND: [
+        usableMoodEnergyStatusWhere,
+        nonPlaceholderMoodEnergyWhere,
+        {
+          OR: [
+            { [apiField]: moodEnergyUnitFieldWhere } as Prisma.AudioFeatureWhereInput,
+            { AND: [{ [sourceField]: "api" } as Prisma.AudioFeatureWhereInput, { [baseField]: moodEnergyUnitFieldWhere } as Prisma.AudioFeatureWhereInput] },
+          ],
+        },
+      ],
+    });
+    candidates.push({
+      AND: [
+        usableMoodEnergyStatusWhere,
+        nonPlaceholderMoodEnergyWhere,
+        { [effectiveField]: moodEnergyUnitFieldWhere } as Prisma.AudioFeatureWhereInput,
+      ],
+    });
+    candidates.push({
+      AND: [
+        usableMoodEnergyStatusWhere,
+        nonPlaceholderMoodEnergyWhere,
+        { [baseField]: moodEnergyUnitFieldWhere } as Prisma.AudioFeatureWhereInput,
+      ],
+    });
+  }
+
+  return { audioFeature: { is: { OR: candidates.length ? candidates : [{ id: "__no_mood_energy_provider_enabled__" }] } } };
+}
+
+export function moodEnergyCategoryWhere(category: MoodEnergyHealthFilter, settings?: EffectiveAudioFeatureSettings): Prisma.TrackWhereInput {
+  const hasMood = moodEnergyFieldWhere("mood", settings);
+  const hasEnergy = moodEnergyFieldWhere("energy", settings);
+  const complete: Prisma.TrackWhereInput = { AND: [hasMood, hasEnergy] };
+  switch (category) {
+    case "missing_mood":
+      return { NOT: hasMood };
+    case "missing_energy":
+      return { NOT: hasEnergy };
+    case "missing_mood_energy":
+      return { AND: [{ NOT: hasMood }, { NOT: hasEnergy }] };
+    case "partial_mood_energy":
+      return {
+        AND: [
+          { OR: [hasMood, hasEnergy] },
+          { NOT: complete },
+          { NOT: pendingAudioFeatureTrackWhere(settings) },
+          { NOT: audioFeatureFailedTrackWhere(settings) },
+        ],
+      };
+    case "complete_mood_energy":
+      return complete;
+    case "pending_mood_energy":
+      return { AND: [{ NOT: complete }, pendingAudioFeatureTrackWhere(settings)] };
+    case "mood_energy_failed":
+      return { AND: [{ NOT: complete }, audioFeatureFailedTrackWhere(settings)] };
+  }
+}
+
+function lowConfidenceBpmWhere(): Prisma.TrackWhereInput {
+  return {
+    AND: [
+      effectiveBpmTrackWhere(),
+      {
+        OR: [
+          { bpmConfidence: { lt: 0.5 } },
+          { audioFeature: { is: { tempoConfidence: { lt: 0.5 } } } },
+          { bpmSource: { contains: "estimated", mode: "insensitive" } },
+          { bpmSource: { contains: "heuristic", mode: "insensitive" } },
+          bpmSourceConflictWhere(),
+        ],
+      },
+    ],
+  };
+}
+
+function bpmSourceConflictWhere(): Prisma.TrackWhereInput {
+  return {
+    AND: [
+      effectiveBpmTrackWhere(),
+      { localBpm: { gt: 0 } },
+      { apiBpm: { gt: 0 } },
+      {
+        OR: [
+          { localBpm: { gt: 0 } },
+          { apiBpm: { gt: 0 } },
+        ],
+      },
     ],
   };
 }
@@ -263,8 +398,9 @@ export function libraryHealthCategoryWhere(category: LibraryHealthDetailCategory
     case "pending_bpm":
       return pendingBpmBackfillTrackWhere();
     case "low_confidence_bpm":
+      return lowConfidenceBpmWhere();
     case "bpm_source_conflict":
-      return effectiveBpmTrackWhere();
+      return bpmSourceConflictWhere();
     case "missing_audio_features":
       return missingAudioFeatureTrackWhere(settings);
     case "partial_audio_features":
@@ -280,7 +416,7 @@ export function libraryHealthCategoryWhere(category: LibraryHealthDetailCategory
     case "complete_mood_energy":
     case "pending_mood_energy":
     case "mood_energy_failed":
-      return { id: "__mood_energy_requires_resolved_track_ids__" };
+      return moodEnergyCategoryWhere(category, settings);
     case "failed_analysis":
       return { OR: [bpmFailedTrackWhere(), audioFeatureFailedTrackWhere(settings)] };
     case "failed_bpm_analysis":
@@ -289,8 +425,6 @@ export function libraryHealthCategoryWhere(category: LibraryHealthDetailCategory
       return audioFeatureFailedTrackWhere(settings);
     case "missing_from_plex":
       return {};
-    case "missing_local_file":
-      return missingLocalFileWhere();
     case "duplicate_candidates":
       return { duplicateWarning: { not: null } };
     case "match_conflicts":
@@ -345,9 +479,7 @@ type ResolvableLibraryHealthCategory =
   | "popularity_no_data"
   | "popularity_failed"
   | "pending_popularity"
-  | "pending_popularity_backfill"
-  | "available_local_files"
-  | "missing_local_files";
+  | "pending_popularity_backfill";
 
 export type LibraryHealthTrackIdResolution = {
   trackIds: string[];
@@ -363,7 +495,6 @@ export type LibraryHealthTrackIdResolution = {
 
 function normalizeResolvableCategory(category: ResolvableLibraryHealthCategory): ResolvableLibraryHealthCategory {
   if (category === "api_bpm_only") return "api_bpm";
-  if (category === "missing_local_files") return "missing_local_file";
   if (category === "estimated_audio_features") return "heuristic_audio_features";
   if (category === "audio_feature_no_data") return "audio_no_data";
   if (category === "audio_feature_failed") return "audio_failed";
@@ -381,51 +512,6 @@ async function findTrackIds(where: Prisma.TrackWhereInput) {
     select: { id: true },
   });
   return tracks.map((track) => track.id);
-}
-
-async function findBpmMetadataTrackIds(where: Prisma.TrackWhereInput, predicate: (track: any) => boolean) {
-  const tracks = await prisma.track.findMany({
-    where,
-    select: libraryHealthDetailTrackSelect,
-  });
-  return tracks.filter(predicate).map((track) => track.id);
-}
-
-export async function resolveBpmMetadataFilteredTrackIds(userId: string, options: {
-  category: LibraryHealthDetailCategory;
-  libraryId?: string;
-  settings?: EffectiveAudioFeatureSettings;
-  bpmSource?: string;
-  bpmConfidence?: string;
-  bpmConflict?: string;
-  apiImportedOnly?: boolean;
-  noLocalBpm?: boolean;
-  resolvedTrackIds?: string[];
-}) {
-  const active = userTrackWhereForCategory(userId, options.category, options.libraryId);
-  const baseCategory: Prisma.TrackWhereInput = options.resolvedTrackIds
-    ? options.resolvedTrackIds.length
-      ? { id: { in: options.resolvedTrackIds } }
-      : { id: "__library_health_empty_bpm_metadata_filter__" }
-    : libraryHealthCategoryWhere(options.category, options.settings);
-  const tracks = await prisma.track.findMany({
-    where: { AND: [active, baseCategory] },
-    select: libraryHealthDetailTrackSelect,
-  });
-  return tracks.filter((track) => {
-    const metadata = getBpmDisplayMetadata(track);
-    const source = options.bpmSource || "all";
-    const confidence = options.bpmConfidence || "all";
-    if (source !== "all") {
-      if (source === "missing" && metadata.effectiveBpm !== null) return false;
-      if (source !== "missing" && metadata.source !== source) return false;
-    }
-    if (confidence !== "all" && metadata.confidence.toLowerCase() !== confidence) return false;
-    if (options.bpmConflict === "conflicts" && !metadata.hasConflict) return false;
-    if (options.apiImportedOnly && !["api", "deezer", "imported", "plex"].includes(metadata.source)) return false;
-    if (options.noLocalBpm && metadata.localBpm !== null) return false;
-    return true;
-  }).map((track) => track.id);
 }
 
 function resolvableCategoryWhere(category: ResolvableLibraryHealthCategory, settings?: EffectiveAudioFeatureSettings): Prisma.TrackWhereInput {
@@ -454,7 +540,6 @@ function resolvableCategoryWhere(category: ResolvableLibraryHealthCategory, sett
     case "popularity_failed":
     case "pending_popularity_backfill":
       return popularityHealthFilterWhere(category as PopularityHealthFilter);
-    case "available_local_files": return { NOT: missingLocalFileWhere() };
   }
   return { id: "__invalid_library_health_category__" };
 }
@@ -469,26 +554,8 @@ export async function resolveLibraryHealthTrackIds(userId: string, options: {
   const active = userTrackWhereForCategory(userId, options.category, options.libraryId);
   const baseWhere = { AND: [active, resolvableCategoryWhere(category, options.settings)] };
 
-  if ((moodEnergyHealthFilters as readonly string[]).includes(category)) {
-    const trackIds = await resolveMoodEnergyTrackIds(userId, {
-      filter: category as MoodEnergyHealthFilter,
-      libraryId: options.libraryId,
-      settings: options.settings,
-    });
-    return {
-      trackIds,
-      count: trackIds.length,
-      debug: { filter: category, normal: trackIds.length, gap: 0, total: trackIds.length },
-    };
-  }
-
   if (category === "low_confidence_bpm" || category === "bpm_source_conflict") {
-    const trackIds = await findBpmMetadataTrackIds(baseWhere, (track) => {
-      const metadata = getBpmDisplayMetadata(track);
-      return category === "low_confidence_bpm"
-        ? metadata.confidence === "Low"
-        : metadata.hasConflict;
-    });
+    const trackIds = await findTrackIds(baseWhere);
     return {
       trackIds,
       count: trackIds.length,
@@ -556,29 +623,13 @@ export function buildLibraryHealthTrackWhere(userId: string, options: {
   apiImportedOnly?: boolean;
   noLocalBpm?: boolean;
   audioFeatureStatus?: string;
-  localFileStatus?: string;
   failedOnly?: boolean;
   missingDataOnly?: boolean;
   settings?: EffectiveAudioFeatureSettings;
-  audioFeatureGapTrackIds?: string[];
-  resolvedTrackIds?: string[];
 }): Prisma.TrackWhereInput {
-  const audioFeatureGapWhere: Prisma.TrackWhereInput | null = options.audioFeatureGapTrackIds?.length
-    ? { id: { in: options.audioFeatureGapTrackIds } }
-    : null;
-  const resolvedTrackWhere: Prisma.TrackWhereInput | null = options.resolvedTrackIds
-    ? options.resolvedTrackIds.length
-      ? { id: { in: options.resolvedTrackIds } }
-      : { id: "__library_health_empty_resolved_track_set__" }
-    : null;
-  const categoryWhere = resolvedTrackWhere || ((
-    audioFeatureGapWhere
-      && (options.category === "missing_audio_features" || options.category === "pending_audio_features")
-  )
-    ? { OR: [libraryHealthCategoryWhere(options.category, options.settings), audioFeatureGapWhere] }
-    : libraryHealthCategoryWhere(options.category, options.settings));
+  const categoryWhere = libraryHealthCategoryWhere(options.category, options.settings);
   const and: Prisma.TrackWhereInput[] = [
-    activeUserTrackWhere(userId, options.libraryId),
+    userTrackWhereForCategory(userId, options.category, options.libraryId),
     categoryWhere,
   ];
 
@@ -631,16 +682,11 @@ export function buildLibraryHealthTrackWhere(userId: string, options: {
   if (options.noLocalBpm) and.push({ NOT: buildBpmSourceWhereClause("local_bpm") });
   if (options.audioFeatureStatus && options.audioFeatureStatus !== "all") {
     if (options.audioFeatureStatus === "missing") {
-      and.push(audioFeatureGapWhere ? { OR: [missingAudioFeatureTrackWhere(options.settings), audioFeatureGapWhere] } : missingAudioFeatureTrackWhere(options.settings));
+      and.push(missingAudioFeatureTrackWhere(options.settings));
     } else {
       and.push({ audioFeature: { is: { audioFeatureStatus: options.audioFeatureStatus } } });
     }
   }
-  if (options.localFileStatus === "missing") and.push(missingLocalFileWhere());
-  if (options.localFileStatus === "available") and.push({ NOT: missingLocalFileWhere() });
-  if (options.localFileStatus === "unreadable") and.push({ localFileStatus: "unreadable" });
-  if (options.localFileStatus === "unknown") and.push({ localFileStatus: "unknown" });
-  if (options.localFileStatus === "not_checked") and.push({ localFileStatus: "not_checked" });
   if (options.failedOnly) {
     and.push({
       OR: [
@@ -657,8 +703,7 @@ export function buildLibraryHealthTrackWhere(userId: string, options: {
     and.push({
       OR: [
         missingEffectiveBpmTrackWhere(),
-        audioFeatureGapWhere ? { OR: [missingAudioFeatureTrackWhere(options.settings), audioFeatureGapWhere] } : missingAudioFeatureTrackWhere(options.settings),
-        missingLocalFileWhere(),
+        missingAudioFeatureTrackWhere(options.settings),
       ],
     });
   }
@@ -672,8 +717,6 @@ export const libraryHealthDetailTrackSelect = {
   ratingKey: true,
   duration: true,
   mediaPath: true,
-  localFileStatus: true,
-  localFileCheckedAt: true,
   bpm: true,
   apiBpm: true,
   localBpm: true,
@@ -728,18 +771,6 @@ export const libraryHealthDetailTrackSelect = {
     },
   },
 } satisfies Prisma.TrackSelect;
-
-function localFileStatus(track: any) {
-  if (track.localFileStatus === "missing" || track.localFileStatus === "unreadable") return track.localFileStatus;
-  if (track.localFileStatus === "unknown" || track.localFileStatus === "not_checked") return track.localFileStatus;
-  const source = String(track.audioFeature?.source || "").toLowerCase();
-  const tempoSource = String(track.audioFeature?.tempoSource || "").toLowerCase();
-  const bpmSource = String(track.bpmSource || "").toLowerCase();
-  if (!track.mediaPath || source === "local_not_found" || tempoSource === "local_not_found" || bpmSource === "local_not_found") {
-    return "missing";
-  }
-  return "available";
-}
 
 function audioFeatureStatus(track: any, settings?: EffectiveAudioFeatureSettings) {
   const classification = getAudioFeatureHealthStatus(track, settings);
@@ -804,9 +835,6 @@ export function reasonForLibraryHealthTrack(category: LibraryHealthDetailCategor
       return track.audioFeature?.audioFeatureFailureReason || "Local audio feature analysis failed during a previous attempt.";
     case "missing_from_plex":
       return "This track exists in Mixarr but was not returned by the latest Plex library sync.";
-    case "missing_local_file":
-      if (track.localFileStatus === "unreadable") return "Plex still has this track, but Mixarr could not read the local file path.";
-      return "Plex still has this track, but Mixarr could not access the local file path.";
     case "duplicate_candidates":
       return track.duplicateWarning || "This track appears similar to another Plex item based on metadata, file path, or Plex identifiers.";
     case "match_conflicts":
@@ -879,7 +907,6 @@ export function serializeLibraryHealthDetailTrack(track: any, category: LibraryH
     audioFeatureSource: audio.source || track.audioFeature?.audioFeatureSource || null,
     audioFeatureAnalysisScope: track.audioFeature?.audioFeatureAnalysisScope || null,
     audioFeatureConfidence: track.audioFeature?.audioFeatureConfidence ?? null,
-    localFileStatus: localFileStatus(track),
     lastAnalyzed,
     bpmAnalysisStatus: track.bpmAnalysisStatus || null,
     audioFeatureAnalysisStatus: track.audioFeature?.audioFeatureStatus || null,
@@ -920,7 +947,7 @@ export function defaultOrderForLibraryHealth(category: LibraryHealthDetailCatego
 }
 
 export type LibraryHealthInvariantResult = {
-  section: "Audio Features" | "Mood/Energy" | "BPM" | "Genres" | "Popularity" | "Local Files";
+  section: "Audio Features" | "Mood/Energy" | "BPM" | "Genres" | "Popularity";
   ok: boolean;
   message: string;
   counts: Record<string, number>;
@@ -967,7 +994,6 @@ export type LibraryHealthAccuracyDiagnostics = {
     lastScannedCount: number | null;
     activeTrackCount: number;
     missingFromPlexCount: number;
-    missingLocalFileCount: number;
     duplicateCandidateCount: number;
     matchConflictCount: number;
     lastError: string | null;
@@ -997,8 +1023,6 @@ function buildHealthAccuracyDiagnostics(input: {
   missingGenres: number;
   tracksWithPopularity: number;
   missingPopularity: number;
-  availableLocalFiles: number;
-  missingLocalFiles: number;
   audioFeatureClassification: AudioFeatureHealthClassification;
   audioMode: string;
 }): LibraryHealthAccuracyDiagnostics {
@@ -1014,7 +1038,6 @@ function buildHealthAccuracyDiagnostics(input: {
   const moodEnergyOk = moodOk && energyOk && missingBothOk;
   const genresOk = input.totalTracks === input.tracksWithGenres + input.missingGenres;
   const popularityOk = input.totalTracks === input.tracksWithPopularity + input.missingPopularity;
-  const localFilesOk = input.totalTracks === input.availableLocalFiles + input.missingLocalFiles;
 
   const invariants = [
     invariant("Audio Features", {
@@ -1052,11 +1075,6 @@ function buildHealthAccuracyDiagnostics(input: {
       tracksWithPopularity: input.tracksWithPopularity,
       missingPopularity: input.missingPopularity,
     }, popularityOk, popularityOk ? "OK" : "active tracks do not equal tracks with popularity plus missing popularity"),
-    invariant("Local Files", {
-      active: input.totalTracks,
-      availableLocalFiles: input.availableLocalFiles,
-      missingLocalFiles: input.missingLocalFiles,
-    }, localFilesOk, localFilesOk ? "OK" : "active tracks do not equal available plus missing local files"),
   ];
 
   return {
@@ -1073,17 +1091,15 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
   const audioFeatureClassification = await getAudioFeatureHealthClassification(userId, { libraryId, settings });
   const entries = await Promise.all(libraryHealthSummaryCategories.map(async (category) => [
     category,
-    (await resolveLibraryHealthTrackIds(userId, { category, libraryId, settings, audioFeatureClassification })).count,
+    await prisma.track.count({ where: buildLibraryHealthTrackWhere(userId, { category, libraryId, settings }) }),
   ] as const));
   const categories = Object.fromEntries(entries) as Record<LibraryHealthSummaryCategory, number>;
-  const [tracksWithBpm, tracksWithGenres, missingGenres, tracksWithPopularity, missingPopularity, availableLocalFiles, missingLocalFiles] = await Promise.all([
-    resolveLibraryHealthTrackIds(userId, { category: "tracks_with_bpm", libraryId, settings }),
-    resolveLibraryHealthTrackIds(userId, { category: "tracks_with_genres", libraryId, settings }),
-    resolveLibraryHealthTrackIds(userId, { category: "missing_genres", libraryId, settings }),
-    resolveLibraryHealthTrackIds(userId, { category: "tracks_with_popularity", libraryId, settings }),
-    resolveLibraryHealthTrackIds(userId, { category: "missing_popularity", libraryId, settings }),
-    resolveLibraryHealthTrackIds(userId, { category: "available_local_files", libraryId, settings }),
-    resolveLibraryHealthTrackIds(userId, { category: "missing_local_files", libraryId, settings }),
+  const [tracksWithBpm, tracksWithGenres, missingGenres, tracksWithPopularity, missingPopularity] = await Promise.all([
+    prisma.track.count({ where: { AND: [active, resolvableCategoryWhere("tracks_with_bpm", settings)] } }),
+    prisma.track.count({ where: { AND: [active, resolvableCategoryWhere("tracks_with_genres", settings)] } }),
+    prisma.track.count({ where: { AND: [active, resolvableCategoryWhere("missing_genres", settings)] } }),
+    prisma.track.count({ where: { AND: [active, resolvableCategoryWhere("tracks_with_popularity", settings)] } }),
+    prisma.track.count({ where: { AND: [active, resolvableCategoryWhere("missing_popularity", settings)] } }),
   ]);
   const moodEnergy = {
     tracksWithMood: totalTracks - categories.missing_mood,
@@ -1101,13 +1117,11 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
     totalTracks,
     categories,
     moodEnergy,
-    tracksWithBpm: tracksWithBpm.count,
-    tracksWithGenres: tracksWithGenres.count,
-    missingGenres: missingGenres.count,
-    tracksWithPopularity: tracksWithPopularity.count,
-    missingPopularity: missingPopularity.count,
-    availableLocalFiles: availableLocalFiles.count,
-    missingLocalFiles: missingLocalFiles.count,
+    tracksWithBpm,
+    tracksWithGenres,
+    missingGenres,
+    tracksWithPopularity,
+    missingPopularity,
     audioFeatureClassification,
     audioMode,
   });
@@ -1190,7 +1204,6 @@ export async function getLibraryHealthDetailSummary(userId: string, libraryId?: 
     lastScannedCount: typeof plexCounts.scanned === "number" ? plexCounts.scanned : null,
     activeTrackCount: totalTracks,
     missingFromPlexCount: categories.missing_from_plex,
-    missingLocalFileCount: categories.missing_local_file,
     duplicateCandidateCount: categories.duplicate_candidates,
     matchConflictCount: categories.match_conflicts,
     lastError: lastPlexJob?.error || null,

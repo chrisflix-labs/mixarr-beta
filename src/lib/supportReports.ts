@@ -184,7 +184,6 @@ export function buildHealthReport(input: HealthReportInput) {
 - Pending audio features: ${categories.pending_audio_features ?? 0}
 - Missing mood: ${categories.missing_mood ?? 0}
 - Missing energy: ${categories.missing_energy ?? 0}
-- Missing local files: ${categories.missing_local_file ?? 0}
 - Failed analysis: ${categories.failed_analysis ?? 0}
 
 ### Runtime

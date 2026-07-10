@@ -123,6 +123,25 @@ describe("library health", () => {
     assert.match(JSON.stringify(where), /bpmSource/);
   });
 
+  it("uses category-aware sync status scopes for Library Health detail predicates", () => {
+    const missingFromPlex = buildLibraryHealthTrackWhere("user-a", {
+      category: "missing_from_plex",
+      libraryId: "library-a",
+    }) as any;
+    const matchConflicts = buildLibraryHealthTrackWhere("user-a", {
+      category: "match_conflicts",
+      libraryId: "library-a",
+    }) as any;
+    const completeMoodEnergy = buildLibraryHealthTrackWhere("user-a", {
+      category: "complete_mood_energy",
+      libraryId: "library-a",
+    }) as any;
+
+    assert.equal(missingFromPlex.AND[0].syncStatus, "missing");
+    assert.equal(matchConflicts.AND[0].syncStatus, "match_conflict");
+    assert.equal(completeMoodEnergy.AND[0].syncStatus, "active");
+  });
+
   it("splits detected audio feature gaps before returning summary counts", async () => {
     const source = await readFile(path.join(process.cwd(), "src/lib/libraryHealth.ts"), "utf8");
     const details = await readFile(path.join(process.cwd(), "src/lib/libraryHealthDetails.ts"), "utf8");
@@ -136,20 +155,59 @@ describe("library health", () => {
     assert.match(classifier, /enforceAudioFeatureIncompleteInvariant/);
     assert.match(classifier, /pending: invariant\.pending/);
     assert.match(details, /libraryHealthSummaryCategories\.map/);
-    assert.match(details, /resolveLibraryHealthTrackIds\(userId, \{ category, libraryId, settings, audioFeatureClassification \}\)/);
+    assert.match(details, /prisma\.track\.count\(\{ where: buildLibraryHealthTrackWhere\(userId, \{ category, libraryId, settings \}\) \}\)/);
     assert.match(details, /buildHealthAccuracyDiagnostics/);
   });
 
-  it("uses shared Library Health track ID resolution for card counts and detail rows", async () => {
+  it("uses shared Library Health predicates for card counts and detail rows", async () => {
     const details = await readFile(path.join(process.cwd(), "src/lib/libraryHealthDetails.ts"), "utf8");
     const detailRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/tracks/route.ts"), "utf8");
 
-    assert.match(details, /resolveLibraryHealthTrackIds/);
+    assert.match(details, /buildLibraryHealthTrackWhere/);
     assert.match(details, /libraryHealthSummaryCategories\.map/);
-    assert.match(details, /resolveLibraryHealthTrackIds\(userId, \{ category, libraryId, settings, audioFeatureClassification \}\)/);
-    assert.match(detailRoute, /resolveLibraryHealthTrackIds/);
-    assert.match(detailRoute, /resolvedTrackIds: resolved\?\.trackIds/);
-    assert.match(detailRoute, /Count\/detail mismatch/);
+    assert.match(details, /buildLibraryHealthTrackWhere\(userId, \{ category, libraryId, settings \}\)/);
+    assert.match(detailRoute, /buildLibraryHealthTrackWhere/);
+    assert.match(detailRoute, /prisma\.\$transaction/);
+    assert.doesNotMatch(detailRoute, /resolveLibraryHealthTrackIds/);
+    assert.doesNotMatch(detailRoute, /resolvedTrackIds/);
+  });
+
+  it("does not build an unbounded ID list for large Library Health detail categories", async () => {
+    const details = await readFile(path.join(process.cwd(), "src/lib/libraryHealthDetails.ts"), "utf8");
+    const detailRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/tracks/route.ts"), "utf8");
+
+    assert.match(details, /moodEnergyCategoryWhere/);
+    assert.match(details, /case "complete_mood_energy":\s*return complete/);
+    assert.match(detailRoute, /prisma\.track\.count\(\{ where \}\)/);
+    assert.match(detailRoute, /skip: \(page - 1\) \* pageSize/);
+    assert.match(detailRoute, /take: pageSize/);
+    assert.match(detailRoute, /withStableTieBreaker/);
+    assert.doesNotMatch(details, /resolvedTrackIds/);
+    assert.doesNotMatch(detailRoute, /id:\s*\{\s*in:\s*resolved/);
+  });
+
+  it("removes Missing Local Files from Library Health categories, UI, diagnostics, and reports", async () => {
+    const details = await readFile(path.join(process.cwd(), "src/lib/libraryHealthDetails.ts"), "utf8");
+    const page = await readFile(path.join(process.cwd(), "src/app/library-health/page.tsx"), "utf8");
+    const diagnosticsRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/diagnostics/route.ts"), "utf8");
+    const supportReport = await readFile(path.join(process.cwd(), "src/lib/supportReports.ts"), "utf8");
+
+    assert.doesNotMatch(details, /missing_local_file/);
+    assert.doesNotMatch(details, /missingLocalFileCount/);
+    assert.doesNotMatch(page, /Missing Local Files/);
+    assert.doesNotMatch(page, /missing_local_file/);
+    assert.doesNotMatch(page, /Local file status/);
+    assert.doesNotMatch(diagnosticsRoute, /missingLocalFile/);
+    assert.doesNotMatch(supportReport, /Missing local files/);
+  });
+
+  it("does not run filesystem existence checks during sync-time Library Health status capture", async () => {
+    const syncEngine = await readFile(path.join(process.cwd(), "src/lib/syncEngine.ts"), "utf8");
+
+    assert.match(syncEngine, /function localFileStatusForPath/);
+    assert.doesNotMatch(syncEngine, /statSync/);
+    assert.doesNotMatch(syncEngine, /accessSync/);
+    assert.doesNotMatch(syncEngine, /existsSync/);
   });
 
   it("keeps Healthy Tracks out of the default Library Health summary cards", async () => {
@@ -321,8 +379,10 @@ describe("library health", () => {
     const dashboardCards = await readFile(path.join(process.cwd(), "src/components/DashboardSummaryCards.tsx"), "utf8");
 
     assert.match(page, /getDashboardSummary/);
-    assert.match(dashboardSummary, /resolveLibraryHealthTrackIds/);
+    assert.match(dashboardSummary, /buildLibraryHealthTrackWhere/);
     assert.match(dashboardSummary, /complete_audio_features/);
+    assert.doesNotMatch(dashboardSummary, /missing_local_file/);
+    assert.doesNotMatch(dashboardCards, /missingLocalFiles/);
     assert.doesNotMatch(dashboardSummary, /healthy_tracks/);
     assert.doesNotMatch(page, /getLibraryHealth\(user\.id\)/);
     assert.doesNotMatch(page, /getCachedLibraryHealth/);

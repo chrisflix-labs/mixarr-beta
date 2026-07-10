@@ -1,5 +1,4 @@
 import axios from "axios";
-import fs from "fs";
 import prisma from "./prisma";
 import { resolveLimit, type SyncEngineOptions } from "./syncSettings";
 import { syncRunsTotal, syncDurationSeconds } from "./metrics";
@@ -173,16 +172,7 @@ function plexMediaPath(track: any): string | null {
 }
 
 function localFileStatusForPath(mediaPath: string | null): "available" | "missing" | "unreadable" | "unknown" {
-  if (!mediaPath) return "missing";
-  try {
-    const stat = fs.statSync(mediaPath);
-    if (!stat.isFile()) return "unreadable";
-    fs.accessSync(mediaPath, fs.constants.R_OK);
-    return "available";
-  } catch (error: any) {
-    if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return "missing";
-    return "unreadable";
-  }
+  return mediaPath ? "unknown" : "unknown";
 }
 
 function incrementChangeCounts(counts: Record<TrackSyncChangeType, number>, changeTypes: TrackSyncChangeType[]) {

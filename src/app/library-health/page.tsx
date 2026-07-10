@@ -31,7 +31,6 @@ type Category =
   | "failed_bpm_analysis"
   | "failed_audio_feature_analysis"
   | "missing_from_plex"
-  | "missing_local_file"
   | "duplicate_candidates"
   | "match_conflicts"
   | "recently_added_tracks"
@@ -90,7 +89,6 @@ type HealthAccuracyDiagnostics = {
     lastScannedCount: number | null;
     activeTrackCount: number;
     missingFromPlexCount: number;
-    missingLocalFileCount: number;
     duplicateCandidateCount: number;
     matchConflictCount: number;
     lastError: string | null;
@@ -137,7 +135,6 @@ type Track = {
   audioFeatureSource?: string | null;
   audioFeatureAnalysisScope?: string | null;
   audioFeatureConfidence?: number | null;
-  localFileStatus: string;
   lastAnalyzed: string | null;
   failureReason: string | null;
   reason: string;
@@ -167,7 +164,6 @@ const categoryLabels: Record<Category, string> = {
   failed_bpm_analysis: "Failed BPM Analysis",
   failed_audio_feature_analysis: "Failed Audio Feature Analysis",
   missing_from_plex: "Missing from Plex",
-  missing_local_file: "Missing Local File",
   duplicate_candidates: "Duplicate Candidates",
   match_conflicts: "Match Conflicts",
   recently_added_tracks: "Recently Added Tracks",
@@ -203,7 +199,6 @@ const emptyMessages: Record<Category, string> = {
   failed_bpm_analysis: "No failed BPM analysis jobs found.",
   failed_audio_feature_analysis: "No failed audio feature analysis jobs found.",
   missing_from_plex: "No tracks are missing from Plex.",
-  missing_local_file: "No tracks are missing local files.",
   duplicate_candidates: "No duplicate candidates found.",
   match_conflicts: "No match conflicts found.",
   recently_added_tracks: "No recently added tracks from the latest sync.",
@@ -238,7 +233,6 @@ const categoryOrder: Category[] = [
   "failed_bpm_analysis",
   "failed_audio_feature_analysis",
   "missing_from_plex",
-  "missing_local_file",
   "duplicate_candidates",
   "match_conflicts",
   "recently_added_tracks",
@@ -320,7 +314,6 @@ const defaultFilters = {
   apiImportedOnly: false,
   noLocalBpm: false,
   audioFeatureStatus: "all",
-  localFileStatus: "all",
   failedOnly: false,
   missingDataOnly: false,
   sort: "",
@@ -394,6 +387,7 @@ export default function LibraryHealthDetailsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [tracksLoading, setTracksLoading] = useState(false);
+  const [tracksError, setTracksError] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -433,17 +427,20 @@ export default function LibraryHealthDetailsPage() {
 
   const loadTracks = useCallback(async (requestedCategory = category, requestedPage = page) => {
     setTracksLoading(true);
+    setTracksError(null);
     setError(null);
     try {
       const response = await fetch(`/api/library-health/tracks?${buildParams(requestedPage, requestedCategory)}`, { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to load Library Health details. Check logs or try again.");
-      setTracks(data.tracks || []);
+      setTracks(data.items || data.tracks || []);
       setPagination({ page: data.page, pageSize: data.pageSize, total: data.total, totalPages: data.totalPages });
       setCountDetailMismatch(!!data.countDetailMismatch);
       setSelected(new Set());
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load Library Health details. Check logs or try again.");
+      const message = caught instanceof Error ? caught.message : "Unable to load Library Health details. Retry or check the server logs.";
+      setTracksError(message);
+      setError(message);
     } finally {
       setTracksLoading(false);
     }
@@ -464,7 +461,6 @@ export default function LibraryHealthDetailsPage() {
       apiImportedOnly: params.get("apiImportedOnly") === "true",
       noLocalBpm: params.get("noLocalBpm") === "true",
       audioFeatureStatus: params.get("audioFeatureStatus") || "all",
-      localFileStatus: params.get("localFileStatus") || "all",
       failedOnly: params.get("failedOnly") === "true",
       missingDataOnly: params.get("missingDataOnly") === "true",
       sort: params.get("sort") || "",
@@ -541,7 +537,6 @@ export default function LibraryHealthDetailsPage() {
       { key: "pending_mood_energy", label: "Pending Mood/Energy", count: counts?.pending_mood_energy || 0, category: "pending_mood_energy" as Category },
       { key: "mood_energy_failed", label: "Mood/Energy Failed", count: counts?.mood_energy_failed || 0, category: "mood_energy_failed" as Category },
       { key: "failed", label: "Failed Analysis", count: counts?.failed_analysis || 0, category: "failed_analysis" as Category },
-      { key: "missing_local_file", label: "Missing Local Files", count: counts?.missing_local_file || 0, category: "missing_local_file" as Category },
     ].filter((card) => !syncCardKeys.has(card.key) || card.count > 0);
   }, [summary]);
 
@@ -680,11 +675,10 @@ export default function LibraryHealthDetailsPage() {
     || filters.apiImportedOnly
     || filters.noLocalBpm
     || filters.audioFeatureStatus !== "all"
-    || filters.localFileStatus !== "all"
     || filters.failedOnly
     || filters.missingDataOnly
   );
-  const detailMismatch = !tracksLoading && !hasNarrowingFilters && (countDetailMismatch || (tracks.length === 0 && pagination.total === 0 && activeCardCount > 0));
+  const detailMismatch = !tracksLoading && !tracksError && !hasNarrowingFilters && (countDetailMismatch || (pagination.total !== activeCardCount && activeCardCount > 0));
   const emptyMessage = isAudioRetryCategory(category) && tracks.length === 0
     ? "No tracks match this audio-feature health filter."
     : filters.search || filters.artist || filters.album ? "No tracks match this Library Health filter." : emptyMessages[category];
@@ -759,7 +753,7 @@ export default function LibraryHealthDetailsPage() {
               <div>
                 <span>Plex Sync Diagnostics: {summary.diagnostics.plexSyncDiagnostics.lastStatus}</span>
                 <small>
-                  last sync: {formatDate(summary.diagnostics.plexSyncDiagnostics.lastSyncTime)} | scanned: {formatNumber(summary.diagnostics.plexSyncDiagnostics.lastScannedCount)} | active: {formatNumber(summary.diagnostics.plexSyncDiagnostics.activeTrackCount)} | missing from Plex: {formatNumber(summary.diagnostics.plexSyncDiagnostics.missingFromPlexCount)} | missing local files: {formatNumber(summary.diagnostics.plexSyncDiagnostics.missingLocalFileCount)} | duplicates: {formatNumber(summary.diagnostics.plexSyncDiagnostics.duplicateCandidateCount)} | conflicts: {formatNumber(summary.diagnostics.plexSyncDiagnostics.matchConflictCount)}
+                  last sync: {formatDate(summary.diagnostics.plexSyncDiagnostics.lastSyncTime)} | scanned: {formatNumber(summary.diagnostics.plexSyncDiagnostics.lastScannedCount)} | active: {formatNumber(summary.diagnostics.plexSyncDiagnostics.activeTrackCount)} | missing from Plex: {formatNumber(summary.diagnostics.plexSyncDiagnostics.missingFromPlexCount)} | duplicates: {formatNumber(summary.diagnostics.plexSyncDiagnostics.duplicateCandidateCount)} | conflicts: {formatNumber(summary.diagnostics.plexSyncDiagnostics.matchConflictCount)}
                   {summary.diagnostics.plexSyncDiagnostics.lastError ? ` | last error: ${summary.diagnostics.plexSyncDiagnostics.lastError}` : ""}
                 </small>
               </div>
@@ -866,17 +860,6 @@ export default function LibraryHealthDetailsPage() {
             </select>
           </label>
           <label>
-            <span>Local file status</span>
-            <select value={filters.localFileStatus} onChange={(event) => setFilters({ ...filters, localFileStatus: event.target.value })}>
-              <option value="all">All</option>
-              <option value="available">Available</option>
-              <option value="missing">Missing</option>
-              <option value="unreadable">Unreadable</option>
-              <option value="unknown">Unknown</option>
-              <option value="not_checked">Not checked</option>
-            </select>
-          </label>
-          <label>
             <span>Sort by</span>
             <select value={filters.sort} onChange={(event) => setFilters({ ...filters, sort: event.target.value })}>
               <option value="">Default</option>
@@ -929,7 +912,7 @@ export default function LibraryHealthDetailsPage() {
         <div className={styles.tableTop}>
           <div>
             <h3>{categoryLabels[category]}</h3>
-            <p className={styles.muted}>{formatNumber(pagination.total)} matching track{pagination.total === 1 ? "" : "s"}</p>
+            <p className={styles.muted}>{tracksError ? "Unable to load matching tracks." : `${formatNumber(pagination.total)} matching track${pagination.total === 1 ? "" : "s"}`}</p>
           </div>
           <div className={styles.buttonGroup}>
             <button className={styles.secondaryButton} disabled={!tracks.length} onClick={() => setSelected(allVisibleSelected ? new Set() : new Set(tracks.map((track) => track.id)))}>Select all visible</button>
@@ -948,6 +931,11 @@ export default function LibraryHealthDetailsPage() {
 
         {tracksLoading ? (
           <div className={styles.loading}><Loader2 className="animate-spin" size={18} /> Loading tracks...</div>
+        ) : tracksError ? (
+          <div className={styles.error}>
+            <p>Unable to load Library Health details. Retry or check the server logs.</p>
+            <button className={styles.secondaryButton} type="button" onClick={() => void loadTracks(category, page)}><RefreshCw size={15} /> Retry</button>
+          </div>
         ) : detailMismatch ? (
           <div className={styles.error}>Library Health count/detail mismatch detected for this category. Check logs.</div>
         ) : tracks.length === 0 ? (
@@ -974,7 +962,6 @@ export default function LibraryHealthDetailsPage() {
                   <th>Mood confidence</th>
                   <th>Danceability</th>
                   <th>Audio feature status</th>
-                  <th>Local file</th>
                   <th>Last analyzed</th>
                   <th>Failure reason</th>
                   <th>Reason</th>
@@ -1010,7 +997,6 @@ export default function LibraryHealthDetailsPage() {
                       <span className={track.audioFeatureStatus === "complete" ? `${styles.badge} ${styles.okBadge}` : styles.badge}>{track.audioFeatureStatus}</span>
                       <small className={styles.trackMeta}>Source: {track.audioFeatureSource || "-"} | Scope: {formatScope(track.audioFeatureAnalysisScope)} | Confidence: {track.audioFeatureConfidence == null ? "-" : track.audioFeatureConfidence.toFixed(2)}</small>
                     </td>
-                    <td data-label="Local file"><span className={track.localFileStatus === "missing" ? `${styles.badge} ${styles.dangerBadge}` : `${styles.badge} ${styles.okBadge}`}>{track.localFileStatus}</span><small className={`${styles.trackMeta} ${styles.path}`} title={track.mediaPath || ""}>{track.mediaPath || "-"}</small></td>
                     <td data-label="Last analyzed">{formatDate(track.lastAnalyzed)}</td>
                     <td data-label="Failure reason">{track.failureReason || "-"}</td>
                     <td data-label="Reason" className={styles.reason}>{track.bpmConflictReason || track.reason}</td>

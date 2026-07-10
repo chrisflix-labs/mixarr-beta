@@ -6,12 +6,9 @@ import {
   MAX_LIBRARY_HEALTH_PAGE_SIZE,
   buildLibraryHealthTrackWhere,
   defaultOrderForLibraryHealth,
-  getLibraryHealthAudioFeatureGapTrackIds,
   isLibraryHealthDetailCategory,
   libraryHealthDetailTrackSelect,
   orderByForLibraryHealth,
-  resolveBpmMetadataFilteredTrackIds,
-  resolveLibraryHealthTrackIds,
   serializeLibraryHealthDetailTrack,
   type LibraryHealthSort,
 } from "@/lib/libraryHealthDetails";
@@ -30,35 +27,6 @@ function sortFrom(value: string | null): LibraryHealthSort | null {
   return null;
 }
 
-function categoryUsesResolvedTrackIds(category: string) {
-  return category === "missing_audio_features"
-    || category === "pending_audio_features"
-    || category === "partial_audio_features"
-    || category === "missing_mood"
-    || category === "missing_energy"
-    || category === "missing_mood_energy"
-    || category === "partial_mood_energy"
-    || category === "complete_mood_energy"
-    || category === "pending_mood_energy"
-    || category === "mood_energy_failed"
-    || category === "missing_bpm"
-    || category === "api_bpm"
-    || category === "local_bpm"
-    || category === "imported_bpm"
-    || category === "pending_bpm"
-    || category === "low_confidence_bpm"
-    || category === "bpm_source_conflict"
-    || category === "failed_analysis"
-    || category === "missing_from_plex"
-    || category === "missing_local_file"
-    || category === "duplicate_candidates"
-    || category === "match_conflicts"
-    || category === "recently_added_tracks"
-    || category === "recently_updated_tracks"
-    || category === "moved_files"
-    || category === "renamed_tracks";
-}
-
 function hasAdditionalDetailFilters(params: URLSearchParams) {
   return !!(
     params.get("search")?.trim()
@@ -70,10 +38,13 @@ function hasAdditionalDetailFilters(params: URLSearchParams) {
     || params.get("apiImportedOnly") === "true"
     || params.get("noLocalBpm") === "true"
     || (params.get("audioFeatureStatus") && params.get("audioFeatureStatus") !== "all")
-    || (params.get("localFileStatus") && params.get("localFileStatus") !== "all")
     || params.get("failedOnly") === "true"
     || params.get("missingDataOnly") === "true"
   );
+}
+
+function withStableTieBreaker(orderBy: ReturnType<typeof defaultOrderForLibraryHealth>) {
+  return [...orderBy, { id: "asc" as const }];
 }
 
 export async function GET(request: Request) {
@@ -92,40 +63,6 @@ export async function GET(request: Request) {
   const libraryId = params.get("libraryId") || undefined;
   const audioFeatureStatus = params.get("audioFeatureStatus") || undefined;
   const missingDataOnly = params.get("missingDataOnly") === "true";
-  const audioFeatureGapTrackIds = await getLibraryHealthAudioFeatureGapTrackIds(userId, {
-    category,
-    libraryId,
-    settings: audioFeatureSettings,
-    audioFeatureStatus,
-    missingDataOnly,
-  });
-  const resolved = categoryUsesResolvedTrackIds(category)
-    ? await resolveLibraryHealthTrackIds(userId, {
-      category,
-      libraryId,
-      settings: audioFeatureSettings,
-    })
-    : null;
-  const needsBpmMetadataFilter = !!(
-    (params.get("bpmSource") && params.get("bpmSource") !== "all")
-    || (params.get("bpmConfidence") && params.get("bpmConfidence") !== "all")
-    || (params.get("bpmConflict") && params.get("bpmConflict") !== "all")
-    || params.get("apiImportedOnly") === "true"
-    || params.get("noLocalBpm") === "true"
-  );
-  const bpmMetadataTrackIds = needsBpmMetadataFilter
-    ? await resolveBpmMetadataFilteredTrackIds(userId, {
-      category,
-      libraryId,
-      settings: audioFeatureSettings,
-      bpmSource: params.get("bpmSource") || "all",
-      bpmConfidence: params.get("bpmConfidence") || "all",
-      bpmConflict: params.get("bpmConflict") || "all",
-      apiImportedOnly: params.get("apiImportedOnly") === "true",
-      noLocalBpm: params.get("noLocalBpm") === "true",
-      resolvedTrackIds: resolved?.trackIds,
-    })
-    : null;
 
   const where = buildLibraryHealthTrackWhere(userId, {
     category,
@@ -133,54 +70,72 @@ export async function GET(request: Request) {
     search: params.get("search")?.trim() || undefined,
     artist: params.get("artist")?.trim() || undefined,
     album: params.get("album")?.trim() || undefined,
-    bpmSource: needsBpmMetadataFilter ? undefined : params.get("bpmSource") || undefined,
-    bpmConfidence: needsBpmMetadataFilter ? undefined : params.get("bpmConfidence") || undefined,
-    bpmConflict: needsBpmMetadataFilter ? undefined : params.get("bpmConflict") || undefined,
-    apiImportedOnly: needsBpmMetadataFilter ? undefined : params.get("apiImportedOnly") === "true",
-    noLocalBpm: needsBpmMetadataFilter ? undefined : params.get("noLocalBpm") === "true",
+    bpmSource: params.get("bpmSource") || undefined,
+    bpmConfidence: params.get("bpmConfidence") || undefined,
+    bpmConflict: params.get("bpmConflict") || undefined,
+    apiImportedOnly: params.get("apiImportedOnly") === "true",
+    noLocalBpm: params.get("noLocalBpm") === "true",
     audioFeatureStatus,
-    localFileStatus: params.get("localFileStatus") || undefined,
     failedOnly: params.get("failedOnly") === "true",
     missingDataOnly,
     settings: audioFeatureSettings,
-    audioFeatureGapTrackIds,
-    resolvedTrackIds: bpmMetadataTrackIds ?? resolved?.trackIds,
   });
 
   try {
-    const [tracks, total] = await Promise.all([
+    const queryStarted = Date.now();
+    const orderBy = withStableTieBreaker(sort ? orderByForLibraryHealth(sort, direction, category) : defaultOrderForLibraryHealth(category));
+    const [total, tracks] = await prisma.$transaction([
+      prisma.track.count({ where }),
       prisma.track.findMany({
         where,
         select: libraryHealthDetailTrackSelect,
-        orderBy: sort ? orderByForLibraryHealth(sort, direction, category) : defaultOrderForLibraryHealth(category),
+        orderBy,
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      prisma.track.count({ where }),
     ]);
 
     const mode = metadataProviderModeKey(audioFeatureSettings);
-    const expectedTotal = resolved?.count ?? total;
-    const countDetailMismatch = !!resolved && resolved.count !== total && !hasAdditionalDetailFilters(params);
-    if (countDetailMismatch) {
-      console.error(`[LibraryHealth][ERROR] Count/detail mismatch category=${category} cardCount=${resolved.count} detailCount=${total}`);
-    }
-    console.log(`[LibraryHealth] detail filter=${category} returned=${total} total=${expectedTotal} pageRows=${tracks.length} gapCount=${resolved?.debug?.gap ?? audioFeatureGapTrackIds.length} mode=${mode}`);
+    const items = tracks.map((track) => serializeLibraryHealthDetailTrack(track, category, audioFeatureSettings));
+    console.log(`[LibraryHealth] detail filter=${category} total=${total} page=${page} pageSize=${pageSize} pageRows=${tracks.length} libraryId=${libraryId || "all"} filtered=${hasAdditionalDetailFilters(params)} durationMs=${Date.now() - queryStarted} mode=${mode}`);
 
     return NextResponse.json({
-      tracks: tracks.map((track) => serializeLibraryHealthDetailTrack(track, category, audioFeatureSettings)),
+      items,
+      tracks: items,
       total,
-      resolvedTotal: expectedTotal,
-      countDetailMismatch,
+      resolvedTotal: total,
+      countDetailMismatch: false,
       page,
       pageSize,
       totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      category,
       filter: category,
       sort: sort || null,
       direction,
     });
   } catch (error) {
-    console.error("[LibraryHealthDetails] Failed to load tracks", error);
-    return NextResponse.json({ error: "Unable to load Library Health details. Check logs or try again." }, { status: 500 });
+    const prismaError = error as { code?: string };
+    console.error("[LibraryHealthDetails] Failed to load tracks", {
+      category,
+      page,
+      pageSize,
+      libraryId: libraryId || "all",
+      filters: {
+        search: params.get("search")?.trim() || null,
+        artist: params.get("artist")?.trim() || null,
+        album: params.get("album")?.trim() || null,
+        bpmSource: params.get("bpmSource") || null,
+        bpmConfidence: params.get("bpmConfidence") || null,
+        bpmConflict: params.get("bpmConflict") || null,
+        apiImportedOnly: params.get("apiImportedOnly") === "true",
+        noLocalBpm: params.get("noLocalBpm") === "true",
+        audioFeatureStatus,
+        failedOnly: params.get("failedOnly") === "true",
+        missingDataOnly,
+      },
+      prismaCode: prismaError.code || null,
+      error,
+    });
+    return NextResponse.json({ error: "Unable to load Library Health details. Retry or check the server logs." }, { status: 500 });
   }
 }
