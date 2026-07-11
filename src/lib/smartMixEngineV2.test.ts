@@ -4,8 +4,13 @@ import {
   getNormalizedTrackMoods,
   getSmartMixMetadataFallbacks,
   getTrackMoodTags,
+  analyzeBpmTransition,
+  normalizeBpmFlowConfig,
   normalizeMoodBlendConfig,
   normalizeSmartMixTuningConfig,
+  orderTracksByBpmFlow,
+  scoreBpmTransition,
+  summarizeBpmFlow,
   runSmartMixEngineV2,
   scoreSmartMixTrack,
   smartMixEngineLabel,
@@ -138,13 +143,107 @@ describe("Smart Mix Engine v2 foundation", () => {
     assert.equal(tuning.bpmWeight, 90);
     assert.equal(tuning.recommendationStrength, 100);
     assert.equal(tuning.artistVariety, 50);
-    assert.equal(tuning.tuningVersion, "2.0.2");
+    assert.equal(tuning.tuningVersion, "2.0.4");
+    assert.equal(tuning.bpmFlow.maxPreferredGap, 8);
+    assert.equal(tuning.bpmFlow.mode, "DISABLED");
+  });
+
+  it("analyzes direct BPM gaps and ramp direction", () => {
+    const transition = scoreBpmTransition({
+      fromTrack: track("a", { bpm: 92 }),
+      toTrack: track("b", { bpm: 95 }),
+      config: normalizeBpmFlowConfig({ enabled: true, mode: "RAMP_UP", maxPreferredGap: 8 }),
+    });
+
+    assert.equal(transition.rawGap, 3);
+    assert.equal(transition.effectiveGap, 3);
+    assert.equal(transition.direction, "up");
+    assert.equal(transition.directionConflict, false);
+    assert.equal(transition.difficulty, "Easy");
+  });
+
+  it("detects ramp direction conflicts", () => {
+    const transition = scoreBpmTransition({
+      fromTrack: track("a", { bpm: 95 }),
+      toTrack: track("b", { bpm: 92 }),
+      config: normalizeBpmFlowConfig({ enabled: true, mode: "RAMP_UP", maxPreferredGap: 8 }),
+    });
+
+    assert.equal(transition.direction, "down");
+    assert.equal(transition.directionConflict, true);
+    assert.ok((transition.score || 0) < 90);
+  });
+
+  it("recognizes half-time and double-time BPM matches without mutating BPM", () => {
+    const enabled = analyzeBpmTransition({
+      fromBpm: 75,
+      toBpm: 150,
+      maxPreferredGap: 8,
+      halfDoubleTimeMatching: true,
+    });
+    const near = analyzeBpmTransition({
+      fromBpm: 74,
+      toBpm: 149,
+      maxPreferredGap: 8,
+      halfDoubleTimeMatching: true,
+    });
+    const disabled = analyzeBpmTransition({
+      fromBpm: 75,
+      toBpm: 150,
+      maxPreferredGap: 8,
+      halfDoubleTimeMatching: false,
+    });
+    const invalid = analyzeBpmTransition({
+      fromBpm: 74,
+      toBpm: 170,
+      maxPreferredGap: 8,
+      halfDoubleTimeMatching: true,
+    });
+
+    assert.equal(enabled.effectiveGap, 0);
+    assert.equal(enabled.relationship, "half-time");
+    assert.equal(near.relationship, "half-time");
+    assert.equal(near.effectiveGap, 0.5);
+    assert.equal(disabled.effectiveGap, 75);
+    assert.equal(disabled.relationship, "direct");
+    assert.equal(invalid.relationship, "direct");
+  });
+
+  it("labels missing BPM as unknown and large strict jumps as hard", () => {
+    const config = normalizeBpmFlowConfig({ enabled: true, mode: "NATURAL", maxPreferredGap: 8, allowJumps: false });
+    const missingLeft = scoreBpmTransition({ fromTrack: track("a"), toTrack: track("b", { bpm: 120 }), config });
+    const missingRight = scoreBpmTransition({ fromTrack: track("a", { bpm: 120 }), toTrack: track("b"), config });
+    const hard = scoreBpmTransition({ fromTrack: track("a", { bpm: 100 }), toTrack: track("b", { bpm: 140 }), config });
+
+    assert.equal(missingLeft.difficulty, "Unknown");
+    assert.equal(missingRight.difficulty, "Unknown");
+    assert.equal(hard.difficulty, "Hard");
+    assert.equal(hard.exceedsHardGap, true);
+  });
+
+  it("orders ramp-up BPM flow deterministically while preserving the track set", () => {
+    const tuning = normalizeSmartMixTuningConfig({
+      bpmFlow: { enabled: true, mode: "RAMP_UP", strength: 90, maxPreferredGap: 8, allowJumps: false },
+    });
+    const candidates = [
+      track("102", { bpm: 102 }),
+      track("92", { bpm: 92 }),
+      track("98", { bpm: 98 }),
+      track("95", { bpm: 95 }),
+    ];
+    const ordered = orderTracksByBpmFlow({ tracks: candidates, tuningConfig: tuning });
+    const summary = summarizeBpmFlow(ordered, tuning.bpmFlow);
+
+    assert.deepEqual(ordered.map((item) => item.id), ["92", "95", "98", "102"]);
+    assert.equal(new Set(ordered.map((item) => item.id)).size, candidates.length);
+    assert.equal(summary.directionConflictCount, 0);
+    assert.equal(summary.largestEffectiveGap, 4);
   });
 
   it("lets discovery tuning favor lower popularity candidates without filtering popular tracks", () => {
     const discoveryConfig = {
       ...config,
-      tuningConfig: {
+      tuningConfig: normalizeSmartMixTuningConfig({
         recommendationStrength: 65,
         familiarityDiscoveryBalance: 0,
         popularityWeight: 100,
@@ -156,7 +255,7 @@ describe("Smart Mix Engine v2 foundation", () => {
         avoidRecentlyUsedTracks: false,
         presetName: "Deep Cuts",
         tuningVersion: "2.0.2",
-      },
+      }),
     };
     const popular = scoreSmartMixTrack(track("popular", {
       bpm: 120,

@@ -18,6 +18,13 @@ import {
   type SmartMixTuningConfig,
   type SmartMixTuningPreset,
 } from "@/lib/smartMixEngine/v2/tuning";
+import {
+  orderTracksByBpmFlow,
+  summarizeBpmFlow,
+  type BpmFlowConfig,
+  type BpmFlowMode,
+  type BpmStartingMode,
+} from "@/lib/smartMixEngine/v2/bpmFlow";
 import styles from "./builder.module.css";
 
 type Rule = {
@@ -76,7 +83,7 @@ type BpmPresetMetadata = {
 
 type EngineVersion = "v1" | "v2";
 type MoodBlendMode = MoodBlendBetaSettings["moodBlendMode"];
-type TuningSliderKey = Exclude<keyof SmartMixTuningConfig, "avoidRecentlyUsedTracks" | "presetName" | "tuningVersion">;
+type TuningSliderKey = Exclude<keyof SmartMixTuningConfig, "avoidRecentlyUsedTracks" | "bpmFlow" | "presetName" | "tuningVersion">;
 
 type SavedRule = {
   id: string;
@@ -129,6 +136,10 @@ type PlaylistPreviewSummary = {
   moodFallbackCount?: number;
   moodConflictCount?: number;
   missingMoodCount?: number;
+  bpmFlow?: ReturnType<typeof summarizeBpmFlow> | null;
+  bpmFlowScore?: number | null;
+  bpmFlowMode?: BpmFlowMode;
+  bpmFlowWarnings?: string[];
   artistLimitApplied?: boolean;
   albumLimitApplied?: boolean;
   artistSpacingApplied?: boolean;
@@ -220,6 +231,40 @@ function moodCoverageLines(coverage: any): string[] {
     const related = (counts.alias || 0) + (counts.adjacent || 0) + (counts.related || 0);
     return `${mood}: ${counts.exact || 0} exact / ${related} related / ${counts.fallbackCompatible || 0} fallback-compatible`;
   });
+}
+
+const bpmFlowModes: Array<{ mode: BpmFlowMode; label: string; description: string }> = [
+  { mode: "RAMP_UP", label: "Ramp Up", description: "Prefer equal or gradually faster tracks." },
+  { mode: "RAMP_DOWN", label: "Ramp Down", description: "Prefer equal or gradually slower tracks." },
+  { mode: "STEADY", label: "Keep Steady", description: "Minimize drift around a central BPM." },
+  { mode: "NATURAL", label: "Natural Flow", description: "Use BPM as one smoothness factor." },
+  { mode: "DISABLED", label: "No BPM Ordering", description: "Keep normal Smart Mix ordering." },
+];
+
+function bpmStrengthLabel(value: number) {
+  if (value <= 20) return "Flexible";
+  if (value <= 50) return "Balanced";
+  if (value <= 80) return "Strong";
+  return "Strict";
+}
+
+function bpmModeLabel(mode?: string) {
+  return bpmFlowModes.find((item) => item.mode === mode)?.label || "No BPM Ordering";
+}
+
+function transitionBadgeText(transition: any) {
+  if (!transition) return "";
+  if (transition.difficulty === "Unknown") return "BPM unknown";
+  const direction = transition.normalizedToBpm != null && transition.normalizedFromBpm != null
+    ? transition.normalizedToBpm - transition.normalizedFromBpm
+    : null;
+  const signedGap = direction == null
+    ? `${transition.effectiveGap ?? "-"} BPM`
+    : `${direction >= 0 ? "+" : ""}${Math.round(direction)} BPM`;
+  if (transition.relationship !== "direct" && transition.relationship !== "unknown") {
+    return `${transition.relationship} match - ${Math.round(transition.fromBpm)} -> ${Math.round(transition.toBpm)} BPM`;
+  }
+  return `${transition.difficulty} transition - ${signedGap}`;
 }
 
 export default function BuilderPage() {
@@ -507,6 +552,32 @@ export default function BuilderPage() {
     setSelectedTuningPreset("custom");
     clearPreview();
   };
+
+  const updateBpmFlow = (patch: Partial<BpmFlowConfig>) => {
+    setEngineVersion("v2");
+    setTuningConfig((current) => normalizeSmartMixTuningConfig({
+      ...current,
+      bpmFlow: {
+        ...current.bpmFlow,
+        ...patch,
+        enabled: patch.mode === "DISABLED" ? false : patch.enabled ?? current.bpmFlow.enabled,
+      },
+      presetName: "Custom",
+    }));
+    setSelectedTuningPreset("custom");
+    clearPreview();
+  };
+
+  const resetBpmFlow = () => updateBpmFlow({
+    enabled: false,
+    mode: "DISABLED",
+    strength: 70,
+    maxPreferredGap: 8,
+    allowJumps: false,
+    halfDoubleTimeMatching: true,
+    startingBpmMode: "AUTO",
+    customStartingBpm: null,
+  });
 
   const selectTuningPreset = (value: string) => {
     setSelectedTuningPreset(value);
@@ -1209,6 +1280,44 @@ export default function BuilderPage() {
     setDraggedTrackId("");
   };
 
+  const sortPreviewByBpmFlow = (mode?: BpmFlowMode) => {
+    if (!playlistPreview || tracks.length < 2) return;
+    if (!window.confirm("Sort the current preview by BPM flow? This preserves the same tracks but replaces the current order.")) return;
+    const nextTuning = normalizeSmartMixTuningConfig({
+      ...tuningConfig,
+      bpmFlow: {
+        ...tuningConfig.bpmFlow,
+        enabled: true,
+        mode: mode || tuningConfig.bpmFlow.mode || "NATURAL",
+      },
+    });
+    const sorted = orderTracksByBpmFlow({ tracks, tuningConfig: nextTuning, baseScore: (track) => Number(track.score) || 0 });
+    const bpmFlow = summarizeBpmFlow(sorted, nextTuning.bpmFlow);
+    const withTransitions = sorted.map((track, index) => ({
+      ...track,
+      bpmTransitionFromPrevious: index === 0 ? null : bpmFlow.transitionAnalyses[index - 1] || null,
+    }));
+    setEngineVersion("v2");
+    setTuningConfig(nextTuning);
+    setTracks(withTransitions);
+    setPlaylistPreview({
+      ...playlistPreview,
+      trackIds: withTransitions.map((track) => track.id),
+      summary: {
+        ...playlistPreview.summary,
+        bpmFlow,
+        bpmFlowScore: bpmFlow.bpmFlowScore,
+        bpmFlowMode: nextTuning.bpmFlow.mode,
+        bpmFlowWarnings: bpmFlow.warnings,
+        sortMode: `BPM ${nextTuning.bpmFlow.mode.replace("_", " ").toLowerCase()} flow`,
+      },
+      messages: [
+        ...playlistPreview.messages.filter((message) => !message.message.includes("BPM flow sort")),
+        { severity: "info", message: `BPM flow sort applied using ${bpmModeLabel(nextTuning.bpmFlow.mode)}.` },
+      ],
+    });
+  };
+
   const exportToPlex = async () => {
     if (!playlistName) {
       alert("Please enter a playlist name");
@@ -1528,6 +1637,121 @@ export default function BuilderPage() {
             {tuningSlider("artistVariety", "Artist Variety", "Higher values reduce repeated artists.", "Repeat OK", "More variety")}
             {tuningSlider("albumVariety", "Album Variety", "Higher values reduce repeated albums.", "Repeat OK", "More variety")}
           </div>
+          <details className={styles.bpmRampPanel} open={tuningConfig.bpmFlow.enabled}>
+            <summary>
+              <span>BPM Ramp &amp; Transitions</span>
+              <strong>Beta</strong>
+            </summary>
+            <div className={styles.bpmModeGrid} role="radiogroup" aria-label="BPM flow mode">
+              {bpmFlowModes.map((item) => (
+                <label key={item.mode} className={`${styles.bpmModeCard} ${tuningConfig.bpmFlow.mode === item.mode ? styles.bpmModeActive : ""}`}>
+                  <input
+                    type="radio"
+                    name="bpm-flow-mode"
+                    checked={tuningConfig.bpmFlow.mode === item.mode}
+                    onChange={() => updateBpmFlow({ mode: item.mode, enabled: item.mode !== "DISABLED" })}
+                  />
+                  <span>
+                    <strong>{item.label}</strong>
+                    <small>{item.description}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className={styles.bpmControlsGrid}>
+              <label className={styles.tuningControl}>
+                <span className={styles.tuningControlHeader}>
+                  <span>Maximum BPM Gap</span>
+                  <strong>{tuningConfig.bpmFlow.maxPreferredGap} BPM</strong>
+                </span>
+                <input
+                  type="range"
+                  min="1"
+                  max="40"
+                  value={tuningConfig.bpmFlow.maxPreferredGap}
+                  onChange={(event) => updateBpmFlow({ maxPreferredGap: Number(event.target.value) })}
+                  aria-label="Maximum preferred BPM gap"
+                />
+                <input
+                  type="number"
+                  min="1"
+                  max="40"
+                  value={tuningConfig.bpmFlow.maxPreferredGap}
+                  onChange={(event) => updateBpmFlow({ maxPreferredGap: Number(event.target.value) })}
+                  className={styles.inlineNumber}
+                  aria-label="Maximum preferred BPM gap value"
+                />
+                <small>Preferred maximum difference between consecutive tracks.</small>
+              </label>
+              <label className={styles.tuningControl}>
+                <span className={styles.tuningControlHeader}>
+                  <span>BPM Rule Strength</span>
+                  <strong>{bpmStrengthLabel(tuningConfig.bpmFlow.strength)}</strong>
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={tuningConfig.bpmFlow.strength}
+                  onChange={(event) => updateBpmFlow({ strength: Number(event.target.value) })}
+                  aria-label="BPM rule strength"
+                />
+                <span className={styles.tuningScale}>
+                  <span>Flexible</span>
+                  <span>Strict</span>
+                </span>
+                <small>Mood, energy, discovery, and variety can override BPM more often at lower values.</small>
+              </label>
+              <label className={styles.optionLabel}>
+                Starting BPM
+                <select
+                  value={tuningConfig.bpmFlow.startingBpmMode}
+                  onChange={(event) => updateBpmFlow({ startingBpmMode: event.target.value as BpmStartingMode })}
+                  className={styles.select}
+                  aria-label="Starting BPM mode"
+                >
+                  <option value="AUTO">Automatic</option>
+                  <option value="LOWEST">Lowest suitable BPM</option>
+                  <option value="HIGHEST">Highest suitable BPM</option>
+                  <option value="CUSTOM">Custom BPM</option>
+                  <option value="SEED">Seed track BPM</option>
+                </select>
+              </label>
+              {tuningConfig.bpmFlow.startingBpmMode === "CUSTOM" && (
+                <label className={styles.optionLabel}>
+                  Custom BPM
+                  <input
+                    type="number"
+                    min="40"
+                    max="240"
+                    value={tuningConfig.bpmFlow.customStartingBpm ?? ""}
+                    onChange={(event) => updateBpmFlow({ customStartingBpm: event.target.value ? Number(event.target.value) : null })}
+                    className={styles.input}
+                    aria-label="Custom starting BPM"
+                  />
+                </label>
+              )}
+            </div>
+            <div className={styles.bpmToggleRow}>
+              <label className={styles.checkLabel} title="When off, transitions above the preferred gap are heavily penalized and only kept as a fallback.">
+                <input
+                  type="checkbox"
+                  checked={tuningConfig.bpmFlow.allowJumps}
+                  onChange={(event) => updateBpmFlow({ allowJumps: event.target.checked })}
+                />
+                Allow BPM jumps
+              </label>
+              <label className={styles.checkLabel} title="Recognize related values such as 75 BPM and 150 BPM without changing stored BPM metadata.">
+                <input
+                  type="checkbox"
+                  checked={tuningConfig.bpmFlow.halfDoubleTimeMatching}
+                  onChange={(event) => updateBpmFlow({ halfDoubleTimeMatching: event.target.checked })}
+                />
+                Half-time / double-time matching
+              </label>
+              <button type="button" onClick={resetBpmFlow} className={styles.btnSecondary}>Reset BPM flow</button>
+            </div>
+          </details>
           <label className={`${styles.checkLabel} ${styles.tuningCheck}`}>
             <input
               type="checkbox"
@@ -1778,6 +2002,9 @@ export default function BuilderPage() {
             <button onClick={regenerateUnpinned} disabled={loading || !playlistPreview} className={styles.btnSecondary}>
               <RefreshCw size={14} /> Refresh Preview
             </button>
+            <button onClick={() => sortPreviewByBpmFlow()} disabled={loading || !playlistPreview || tracks.length < 2} className={styles.btnSecondary}>
+              <Activity size={14} /> Sort by BPM Flow
+            </button>
           </div>
         </div>
 
@@ -1894,6 +2121,41 @@ export default function BuilderPage() {
               </div>
             )}
 
+            {playlistPreview.summary.bpmFlow && (
+              <div className={styles.bpmFlowPreview} aria-label={`BPM flow score ${playlistPreview.summary.bpmFlow.bpmFlowScore ?? "unknown"}`}>
+                <div className={styles.moodCurveHeader}>
+                  <strong>BPM Flow</strong>
+                  <span>{bpmModeLabel(playlistPreview.summary.bpmFlow.config.mode)} {playlistPreview.summary.bpmFlow.bpmFlowScore != null ? `${playlistPreview.summary.bpmFlow.bpmFlowScore}%` : "Unknown"}</span>
+                </div>
+                <div className={styles.bpmSparkline} aria-hidden="true">
+                  {tracks.map((track, index) => {
+                    const bpm = track.effectiveBpm ?? track.bpm ?? track.audioFeature?.tempo;
+                    const lowest = playlistPreview.summary.bpmFlow?.lowestBpm ?? bpm ?? 0;
+                    const highest = playlistPreview.summary.bpmFlow?.highestBpm ?? bpm ?? 1;
+                    const height = bpm ? 22 + ((bpm - lowest) / Math.max(1, highest - lowest)) * 54 : 14;
+                    const transition = track.bpmTransitionFromPrevious;
+                    return (
+                      <span
+                        key={`${track.id}-${index}`}
+                        className={`${styles.bpmBar} ${!bpm ? styles.bpmBarMissing : ""} ${transition?.difficulty === "Hard" || transition?.difficulty === "Difficult" ? styles.bpmBarWarning : ""}`}
+                        style={{ height: `${height}px` }}
+                        title={bpm ? `${Math.round(bpm)} BPM` : "BPM unknown"}
+                      />
+                    );
+                  })}
+                </div>
+                <div className={styles.bpmFlowStats}>
+                  <span>Avg gap {playlistPreview.summary.bpmFlow.averageEffectiveGap ?? "-"} BPM</span>
+                  <span>Largest {playlistPreview.summary.bpmFlow.largestEffectiveGap ?? "-"} BPM</span>
+                  <span>Easy {playlistPreview.summary.bpmFlow.easyTransitionCount}</span>
+                  <span>Difficult {playlistPreview.summary.bpmFlow.difficultTransitionCount + playlistPreview.summary.bpmFlow.hardTransitionCount}</span>
+                  <span>Unknown {playlistPreview.summary.bpmFlow.unknownTransitionCount}</span>
+                  <span>Half/double {playlistPreview.summary.bpmFlow.halfDoubleTimeMatchCount}</span>
+                </div>
+                <p className={styles.bpmFlowText}>{playlistPreview.summary.bpmFlow.explanation}</p>
+              </div>
+            )}
+
             {playlistPreview.messages.length > 0 && (
               <div className={styles.messageList}>
                 {playlistPreview.messages.map((message) => (
@@ -1965,6 +2227,14 @@ export default function BuilderPage() {
                         <td className={styles.trackOrder}>{idx + 1}</td>
                         <td className={styles.trackTitle}>
                           {track.title || "—"}
+                          {idx > 0 && track.bpmTransitionFromPrevious && (
+                            <div
+                              className={`${styles.transitionBadge} ${styles[`transition${track.bpmTransitionFromPrevious.difficulty}`] || ""}`}
+                              title={track.bpmTransitionFromPrevious.reason}
+                            >
+                              {transitionBadgeText(track.bpmTransitionFromPrevious)}
+                            </div>
+                          )}
                           {(track.isLive || track.isRemaster || track.isExplicit) && (
                             <div className={styles.badgeRow}>
                               {track.isLive && <span className={styles.miniBadge}>Live</span>}
@@ -2009,6 +2279,11 @@ export default function BuilderPage() {
                       </div>
                     </div>
                     <div className={styles.mobileTrackMeta}>
+                      {idx > 0 && track.bpmTransitionFromPrevious && (
+                        <span className={styles.mobileTransition}>
+                          Transition <strong>{transitionBadgeText(track.bpmTransitionFromPrevious)}</strong>
+                        </span>
+                      )}
                       <span>Album <strong>{track.album?.title || "—"}</strong></span>
                       <span>Duration <strong>{formatDuration(track.duration)}</strong></span>
                       <span>BPM <strong>{(track.effectiveBpm ?? track.bpm ?? track.audioFeature?.tempo)?.toFixed(0) || "—"}</strong></span>

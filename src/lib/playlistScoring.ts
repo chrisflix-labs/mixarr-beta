@@ -4,9 +4,11 @@ import {
   getTrackEnergy,
   getTrackMood,
   getTrackPopularity,
+  normalizeBpmFlowConfig,
+  summarizeBpmFlow,
 } from "./smartMixEngine/v2";
 
-export const PLAYLIST_SCORE_VERSION = "2.0.1";
+export const PLAYLIST_SCORE_VERSION = "2.0.4";
 
 export type PlaylistScoreLabel = "Excellent" | "Strong" | "Good" | "Fair" | "Weak";
 
@@ -23,6 +25,7 @@ export type PlaylistScoreSummary = {
   overallScore: number;
   compatibilityScore: number;
   bpmConsistencyScore: number;
+  bpmFlowScore: number | null;
   energyFlowScore: number;
   moodConsistencyScore: number;
   discoveryBalanceScore: number;
@@ -33,11 +36,13 @@ export type PlaylistScoreSummary = {
     overall: PlaylistScoreLabel;
     compatibility: PlaylistScoreLabel;
     bpmConsistency: PlaylistScoreLabel;
+    bpmFlow?: PlaylistScoreLabel;
     energyFlow: PlaylistScoreLabel;
     moodConsistency: PlaylistScoreLabel;
     discoveryBalance: PlaylistScoreLabel;
   };
   weakSpots: PlaylistWeakSpot[];
+  bpmFlow?: ReturnType<typeof summarizeBpmFlow>;
 };
 
 type TrackScoreMetadata = {
@@ -243,20 +248,32 @@ export function detectWeakSpots(tracks: any[]): PlaylistWeakSpot[] {
   });
 
   for (let index = 1; index < tracks.length; index += 1) {
-    const transition = scoreTransition(tracks[index - 1], tracks[index]);
-    const meaningfulReasons = transition.reasons.filter((reason) => (
-      reason.includes("large")
-      || reason.includes("sharp")
-      || reason.includes("mismatch")
-    ));
-    if (transition.score < 60 || meaningfulReasons.length > 0) {
+    const transition = tracks[index]?.bpmTransitionFromPrevious;
+    if (transition?.difficulty === "Difficult" || transition?.difficulty === "Hard") {
       weakSpots.push({
         index,
         trackId: tracks[index - 1]?.id || tracks[index - 1]?.trackId || null,
         nextTrackId: tracks[index]?.id || tracks[index]?.trackId || null,
         type: "transition",
-        score: transition.score,
-        reasons: meaningfulReasons.length ? meaningfulReasons : transition.reasons.slice(0, 2),
+        score: transition.score ?? undefined,
+        reasons: [transition.reason],
+      });
+      continue;
+    }
+    const legacyTransition = scoreTransition(tracks[index - 1], tracks[index]);
+    const meaningfulReasons = legacyTransition.reasons.filter((reason) => (
+      reason.includes("large")
+      || reason.includes("sharp")
+      || reason.includes("mismatch")
+    ));
+    if (legacyTransition.score < 60 || meaningfulReasons.length > 0) {
+      weakSpots.push({
+        index,
+        trackId: tracks[index - 1]?.id || tracks[index - 1]?.trackId || null,
+        nextTrackId: tracks[index]?.id || tracks[index]?.trackId || null,
+        type: "transition",
+        score: legacyTransition.score,
+        reasons: meaningfulReasons.length ? meaningfulReasons : legacyTransition.reasons.slice(0, 2),
       });
     }
   }
@@ -295,6 +312,7 @@ function buildWarnings(tracks: any[], weakSpots: PlaylistWeakSpot[], scores: Omi
   if (missingMood >= warningThreshold(total)) warnings.push("Mood data is incomplete for some tracks.");
   if (missingPopularity >= warningThreshold(total)) warnings.push("Popularity data is incomplete, so discovery balance may be less accurate.");
   if (scores.energyFlowScore < 70 && total > 2) warnings.push("Energy changes sharply in a few places.");
+  if (scores.bpmFlow?.warnings?.length) warnings.push(...scores.bpmFlow.warnings.slice(0, 2));
   if (scores.discoveryBalanceScore < 70 && missingPopularity < total) {
     const popularKnown = tracks.map(metadataForTrack).filter((track) => track.popularity != null && track.popularity >= 75).length;
     const lowKnown = tracks.map(metadataForTrack).filter((track) => track.popularity != null && track.popularity < 35).length;
@@ -306,15 +324,18 @@ function buildWarnings(tracks: any[], weakSpots: PlaylistWeakSpot[], scores: Omi
   return warnings.filter((warning, index, list) => list.indexOf(warning) === index).slice(0, 6);
 }
 
-export function scorePlaylist(tracks: any[]): PlaylistScoreSummary {
+export function scorePlaylist(tracks: any[], tuningConfig?: unknown): PlaylistScoreSummary {
   const compatibilityScore = scoreCompatibility(tracks);
   const bpmConsistencyScore = scoreBpmConsistency(tracks);
+  const bpmFlow = summarizeBpmFlow(tracks, normalizeBpmFlowConfig((tuningConfig as any)?.bpmFlow ?? tuningConfig));
+  const bpmFlowScore = bpmFlow.bpmFlowScore;
   const energyFlowScore = scoreEnergyFlow(tracks);
   const moodConsistencyScore = scoreMoodConsistency(tracks);
   const discoveryBalanceScore = scoreDiscoveryBalance(tracks);
   const overallScore = roundScore(
     compatibilityScore * 0.3
-    + bpmConsistencyScore * 0.2
+    + bpmConsistencyScore * 0.12
+    + (bpmFlowScore ?? bpmConsistencyScore) * 0.08
     + energyFlowScore * 0.2
     + moodConsistencyScore * 0.15
     + discoveryBalanceScore * 0.15,
@@ -324,10 +345,12 @@ export function scorePlaylist(tracks: any[]): PlaylistScoreSummary {
     overallScore,
     compatibilityScore,
     bpmConsistencyScore,
+    bpmFlowScore,
     energyFlowScore,
     moodConsistencyScore,
     discoveryBalanceScore,
     weakSpotCount: weakSpots.length,
+    bpmFlow,
   };
 
   return {
@@ -338,6 +361,7 @@ export function scorePlaylist(tracks: any[]): PlaylistScoreSummary {
       overall: playlistScoreLabel(overallScore),
       compatibility: playlistScoreLabel(compatibilityScore),
       bpmConsistency: playlistScoreLabel(bpmConsistencyScore),
+      bpmFlow: bpmFlowScore == null ? undefined : playlistScoreLabel(bpmFlowScore),
       energyFlow: playlistScoreLabel(energyFlowScore),
       moodConsistency: playlistScoreLabel(moodConsistencyScore),
       discoveryBalance: playlistScoreLabel(discoveryBalanceScore),

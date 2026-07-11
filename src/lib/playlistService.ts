@@ -655,6 +655,7 @@ function publicPreviewTrack(track: any) {
     fallbacksApplied: track.fallbacksApplied || undefined,
     moodTags: track.moodBlend?.moodTags || (track.tags || []).filter((tag: any) => tag.type === "mood").map((tag: any) => tag.name).slice(0, 6),
     moodBlend: track.moodBlend || undefined,
+    bpmTransitionFromPrevious: track.bpmTransitionFromPrevious || null,
   };
 }
 
@@ -810,10 +811,11 @@ export async function generatePlaylistTracksWithStats({
             ...(engineResult.safety.metadata.warnings || []),
             ...engineResult.diagnostics.tuningWarnings,
             ...engineResult.diagnostics.moodWarnings,
+            ...engineResult.diagnostics.bpmFlow.warnings,
           ].filter((warning, index, list) => list.indexOf(warning) === index),
           manualExclusionsRemoved: manualExclusionsApplied,
         } as PlaylistGenerationSafetyMetadata,
-        qualityScore: scorePlaylist(tracks),
+        qualityScore: scorePlaylist(tracks, tuningConfig),
         engineVersion: SMART_MIX_ENGINE_V2,
         engine: {
           version: SMART_MIX_ENGINE_V2,
@@ -1033,6 +1035,7 @@ export async function previewPlaylistTracks({
   const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
   const moodBlend = normalizeMoodBlendConfig(config);
   const moodDiagnostics = generation.engine.diagnostics || {};
+  const bpmFlow = moodDiagnostics.bpmFlow || generation.qualityScore?.bpmFlow || null;
 
   const summary = {
     targetTrackCount: config.limit,
@@ -1085,12 +1088,18 @@ export async function previewPlaylistTracks({
     moodConflictCount: moodDiagnostics.moodConflictCount || 0,
     multiMoodBridgeTracks: moodDiagnostics.multiMoodBridgeTracks || [],
     missingMoodCount: moodDiagnostics.missingMoodCount || 0,
+    bpmFlow,
+    bpmFlowScore: bpmFlow?.bpmFlowScore ?? generation.qualityScore?.bpmFlowScore ?? null,
+    bpmFlowMode: bpmFlow?.config?.mode || tuningConfig.bpmFlow.mode,
+    bpmFlowWarnings: bpmFlow?.warnings || [],
     qualityScore: generation.qualityScore,
     artistLimitApplied: generation.safety.artistLimitApplied,
     albumLimitApplied: generation.safety.albumLimitApplied,
     artistSpacingApplied: generation.safety.artistSpacingApplied,
     genreFilters: genreFilterLabel(rules),
-    sortMode: "Popularity score descending",
+    sortMode: tuningConfig.bpmFlow.enabled && tuningConfig.bpmFlow.mode !== "DISABLED"
+      ? `BPM ${tuningConfig.bpmFlow.mode.replace("_", " ").toLowerCase()} flow`
+      : "Popularity score descending",
     duplicateStrategy: config.duplicateStrategy === "allow" ? "Allow duplicates" : "One version per song",
     diversity: {
       artistCount: new Set(previewTracks.map((track) => track.artist?.title).filter(Boolean)).size,
@@ -1112,6 +1121,7 @@ export async function previewPlaylistTracks({
     ...(config.moodPresetName ? [{ label: "Mood preset", value: `${config.moodPresetName}${config.moodPresetModified ? " modified" : ""}` }] : []),
     ...(config.bpmPresetName ? [{ label: "BPM preset", value: `${config.bpmPresetName}${config.bpmPresetModified ? " modified" : ""}` }] : []),
     ...(useSmartMixV2 ? [{ label: "Tuning preset", value: tuningConfig.presetName || "Custom" }] : []),
+    ...(useSmartMixV2 ? [{ label: "BPM flow", value: tuningConfig.bpmFlow.enabled ? `${tuningConfig.bpmFlow.mode.replace("_", " ")} (${tuningConfig.bpmFlow.maxPreferredGap} BPM gap)` : "No BPM ordering" }] : []),
     ...(moodBlend.enabled ? [{ label: "Mood blend", value: moodBlendModeLabel(moodBlend.moodBlendMode) }] : []),
     ...(moodBlend.moodBlendMode === "smooth_transition" || moodBlend.moodBlendMode === "strict_matching"
       ? [{ label: "Mood path", value: moodBlend.selectedMoodPath.join(" > ") || "None" }]
@@ -1402,8 +1412,8 @@ export async function recordGeneratedPlaylist({
   const config = normalizeGeneratedPlaylistConfig(filters);
   const tracks = trackIds.length ? await fetchOwnedTracksInOrder(userId, trackIds) : [];
   const resolvedSourceType = generatedPlaylistSourceType(config, sourceType);
-  const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks) : null;
   const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
+  const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks, tuningConfig) : null;
   const data = {
     userId,
     serverId: serverId || tracks[0]?.library?.server?.id || null,
@@ -1610,14 +1620,15 @@ function buildRegenerationPreviewPayload({
   regeneration: any;
 }) {
   const previewTracks = tracks.slice(0, previewDisplayLimit);
-  const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks) : null;
   const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
+  const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks, tuningConfig) : null;
   const moodBlend = normalizeMoodBlendConfig(config);
   const moodBlendSummary = config.engineVersion === SMART_MIX_ENGINE_V2
     ? summarizeMoodBlend({ tracks, candidates: tracks, config })
     : null;
   const finalTrackCount = previewTracks.length;
   const estimatedDurationMs = previewTracks.reduce((sum, track) => sum + (track.duration || 0), 0);
+  const bpmFlow = qualityScore?.bpmFlow || null;
   return {
     previewId: Buffer.from(`${Date.now()}:${previewTracks.map((track) => track.id).join(",")}`).toString("base64url").slice(0, 48),
     trackIds: previewTracks.map((track) => track.id),
@@ -1657,6 +1668,10 @@ function buildRegenerationPreviewPayload({
       moodFallbackCount: moodBlendSummary?.moodFallbackCount || 0,
       moodConflictCount: moodBlendSummary?.moodConflictCount || 0,
       missingMoodCount: moodBlendSummary?.missingMoodCount || 0,
+      bpmFlow,
+      bpmFlowScore: bpmFlow?.bpmFlowScore ?? null,
+      bpmFlowMode: bpmFlow?.config.mode || tuningConfig.bpmFlow.mode,
+      bpmFlowWarnings: bpmFlow?.warnings || [],
       qualityScore,
     },
     filterSummary: [
@@ -1664,13 +1679,14 @@ function buildRegenerationPreviewPayload({
       { label: "Safety rules", value: safety.summary || summarizePlaylistSafetyRules(config) },
       { label: "Smart Mix Engine", value: smartMixEngineLabel(config.engineVersion).replace(/^Smart Mix Engine: /, "") },
       ...(config.engineVersion === SMART_MIX_ENGINE_V2 ? [{ label: "Tuning preset", value: tuningConfig.presetName || "Custom" }] : []),
+      ...(config.engineVersion === SMART_MIX_ENGINE_V2 ? [{ label: "BPM flow", value: tuningConfig.bpmFlow.enabled ? `${tuningConfig.bpmFlow.mode.replace("_", " ")} (${tuningConfig.bpmFlow.maxPreferredGap} BPM gap)` : "No BPM ordering" }] : []),
       ...(moodBlend.enabled ? [{ label: "Mood blend", value: moodBlendModeLabel(moodBlend.moodBlendMode) }] : []),
     ],
     manualExclusionsApplied: safety.manualExclusionsRemoved || 0,
     safetyRulesApplied: safety.safetyRulesApplied,
     removedBySafetyRules: safety.removedBySafetyRules || 0,
     manualExclusionsRemoved: safety.manualExclusionsRemoved || 0,
-    warnings: [...warnings, ...(moodBlendSummary?.moodWarnings || [])].filter((warning, index, list) => list.indexOf(warning) === index),
+    warnings: [...warnings, ...(moodBlendSummary?.moodWarnings || []), ...(bpmFlow?.warnings || [])].filter((warning, index, list) => list.indexOf(warning) === index),
     safety,
     engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
     qualityScore,
@@ -1923,7 +1939,7 @@ export async function regenerateGeneratedPlaylistFromPreview({
     });
 
     const config = normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson, generatedPlaylist.engineVersion);
-    const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks) : null;
+    const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks, config.tuningConfig) : null;
     await prisma.generatedPlaylist.update({
       where: { id: generatedPlaylist.id },
       data: {

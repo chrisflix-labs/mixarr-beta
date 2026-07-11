@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import Link from "next/link";
-import { AlertTriangle, Ban, CheckCircle2, History, ListRestart, RefreshCw, Repeat2, ShieldCheck, Sparkles, Trash2, Wand2 } from "lucide-react";
+import { Activity, AlertTriangle, Ban, CheckCircle2, History, ListRestart, RefreshCw, Repeat2, ShieldCheck, Sparkles, Trash2, Wand2 } from "lucide-react";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
+import { orderTracksByBpmFlow, summarizeBpmFlow, type BpmFlowMode } from "@/lib/smartMixEngine/v2/bpmFlow";
+import { normalizeSmartMixTuningConfig } from "@/lib/smartMixEngine/v2/tuning";
 import styles from "./generated-playlists.module.css";
 
 type GeneratedPlaylist = {
@@ -61,6 +63,10 @@ type PreviewState = {
     moodFallbackCount?: number;
     moodConflictCount?: number;
     missingMoodCount?: number;
+    bpmFlow?: ReturnType<typeof summarizeBpmFlow> | null;
+    bpmFlowScore?: number | null;
+    bpmFlowMode?: BpmFlowMode;
+    bpmFlowWarnings?: string[];
   };
   regeneration: {
     mode: "replace_all" | "keep_some";
@@ -89,6 +95,8 @@ type PreviewState = {
 type PlaylistQualityScore = {
   overallScore: number;
   bpmConsistencyScore: number;
+  bpmFlowScore?: number | null;
+  bpmFlow?: ReturnType<typeof summarizeBpmFlow> | null;
   energyFlowScore: number;
   moodConsistencyScore: number;
   discoveryBalanceScore: number;
@@ -98,6 +106,7 @@ type PlaylistQualityScore = {
   labels?: {
     overall?: string;
     bpmConsistency?: string;
+    bpmFlow?: string;
     energyFlow?: string;
     moodConsistency?: string;
     discoveryBalance?: string;
@@ -184,6 +193,27 @@ function moodCoverageLines(coverage: any): string[] {
   });
 }
 
+function bpmModeLabel(mode?: string) {
+  if (mode === "RAMP_UP") return "Ramp Up";
+  if (mode === "RAMP_DOWN") return "Ramp Down";
+  if (mode === "STEADY") return "Keep Steady";
+  if (mode === "NATURAL") return "Natural Flow";
+  return "No BPM Ordering";
+}
+
+function transitionBadgeText(transition: any) {
+  if (!transition) return "";
+  if (transition.difficulty === "Unknown") return "BPM unknown";
+  const direction = transition.normalizedToBpm != null && transition.normalizedFromBpm != null
+    ? transition.normalizedToBpm - transition.normalizedFromBpm
+    : null;
+  const signedGap = direction == null ? `${transition.effectiveGap ?? "-"} BPM` : `${direction >= 0 ? "+" : ""}${Math.round(direction)} BPM`;
+  if (transition.relationship !== "direct" && transition.relationship !== "unknown") {
+    return `${transition.relationship} match - ${Math.round(transition.fromBpm)} -> ${Math.round(transition.toBpm)} BPM`;
+  }
+  return `${transition.difficulty} transition - ${signedGap}`;
+}
+
 function PlaylistQualityCard({ score }: { score?: PlaylistQualityScore | null }) {
   if (!score) {
     return (
@@ -206,7 +236,8 @@ function PlaylistQualityCard({ score }: { score?: PlaylistQualityScore | null })
       </div>
       <dl className={styles.qualityGrid}>
         <div><dt>Playlist Score</dt><dd>{score.overallScore}% {score.labels?.overall ? `(${score.labels.overall})` : ""}</dd></div>
-        <div><dt>BPM Flow</dt><dd>{score.labels?.bpmConsistency || `${score.bpmConsistencyScore}%`}</dd></div>
+        <div><dt>BPM Consistency</dt><dd>{score.labels?.bpmConsistency || `${score.bpmConsistencyScore}%`}</dd></div>
+        <div><dt>BPM Flow</dt><dd>{score.bpmFlowScore != null ? `${score.bpmFlowScore}% ${score.labels?.bpmFlow ? `(${score.labels.bpmFlow})` : ""}` : "Not scored"}</dd></div>
         <div><dt>Mood Match</dt><dd>{score.labels?.moodConsistency || `${score.moodConsistencyScore}%`}</dd></div>
         <div><dt>Energy Curve</dt><dd>{score.labels?.energyFlow || `${score.energyFlowScore}%`}</dd></div>
         <div><dt>Discovery Balance</dt><dd>{score.labels?.discoveryBalance || `${score.discoveryBalanceScore}%`}</dd></div>
@@ -222,6 +253,32 @@ function PlaylistQualityCard({ score }: { score?: PlaylistQualityScore | null })
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function BpmFlowCard({ bpmFlow }: { bpmFlow?: ReturnType<typeof summarizeBpmFlow> | null }) {
+  if (!bpmFlow) return null;
+  return (
+    <div className={styles.qualityPanel}>
+      <div className={styles.qualityHeader}>
+        <Activity size={15} />
+        <strong>BPM Flow</strong>
+        <span>{bpmModeLabel(bpmFlow.config.mode)}</span>
+      </div>
+      <dl className={styles.qualityGrid}>
+        <div><dt>Score</dt><dd>{bpmFlow.bpmFlowScore != null ? `${bpmFlow.bpmFlowScore}%` : "Unknown"}</dd></div>
+        <div><dt>Start / End</dt><dd>{bpmFlow.startingBpm ? Math.round(bpmFlow.startingBpm) : "-"} / {bpmFlow.endingBpm ? Math.round(bpmFlow.endingBpm) : "-"}</dd></div>
+        <div><dt>Range</dt><dd>{bpmFlow.lowestBpm ? Math.round(bpmFlow.lowestBpm) : "-"}-{bpmFlow.highestBpm ? Math.round(bpmFlow.highestBpm) : "-"}</dd></div>
+        <div><dt>Avg Gap</dt><dd>{bpmFlow.averageEffectiveGap ?? "-"} BPM</dd></div>
+        <div><dt>Largest Gap</dt><dd>{bpmFlow.largestEffectiveGap ?? "-"} BPM</dd></div>
+        <div><dt>Easy / Moderate</dt><dd>{bpmFlow.easyTransitionCount} / {bpmFlow.moderateTransitionCount}</dd></div>
+        <div><dt>Difficult / Hard</dt><dd>{bpmFlow.difficultTransitionCount} / {bpmFlow.hardTransitionCount}</dd></div>
+        <div><dt>Unknown</dt><dd>{bpmFlow.unknownTransitionCount}</dd></div>
+        <div><dt>Half/Double</dt><dd>{bpmFlow.halfDoubleTimeMatchCount}</dd></div>
+        <div><dt>Conflicts</dt><dd>{bpmFlow.directionConflictCount}</dd></div>
+      </dl>
+      <p className={styles.qualityUnavailable}>{bpmFlow.explanation}</p>
     </div>
   );
 }
@@ -324,6 +381,48 @@ export default function GeneratedPlaylistsPage() {
     } finally {
       setBusyId("");
     }
+  };
+
+  const sortPreviewByBpmFlow = (mode: BpmFlowMode = "NATURAL") => {
+    if (!selectedPlaylist || !preview || preview.tracks.length < 2) return;
+    if (!window.confirm("Sort this regeneration preview by BPM flow? This preserves the same tracks but changes their order.")) return;
+    const tuning = normalizeSmartMixTuningConfig({
+      ...(selectedPlaylist.tuningConfigJson || {}),
+      bpmFlow: {
+        ...(selectedPlaylist.tuningConfigJson as any)?.bpmFlow,
+        enabled: true,
+        mode,
+      },
+    });
+    const sorted = orderTracksByBpmFlow({ tracks: preview.tracks, tuningConfig: tuning, baseScore: (track) => Number(track.score) || 0 });
+    const bpmFlow = summarizeBpmFlow(sorted, tuning.bpmFlow);
+    const tracksWithTransitions = sorted.map((track, index) => ({
+      ...track,
+      bpmTransitionFromPrevious: index === 0 ? null : bpmFlow.transitionAnalyses[index - 1] || null,
+    }));
+    setPreview({
+      ...preview,
+      tracks: tracksWithTransitions,
+      trackIds: tracksWithTransitions.map((track) => track.id),
+      qualityScore: {
+        ...(preview.qualityScore || preview.summary.qualityScore || {}),
+        bpmFlow,
+        bpmFlowScore: bpmFlow.bpmFlowScore,
+      } as PlaylistQualityScore,
+      summary: {
+        ...preview.summary,
+        bpmFlow,
+        bpmFlowScore: bpmFlow.bpmFlowScore,
+        bpmFlowMode: mode,
+        bpmFlowWarnings: bpmFlow.warnings,
+        qualityScore: {
+          ...(preview.summary.qualityScore || preview.qualityScore || {}),
+          bpmFlow,
+          bpmFlowScore: bpmFlow.bpmFlowScore,
+        } as PlaylistQualityScore,
+      },
+      warnings: [...preview.warnings, ...bpmFlow.warnings].filter((warning, index, list) => list.indexOf(warning) === index),
+    });
   };
 
   const removeGeneratedPlaylist = async (playlist: GeneratedPlaylist) => {
@@ -529,6 +628,10 @@ export default function GeneratedPlaylistsPage() {
               {busyId === selectedPlaylist.id ? <RefreshCw size={15} className="animate-spin" /> : <Repeat2 size={15} />}
               Regenerate Playlist
             </button>
+            <button type="button" onClick={() => sortPreviewByBpmFlow((preview.summary.bpmFlowMode as BpmFlowMode) || "NATURAL")} disabled={Boolean(busyId) || preview.trackIds.length < 2} className={styles.secondaryButton}>
+              <Activity size={15} />
+              Sort by BPM Flow
+            </button>
           </div>
 
           <div className={styles.statsGrid}>
@@ -572,6 +675,7 @@ export default function GeneratedPlaylistsPage() {
           </div>
 
           <PlaylistQualityCard score={qualityScoreForDisplay(preview.qualityScore || preview.summary.qualityScore)} />
+          <BpmFlowCard bpmFlow={(preview.qualityScore || preview.summary.qualityScore)?.bpmFlow || preview.summary.bpmFlow} />
 
           {preview.summary.moodBlendMode && preview.summary.moodBlendMode !== "off" && (
             <div className={styles.qualityPanel}>
@@ -604,6 +708,11 @@ export default function GeneratedPlaylistsPage() {
                 <div>
                   <h4>{track.title || "-"}</h4>
                   <p>{track.artist?.title || "-"} - {track.album?.title || "-"}</p>
+                  {index > 0 && track.bpmTransitionFromPrevious && (
+                    <p className={styles.transitionText} title={track.bpmTransitionFromPrevious.reason}>
+                      {transitionBadgeText(track.bpmTransitionFromPrevious)}
+                    </p>
+                  )}
                   <div className={styles.trackMeta}>
                     <span>{formatDuration(track.duration)}</span>
                     <span>BPM {(track.effectiveBpm ?? track.bpm ?? track.audioFeature?.tempo)?.toFixed(0) || "-"}</span>

@@ -5,8 +5,9 @@ import {
   getTrackPopularity,
   NEUTRAL_POPULARITY_SCORE,
 } from "./metadataFallbacks";
+import { DEFAULT_BPM_FLOW_CONFIG, normalizeBpmFlowConfig, type BpmFlowConfig } from "./bpmFlow";
 
-export const SMART_MIX_TUNING_VERSION = "2.0.2";
+export const SMART_MIX_TUNING_VERSION = "2.0.4";
 export const SMART_MIX_RECENTLY_USED_WINDOW_DAYS = 30;
 
 export type SmartMixTuningConfig = {
@@ -19,6 +20,7 @@ export type SmartMixTuningConfig = {
   artistVariety: number;
   albumVariety: number;
   avoidRecentlyUsedTracks: boolean;
+  bpmFlow: BpmFlowConfig;
   presetName?: string;
   tuningVersion: string;
 };
@@ -41,6 +43,7 @@ export const DEFAULT_SMART_MIX_TUNING: SmartMixTuningConfig = {
   artistVariety: 50,
   albumVariety: 50,
   avoidRecentlyUsedTracks: true,
+  bpmFlow: DEFAULT_BPM_FLOW_CONFIG,
   presetName: "Balanced",
   tuningVersion: SMART_MIX_TUNING_VERSION,
 };
@@ -126,6 +129,116 @@ const builtInPresetDefinitions: Array<Omit<SmartMixTuningPreset, "builtIn" | "co
       bpmWeight: 92,
       artistVariety: 58,
       albumVariety: 56,
+      bpmFlow: {
+        enabled: true,
+        mode: "NATURAL",
+        strength: 85,
+        maxPreferredGap: 6,
+        allowJumps: false,
+        halfDoubleTimeMatching: true,
+        startingBpmMode: "AUTO",
+        customStartingBpm: null,
+      },
+    },
+  },
+  {
+    id: "workout_climb",
+    name: "Workout Climb",
+    description: "Builds tempo and energy gradually for workout playlists.",
+    config: {
+      recommendationStrength: 76,
+      familiarityDiscoveryBalance: 55,
+      popularityWeight: 54,
+      moodWeight: 48,
+      energyWeight: 84,
+      bpmWeight: 88,
+      artistVariety: 48,
+      albumVariety: 46,
+      bpmFlow: {
+        enabled: true,
+        mode: "RAMP_UP",
+        strength: 80,
+        maxPreferredGap: 8,
+        allowJumps: false,
+        halfDoubleTimeMatching: true,
+        startingBpmMode: "AUTO",
+        customStartingBpm: null,
+      },
+    },
+  },
+  {
+    id: "party_build",
+    name: "Party Build",
+    description: "Lets the room warm up with a flexible upward BPM arc.",
+    config: {
+      recommendationStrength: 72,
+      familiarityDiscoveryBalance: 60,
+      popularityWeight: 62,
+      moodWeight: 56,
+      energyWeight: 78,
+      bpmWeight: 80,
+      artistVariety: 52,
+      albumVariety: 50,
+      bpmFlow: {
+        enabled: true,
+        mode: "RAMP_UP",
+        strength: 70,
+        maxPreferredGap: 10,
+        allowJumps: true,
+        halfDoubleTimeMatching: true,
+        startingBpmMode: "AUTO",
+        customStartingBpm: null,
+      },
+    },
+  },
+  {
+    id: "steady_cardio",
+    name: "Steady Cardio",
+    description: "Keeps tempo tight for steady movement.",
+    config: {
+      recommendationStrength: 74,
+      familiarityDiscoveryBalance: 52,
+      popularityWeight: 50,
+      moodWeight: 54,
+      energyWeight: 88,
+      bpmWeight: 94,
+      artistVariety: 48,
+      albumVariety: 46,
+      bpmFlow: {
+        enabled: true,
+        mode: "STEADY",
+        strength: 90,
+        maxPreferredGap: 5,
+        allowJumps: false,
+        halfDoubleTimeMatching: false,
+        startingBpmMode: "AUTO",
+        customStartingBpm: null,
+      },
+    },
+  },
+  {
+    id: "cooldown",
+    name: "Cooldown",
+    description: "Gradually eases the tempo down while preserving compatibility.",
+    config: {
+      recommendationStrength: 70,
+      familiarityDiscoveryBalance: 50,
+      popularityWeight: 46,
+      moodWeight: 70,
+      energyWeight: 78,
+      bpmWeight: 86,
+      artistVariety: 52,
+      albumVariety: 50,
+      bpmFlow: {
+        enabled: true,
+        mode: "RAMP_DOWN",
+        strength: 80,
+        maxPreferredGap: 8,
+        allowJumps: false,
+        halfDoubleTimeMatching: true,
+        startingBpmMode: "AUTO",
+        customStartingBpm: null,
+      },
     },
   },
   {
@@ -186,6 +299,7 @@ export function normalizeSmartMixTuningConfig(value: unknown): SmartMixTuningCon
     artistVariety: clamp(finiteNumber(source.artistVariety) ?? DEFAULT_SMART_MIX_TUNING.artistVariety),
     albumVariety: clamp(finiteNumber(source.albumVariety) ?? DEFAULT_SMART_MIX_TUNING.albumVariety),
     avoidRecentlyUsedTracks: source.avoidRecentlyUsedTracks ?? DEFAULT_SMART_MIX_TUNING.avoidRecentlyUsedTracks,
+    bpmFlow: normalizeBpmFlowConfig(source.bpmFlow ?? DEFAULT_SMART_MIX_TUNING.bpmFlow),
     presetName: typeof source.presetName === "string" && source.presetName.trim()
       ? source.presetName.trim().slice(0, 120)
       : undefined,

@@ -1,6 +1,7 @@
 import { SMART_MIX_ENGINE_V2_PIPELINE } from "./pipeline";
 import { scoreSmartMixTrack } from "./scoring";
 import { normalizeMoodBlendConfig, scoreMoodBlendForTrack, summarizeMoodBlend } from "./moodBlending";
+import { orderTracksByBpmFlow, summarizeBpmFlow } from "./bpmFlow";
 import {
   applyTuningToTransitionScore,
   buildTuningWarnings,
@@ -10,6 +11,7 @@ import {
 import { SMART_MIX_ENGINE_V2, type SmartMixEngineV2Config, type SmartMixScoredTrack } from "./types";
 
 export * from "./metadataFallbacks";
+export * from "./bpmFlow";
 export * from "./moodBlending";
 export * from "./pipeline";
 export * from "./scoring";
@@ -61,6 +63,7 @@ export type SmartMixEngineV2RunResult<TTrack extends Record<string, any>> = {
     moodConflictCount: number;
     multiMoodBridgeTracks: string[];
     missingMoodCount: number;
+    bpmFlow: ReturnType<typeof summarizeBpmFlow>;
   };
 };
 
@@ -142,6 +145,16 @@ function selectTunedCandidates<TTrack extends Record<string, any>>(
   return selected;
 }
 
+function attachBpmTransitionMetadata<TTrack extends Record<string, any>>(
+  tracks: Array<SmartMixScoredTrack<TTrack>>,
+  bpmFlow: ReturnType<typeof summarizeBpmFlow>,
+) {
+  return tracks.map((track, index) => ({
+    ...track,
+    bpmTransitionFromPrevious: index === 0 ? null : bpmFlow.transitionAnalyses[index - 1] || null,
+  }));
+}
+
 export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
   config,
   pinnedTracks,
@@ -150,6 +163,7 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
   applyDuplicatePolicy,
   applyPlaylistSafetyRules,
 }: SmartMixEngineV2RunInput<TTrack>): SmartMixEngineV2RunResult<TTrack> {
+  const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
   const scoredPinnedTracks = pinnedTracks.map((track) => scoreSmartMixTrack(track, config));
   const scoredCandidates = candidates.map((track, index) => ({
     ...scoreSmartMixTrack(track, config),
@@ -161,14 +175,19 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
     return left.smartMixV2OriginalIndex - right.smartMixV2OriginalIndex;
   });
   const tunedCandidates = selectTunedCandidates(sortedCandidates, config, safetyCandidateLimit);
-  const selectedCandidates = applyDuplicatePolicy(tunedCandidates, config, safetyCandidateLimit);
+  const bpmOrderedCandidates = orderTracksByBpmFlow({
+    tracks: tunedCandidates,
+    tuningConfig: tuning,
+    baseScore: (track) => track.score,
+  });
+  const selectedCandidates = applyDuplicatePolicy(bpmOrderedCandidates, config, safetyCandidateLimit);
   const safety = applyPlaylistSafetyRules(scoredPinnedTracks.concat(selectedCandidates), config);
-  const tracks = safety.tracks.map(removeInternalSortIndex);
-  const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
+  const bpmFlow = summarizeBpmFlow(safety.tracks, tuning.bpmFlow);
+  const tracks = attachBpmTransitionMetadata(safety.tracks.map(removeInternalSortIndex), bpmFlow);
   const tuningWarnings = buildTuningWarnings({ tracks, tuningConfig: tuning });
   const moodBlendSummary = summarizeMoodBlend({
     tracks,
-    candidates: scoredCandidates,
+    candidates: scoredCandidates as any[],
     config,
   });
   if (moodBlendSummary.moodBlendMode !== "off") {
@@ -180,6 +199,22 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
       missingMoodCount: moodBlendSummary.missingMoodCount,
       moodFallbackCount: moodBlendSummary.moodFallbackCount,
       moodConflictCount: moodBlendSummary.moodConflictCount,
+    });
+  }
+  if (bpmFlow.config.enabled && bpmFlow.config.mode !== "DISABLED") {
+    console.info("[SmartMixV2:BpmFlow]", {
+      candidateCount: candidates.length,
+      validBpmTrackCount: bpmFlow.validBpmTrackCount,
+      missingBpmTrackCount: bpmFlow.missingBpmTrackCount,
+      selectedStartingBpm: bpmFlow.startingBpm,
+      requestedMode: bpmFlow.config.mode,
+      effectiveMode: bpmFlow.config.mode,
+      totalTransitionScore: bpmFlow.averageTransitionScore,
+      largestEffectiveGap: bpmFlow.largestEffectiveGap,
+      rejectedCandidates: 0,
+      directionConflicts: bpmFlow.directionConflictCount,
+      hardGapRelaxations: bpmFlow.hardTransitionCount,
+      halfDoubleTimeMatches: bpmFlow.halfDoubleTimeMatchCount,
     });
   }
 
@@ -217,6 +252,7 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
       moodConflictCount: moodBlendSummary.moodConflictCount,
       multiMoodBridgeTracks: moodBlendSummary.multiMoodBridgeTracks,
       missingMoodCount: moodBlendSummary.missingMoodCount,
+      bpmFlow,
     },
   };
 }

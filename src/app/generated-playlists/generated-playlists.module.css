@@ -493,6 +493,13 @@
   white-space: nowrap;
 }
 
+.transitionText {
+  margin: 0.25rem 0 0;
+  color: var(--accent);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
 .qualityWarnings {
   display: grid;
   gap: 0.4rem;

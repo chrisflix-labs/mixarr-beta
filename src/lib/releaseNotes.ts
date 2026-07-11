@@ -70,6 +70,18 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.0.4",
+    title: "BPM Ramp & Transition Tools",
+    badges: ["Playlists", "BPM", "Preview", "Diagnostics", "UI"],
+    changes: [
+      "Added beta BPM flow modes for Ramp Up, Ramp Down, Keep Steady, Natural Flow, and No BPM Ordering.",
+      "Added BPM transition controls for maximum gap, rule strength, jump handling, half-time/double-time matching, and starting BPM strategy.",
+      "Added reusable BPM transition analysis with difficulty labels, effective gap scoring, direction conflict detection, and missing-BPM handling.",
+      "Integrated BPM flow ordering into Smart Mix Engine v2 while preserving mood, energy, recommendation tuning, and variety scoring.",
+      "Added BPM Flow scoring metadata, transition warnings, preview sorting, and generated playlist BPM Flow details.",
+    ],
+  },
+  {
     version: "2.0.3",
     title: "Mood Blending",
     badges: ["Playlists", "Smart Builder", "Mood", "Preview", "UI"],
