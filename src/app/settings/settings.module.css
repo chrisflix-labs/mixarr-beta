@@ -383,6 +383,41 @@
   align-items: center;
 }
 
+.betaModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(3, 7, 18, 0.78);
+  backdrop-filter: blur(5px);
+}
+
+.betaModal {
+  width: min(560px, 100%);
+  padding: 1.2rem;
+  border: 1px solid rgba(242, 181, 46, 0.32);
+  border-radius: var(--radius-md);
+  background: #111827;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+
+.betaModal h3 { margin: 0 0 0.7rem; }
+.betaModal p { color: var(--muted); font-size: 0.84rem; line-height: 1.5; }
+
+.betaReportPreview {
+  max-height: 360px;
+  overflow: auto;
+  padding: .8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: #cbd5e1;
+  background: rgba(0, 0, 0, .25);
+  font-size: .72rem;
+  white-space: pre-wrap;
+}
+
 /* ---- Inputs ---- */
 
 .field {

@@ -74,6 +74,7 @@ export async function createPlaylistVersionInTransaction(tx: Prisma.TransactionC
       settingsSnapshot: snapshot.data.playlist.generationSettings as unknown as Prisma.InputJsonValue,
       trackSnapshot: snapshotJson(snapshot),
       scoreSnapshot: preferences?.savePlaylistScoreSnapshots === false ? undefined : snapshot.data.scores as Prisma.InputJsonValue | undefined,
+      betaMetadata: snapshot.data.playlist.betaMetadata as Prisma.InputJsonValue | undefined,
       trackCount: snapshot.data.summary.trackCount,
       durationMs: snapshot.data.summary.durationMs,
       restoredFromVersionId: input.restoredFromVersionId || null,
@@ -104,6 +105,7 @@ export async function ensurePlaylistBaseline(userId: string, generatedPlaylistId
 const summarySelect = {
   id: true, revisionNumber: true, reason: true, label: true, description: true,
   engineFamily: true, engineVersion: true, applicationVersion: true, trackCount: true,
+  betaMetadata: true,
   durationMs: true, isPinned: true, isAutomatic: true, isCurrent: true, syncStatus: true,
   restoredFromVersionId: true, snapshotSizeBytes: true, createdAt: true,
 } satisfies Prisma.PlaylistRevisionSelect;

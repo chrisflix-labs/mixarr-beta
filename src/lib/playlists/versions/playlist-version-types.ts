@@ -39,6 +39,7 @@ export interface PlaylistVersionSnapshot {
     engineFamily: PlaylistEngineFamily | null;
     engineVersion: string | null;
     generationSettings: VersionedGenerationSettings | null;
+    betaMetadata?: Record<string, unknown> | null;
   };
   tracks: PlaylistVersionTrack[];
   scores: Record<string, unknown> | null;

@@ -25,6 +25,9 @@ export async function POST(req: Request) {
     const email = sanitizeOptionalMetadataString(plexUser.email, { entity: "User", entityId: plexUser.id, field: "email" });
     const thumb = sanitizeOptionalMetadataString(plexUser.thumb, { entity: "User", entityId: plexUser.id, field: "thumb" });
 
+    // The first self-hosted account bootstraps administration. Existing installs
+    // receive the same assignment in the v2.0.10 migration.
+    const isFirstUser = await prisma.user.count() === 0;
     // Upsert User in DB
     const user = await prisma.user.upsert({
       where: { plexId: plexUser.id },
@@ -40,6 +43,7 @@ export async function POST(req: Request) {
         email,
         thumb,
         accessToken: pin.authToken,
+        isAdmin: isFirstUser,
       },
     });
 

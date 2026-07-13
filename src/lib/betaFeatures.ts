@@ -1,21 +1,14 @@
 import prisma from "./prisma";
+import { featureFlagRegistry, featureFlagKeys, type FeatureKey } from "./featureFlagRegistry";
 
 export const BETA_FEATURE_SETTINGS_KEY = "betaFeatureSettings";
 
-export const betaFeatureFlagDefinitions = [
-  {
-    key: "showBetaCards",
-    label: "Show beta dashboard cards",
-    description: "Display informational beta and preview cards in the dashboard.",
-  },
-  {
-    key: "enableV2PreviewCards",
-    label: "Enable v2.0.0 preview cards",
-    description: "Show early Mixarr 2.0.0 preview cards. These are informational only.",
-  },
-] as const;
+export const betaFeatureFlagDefinitions = featureFlagRegistry.map((definition) => ({
+  ...definition,
+  label: definition.name,
+}));
 
-export type BetaFeatureFlagName = typeof betaFeatureFlagDefinitions[number]["key"];
+export type BetaFeatureFlagName = FeatureKey;
 export type BetaFeatureFlags = Record<BetaFeatureFlagName, boolean>;
 
 export type BetaFeatureSettings = {
@@ -23,7 +16,7 @@ export type BetaFeatureSettings = {
   flags: BetaFeatureFlags;
 };
 
-export const betaFeatureFlagNames = betaFeatureFlagDefinitions.map((flag) => flag.key);
+export const betaFeatureFlagNames = featureFlagKeys;
 
 export const defaultBetaFeatureFlags: BetaFeatureFlags = Object.fromEntries(
   betaFeatureFlagDefinitions.map((flag) => [flag.key, false]),

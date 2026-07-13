@@ -92,5 +92,12 @@ describe("scale, idempotency, and scheduling guardrails", () => {
     assert.equal(recentlyAddedCron({ scheduleType: "weekly", scheduleTime: "02:00", scheduleDayOfWeek: 3 }), "0 2 * * 3");
     assert.equal(recentlyAddedCron({ scheduleType: "custom", scheduleExpression: "15 4 * * 1", scheduleTime: "02:00", scheduleDayOfWeek: 0 }), "15 4 * * 1");
   });
-});
 
+  it("rechecks experimental flags when a scheduled job executes and stores its requirements", () => {
+    const source = readFileSync(join(process.cwd(), "src", "lib", "recentlyAdded", "automation.ts"), "utf8");
+    assert.match(source, /getFeatureState\("smartMix\.experimentalScheduledRegeneration"|requestedFeatureFlags/);
+    assert.match(source, /requiredFeatureFlags/);
+    assert.match(source, /permanent: true/);
+    assert.match(source, /smartMix\.recentlyAddedAutoAdd/);
+  });
+});

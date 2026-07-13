@@ -9,6 +9,7 @@ import { detectRecentlyAddedTracks, analyzeRecentlyAddedTracks } from "./detecti
 import { findRecentlyAddedPlaylistMatches } from "./matching";
 import { createRecentlyAddedNotification } from "./notifications";
 import { getRecentlyAddedSettings } from "./settings";
+import { getBetaStatus, getFeatureState, recordBetaUsage } from "../featureFlagService";
 
 export const RECENTLY_ADDED_JOB_KEY = "recently-added:automation";
 
@@ -17,9 +18,9 @@ function snapshotSettings(settings: any) {
   return safe as Prisma.InputJsonValue;
 }
 
-async function startRun(userId: string, triggerType: string, batchId: string | null, settings: any, lockKey?: string) {
+async function startRun(userId: string, triggerType: string, batchId: string | null, settings: any, lockKey?: string, beta?: { requiredFeatureFlags: string[]; requestedScoringModel: string; requestedAccessLevel: string }) {
   return prisma.recentlyAddedAutomationRun.create({
-    data: { userId, batchId, triggerType, status: "scanning", phase: "scanning", settingsSnapshot: snapshotSettings(settings), lockKey: lockKey || null },
+    data: { userId, batchId, triggerType, status: "scanning", phase: "scanning", settingsSnapshot: snapshotSettings(settings), lockKey: lockKey || null, requiredFeatureFlags: beta?.requiredFeatureFlags || [], requestedScoringModel: beta?.requestedScoringModel || "stable-v2", requestedAccessLevel: beta?.requestedAccessLevel || "STABLE" },
   });
 }
 
@@ -133,7 +134,22 @@ export async function runRecentlyAddedAutomation({
   libraryId?: string | null;
   scan?: boolean;
 }) {
-  const settings = await getRecentlyAddedSettings(userId);
+  const storedSettings = await getRecentlyAddedSettings(userId);
+  const requestedFeatureFlags = [
+    ...(storedSettings.autoAddStrongMatches ? ["smartMix.recentlyAddedAutoAdd"] : []),
+    ...(triggerType === "scheduled" && storedSettings.scheduledRegenerationEnabled && !["add_only", "suggestions_only"].includes(storedSettings.regenerationBehavior) ? ["smartMix.experimentalScheduledRegeneration"] : []),
+  ];
+  const featureStates = await Promise.all(requestedFeatureFlags.map((featureKey) => getFeatureState(featureKey, { userId })));
+  const scheduledState = featureStates.find((state) => state.key === "smartMix.experimentalScheduledRegeneration");
+  if (triggerType === "scheduled" && scheduledState && !scheduledState.enabled) {
+    await recordBetaUsage({ userId, featureKey: scheduledState.key, action: "scheduled_regeneration", success: false, errorCode: scheduledState.reason });
+    console.warn("[RecentlyAdded] scheduled beta job skipped", { userId, feature: scheduledState.key, reason: scheduledState.reason });
+    return { skipped: true, reason: scheduledState.reason, permanent: true };
+  }
+  const autoAddState = featureStates.find((state) => state.key === "smartMix.recentlyAddedAutoAdd");
+  const settings = autoAddState && !autoAddState.enabled ? { ...storedSettings, autoAddStrongMatches: false } : storedSettings;
+  if (autoAddState && !autoAddState.enabled) await recordBetaUsage({ userId, featureKey: autoAddState.key, action: "recently_added_auto_add", success: true, fallbackUsed: true, errorCode: autoAddState.reason });
+  const betaStatus = await getBetaStatus({ userId });
   if (triggerType !== "manual" && !settings.enabled) return { skipped: true, reason: "automation_disabled" };
   if (triggerType === "scheduled" && (!settings.scheduledRegenerationEnabled || settings.scheduleType === "manual")) return { skipped: true, reason: "schedule_disabled" };
   const activeStatuses = ["scanning", "analyzing_new_tracks", "matching_playlists", "applying_approved_automation"];
@@ -151,7 +167,7 @@ export async function runRecentlyAddedAutomation({
   let run: any = null;
   let batchId: string | null = null;
   try {
-    run = await startRun(userId, triggerType, null, settings, lock.job.lockKey);
+    run = await startRun(userId, triggerType, null, settings, lock.job.lockKey, { requiredFeatureFlags: requestedFeatureFlags, requestedScoringModel: "stable-v2", requestedAccessLevel: betaStatus.accessLevel });
     let discovered = 0;
     if (scan) {
       setJobPhase(lock.job, "Scanning recently added tracks");

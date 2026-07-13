@@ -44,6 +44,8 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
+Mixarr v2.0.10 keeps experimental Smart Mix behavior disabled by default and resolves every feature on the server. Administrators configure the server ceiling with `MIXARR_BETA_PROGRAM_ENABLED`, `MIXARR_PRIVATE_BETA_ENABLED`, and `MIXARR_DEVELOPER_FEATURES_ENABLED`; users must then opt in and enable eligible flags individually. Emergency overrides can disable all experiments or named flags without deleting preferences or playlist history. See [Beta features and advanced flags](docs/BETA_FEATURES.md).
+
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 
 | Feature | Status |

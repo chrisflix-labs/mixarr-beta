@@ -83,6 +83,7 @@ type BpmPresetMetadata = {
 };
 
 type EngineVersion = "v1" | "v2";
+type BuilderBetaStatus = { enabled: boolean; accessLevel: string; features: Array<{ key: string; enabled: boolean; available: boolean; definition: { name: string; riskLevel: string; warningText: string; stableFallback: string } }>; scoringModels: Array<{ id: string; name: string; version: string; stability: string; description: string; available: boolean; enabled: boolean }> };
 type MoodBlendMode = MoodBlendBetaSettings["moodBlendMode"];
 type TuningSliderKey = Exclude<keyof SmartMixTuningConfig, "avoidRecentlyUsedTracks" | "bpmFlow" | "discovery" | "presetName" | "tuningVersion">;
 
@@ -125,6 +126,9 @@ type PlaylistPreviewSummary = {
   safetyRuleSummary?: string;
   engineVersion?: EngineVersion;
   engineLabel?: string;
+  scoringModel?: string;
+  scoringModelVersion?: string;
+  stableFallbackUsed?: boolean;
   tuningPresetName?: string | null;
   tuningConfig?: SmartMixTuningConfig;
   moodBlendMode?: MoodBlendMode;
@@ -307,6 +311,10 @@ export default function BuilderPage() {
   const [moodPresetMetadata, setMoodPresetMetadata] = useState<MoodPresetMetadata>({});
   const [bpmPresetMetadata, setBpmPresetMetadata] = useState<BpmPresetMetadata>({});
   const [engineVersion, setEngineVersion] = useState<EngineVersion>("v1");
+  const [scoringModel, setScoringModel] = useState("stable-v2");
+  const [betaStatus, setBetaStatus] = useState<BuilderBetaStatus | null>(null);
+  const [modelComparison, setModelComparison] = useState<any>(null);
+  const [comparingModels, setComparingModels] = useState(false);
   const [tuningConfig, setTuningConfig] = useState<SmartMixTuningConfig>(() => normalizeSmartMixTuningConfig(DEFAULT_SMART_MIX_TUNING));
   const [moodBlendSettings, setMoodBlendSettings] = useState<MoodBlendBetaSettings>(DEFAULT_MOOD_BLEND_BETA_SETTINGS);
   const [customTuningPresets, setCustomTuningPresets] = useState<SmartMixTuningPreset[]>([]);
@@ -341,6 +349,13 @@ export default function BuilderPage() {
     fetchDefaults();
     fetchHistory();
     fetchTuningPresets();
+    axios.get("/api/beta/status").then((response) => {
+      setBetaStatus(response.data);
+      if (!response.data?.enabled) {
+        setScoringModel("stable-v2");
+        setMoodBlendSettings(DEFAULT_MOOD_BLEND_BETA_SETTINGS);
+      }
+    }).catch(() => setBetaStatus(null));
   }, []);
 
   useEffect(() => {
@@ -676,6 +691,8 @@ export default function BuilderPage() {
       minimumTrackCount: safetyRules.minimumTrackCount || undefined,
     },
     engineVersion,
+    scoringModel,
+    allowStableFallback: true,
     tuningConfig: normalizeSmartMixTuningConfig(tuningConfig),
     moodBlendMode: moodBlendSettings.moodBlendMode,
     selectedMoodPath: moodBlendSettings.moodBlendMode === "mixed_mood" ? [] : moodBlendSettings.selectedMoodPath,
@@ -693,6 +710,22 @@ export default function BuilderPage() {
     ...bpmPresetMetadata,
     ...extra,
   });
+
+  const compareScoringModels = async () => {
+    setComparingModels(true); setPreviewError("");
+    try {
+      const response = await axios.post("/api/smart-mix/compare-models", { modelA: "stable-v2", modelB: "experimental-balanced", request: playlistPayload({ engineVersion: "v2" }) });
+      setModelComparison(response.data);
+    } catch (error: any) { setPreviewError(error?.response?.data?.reason || error?.response?.data?.error || "Unable to compare scoring models."); }
+    finally { setComparingModels(false); }
+  };
+
+  const saveComparisonReport = () => {
+    if (!modelComparison) return;
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([JSON.stringify(modelComparison, null, 2)], { type: "application/json" }));
+    link.download = `mixarr-model-comparison-${Date.now()}.json`; link.click(); URL.revokeObjectURL(link.href);
+  };
 
   const playlistPayloadFromRecipeFilters = (filters: any) => ({
     rules: filters.rules || [],
@@ -747,6 +780,8 @@ export default function BuilderPage() {
     conflictSensitivity: filters.conflictSensitivity ?? DEFAULT_MOOD_BLEND_BETA_SETTINGS.conflictSensitivity,
     selectedMoodPreset: filters.selectedMoodPreset || DEFAULT_MOOD_BLEND_BETA_SETTINGS.selectedMoodPreset,
     engineVersion: (filters.engineVersion === "v2" ? "v2" : "v1") as EngineVersion,
+    scoringModel: typeof filters.scoringModel === "string" ? filters.scoringModel : "stable-v2",
+    allowStableFallback: true,
     pinnedTrackIds: filters.pinnedTrackIds || [],
     excludedTrackIds: filters.excludedTrackIds || [],
   });
@@ -907,6 +942,7 @@ export default function BuilderPage() {
     restoreTuningConfig(savedRule.options?.tuningConfig);
     restoreMoodBlend(savedRule.options);
     setEngineVersion(savedRule.options?.engineVersion === "v2" ? "v2" : "v1");
+    setScoringModel(betaStatus?.enabled && typeof savedRule.options?.scoringModel === "string" ? savedRule.options.scoringModel : "stable-v2");
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
     setTracks([]);
@@ -965,6 +1001,7 @@ export default function BuilderPage() {
     restoreTuningConfig(filters.tuningConfig);
     restoreMoodBlend(filters);
     setEngineVersion(filters.engineVersion === "v2" ? "v2" : "v1");
+    setScoringModel(betaStatus?.enabled && typeof filters.scoringModel === "string" ? filters.scoringModel : "stable-v2");
     setPinnedTrackIds(filters.pinnedTrackIds || []);
     setExcludedTrackIds(filters.excludedTrackIds || []);
     setTracks([]);
@@ -1832,12 +1869,44 @@ export default function BuilderPage() {
           </label>
         </div>
 
-        <MoodBlendingBetaPanel
+        {engineVersion === "v2" && betaStatus?.enabled && betaStatus.scoringModels.some((model) => model.stability === "EXPERIMENTAL" && model.enabled) && (
+          <div className={`glass-panel ${styles.panel}`}>
+            <div className={styles.sectionTitleRow}><h3>Beta Smart Mix</h3><Sparkles size={18} /></div>
+            <p className={styles.panelSubtext}>Experimental controls are isolated from stable settings. Access: {betaStatus.accessLevel.replaceAll("_", " ")}.</p>
+            <label className={styles.optionLabel}>Scoring model <strong> BETA</strong>
+              <select className={styles.select} value={scoringModel} onChange={(event) => { setScoringModel(event.target.value); clearPreview(); }}>
+                {betaStatus.scoringModels.filter((model) => model.stability === "STABLE" || model.enabled).map((model) => <option key={model.id} value={model.id}>{model.name} · {model.stability === "STABLE" ? "Stable" : "Beta"}</option>)}
+              </select>
+            </label>
+            <p className={styles.panelSubtext}>{betaStatus.scoringModels.find((model) => model.id === scoringModel)?.description} Risk: Medium. Stable fallback: Stable v2 scoring.</p>
+            <button type="button" className={styles.btnSecondary} onClick={() => { setScoringModel("stable-v2"); clearPreview(); }}>Reset to stable behavior</button>
+            {betaStatus.features.some((feature) => feature.key === "smartMix.compareScoringModels" && feature.enabled) && <button type="button" className={styles.btnSecondary} disabled={comparingModels} onClick={() => void compareScoringModels()}>{comparingModels ? "Comparing…" : "Compare Stable v2 vs Experimental Balanced"}</button>}
+            {modelComparison && <div className={styles.summaryPanel}>
+              <h4>Compare Smart Mix Models</h4>
+              <div className={styles.statsGrid}>
+                <div className={styles.statCard}><span>Tracks in both</span><strong>{modelComparison.comparison.tracksInBoth}</strong></div>
+                <div className={styles.statCard}><span>Only Stable</span><strong>{modelComparison.comparison.onlyInA.length}</strong></div>
+                <div className={styles.statCard}><span>Only Experimental</span><strong>{modelComparison.comparison.onlyInB.length}</strong></div>
+                <div className={styles.statCard}><span>Different ordering</span><strong>{modelComparison.comparison.differentOrdering}</strong></div>
+                <div className={styles.statCard}><span>Stable score</span><strong>{modelComparison.modelA.overallScore ?? "—"}</strong></div>
+                <div className={styles.statCard}><span>Experimental score</span><strong>{modelComparison.modelB.overallScore ?? "—"}</strong></div>
+                <div className={styles.statCard}><span>Stable M/E/B/D</span><strong>{modelComparison.modelA.moodScore ?? "—"} / {modelComparison.modelA.energyScore ?? "—"} / {modelComparison.modelA.bpmScore ?? "—"} / {modelComparison.modelA.discoveryScore ?? "—"}</strong></div>
+                <div className={styles.statCard}><span>Experimental M/E/B/D</span><strong>{modelComparison.modelB.moodScore ?? "—"} / {modelComparison.modelB.energyScore ?? "—"} / {modelComparison.modelB.bpmScore ?? "—"} / {modelComparison.modelB.discoveryScore ?? "—"}</strong></div>
+                <div className={styles.statCard}><span>Stable variety</span><strong>{modelComparison.modelA.artistVariety} artists · {modelComparison.modelA.albumVariety} albums</strong></div>
+                <div className={styles.statCard}><span>Experimental variety</span><strong>{modelComparison.modelB.artistVariety} artists · {modelComparison.modelB.albumVariety} albums</strong></div>
+              </div>
+              <p className={styles.panelSubtext}>This comparison has not saved or changed a playlist. Stable: {modelComparison.modelA.processingTimeMs} ms · Experimental: {modelComparison.modelB.processingTimeMs} ms.</p>
+              <div className={styles.recipeEditActions}><button type="button" className={styles.btnSecondary} onClick={() => { setScoringModel("stable-v2"); setModelComparison(null); clearPreview(); }}>Use Stable Result</button><button type="button" className={styles.btnSecondary} onClick={() => { setScoringModel("experimental-balanced"); setModelComparison(null); clearPreview(); }}>Use Experimental Result</button><button type="button" className={styles.btnSecondary} onClick={saveComparisonReport}>Save Comparison Report</button><a className={styles.btnSecondary} href="/support">Send Beta Feedback</a></div>
+            </div>}
+          </div>
+        )}
+
+        {betaStatus?.enabled && betaStatus.features.some((feature) => feature.key === "smartMix.experimentalMoodGraph" && feature.enabled) && <MoodBlendingBetaPanel
           settings={moodBlendSettings}
           onChange={updateMoodBlendSettings}
           serverId={serverId}
           libraryId={libraryId}
-        />
+        />}
 
         {/* Safety Rules */}
         <div className={`glass-panel ${styles.panel}`}>
@@ -2126,6 +2195,7 @@ export default function BuilderPage() {
                   <strong>{playlistPreview.summary.tuningPresetName || "Custom"}</strong>
                 </div>
               )}
+              {playlistPreview.summary.engineVersion === "v2" && <div className={styles.statCard}><span>Scoring</span><strong>{playlistPreview.summary.scoringModel || "stable-v2"}{playlistPreview.summary.stableFallbackUsed ? " · stable fallback" : ""}</strong></div>}
               <div className={styles.statCard}>
                 <span>Matched</span>
                 <strong>{playlistPreview.summary.matchingTrackCount}</strong>

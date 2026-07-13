@@ -13,7 +13,7 @@ import { buildBugReportTemplate, buildFeedbackTemplate, buildHealthReport, build
 import { sanitizeDiagnostics, sanitizeErrorText } from "./supportRedaction";
 import { getAppReadiness } from "./readiness";
 import { getExternalApiDiagnostics } from "./externalApiSettings";
-import { getBetaFeatureSettings, getBetaFlags } from "./betaFeatures";
+import { getBetaStatus } from "./featureFlagService";
 
 export function getSupportLinks() {
   const discordSupportUrl = validDiscordSupportUrl(process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL);
@@ -118,7 +118,7 @@ export async function getSupportSummary(userId: string) {
     getRecentJobSummary(userId).catch(() => null),
     getAppReadiness({ userId }).catch(() => null),
     getExternalApiDiagnostics().catch(() => null),
-    getBetaFeatureSettings(),
+    getBetaStatus({ userId }),
   ]);
   const providerSettings = resolveMetadataProviderSettings(settings);
   const libraries = (user?.servers || []).flatMap((server) =>
@@ -147,8 +147,10 @@ export async function getSupportSummary(userId: string) {
       },
       externalApis,
       betaFeatures: {
-        experimentalEnabled: betaFeatures.enableExperimentalFeatures,
-        flags: getBetaFlags(betaFeatures),
+        experimentalEnabled: betaFeatures.enabled,
+        accessLevel: betaFeatures.accessLevel,
+        serverAccessLevel: betaFeatures.serverAccessLevel,
+        flags: Object.fromEntries(betaFeatures.features.map((feature) => [feature.key, feature.enabled])),
       },
     },
     plex: {

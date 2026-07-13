@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.0.10 - Beta Feature Polish & Advanced Flags
+
+- Replaced scattered beta checks with a shared feature registry and authoritative server resolver covering server ceilings, access tiers, administrator restrictions, user opt-in, per-feature preferences, runtime overrides, and emergency kill switches.
+- Added Stable, Public Beta, Private Beta, and Developer access levels with persistent administrator-managed grants, expiration support, preserved configuration after revocation, and first-user admin bootstrapping for existing self-hosted installations.
+- Added Stable v2 and a real Experimental Balanced scoring model, safe model resolution/fallback, comparison previews that never auto-save, and scoring/beta metadata in generated playlists and version history.
+- Added beta administration, consistent risk labels and warnings, acknowledgement-based opt-in, stable reset controls, configurable Sponsors messaging, safe feedback/Discord links, sanitized feedback reports, and local beta usage summaries.
+- Protected experimental Recently Added auto-add and scheduled regeneration at execution time, storing required flags/access/model with runs and skipping permanently unavailable work before playlist mutation.
+- Added database models for feature overrides, per-user preferences/access, usage, and feedback reports while preserving the v1.5.x `betaFeatureSettings` JSON and disabled-by-default behavior.
+
 ## v2.0.9 - Recently Added Automation
 
 - Added disabled-by-default Recently Added Automation with independent, persistent feature toggles and preview-first automatic changes.

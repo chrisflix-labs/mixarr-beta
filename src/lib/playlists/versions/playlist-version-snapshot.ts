@@ -71,6 +71,7 @@ export async function capturePlaylistSnapshot(db: DbClient, generatedPlaylistId:
       engineFamily: engineFamilyFor(playlist.engineVersion, playlist.sourceType),
       engineVersion: playlist.engineVersion || null,
       generationSettings: { schemaVersion: 1, engineVersion: playlist.engineVersion || null, settings },
+      betaMetadata: redactVersionSettings(playlist.betaMetadataJson) as Record<string, unknown> | null,
     },
     tracks,
     scores: redactVersionSettings(playlist.qualityScoreJson) as Record<string, unknown> | null,
@@ -91,6 +92,7 @@ const storedSchema = z.object({
     playlist: z.object({
       name: z.string(), description: z.string().nullable(), engineFamily: z.enum(["smart_mix_v1", "smart_mix_v2", "manual", "import"]).nullable(),
       engineVersion: z.string().nullable(), generationSettings: z.object({ schemaVersion: z.number(), engineVersion: z.string().nullable(), settings: z.record(z.unknown()) }).nullable(),
+      betaMetadata: z.record(z.unknown()).nullable().optional().default(null),
     }),
     tracks: z.array(trackSchema), scores: z.record(z.unknown()).nullable(),
     summary: z.object({ trackCount: z.number().int().nonnegative(), durationMs: z.number().nonnegative() }),
@@ -122,7 +124,7 @@ function migrateLegacySnapshot(value: unknown, fallback: { name: string; engineV
   }
   const settings = redactVersionSettings(fallback.settings);
   return { schemaVersion: 1, data: {
-    playlist: { name: fallback.name, description: null, engineFamily: engineFamilyFor(fallback.engineVersion), engineVersion: fallback.engineVersion, generationSettings: settings && typeof settings === "object" ? { schemaVersion: 1, engineVersion: fallback.engineVersion, settings: settings as Record<string, unknown> } : null },
+    playlist: { name: fallback.name, description: null, engineFamily: engineFamilyFor(fallback.engineVersion), engineVersion: fallback.engineVersion, generationSettings: settings && typeof settings === "object" ? { schemaVersion: 1, engineVersion: fallback.engineVersion, settings: settings as Record<string, unknown> } : null, betaMetadata: null },
     tracks, scores: fallback.scores && typeof fallback.scores === "object" ? fallback.scores as Record<string, unknown> : null,
     summary: { trackCount: tracks.length, durationMs: tracks.reduce((sum, track) => sum + (track.durationMsSnapshot || 0), 0) },
   } };

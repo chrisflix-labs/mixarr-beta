@@ -12,7 +12,7 @@ import { APP_VERSION } from "@/lib/appVersion";
 import { getRecentJobSummary } from "@/lib/jobHistory";
 import { getPlaylistHistoryDashboardSummary } from "@/lib/playlistHistory";
 import { getDashboardSummary, type DashboardSummary } from "@/lib/dashboardSummary";
-import { getBetaFeatureSettings, isFeatureEnabled } from "@/lib/betaFeatures";
+import { isFeatureEnabled as isResolvedBetaFeatureEnabled } from "@/lib/featureFlagService";
 import RecentlyAddedDiscoveryCard from "@/components/RecentlyAddedDiscoveryCard";
 
 const previewFeatures = [
@@ -227,9 +227,10 @@ function BetaDashboardPreviewCards() {
 export default async function Home() {
   const cookieStore = cookies();
   const sessionId = cookieStore.get("mixarr_session")?.value;
-  const betaSettings = await getBetaFeatureSettings();
-  const showExperimentalPreviewCards = isFeatureEnabled("showBetaCards", betaSettings)
-    && isFeatureEnabled("enableV2PreviewCards", betaSettings);
+  const showExperimentalPreviewCards = sessionId ? (await Promise.all([
+    isResolvedBetaFeatureEnabled("showBetaCards", { userId: sessionId }),
+    isResolvedBetaFeatureEnabled("enableV2PreviewCards", { userId: sessionId }),
+  ])).every(Boolean) : false;
 
   let user = null;
   let dashboardSummary: DashboardSummary | null = null;

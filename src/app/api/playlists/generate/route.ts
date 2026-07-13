@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ tracks, engineVersion: result.engineVersion, engine: result.engine });
+    return NextResponse.json({ tracks, engineVersion: result.engineVersion, scoringModel: result.scoringModel, scoringModelVersion: result.scoringModelVersion, betaFeatures: result.betaFeatures, stableFallbackUsed: result.stableFallbackUsed, fallbackReason: result.fallbackReason, engine: result.engine });
   } catch (error: any) {
     const status = error.name === "ZodError" ? 400 : 500;
     if (status === 400) {

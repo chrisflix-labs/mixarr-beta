@@ -12,6 +12,8 @@ import { safeFinishJobHistory, safeRecordJobHistory, safeStartJobHistory } from 
 import { recordPlaylistHistoryEntry } from "./playlistHistory";
 import { filterManualTrackExclusions, getManualTrackExclusionIds } from "./trackExclusions";
 import { scorePlaylist, type PlaylistScoreSummary } from "./playlistScoring";
+import { resolveScoringModel, STABLE_SCORING_MODEL_ID } from "./scoringModels";
+import { getBetaStatus, getFeatureState, recordBetaUsage } from "./featureFlagService";
 import {
   runSmartMixEngineV2,
   smartMixEngineLabel,
@@ -149,6 +151,8 @@ export const playlistConfigSchema = z.object({
   conflictSensitivity: moodBlendSliderSchema.default(70),
   selectedMoodPreset: z.string().trim().max(80).default("balanced_flow"),
   engineVersion: z.enum(smartMixEngineVersions).default(SMART_MIX_ENGINE_V1),
+  scoringModel: z.string().trim().min(1).max(80).optional(),
+  allowStableFallback: z.boolean().optional(),
 }).merge(playlistOptionsSchema);
 
 export const savedPlaylistSchema = playlistConfigSchema.extend({
@@ -784,6 +788,11 @@ type PlaylistGenerationStats = {
   safety: PlaylistGenerationSafetyMetadata;
   qualityScore: PlaylistScoreSummary | null;
   engineVersion: SmartMixEngineVersion;
+  scoringModel: string;
+  scoringModelVersion: string;
+  betaFeatures: string[];
+  stableFallbackUsed: boolean;
+  fallbackReason: string | null;
   engine: {
     version: SmartMixEngineVersion;
     label: string;
@@ -804,7 +813,18 @@ export async function generatePlaylistTracksWithStats({
     const { pinnedTracks, omittedIds, blockedTrackIds, manualExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
     const engineVersion = config.engineVersion || SMART_MIX_ENGINE_V1;
     const useSmartMixV2 = engineVersion === SMART_MIX_ENGINE_V2;
-    const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
+    const scoringResolution = useSmartMixV2
+      ? await resolveScoringModel({ userId, requestedModel: config.scoringModel, allowStableFallback: config.allowStableFallback !== false })
+      : { requestedModel: STABLE_SCORING_MODEL_ID, model: { id: STABLE_SCORING_MODEL_ID, version: "2", apply: normalizeSmartMixTuningConfig, requiredFeature: null }, fallbackUsed: false, fallbackReason: null };
+    const tuningConfig = scoringResolution.model.apply(normalizeSmartMixTuningConfig(config.tuningConfig));
+    const betaStatus = useSmartMixV2 ? await getBetaStatus({ userId }) : null;
+    const moodFeatureState = useSmartMixV2 && config.moodBlendMode !== "off" ? await getFeatureState("smartMix.experimentalMoodGraph", { userId }) : null;
+    const betaFeatures = [
+      ...(scoringResolution.model.requiredFeature ? [scoringResolution.model.requiredFeature] : []),
+      ...(moodFeatureState?.enabled ? [moodFeatureState.key] : []),
+    ];
+    const stableFallbackUsed = scoringResolution.fallbackUsed || Boolean(moodFeatureState && !moodFeatureState.enabled);
+    const fallbackReason = scoringResolution.fallbackReason || (moodFeatureState && !moodFeatureState.enabled ? moodFeatureState.reason : null);
     const recentlyUsedTrackIds = useSmartMixV2 && tuningConfig.avoidRecentlyUsedTracks
       ? await getRecentlyGeneratedTrackIds(userId)
       : [];
@@ -812,7 +832,7 @@ export async function generatePlaylistTracksWithStats({
       ? await getRecentPlaylistUsage(userId, tuningConfig.discovery.recentPlaylistLookback)
       : {};
     const runConfig = useSmartMixV2
-      ? { ...config, tuningConfig, recentlyUsedTrackIds, recentPlaylistUsage }
+      ? { ...config, scoringModel: scoringResolution.model.id, tuningConfig, ...(moodFeatureState && !moodFeatureState.enabled ? { moodBlendMode: "off" as const, selectedMoodPath: [], allowedMoods: [] } : {}), recentlyUsedTrackIds, recentPlaylistUsage }
       : config;
     const remainingLimit = Math.max(0, config.limit - pinnedTracks.length);
     const safetyCandidateLimit = safetyRulesAreEnabled(config)
@@ -865,15 +885,21 @@ export async function generatePlaylistTracksWithStats({
             ...engineResult.diagnostics.moodWarnings,
             ...engineResult.diagnostics.bpmFlow.warnings,
             ...engineResult.diagnostics.discovery.warnings,
+            ...(moodFeatureState && !moodFeatureState.enabled ? [`Experimental mood graph was unavailable (${moodFeatureState.reason}); standard mood compatibility rules were used.`] : []),
           ].filter((warning, index, list) => list.indexOf(warning) === index),
           manualExclusionsRemoved: manualExclusionsApplied,
         } as PlaylistGenerationSafetyMetadata,
         qualityScore: scorePlaylist(tracks, tuningConfig, engineResult.diagnostics.discovery),
         engineVersion: SMART_MIX_ENGINE_V2,
+        scoringModel: scoringResolution.model.id,
+        scoringModelVersion: scoringResolution.model.version,
+        betaFeatures,
+        stableFallbackUsed,
+        fallbackReason,
         engine: {
           version: SMART_MIX_ENGINE_V2,
           label: smartMixEngineLabel(SMART_MIX_ENGINE_V2),
-          diagnostics: engineResult.diagnostics,
+          diagnostics: { ...engineResult.diagnostics, scoringModel: scoringResolution.model.id, scoringModelVersion: scoringResolution.model.version, requestedScoringModel: scoringResolution.requestedModel, betaFeatures, betaAccessLevel: betaStatus?.accessLevel || "STABLE", stableFallbackUsed, fallbackReason },
         },
       };
     }
@@ -890,6 +916,11 @@ export async function generatePlaylistTracksWithStats({
       } as PlaylistGenerationSafetyMetadata,
       qualityScore: null,
       engineVersion: SMART_MIX_ENGINE_V1,
+      scoringModel: STABLE_SCORING_MODEL_ID,
+      scoringModelVersion: "2",
+      betaFeatures: [],
+      stableFallbackUsed: false,
+      fallbackReason: null,
       engine: {
         version: SMART_MIX_ENGINE_V1,
         label: smartMixEngineLabel(SMART_MIX_ENGINE_V1),
@@ -1118,6 +1149,11 @@ export async function previewPlaylistTracks({
     bpmPresetVersion: config.bpmPresetVersion || null,
     bpmPresetModified: config.bpmPresetModified || false,
     engineVersion: generation.engineVersion,
+    scoringModel: generation.scoringModel,
+    scoringModelVersion: generation.scoringModelVersion,
+    betaFeatures: generation.betaFeatures,
+    stableFallbackUsed: generation.stableFallbackUsed,
+    stableFallbackReason: generation.fallbackReason,
     engineLabel: generation.engine.label,
     engineDiagnostics: generation.engine.diagnostics,
     tuningPresetName: tuningConfig.presetName || null,
@@ -1493,7 +1529,15 @@ export async function recordGeneratedPlaylist({
   const config = normalizeGeneratedPlaylistConfig(filters);
   const tracks = trackIds.length ? await fetchOwnedTracksInOrder(userId, trackIds) : [];
   const resolvedSourceType = generatedPlaylistSourceType(config, sourceType);
-  const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
+  const scoringResolution = config.engineVersion === SMART_MIX_ENGINE_V2
+    ? await resolveScoringModel({ userId, requestedModel: config.scoringModel, allowStableFallback: true })
+    : { model: { id: STABLE_SCORING_MODEL_ID, version: "2", apply: normalizeSmartMixTuningConfig, requiredFeature: null }, fallbackUsed: false, fallbackReason: null };
+  const tuningConfig = scoringResolution.model.apply(normalizeSmartMixTuningConfig(config.tuningConfig));
+  const betaStatus = await getBetaStatus({ userId });
+  const moodFeatureState = config.engineVersion === SMART_MIX_ENGINE_V2 && config.moodBlendMode !== "off" ? await getFeatureState("smartMix.experimentalMoodGraph", { userId }) : null;
+  const betaFeatures = [...(scoringResolution.model.requiredFeature ? [scoringResolution.model.requiredFeature] : []), ...(moodFeatureState?.enabled ? [moodFeatureState.key] : [])];
+  const stableFallbackUsed = scoringResolution.fallbackUsed || Boolean(moodFeatureState && !moodFeatureState.enabled);
+  const fallbackReason = scoringResolution.fallbackReason || (moodFeatureState && !moodFeatureState.enabled ? moodFeatureState.reason : null);
   let discoveryResult = suppliedDiscoveryResult && typeof suppliedDiscoveryResult === "object" && Number.isFinite((suppliedDiscoveryResult as any).targetSatisfaction)
     ? suppliedDiscoveryResult as any
     : null;
@@ -1528,6 +1572,19 @@ export async function recordGeneratedPlaylist({
     discoveryConfigJson: config.engineVersion === SMART_MIX_ENGINE_V2 ? tuningConfig.discovery as any : undefined,
     discoveryResultJson: config.engineVersion === SMART_MIX_ENGINE_V2 ? discoveryResult as any : undefined,
     engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
+    scoringModel: scoringResolution.model.id,
+    scoringModelVersion: scoringResolution.model.version,
+    betaMetadataJson: betaFeatures.length || stableFallbackUsed ? {
+      accessLevel: betaStatus.accessLevel,
+      enabledFeatureFlags: betaFeatures,
+      scoringModel: scoringResolution.model.id,
+      scoringModelVersion: scoringResolution.model.version,
+      smartMixEngineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
+      betaWarningAcknowledged: Boolean(betaStatus.warningAcceptedAt),
+      stableFallbackUsed,
+      fallbackReason,
+      generationSettings: config,
+    } as any : undefined,
     filtersJson: config as any,
     safetyRulesJson: config.safetyRules as any,
     qualityScoreJson: qualityScore as any,
@@ -1551,6 +1608,11 @@ export async function recordGeneratedPlaylist({
     });
     return saved;
   });
+  if (betaFeatures.length || stableFallbackUsed) {
+    for (const featureKey of betaFeatures.length ? betaFeatures : [moodFeatureState?.key || "smartMix.experimentalScoring"]) {
+      await recordBetaUsage({ userId, featureKey, playlistId: generatedPlaylist.id, action: existing ? "playlist_regeneration" : "playlist_generation", success: true, fallbackUsed: stableFallbackUsed, engineVersion: config.engineVersion, scoringModel: scoringResolution.model.id, errorCode: fallbackReason });
+    }
+  }
   return generatedPlaylist;
 }
 

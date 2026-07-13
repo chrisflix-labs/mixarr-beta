@@ -71,6 +71,20 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.0.10",
+    title: "Beta Feature Polish & Advanced Flags",
+    releaseDate: "July 13, 2026",
+    badges: ["Beta", "Smart Builder", "Security", "Settings", "Diagnostics", "Feedback", "Discord", "Automation", "History", "Database"],
+    changes: [
+      "Added centralized server-authoritative feature resolution with Stable, Public Beta, Private Beta, and Developer access levels.",
+      "Added disabled-by-default per-user opt-in, individual feature preferences, administrator overrides, access grants, and immediate global/per-feature emergency switches.",
+      "Added Stable v2 and Experimental Balanced model registration, safe fallback before mutation, model comparison previews, and beta/scoring metadata in playlist versions.",
+      "Added Beta Administration, consistent risk warnings, acknowledgement and reset flows, Sponsors messaging, sanitized diagnostics, local usage summaries, and configured feedback/Discord actions.",
+      "Experimental Recently Added auto-add and scheduled regeneration now recheck access and flags at execution time and stop before playlist changes when unavailable.",
+      "The v1.5.x beta JSON remains compatible, stable defaults are unchanged, and revoked access preserves preferences, playlists, and history in a disabled state.",
+    ],
+  },
+  {
     version: "2.0.9",
     title: "Recently Added Automation",
     releaseDate: "July 13, 2026",
