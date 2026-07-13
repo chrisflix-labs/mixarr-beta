@@ -6,7 +6,9 @@ import { Disc3, Filter, Mic2, Music, Search, SlidersHorizontal, Star, Tag, Wand2
 import prisma from "@/lib/prisma";
 import BlockTrackButton from "@/components/BlockTrackButton";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
-import { getEffectiveBpm } from "@/lib/bpm";
+import MetadataCorrectionsButton from "@/components/MetadataCorrectionsButton";
+import BulkMetadataCorrections, { SelectAllTracksCheckbox, TrackSelectionCheckbox } from "@/components/BulkMetadataCorrections";
+import { resolveEffectiveTrackMetadata } from "@/lib/metadataCorrections";
 import { isArtistOrGroupTag, normalizeGenreName } from "@/lib/genreFilters";
 import styles from "./library.module.css";
 
@@ -14,6 +16,7 @@ const pageSize = 50;
 const sortOptions = ["popular", "recent", "title", "artist", "year", "plays"] as const;
 const traitOptions = ["all", "unplayed", "played", "rated", "live", "remaster", "explicit", "missingPopularity"] as const;
 const statusOptions = ["active", "missing", "deleted", "all"] as const;
+const metadataOptions = ["all", "corrected", "bpm_corrected", "mood_corrected", "energy_corrected", "verified", "unverified", "ignored", "conflicting", "missing"] as const;
 
 function asOption<T extends readonly string[]>(value: string | undefined, options: T, fallback: T[number]) {
   return options.includes(value as T[number]) ? value as T[number] : fallback;
@@ -41,7 +44,7 @@ function formatDuration(duration?: number | null) {
 export default async function LibraryPage({
   searchParams,
 }: {
-  searchParams: { page?: string; q?: string; query?: string; genre?: string; sort?: string; trait?: string; status?: string; minPopularity?: string };
+  searchParams: { page?: string; q?: string; query?: string; genre?: string; sort?: string; trait?: string; status?: string; minPopularity?: string; metadata?: string };
 }) {
   const cookieStore = cookies();
   const sessionId = cookieStore.get("mixarr_session")?.value;
@@ -56,6 +59,7 @@ export default async function LibraryPage({
   const sort = asOption(searchParams.sort, sortOptions, "popular");
   const trait = asOption(searchParams.trait, traitOptions, "all");
   const status = asOption(searchParams.status, statusOptions, "active");
+  const metadata = asOption(searchParams.metadata, metadataOptions, "all");
   const minPopularity = searchParams.minPopularity ? Number(searchParams.minPopularity) : undefined;
   const skip = (page - 1) * pageSize;
 
@@ -105,6 +109,20 @@ export default async function LibraryPage({
   if (trait === "remaster") filters.push({ isRemaster: true });
   if (trait === "explicit") filters.push({ isExplicit: true });
   if (trait === "missingPopularity") filters.push({ popularity: null });
+  if (metadata === "corrected") filters.push({ metadataCorrections: { some: { isActive: true } } });
+  if (metadata === "bpm_corrected" || metadata === "mood_corrected" || metadata === "energy_corrected") filters.push({ metadataCorrections: { some: { isActive: true, field: metadata.replace("_corrected", "") } } });
+  if (metadata === "verified") filters.push({ OR: [{ metadataCorrections: { some: { isActive: true, isVerified: true } } }, { metadataVerifications: { some: { verified: true } } }] });
+  if (metadata === "unverified") filters.push({ metadataCorrections: { none: { isActive: true, isVerified: true } }, metadataVerifications: { none: { verified: true } } });
+  if (metadata === "ignored") filters.push({ metadataSourceOverrides: { some: { ignored: true } } });
+  if (metadata === "conflicting") filters.push({ OR: [
+    { apiBpm: { not: null }, localBpm: { not: null } },
+    { audioFeature: { is: { apiEnergy: { not: null }, localEnergy: { not: null } } } },
+    { audioFeature: { is: { apiMood: { not: null }, localMood: { not: null } } } },
+  ] });
+  if (metadata === "missing") filters.push({
+    metadataCorrections: { none: { isActive: true } }, effectiveBpm: null, bpm: null, apiBpm: null, localBpm: null,
+    OR: [{ audioFeature: null }, { audioFeature: { is: { effectiveEnergy: null, energy: null, apiEnergy: null, localEnergy: null, effectiveMood: null, valence: null, apiMood: null, localMood: null } } }],
+  });
 
   const whereClause: Prisma.TrackWhereInput = { AND: filters };
   const orderBy: Prisma.TrackOrderByWithRelationInput[] =
@@ -123,10 +141,11 @@ export default async function LibraryPage({
         album: true,
         popularity: true,
         audioFeature: true,
+        metadataCorrections: { where: { isActive: true }, orderBy: { updatedAt: "desc" } },
+        metadataVerifications: { where: { verified: true } },
+        metadataSourceOverrides: { where: { ignored: true } },
         tags: {
-          where: { type: "genre" },
           orderBy: { name: "asc" },
-          take: 4,
         },
         blockedBy: {
           where: { userId: sessionId },
@@ -177,6 +196,7 @@ export default async function LibraryPage({
     trait,
     status,
     minPopularity: Number.isFinite(minPopularity) ? minPopularity : undefined,
+    metadata,
   };
 
   return (
@@ -268,6 +288,21 @@ export default async function LibraryPage({
               <option value="all">All statuses</option>
             </select>
           </label>
+          <label className={styles.field}>
+            Metadata Status
+            <select className={styles.select} name="metadata" defaultValue={metadata}>
+              <option value="all">Any metadata</option>
+              <option value="corrected">Has manual correction</option>
+              <option value="bpm_corrected">BPM corrected</option>
+              <option value="mood_corrected">Mood corrected</option>
+              <option value="energy_corrected">Energy corrected</option>
+              <option value="verified">Verified metadata</option>
+              <option value="unverified">Unverified metadata</option>
+              <option value="ignored">Ignored source present</option>
+              <option value="conflicting">Conflicting metadata</option>
+              <option value="missing">Missing effective metadata</option>
+            </select>
+          </label>
         </div>
         <div className={styles.quickChips}>
           <button className={styles.secondaryButton} type="submit">
@@ -288,6 +323,7 @@ export default async function LibraryPage({
         </div>
       </form>
 
+      <BulkMetadataCorrections />
       <div className={styles.tableShell}>
         {tracks.length === 0 ? (
           <div className={styles.emptyState}>
@@ -302,21 +338,25 @@ export default async function LibraryPage({
               <table className={styles.trackTable}>
                 <thead>
                   <tr>
+                    <th><SelectAllTracksCheckbox /></th>
                     <th>Track</th>
                     <th>Artist</th>
                     <th className={styles.hideMobile}>Album</th>
                     <th>Genres</th>
                     <th className={styles.hideMobile}>Stats</th>
                     <th className={styles.nowrap}>Popularity</th>
+                    <th>Metadata</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tracks.map((track) => {
-                    const displayTags = track.tags.filter((tag) => !isArtistOrGroupTag(tag.name, artistNames));
-                    const effectiveBpm = getEffectiveBpm(track);
+                    const displayTags = track.tags.filter((tag) => tag.type === "genre" && !isArtistOrGroupTag(tag.name, artistNames)).slice(0, 4);
+                    const effectiveMetadata = resolveEffectiveTrackMetadata(track);
+                    const effectiveBpm = effectiveMetadata.bpm.value;
                     return (
                       <tr key={track.id}>
+                        <td><TrackSelectionCheckbox trackId={track.id} /></td>
                         <td className={styles.titleCell}>
                           <div className={styles.trackTitle}>{track.title}</div>
                           <div className={styles.subtle}>{formatDuration(track.duration)}</div>
@@ -371,7 +411,22 @@ export default async function LibraryPage({
                       </td>
                       <td>
                         <div className={styles.trackActions}>
+                          <div className={styles.stacked}>
+                            <span className={styles.subtle}>{effectiveMetadata.bpm.value == null ? "BPM missing" : `${effectiveMetadata.bpm.value.toFixed(0)} BPM`} · {effectiveMetadata.energy.value == null ? "Energy missing" : `E ${effectiveMetadata.energy.value.toFixed(2)}`}</span>
+                            <div className={styles.badges}>
+                              {effectiveMetadata.hasCorrection && <span className={styles.badge}>MANUAL</span>}
+                              {effectiveMetadata.hasVerification && <span className={styles.badge}>VERIFIED</span>}
+                              {effectiveMetadata.hasIgnoredSource && <span className={styles.badge}>IGNORED</span>}
+                              {effectiveMetadata.hasConflict && <span className={styles.badge}>CONFLICT</span>}
+                              {!effectiveMetadata.bpm.value && !effectiveMetadata.mood.value && effectiveMetadata.energy.value == null && <span className={styles.badge}>MISSING</span>}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div className={styles.trackActions}>
                           <TrackPreviewButton trackId={track.id} />
+                          <MetadataCorrectionsButton trackId={track.id} corrected={effectiveMetadata.hasCorrection} verified={effectiveMetadata.hasVerification} conflict={effectiveMetadata.hasConflict} />
                           <BlockTrackButton trackId={track.id} initialBlocked={track.blockedBy.length > 0} />
                         </div>
                       </td>

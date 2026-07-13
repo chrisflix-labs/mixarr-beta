@@ -1,5 +1,9 @@
 # Smart Mix Engine v2 Foundation
 
+## v2.0.8 Effective metadata
+
+Smart Mix resolves BPM, mood, and energy once through `resolveEffectiveTrackMetadata`. Active manual corrections always win, followed by verified non-ignored sources and the existing stored provider/local preference. Ignored sources remain stored but cannot affect eligibility, scoring, BPM flow, mood blending, energy curves, regeneration, explanations, or new playlist snapshots. The pure resolver operates only on preloaded relations and never queries the database per track.
+
 Smart Mix Engine v2 is intentionally small in v2.0.0. The existing playlist builder remains the safe v1 path, while v2 provides a separate engine layer that can grow in later v2.x releases.
 
 The v2 pipeline is ordered and explicit:

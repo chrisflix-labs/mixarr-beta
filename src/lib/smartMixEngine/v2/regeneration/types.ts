@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const REGENERATION_ENGINE_VERSION = "v2.0.6";
+export const REGENERATION_ENGINE_VERSION = "v2.0.8";
 
 export const regenerationModes = [
   "replace_weak_tracks",
@@ -153,4 +153,3 @@ export type RegenerationPreview = {
 };
 
 export type RegenerationTrack = Record<string, any> & { id: string };
-

@@ -8,7 +8,7 @@ import {
 import { DEFAULT_BPM_FLOW_CONFIG, normalizeBpmFlowConfig, type BpmFlowConfig } from "./bpmFlow";
 import { normalizeDiscoveryConfig, type DiscoveryConfig } from "./discovery";
 
-export const SMART_MIX_TUNING_VERSION = "2.0.6";
+export const SMART_MIX_TUNING_VERSION = "2.0.8";
 export const SMART_MIX_RECENTLY_USED_WINDOW_DAYS = 30;
 
 export type SmartMixTuningConfig = {

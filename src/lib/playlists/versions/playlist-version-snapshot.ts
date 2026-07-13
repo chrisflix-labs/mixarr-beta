@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { PLAYLIST_SNAPSHOT_SCHEMA_VERSION, type PlaylistEngineFamily, type PlaylistVersionSnapshot, type PlaylistVersionTrack, type StoredPlaylistSnapshot } from "./playlist-version-types";
+import { resolveEffectiveTrackMetadata } from "../../metadataCorrections";
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
 
@@ -33,14 +34,18 @@ export async function capturePlaylistSnapshot(db: DbClient, generatedPlaylistId:
   const libraryTracks = trackIds.length ? await db.track.findMany({
     where: { id: { in: trackIds } },
     select: {
-      id: true, duration: true, effectiveBpm: true, bpm: true,
+      id: true, duration: true, effectiveBpm: true, bpm: true, apiBpm: true, localBpm: true, bpmSource: true,
       tags: { where: { type: "mood" }, select: { name: true } },
-      audioFeature: { select: { energy: true } },
+      audioFeature: true,
+      metadataCorrections: { where: { isActive: true }, orderBy: { updatedAt: "desc" } },
+      metadataVerifications: { where: { verified: true } },
+      metadataSourceOverrides: { where: { ignored: true } },
     },
   }) : [];
   const metadata = new Map(libraryTracks.map((track) => [track.id, track]));
   const tracks: PlaylistVersionTrack[] = playlist.tracks.map((track) => {
     const details = track.trackId ? metadata.get(track.trackId) : null;
+    const effective = details ? resolveEffectiveTrackMetadata(details) : null;
     return {
       trackId: track.trackId,
       plexTrackRatingKey: track.plexTrackRatingKey,
@@ -52,9 +57,9 @@ export async function capturePlaylistSnapshot(db: DbClient, generatedPlaylistId:
       artistSnapshot: track.artist,
       albumSnapshot: track.album,
       durationMsSnapshot: details?.duration ?? null,
-      bpmSnapshot: details?.effectiveBpm ?? details?.bpm ?? null,
-      moodSnapshot: details?.tags.map((tag) => tag.name) ?? [],
-      energySnapshot: details?.audioFeature?.energy ?? null,
+      bpmSnapshot: effective?.bpm.value ?? null,
+      moodSnapshot: effective?.mood.value ?? [],
+      energySnapshot: effective?.energy.value ?? null,
     };
   });
   const durationMs = tracks.reduce((sum, track) => sum + (track.durationMsSnapshot || 0), 0);

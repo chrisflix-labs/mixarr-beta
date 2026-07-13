@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.0.8 - Manual BPM & Metadata Corrections
+
+- Added durable, separately stored BPM, mood, and energy corrections with optional reasons, verified state, actor attribution, and append-only history.
+- Added one centralized, query-free effective metadata resolver with manual, verified source, provider/local, embedded/imported, fallback, and missing precedence.
+- Added field-specific verification and source ignore/restore controls without deleting raw enrichment or local-analysis data.
+- Integrated effective metadata into Smart Mix v2 scoring, BPM transitions, mood blending, energy curves, regeneration, explanations, and immutable playlist-version snapshots.
+- Added library metadata badges and server-side filters plus transactional bulk correction previews with shared batch IDs.
+- Added responsive track correction controls, source comparisons, BPM half/double-time suggestions, correction removal, and history browsing.
+
 ## v2.0.7 - Playlist Version History & Restore
 
 - Added complete, schema-versioned playlist state snapshots with ordered tracks, track state, display metadata, generation settings, engine/app versions, scores, duration, and secret redaction.

@@ -70,6 +70,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.0.8",
+    title: "Manual BPM & Metadata Corrections",
+    badges: ["BPM", "Mood", "Energy", "Library", "History", "Accuracy", "Smart Builder", "Regeneration", "Database", "UI"],
+    changes: [
+      "Added persistent manual BPM, mood, and energy corrections while preserving provider and local-analysis values for comparison and audit.",
+      "Added field-level verification, field-specific source ignoring and restoration, conflict indicators, correction reasons, and append-only history.",
+      "Added mobile-friendly metadata comparison controls with BPM half-time/double-time suggestions and Mixarr mood choices.",
+      "Added transactional bulk corrections with impact previews, validation warnings, replacement counts, and shared batch identifiers.",
+      "Smart Mix Engine v2, playlist scoring, BPM flow, mood blending, energy curves, regeneration, and version snapshots now use centrally resolved effective metadata.",
+      "Metadata enrichment remains free to refresh raw observations without replacing trusted manual corrections or restoring ignored sources.",
+    ],
+  },
+  {
     version: "2.0.7",
     title: "Playlist Version History & Restore",
     badges: ["Playlists", "History", "Backup", "Regeneration", "Plex", "Security", "UI"],

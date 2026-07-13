@@ -9,100 +9,103 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  plexId        Int            @unique
-  username      String
-  email         String?
-  thumb         String?
-  accessToken   String
-  defaultServerId  String?
-  defaultLibraryId String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  servers       Server[]
-  playlistRules PlaylistRule[]
-  playlistRecipes PlaylistRecipe[]
-  playlistHistory PlaylistHistory[]
-  playlistHistoryEntries PlaylistHistoryEntry[]
-  generatedPlaylists GeneratedPlaylist[]
-  playlistRegenerations PlaylistRegeneration[]
-  smartMixTuningPresets SmartMixTuningPreset[]
-  blockedTracks BlockedTrack[]
-  trackExclusions TrackExclusion[]
-  syncSettings  SyncSettings?
-  jobHistory    JobHistory[]
+  id                        String                           @id @default(uuid())
+  plexId                    Int                              @unique
+  username                  String
+  email                     String?
+  thumb                     String?
+  accessToken               String
+  defaultServerId           String?
+  defaultLibraryId          String?
+  createdAt                 DateTime                         @default(now())
+  updatedAt                 DateTime                         @updatedAt
+  servers                   Server[]
+  playlistRules             PlaylistRule[]
+  playlistRecipes           PlaylistRecipe[]
+  playlistHistory           PlaylistHistory[]
+  playlistHistoryEntries    PlaylistHistoryEntry[]
+  generatedPlaylists        GeneratedPlaylist[]
+  playlistRegenerations     PlaylistRegeneration[]
+  smartMixTuningPresets     SmartMixTuningPreset[]
+  blockedTracks             BlockedTrack[]
+  trackExclusions           TrackExclusion[]
+  syncSettings              SyncSettings?
+  jobHistory                JobHistory[]
+  metadataCorrections       TrackMetadataCorrection[]        @relation("MetadataCorrectionActor")
+  metadataVerifications     TrackMetadataVerification[]      @relation("MetadataVerificationActor")
+  metadataCorrectionHistory TrackMetadataCorrectionHistory[] @relation("MetadataHistoryActor")
 }
 
 model SyncSettings {
-  id                    String   @id @default(uuid())
-  userId                String   @unique
-  plexPageSize          Int?
-  popularityBatchSize   Int?
-  audioFeatureBatchSize Int?
-  tagBatchSize          Int?
-  bpmBatchSize          Int?
-  bpmReprocessNoDataFailed Boolean?
-  enableApiBpm         Boolean?
-  enableLocalBpm       Boolean?
-  preferLocalBpm       Boolean?
-  reprocessApiBpmWithLocal Boolean?
-  localBpmAnalysisScope String?
-  playlistVersionHistoryEnabled Boolean @default(true)
-  playlistVersionRetention Int @default(25)
-  saveManualPlaylistVersions Boolean @default(true)
-  savePlaylistScoreSnapshots Boolean @default(true)
-  cleanupPlaylistVersionsAutomatically Boolean @default(false)
-  enableApiAudioFeatures Boolean?
-  enableLocalAudioFeatures Boolean?
-  preferLocalAudioFeatures Boolean?
-  reprocessApiAudioFeaturesWithLocal Boolean?
-  enableLocalAudioFeatureFallback Boolean?
-  preferApiAudioFeatures Boolean?
-  allowEstimatedMoodAcousticness Boolean?
-  reprocessLocalAudioFeatures Boolean?
-  localAudioFeaturesScope String?
+  id                                     String   @id @default(uuid())
+  userId                                 String   @unique
+  plexPageSize                           Int?
+  popularityBatchSize                    Int?
+  audioFeatureBatchSize                  Int?
+  tagBatchSize                           Int?
+  bpmBatchSize                           Int?
+  bpmReprocessNoDataFailed               Boolean?
+  enableApiBpm                           Boolean?
+  enableLocalBpm                         Boolean?
+  preferLocalBpm                         Boolean?
+  reprocessApiBpmWithLocal               Boolean?
+  localBpmAnalysisScope                  String?
+  playlistVersionHistoryEnabled          Boolean  @default(true)
+  playlistVersionRetention               Int      @default(25)
+  saveManualPlaylistVersions             Boolean  @default(true)
+  savePlaylistScoreSnapshots             Boolean  @default(true)
+  cleanupPlaylistVersionsAutomatically   Boolean  @default(false)
+  enableApiAudioFeatures                 Boolean?
+  enableLocalAudioFeatures               Boolean?
+  preferLocalAudioFeatures               Boolean?
+  reprocessApiAudioFeaturesWithLocal     Boolean?
+  enableLocalAudioFeatureFallback        Boolean?
+  preferApiAudioFeatures                 Boolean?
+  allowEstimatedMoodAcousticness         Boolean?
+  reprocessLocalAudioFeatures            Boolean?
+  localAudioFeaturesScope                String?
   includeEstimatedAudioFeaturesInFilters Boolean?
-  audioFeatureMinimumConfidence Float?
-  providerDelayMs       Int?
-  rateLimitBackoffEnabled Boolean?
-  hardDeleteMissingAfterDays Int?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  revisionCounter       Int      @default(0)
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  audioFeatureMinimumConfidence          Float?
+  providerDelayMs                        Int?
+  rateLimitBackoffEnabled                Boolean?
+  hardDeleteMissingAfterDays             Int?
+  createdAt                              DateTime @default(now())
+  updatedAt                              DateTime @updatedAt
+  revisionCounter                        Int      @default(0)
+  user                                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Server {
-  id                String    @id @default(uuid())
-  machineIdentifier String    @unique
-  name              String
-  uri               String
-  accessToken       String
-  userId            String
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  libraries         Library[]
-  playlistRules     PlaylistRule[]
-  playlistHistory   PlaylistHistory[]
+  id                     String                 @id @default(uuid())
+  machineIdentifier      String                 @unique
+  name                   String
+  uri                    String
+  accessToken            String
+  userId                 String
+  user                   User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  libraries              Library[]
+  playlistRules          PlaylistRule[]
+  playlistHistory        PlaylistHistory[]
   playlistHistoryEntries PlaylistHistoryEntry[]
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
 }
 
 model Library {
-  id        String     @id @default(uuid())
-  plexId    String
-  serverId  String
-  name      String
-  type      String
-  server    Server     @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  artists   Artist[]
-  albums    Album[]
-  tracks    Track[]
-  syncLogs  SyncLog[]
+  id             String                 @id @default(uuid())
+  plexId         String
+  serverId       String
+  name           String
+  type           String
+  server         Server                 @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  artists        Artist[]
+  albums         Album[]
+  tracks         Track[]
+  syncLogs       SyncLog[]
   healthSnapshot LibraryHealthSnapshot?
-  playlistRules PlaylistRule[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  playlistRules  PlaylistRule[]
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
 
   @@unique([serverId, plexId])
 }
@@ -119,26 +122,26 @@ model LibraryHealthSnapshot {
 }
 
 model Artist {
-  id         String   @id @default(uuid())
-  plexId     String
-  libraryId  String
-  title      String
-  summary    String?
-  thumb      String?
-  addedAt    DateTime?
-  updatedAt  DateTime?
-  viewCount  Int      @default(0)
-  lastViewedAt DateTime?
-  plexLibraryId String?
-  syncStatus String @default("active")
-  lastSeenAt DateTime?
+  id             String    @id @default(uuid())
+  plexId         String
+  libraryId      String
+  title          String
+  summary        String?
+  thumb          String?
+  addedAt        DateTime?
+  updatedAt      DateTime?
+  viewCount      Int       @default(0)
+  lastViewedAt   DateTime?
+  plexLibraryId  String?
+  syncStatus     String    @default("active")
+  lastSeenAt     DateTime?
   lastSeenSyncId String?
-  missingSince DateTime?
-  deletedAt DateTime?
-  library    Library  @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  albums     Album[]
-  tracks     Track[]
-  tags       Tag[]    @relation("ArtistTags")
+  missingSince   DateTime?
+  deletedAt      DateTime?
+  library        Library   @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  albums         Album[]
+  tracks         Track[]
+  tags           Tag[]     @relation("ArtistTags")
 
   @@unique([libraryId, plexId])
   @@index([libraryId, syncStatus])
@@ -146,28 +149,28 @@ model Artist {
 }
 
 model Album {
-  id         String   @id @default(uuid())
-  plexId     String
-  libraryId  String
-  artistId   String
-  title      String
-  summary    String?
-  thumb      String?
-  year       Int?
-  addedAt    DateTime?
-  updatedAt  DateTime?
-  viewCount  Int      @default(0)
-  lastViewedAt DateTime?
-  plexLibraryId String?
-  syncStatus String @default("active")
-  lastSeenAt DateTime?
+  id             String    @id @default(uuid())
+  plexId         String
+  libraryId      String
+  artistId       String
+  title          String
+  summary        String?
+  thumb          String?
+  year           Int?
+  addedAt        DateTime?
+  updatedAt      DateTime?
+  viewCount      Int       @default(0)
+  lastViewedAt   DateTime?
+  plexLibraryId  String?
+  syncStatus     String    @default("active")
+  lastSeenAt     DateTime?
   lastSeenSyncId String?
-  missingSince DateTime?
-  deletedAt DateTime?
-  library    Library  @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  artist     Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
-  tracks     Track[]
-  tags       Tag[]    @relation("AlbumTags")
+  missingSince   DateTime?
+  deletedAt      DateTime?
+  library        Library   @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  artist         Artist    @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  tracks         Track[]
+  tags           Tag[]     @relation("AlbumTags")
 
   @@unique([libraryId, plexId])
   @@index([libraryId, syncStatus])
@@ -175,65 +178,69 @@ model Album {
 }
 
 model Track {
-  id         String   @id @default(uuid())
-  plexId     String
-  ratingKey  String
-  plexGuid   String?
-  mediaPath  String?
-  libraryId  String
-  albumId    String
-  artistId   String
-  title      String
-  duration   Int?
-  trackIndex Int?
-  rating     Float?
-  contentRating String?
-  normalizedTitle String?
-  isExplicit Boolean @default(false)
-  isLive     Boolean @default(false)
-  isRemaster Boolean @default(false)
-  isHoliday  Boolean @default(false)
-  isIntroOutro Boolean @default(false)
-  viewCount  Int      @default(0)
-  lastViewedAt DateTime?
-  addedAt    DateTime?
-  updatedAt  DateTime?
-  tagsSyncedAt DateTime?
-  genreStatus String?
-  genreAttemptedAt DateTime?
-  genreFailureReason String?
-  popularityStatus String?
-  popularityAttemptedAt DateTime?
-  popularityFailureReason String?
-  bpm        Float?
-  apiBpm     Float?
-  localBpm   Float?
-  effectiveBpm Float?
-  bpmSource  String?
-  bpmConfidence Float?
-  bpmAnalyzedAt DateTime?
-  bpmAnalysisStatus String?
-  bpmAnalysisScope String?
-  bpmFailureReason String?
-  plexLibraryId String?
-  syncStatus String @default("active")
-  lastSyncChangeTypes String?
-  duplicateWarning String?
-  syncConflictReason String?
-  localFileStatus String @default("not_checked")
-  localFileCheckedAt DateTime?
-  lastSeenAt DateTime?
-  lastSeenSyncId String?
-  missingSince DateTime?
-  deletedAt DateTime?
-  library    Library  @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  album      Album    @relation(fields: [albumId], references: [id], onDelete: Cascade)
-  artist     Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
-  tags       Tag[]    @relation("TrackTags")
-  popularity Popularity?
-  audioFeature AudioFeature?
-  blockedBy  BlockedTrack[]
-  exclusions TrackExclusion[]
+  id                        String                           @id @default(uuid())
+  plexId                    String
+  ratingKey                 String
+  plexGuid                  String?
+  mediaPath                 String?
+  libraryId                 String
+  albumId                   String
+  artistId                  String
+  title                     String
+  duration                  Int?
+  trackIndex                Int?
+  rating                    Float?
+  contentRating             String?
+  normalizedTitle           String?
+  isExplicit                Boolean                          @default(false)
+  isLive                    Boolean                          @default(false)
+  isRemaster                Boolean                          @default(false)
+  isHoliday                 Boolean                          @default(false)
+  isIntroOutro              Boolean                          @default(false)
+  viewCount                 Int                              @default(0)
+  lastViewedAt              DateTime?
+  addedAt                   DateTime?
+  updatedAt                 DateTime?
+  tagsSyncedAt              DateTime?
+  genreStatus               String?
+  genreAttemptedAt          DateTime?
+  genreFailureReason        String?
+  popularityStatus          String?
+  popularityAttemptedAt     DateTime?
+  popularityFailureReason   String?
+  bpm                       Float?
+  apiBpm                    Float?
+  localBpm                  Float?
+  effectiveBpm              Float?
+  bpmSource                 String?
+  bpmConfidence             Float?
+  bpmAnalyzedAt             DateTime?
+  bpmAnalysisStatus         String?
+  bpmAnalysisScope          String?
+  bpmFailureReason          String?
+  plexLibraryId             String?
+  syncStatus                String                           @default("active")
+  lastSyncChangeTypes       String?
+  duplicateWarning          String?
+  syncConflictReason        String?
+  localFileStatus           String                           @default("not_checked")
+  localFileCheckedAt        DateTime?
+  lastSeenAt                DateTime?
+  lastSeenSyncId            String?
+  missingSince              DateTime?
+  deletedAt                 DateTime?
+  library                   Library                          @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  album                     Album                            @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  artist                    Artist                           @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  tags                      Tag[]                            @relation("TrackTags")
+  popularity                Popularity?
+  audioFeature              AudioFeature?
+  blockedBy                 BlockedTrack[]
+  exclusions                TrackExclusion[]
+  metadataCorrections       TrackMetadataCorrection[]
+  metadataVerifications     TrackMetadataVerification[]
+  metadataSourceOverrides   TrackMetadataSourceOverride[]
+  metadataCorrectionHistory TrackMetadataCorrectionHistory[]
 
   @@unique([libraryId, plexId])
   @@index([libraryId, syncStatus])
@@ -243,79 +250,148 @@ model Track {
   @@index([libraryId, viewCount])
 }
 
+model TrackMetadataCorrection {
+  id                         String   @id @default(cuid())
+  trackId                    String
+  field                      String
+  valueJson                  Json
+  previousEffectiveValueJson Json?
+  reason                     String?
+  isActive                   Boolean  @default(true)
+  isVerified                 Boolean  @default(true)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+  createdBy                  String?
+  track                      Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  actor                      User?    @relation("MetadataCorrectionActor", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([trackId])
+  @@index([trackId, field, isActive])
+}
+
+model TrackMetadataVerification {
+  id         String   @id @default(cuid())
+  trackId    String
+  field      String
+  source     String
+  verified   Boolean  @default(true)
+  verifiedAt DateTime @default(now())
+  verifiedBy String?
+  note       String?
+  track      Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  actor      User?    @relation("MetadataVerificationActor", fields: [verifiedBy], references: [id], onDelete: SetNull)
+
+  @@unique([trackId, field, source])
+  @@index([trackId])
+}
+
+model TrackMetadataSourceOverride {
+  id        String   @id @default(cuid())
+  trackId   String
+  field     String
+  source    String
+  ignored   Boolean  @default(true)
+  reason    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  track     Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([trackId, field, source])
+  @@index([trackId])
+}
+
+model TrackMetadataCorrectionHistory {
+  id           String   @id @default(cuid())
+  trackId      String
+  field        String
+  action       String
+  oldValueJson Json?
+  newValueJson Json?
+  source       String?
+  reason       String?
+  batchId      String?
+  createdAt    DateTime @default(now())
+  createdBy    String?
+  track        Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  actor        User?    @relation("MetadataHistoryActor", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([trackId, createdAt])
+  @@index([batchId])
+}
+
 model Tag {
-  id       String   @id @default(uuid())
-  type     String   // genre, mood, style, country, decade
-  name     String
-  artists  Artist[] @relation("ArtistTags")
-  albums   Album[]  @relation("AlbumTags")
-  tracks   Track[]  @relation("TrackTags")
+  id      String   @id @default(uuid())
+  type    String // genre, mood, style, country, decade
+  name    String
+  artists Artist[] @relation("ArtistTags")
+  albums  Album[]  @relation("AlbumTags")
+  tracks  Track[]  @relation("TrackTags")
 
   @@unique([type, name])
 }
 
 model Popularity {
-  id          String   @id @default(uuid())
-  trackId     String   @unique
-  provider    String   // deezer, lastfm, spotify
-  score       Float    // Normalized score 0-100 or 0-1M
-  confidence  Float?
+  id            String   @id @default(uuid())
+  trackId       String   @unique
+  provider      String // deezer, lastfm, spotify
+  score         Float // Normalized score 0-100 or 0-1M
+  confidence    Float?
   matchedArtist String?
   matchedTitle  String?
-  lastUpdated DateTime @default(now())
-  track       Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  lastUpdated   DateTime @default(now())
+  track         Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
   @@index([score])
 }
 
 model AudioFeature {
-  id           String   @id @default(uuid())
-  trackId      String   @unique
-  energy       Float?
-  valence      Float?
-  danceability Float?
-  acousticness Float?
-  apiEnergy       Float?
-  apiMood         Float?
-  apiDanceability Float?
-  apiAcousticness Float?
-  apiLoudness     Float?
-  localEnergy       Float?
-  localMood         Float?
-  localDanceability Float?
-  localAcousticness Float?
-  localLoudness     Float?
-  effectiveEnergy       Float?
-  effectiveMood         Float?
-  effectiveDanceability Float?
-  effectiveAcousticness Float?
-  tempo        Float?
-  loudness     Float?
-  dynamicComplexity Float?
-  key          String?
-  scale        String?
-  spectralCentroid Float?
-  spectralContrast Float?
-  rhythmStability Float?
-  onsetRate    Float?
-  zeroCrossingRate Float?
-  replayGain   Float?
-  source       String?
-  confidence   Float?
-  tempoSource  String?
-  tempoConfidence Float?
-  audioFeatureSource String?
-  audioFeatureStatus String?
-  audioFeatureConfidence Float?
-  audioFeatureAnalyzedAt DateTime?
+  id                        String    @id @default(uuid())
+  trackId                   String    @unique
+  energy                    Float?
+  valence                   Float?
+  danceability              Float?
+  acousticness              Float?
+  apiEnergy                 Float?
+  apiMood                   Float?
+  apiDanceability           Float?
+  apiAcousticness           Float?
+  apiLoudness               Float?
+  localEnergy               Float?
+  localMood                 Float?
+  localDanceability         Float?
+  localAcousticness         Float?
+  localLoudness             Float?
+  effectiveEnergy           Float?
+  effectiveMood             Float?
+  effectiveDanceability     Float?
+  effectiveAcousticness     Float?
+  tempo                     Float?
+  loudness                  Float?
+  dynamicComplexity         Float?
+  key                       String?
+  scale                     String?
+  spectralCentroid          Float?
+  spectralContrast          Float?
+  rhythmStability           Float?
+  onsetRate                 Float?
+  zeroCrossingRate          Float?
+  replayGain                Float?
+  source                    String?
+  confidence                Float?
+  tempoSource               String?
+  tempoConfidence           Float?
+  audioFeatureSource        String?
+  audioFeatureStatus        String?
+  audioFeatureConfidence    Float?
+  audioFeatureAnalyzedAt    DateTime?
   audioFeatureFailureReason String?
   audioFeatureAnalysisScope String?
-  energySource String?
-  valenceSource String?
-  danceabilitySource String?
-  acousticnessSource String?
-  lastUpdated  DateTime @default(now())
-  track        Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  energySource              String?
+  valenceSource             String?
+  danceabilitySource        String?
+  acousticnessSource        String?
+  lastUpdated               DateTime  @default(now())
+  track                     Track     @relation(fields: [trackId], references: [id], onDelete: Cascade)
 }
 
 model BlockedTrack {
@@ -346,24 +422,24 @@ model TrackExclusion {
 }
 
 model PlaylistRule {
-  id                String    @id @default(uuid())
+  id                String            @id @default(uuid())
   userId            String
   serverId          String?
   libraryId         String?
   name              String
-  rulesJson         String    // JSON string of builder filters
-  optionsJson       String    @default("{}")
-  limit             Int       @default(50)
-  autoRefresh       Boolean   @default(false)
+  rulesJson         String // JSON string of builder filters
+  optionsJson       String            @default("{}")
+  limit             Int               @default(50)
+  autoRefresh       Boolean           @default(false)
   plexPlaylistId    String?
   lastRefreshedAt   DateTime?
   lastRefreshStatus String?
   lastRefreshError  String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  server            Server?   @relation(fields: [serverId], references: [id], onDelete: SetNull)
-  library           Library?  @relation(fields: [libraryId], references: [id], onDelete: SetNull)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  server            Server?           @relation(fields: [serverId], references: [id], onDelete: SetNull)
+  library           Library?          @relation(fields: [libraryId], references: [id], onDelete: SetNull)
   history           PlaylistHistory[]
 }
 
@@ -387,31 +463,31 @@ model PlaylistRecipe {
 }
 
 model PlaylistHistory {
-  id              String   @id @default(uuid())
-  userId          String
-  playlistRuleId  String?
-  serverId        String?
-  name            String
-  rulesJson       String
-  optionsJson     String   @default("{}")
-  trackCount      Int
-  plexPlaylistId  String?
-  status          String
-  error           String?
-  createdAt       DateTime @default(now())
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  playlistRule    PlaylistRule? @relation(fields: [playlistRuleId], references: [id], onDelete: SetNull)
-  server          Server?  @relation(fields: [serverId], references: [id], onDelete: SetNull)
+  id             String        @id @default(uuid())
+  userId         String
+  playlistRuleId String?
+  serverId       String?
+  name           String
+  rulesJson      String
+  optionsJson    String        @default("{}")
+  trackCount     Int
+  plexPlaylistId String?
+  status         String
+  error          String?
+  createdAt      DateTime      @default(now())
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlistRule   PlaylistRule? @relation(fields: [playlistRuleId], references: [id], onDelete: SetNull)
+  server         Server?       @relation(fields: [serverId], references: [id], onDelete: SetNull)
 }
 
 model GeneratedPlaylist {
-  id                    String   @id @default(uuid())
+  id                    String                   @id @default(uuid())
   userId                String
   serverId              String?
   plexPlaylistRatingKey String?
   plexPlaylistTitle     String
-  sourceType            String   @default("unknown")
-  engineVersion         String   @default("v1")
+  sourceType            String                   @default("unknown")
+  engineVersion         String                   @default("v1")
   recipeId              String?
   recipeName            String?
   smartPresetId         String?
@@ -427,13 +503,13 @@ model GeneratedPlaylist {
   filtersJson           Json
   safetyRulesJson       Json?
   qualityScoreJson      Json?
-  trackCount            Int      @default(0)
-  lastGeneratedAt       DateTime @default(now())
+  trackCount            Int                      @default(0)
+  lastGeneratedAt       DateTime                 @default(now())
   lastRegeneratedAt     DateTime?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  revisionCounter       Int      @default(0)
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  revisionCounter       Int                      @default(0)
+  user                  User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   tracks                GeneratedPlaylistTrack[]
   historyEntries        PlaylistHistoryEntry[]
   regenerations         PlaylistRegeneration[]
@@ -449,7 +525,7 @@ model SmartMixTuningPreset {
   userId        String
   name          String
   configJson    Json
-  tuningVersion String   @default("2.0.6")
+  tuningVersion String   @default("2.0.8")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -459,20 +535,20 @@ model SmartMixTuningPreset {
 }
 
 model GeneratedPlaylistTrack {
-  id                  String   @id @default(uuid())
-  generatedPlaylistId String
-  trackId             String?
-  plexTrackRatingKey  String?
-  position            Int
-  title               String
-  artist              String?
-  album               String?
-  locked              Boolean  @default(false)
-  liked               Boolean  @default(false)
-  regenerationExcluded Boolean @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  generatedPlaylist   GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  id                   String            @id @default(uuid())
+  generatedPlaylistId  String
+  trackId              String?
+  plexTrackRatingKey   String?
+  position             Int
+  title                String
+  artist               String?
+  album                String?
+  locked               Boolean           @default(false)
+  liked                Boolean           @default(false)
+  regenerationExcluded Boolean           @default(false)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  generatedPlaylist    GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
 
   @@index([generatedPlaylistId, position])
   @@index([trackId])
@@ -480,29 +556,29 @@ model GeneratedPlaylistTrack {
 }
 
 model PlaylistRegeneration {
-  id                    String   @id @default(uuid())
-  userId                String
-  generatedPlaylistId   String
-  mode                  String
-  status                String   @default("preview")
-  settingsJson          Json
-  warningsJson          Json?
-  originalScore         Float?
-  proposedScore         Float?
-  appliedScore          Float?
-  originalDurationMs    Int      @default(0)
-  proposedDurationMs    Int      @default(0)
-  tracksAnalyzed        Int      @default(0)
-  tracksProposed        Int      @default(0)
-  tracksApplied         Int      @default(0)
-  engineVersion         String   @default("v2.0.6")
-  playlistUpdatedAt     DateTime
-  createdAt             DateTime @default(now())
-  appliedAt             DateTime?
-  undoneAt              DateTime?
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  generatedPlaylist     GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
-  changes               PlaylistRegenerationChange[]
+  id                  String                       @id @default(uuid())
+  userId              String
+  generatedPlaylistId String
+  mode                String
+  status              String                       @default("preview")
+  settingsJson        Json
+  warningsJson        Json?
+  originalScore       Float?
+  proposedScore       Float?
+  appliedScore        Float?
+  originalDurationMs  Int                          @default(0)
+  proposedDurationMs  Int                          @default(0)
+  tracksAnalyzed      Int                          @default(0)
+  tracksProposed      Int                          @default(0)
+  tracksApplied       Int                          @default(0)
+  engineVersion       String                       @default("v2.0.8")
+  playlistUpdatedAt   DateTime
+  createdAt           DateTime                     @default(now())
+  appliedAt           DateTime?
+  undoneAt            DateTime?
+  user                User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedPlaylist   GeneratedPlaylist            @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  changes             PlaylistRegenerationChange[]
 
   @@index([userId, createdAt])
   @@index([generatedPlaylistId, createdAt])
@@ -510,27 +586,27 @@ model PlaylistRegeneration {
 }
 
 model PlaylistRegenerationChange {
-  id                    String   @id @default(uuid())
-  regenerationId        String
-  position              Int
-  originalTrackId       String
-  proposedTrackId       String
-  originalScore         Float?
-  proposedScore         Float?
-  improvement           Float?
-  reasonsJson           Json?
-  originalMetricsJson   Json?
-  proposedMetricsJson   Json?
-  accepted              Boolean?
-  createdAt             DateTime @default(now())
-  regeneration          PlaylistRegeneration @relation(fields: [regenerationId], references: [id], onDelete: Cascade)
+  id                  String               @id @default(uuid())
+  regenerationId      String
+  position            Int
+  originalTrackId     String
+  proposedTrackId     String
+  originalScore       Float?
+  proposedScore       Float?
+  improvement         Float?
+  reasonsJson         Json?
+  originalMetricsJson Json?
+  proposedMetricsJson Json?
+  accepted            Boolean?
+  createdAt           DateTime             @default(now())
+  regeneration        PlaylistRegeneration @relation(fields: [regenerationId], references: [id], onDelete: Cascade)
 
   @@unique([regenerationId, position])
   @@index([regenerationId, accepted])
 }
 
 model PlaylistRevision {
-  id                    String   @id @default(uuid())
+  id                    String            @id @default(uuid())
   generatedPlaylistId   String
   revisionNumber        Int
   regenerationId        String?
@@ -540,19 +616,19 @@ model PlaylistRevision {
   engineFamily          String?
   engineVersion         String?
   applicationVersion    String?
-  snapshotSchemaVersion Int      @default(1)
+  snapshotSchemaVersion Int               @default(1)
   settingsSnapshot      Json?
   trackSnapshot         Json
   scoreSnapshot         Json?
-  trackCount            Int      @default(0)
-  durationMs             Int      @default(0)
+  trackCount            Int               @default(0)
+  durationMs            Int               @default(0)
   restoredFromVersionId String?
-  isPinned               Boolean  @default(false)
-  isAutomatic            Boolean  @default(true)
-  isCurrent              Boolean  @default(false)
-  syncStatus             String   @default("synced")
-  snapshotSizeBytes      Int?
-  createdAt             DateTime @default(now())
+  isPinned              Boolean           @default(false)
+  isAutomatic           Boolean           @default(true)
+  isCurrent             Boolean           @default(false)
+  syncStatus            String            @default("synced")
+  snapshotSizeBytes     Int?
+  createdAt             DateTime          @default(now())
   generatedPlaylist     GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
 
   @@unique([generatedPlaylistId, revisionNumber])
@@ -563,45 +639,45 @@ model PlaylistRevision {
 }
 
 model PlaylistHistoryEntry {
-  id                       String   @id @default(uuid())
-  userId                   String
-  generatedPlaylistId      String?
-  serverId                 String?
-  plexPlaylistRatingKey    String?
-  playlistName             String
-  eventType                String
-  sourceType               String   @default("unknown")
-  engineVersion            String   @default("v1")
-  recipeId                 String?
-  recipeName               String?
-  smartPresetId            String?
-  smartPresetName          String?
-  moodPresetId             String?
-  moodPresetName           String?
-  bpmPresetId              String?
-  bpmPresetName            String?
-  regenerationMode         String?
-  keepPercent              Int?
-  preferDifferentTracks    Boolean  @default(false)
-  trackCount               Int      @default(0)
-  previousTrackCount       Int?
-  keptCount                Int?
-  replacedCount            Int?
-  newCount                 Int?
-  removedCount             Int?
-  manualExclusionsRemoved  Int      @default(0)
-  safetyRulesApplied       Boolean  @default(false)
-  safetyRulesRemoved       Int      @default(0)
-  warningsJson             Json?
-  filtersJson              Json?
-  safetyRulesJson          Json?
-  qualityScoreJson         Json?
-  summary                  String?
-  createdAt                DateTime @default(now())
-  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  generatedPlaylist        GeneratedPlaylist? @relation(fields: [generatedPlaylistId], references: [id], onDelete: SetNull)
-  server                   Server?  @relation(fields: [serverId], references: [id], onDelete: SetNull)
-  tracks                   PlaylistHistoryTrack[]
+  id                      String                 @id @default(uuid())
+  userId                  String
+  generatedPlaylistId     String?
+  serverId                String?
+  plexPlaylistRatingKey   String?
+  playlistName            String
+  eventType               String
+  sourceType              String                 @default("unknown")
+  engineVersion           String                 @default("v1")
+  recipeId                String?
+  recipeName              String?
+  smartPresetId           String?
+  smartPresetName         String?
+  moodPresetId            String?
+  moodPresetName          String?
+  bpmPresetId             String?
+  bpmPresetName           String?
+  regenerationMode        String?
+  keepPercent             Int?
+  preferDifferentTracks   Boolean                @default(false)
+  trackCount              Int                    @default(0)
+  previousTrackCount      Int?
+  keptCount               Int?
+  replacedCount           Int?
+  newCount                Int?
+  removedCount            Int?
+  manualExclusionsRemoved Int                    @default(0)
+  safetyRulesApplied      Boolean                @default(false)
+  safetyRulesRemoved      Int                    @default(0)
+  warningsJson            Json?
+  filtersJson             Json?
+  safetyRulesJson         Json?
+  qualityScoreJson        Json?
+  summary                 String?
+  createdAt               DateTime               @default(now())
+  user                    User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedPlaylist       GeneratedPlaylist?     @relation(fields: [generatedPlaylistId], references: [id], onDelete: SetNull)
+  server                  Server?                @relation(fields: [serverId], references: [id], onDelete: SetNull)
+  tracks                  PlaylistHistoryTrack[]
 
   @@index([userId, createdAt])
   @@index([userId, eventType, createdAt])
@@ -611,21 +687,21 @@ model PlaylistHistoryEntry {
 }
 
 model PlaylistHistoryTrack {
-  id                  String   @id @default(uuid())
-  historyEntryId      String
-  trackId             String?
-  plexTrackRatingKey  String?
-  position            Int
-  title               String
-  artist              String?
-  album               String?
-  duration            Int?
-  bpm                 Float?
-  energy              Float?
-  mood                Float?
-  popularity          Float?
-  createdAt           DateTime @default(now())
-  historyEntry        PlaylistHistoryEntry @relation(fields: [historyEntryId], references: [id], onDelete: Cascade)
+  id                 String               @id @default(uuid())
+  historyEntryId     String
+  trackId            String?
+  plexTrackRatingKey String?
+  position           Int
+  title              String
+  artist             String?
+  album              String?
+  duration           Int?
+  bpm                Float?
+  energy             Float?
+  mood               Float?
+  popularity         Float?
+  createdAt          DateTime             @default(now())
+  historyEntry       PlaylistHistoryEntry @relation(fields: [historyEntryId], references: [id], onDelete: Cascade)
 
   @@index([historyEntryId, position])
   @@index([trackId])
@@ -633,48 +709,48 @@ model PlaylistHistoryTrack {
 }
 
 model SyncLog {
-  id                     String   @id @default(uuid())
+  id                     String    @id @default(uuid())
   libraryId              String
-  status                 String   // in_progress, success, failed
-  startedAt              DateTime @default(now())
+  status                 String // in_progress, success, failed
+  startedAt              DateTime  @default(now())
   endedAt                DateTime?
   reconciliationAt       DateTime?
-  snapshotComplete       Boolean  @default(false)
+  snapshotComplete       Boolean   @default(false)
   plexReportedTrackCount Int?
   error                  String?
-  library                Library  @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  library                Library   @relation(fields: [libraryId], references: [id], onDelete: Cascade)
 
   @@index([libraryId, startedAt])
 }
 
 model JobHistory {
-  id         String   @id @default(uuid())
-  userId     String?
-  type       String
-  name       String
-  status     String
-  startedAt  DateTime @default(now())
-  finishedAt DateTime?
-  durationMs Int?
-  trigger    String   @default("unknown")
-  summary    String?
-  attempted  Int?
-  processed  Int?
-  skipped    Int?
-  failed     Int?
-  error      String?
-  metadata   Json?
-  workerId   String?
-  lockKey    String?
+  id               String    @id @default(uuid())
+  userId           String?
+  type             String
+  name             String
+  status           String
+  startedAt        DateTime  @default(now())
+  finishedAt       DateTime?
+  durationMs       Int?
+  trigger          String    @default("unknown")
+  summary          String?
+  attempted        Int?
+  processed        Int?
+  skipped          Int?
+  failed           Int?
+  error            String?
+  metadata         Json?
+  workerId         String?
+  lockKey          String?
   currentItemLabel String?
-  lastHeartbeatAt DateTime?
-  lastProgressAt DateTime?
-  leaseExpiresAt DateTime?
-  progress   Json?
-  recoveryHint String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  lastHeartbeatAt  DateTime?
+  lastProgressAt   DateTime?
+  leaseExpiresAt   DateTime?
+  progress         Json?
+  recoveryHint     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId, startedAt])
   @@index([status, startedAt])
@@ -710,18 +786,18 @@ model SystemState {
 }
 
 model ProviderSetting {
-  providerKey           String   @id
-  enabled               Boolean  @default(false)
-  usesPopularity        Boolean  @default(false)
-  usesTags              Boolean  @default(false)
-  usesBpm               Boolean  @default(false)
-  usesAudioFeatures     Boolean  @default(false)
-  encryptedCredentials  String?
-  lastTestStatus        String?
-  lastTestMessage       String?
-  lastTestAt            DateTime?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  providerKey          String    @id
+  enabled              Boolean   @default(false)
+  usesPopularity       Boolean   @default(false)
+  usesTags             Boolean   @default(false)
+  usesBpm              Boolean   @default(false)
+  usesAudioFeatures    Boolean   @default(false)
+  encryptedCredentials String?
+  lastTestStatus       String?
+  lastTestMessage      String?
+  lastTestAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@index([enabled])
   @@index([usesPopularity])

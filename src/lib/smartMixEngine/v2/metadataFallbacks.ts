@@ -1,4 +1,5 @@
 import type { SmartMixFallbackResult, SmartMixMetadataField, SmartMixMetadataStatus } from "./types";
+import { resolveEffectiveTrackMetadata } from "../../metadataCorrections";
 
 export const NEUTRAL_POPULARITY_SCORE = 50;
 
@@ -9,23 +10,15 @@ function finiteNumber(value: unknown): number | null {
 }
 
 export function getTrackBpm(track: any): number | null {
-  return finiteNumber(track.effectiveBpm)
-    ?? finiteNumber(track.bpm)
-    ?? finiteNumber(track.audioFeature?.tempo)
-    ?? finiteNumber(track.tempo);
+  return resolveEffectiveTrackMetadata(track).bpm.value;
 }
 
 export function getTrackMood(track: any): number | null {
-  return finiteNumber(track.audioFeature?.effectiveMood)
-    ?? finiteNumber(track.audioFeature?.valence)
-    ?? finiteNumber(track.mood)
-    ?? finiteNumber(track.valence);
+  return resolveEffectiveTrackMetadata(track).moodScore.value;
 }
 
 export function getTrackEnergy(track: any): number | null {
-  return finiteNumber(track.audioFeature?.effectiveEnergy)
-    ?? finiteNumber(track.audioFeature?.energy)
-    ?? finiteNumber(track.energy);
+  return resolveEffectiveTrackMetadata(track).energy.value;
 }
 
 export function getTrackPopularity(track: any): number | null {

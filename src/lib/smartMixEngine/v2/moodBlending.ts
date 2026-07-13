@@ -260,12 +260,14 @@ function collectMoodValues(value: unknown): string[] {
 }
 
 export function getNormalizedTrackMoods(track: any): NormalizedMoodTag[] {
-  const moodTagObjects = [
+  const manualCorrection = (track?.metadataCorrections || []).find((item: any) => item.field === "mood" && item.isActive !== false);
+  const embeddedIgnored = (track?.metadataSourceOverrides || []).some((item: any) => item.field === "mood" && item.ignored !== false && ["embedded", "imported"].includes(String(item.source).toLowerCase()));
+  const moodTagObjects = embeddedIgnored ? [] : [
     ...(Array.isArray(track?.tags) ? track.tags.filter((tag: any) => !tag?.type || tag.type === "mood") : []),
     ...(Array.isArray(track?.artist?.tags) ? track.artist.tags.filter((tag: any) => !tag?.type || tag.type === "mood") : []),
     ...(Array.isArray(track?.album?.tags) ? track.album.tags.filter((tag: any) => !tag?.type || tag.type === "mood") : []),
   ];
-  const rawValues = [
+  const rawValues = manualCorrection ? collectMoodValues(manualCorrection.valueJson) : embeddedIgnored ? [] : [
     ...collectMoodValues(track?.moodTags),
     ...collectMoodValues(track?.moods),
     ...collectMoodValues(track?.moodTag),

@@ -2,7 +2,8 @@ import axios from "axios";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import prisma from "./prisma";
-import { effectiveBpmTrackWhere, getBpmDisplayMetadata, getEffectiveBpm } from "./bpm";
+import { metadataCorrectionRelations, resolveEffectiveTrackMetadata } from "./metadataCorrections";
+import { effectiveBpmTrackWhere, getBpmDisplayMetadata } from "./bpm";
 import { audioFeatureFilterGuardWhere, type AudioFeatureFilterOptions } from "./audioFeatures";
 import { getMoodEnergyDisplayMetadata } from "./moodEnergy";
 import { activeSyncStatusWhere } from "./syncStatus";
@@ -582,10 +583,12 @@ const playlistTrackInclude = {
   audioFeature: true,
   tags: true,
   library: { include: { server: true } },
+  ...metadataCorrectionRelations,
 } as const;
 
 function annotateTrack(track: any, reasons: string[], engineVersion: SmartMixEngineVersion = SMART_MIX_ENGINE_V1) {
-  const effectiveBpm = getEffectiveBpm(track);
+  const effectiveMetadata = resolveEffectiveTrackMetadata(track);
+  const effectiveBpm = effectiveMetadata.bpm.value;
   const bpmDisplay = getBpmDisplayMetadata(track);
   const moodEnergyDisplay = getMoodEnergyDisplayMetadata(track);
 
@@ -610,11 +613,14 @@ function annotateTrack(track: any, reasons: string[], engineVersion: SmartMixEng
         tempoLabel: effectiveBpm ? (track.audioFeature.tempoConfidence && track.audioFeature.tempoConfidence >= 0.75 ? "exact" : "estimated") : null,
       } : null,
     },
+    effectiveMetadata,
+    metadataResolutionExplanations: [effectiveMetadata.bpm.explanation, effectiveMetadata.mood.explanation, effectiveMetadata.energy.explanation],
   };
 }
 
 function publicPreviewTrack(track: any) {
   const moodEnergy = track.moodEnergyDisplay || getMoodEnergyDisplayMetadata(track);
+  const effectiveMetadata = track.effectiveMetadata || resolveEffectiveTrackMetadata(track);
   return {
     id: track.id,
     title: track.title,
@@ -623,7 +629,7 @@ function publicPreviewTrack(track: any) {
     duration: track.duration,
     bpm: track.bpm,
     effectiveBpm: track.effectiveBpm,
-    bpmSource: track.bpmDisplay?.sourceLabel || null,
+    bpmSource: effectiveMetadata.bpm.source,
     bpmConfidence: track.bpmDisplay?.confidence || null,
     bpmConflictStatus: track.bpmDisplay?.conflictStatus || "none",
     popularity: track.popularity ? {
@@ -632,13 +638,13 @@ function publicPreviewTrack(track: any) {
       confidence: track.popularity.confidence,
     } : null,
     audioFeature: track.audioFeature ? {
-      energy: track.audioFeature.energy,
-      valence: track.audioFeature.valence,
-      effectiveEnergy: track.audioFeature.effectiveEnergy,
-      effectiveMood: track.audioFeature.effectiveMood,
-      energySource: moodEnergy.energy.source,
+      energy: effectiveMetadata.energy.value,
+      valence: effectiveMetadata.moodScore.value,
+      effectiveEnergy: effectiveMetadata.energy.value,
+      effectiveMood: effectiveMetadata.moodScore.value,
+      energySource: effectiveMetadata.energy.source,
       energyConfidence: moodEnergy.energy.confidence,
-      moodSource: moodEnergy.mood.source,
+      moodSource: effectiveMetadata.mood.source,
       moodConfidence: moodEnergy.mood.confidence,
       moodEnergyStatus: moodEnergy.status,
       moodEnergyReason: moodEnergy.reason,
@@ -661,8 +667,10 @@ function publicPreviewTrack(track: any) {
     score: typeof track.score === "number" ? track.score : undefined,
     scoreBreakdown: track.scoreBreakdown || undefined,
     metadataStatus: track.metadataStatus || undefined,
+    effectiveMetadata: track.effectiveMetadata || resolveEffectiveTrackMetadata(track),
+    metadataResolutionExplanations: track.metadataResolutionExplanations || undefined,
     fallbacksApplied: track.fallbacksApplied || undefined,
-    moodTags: track.moodBlend?.moodTags || (track.tags || []).filter((tag: any) => tag.type === "mood").map((tag: any) => tag.name).slice(0, 6),
+    moodTags: track.moodBlend?.moodTags || resolveEffectiveTrackMetadata(track).mood.value || [],
     moodBlend: track.moodBlend || undefined,
     bpmTransitionFromPrevious: track.bpmTransitionFromPrevious || null,
     discoveryMetrics: track.discoveryMetrics || undefined,
@@ -1001,7 +1009,7 @@ export function buildPreviewMessages({
     messages.push({ severity: "warning", message: `Playlist has fewer tracks than requested: ${tracks.length} of ${requestedLimit}.` });
   }
 
-  const missingBpm = tracks.filter((track) => !track.effectiveBpm && !track.bpm && !track.audioFeature?.tempo).length;
+  const missingBpm = tracks.filter((track) => resolveEffectiveTrackMetadata(track).bpm.value == null).length;
   if (missingBpm >= Math.max(3, Math.ceil(tracks.length * 0.25))) {
     messages.push({ severity: "warning", message: `Many tracks are missing BPM data (${missingBpm} of ${tracks.length}).` });
     if (bpmPresetName) {
@@ -1010,8 +1018,8 @@ export function buildPreviewMessages({
   }
 
   const missingAudio = tracks.filter((track) => {
-    const metadata = getMoodEnergyDisplayMetadata(track);
-    return metadata.energy.value === null || metadata.mood.value === null;
+    const metadata = resolveEffectiveTrackMetadata(track);
+    return metadata.energy.value === null || metadata.moodScore.value === null;
   }).length;
   if (missingAudio >= Math.max(3, Math.ceil(tracks.length * 0.25))) {
     messages.push({ severity: "warning", message: `${missingAudio} previewed tracks are missing mood or energy values. Run audio feature analysis for better Smart Builder results.` });
@@ -1153,10 +1161,10 @@ export async function previewPlaylistTracks({
       repeatedArtistTracks: Math.max(0, previewTracks.length - new Set(previewTracks.map((track) => track.artist?.title).filter(Boolean)).size),
     },
     missing: {
-      bpm: previewTracks.filter((track) => !track.effectiveBpm && !track.bpm && !track.audioFeature?.tempo).length,
+      bpm: previewTracks.filter((track) => resolveEffectiveTrackMetadata(track).bpm.value == null).length,
       audioFeatures: previewTracks.filter((track) => {
-        const metadata = getMoodEnergyDisplayMetadata(track);
-        return metadata.energy.value === null || metadata.mood.value === null;
+        const metadata = resolveEffectiveTrackMetadata(track);
+        return metadata.energy.value === null || metadata.moodScore.value === null;
       }).length,
       popularity: previewTracks.filter((track) => !track.popularity).length,
     },

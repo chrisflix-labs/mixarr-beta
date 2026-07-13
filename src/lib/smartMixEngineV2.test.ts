@@ -144,7 +144,7 @@ describe("Smart Mix Engine v2 foundation", () => {
     assert.equal(tuning.bpmWeight, 90);
     assert.equal(tuning.recommendationStrength, 100);
     assert.equal(tuning.artistVariety, 50);
-    assert.equal(tuning.tuningVersion, "2.0.6");
+    assert.equal(tuning.tuningVersion, "2.0.8");
     assert.equal(tuning.bpmFlow.maxPreferredGap, 8);
     assert.equal(tuning.bpmFlow.mode, "DISABLED");
   });

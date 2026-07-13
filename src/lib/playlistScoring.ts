@@ -10,7 +10,7 @@ import {
   summarizeDiscovery,
 } from "./smartMixEngine/v2";
 
-export const PLAYLIST_SCORE_VERSION = "2.0.6";
+export const PLAYLIST_SCORE_VERSION = "2.0.8";
 
 export type PlaylistScoreLabel = "Excellent" | "Strong" | "Good" | "Fair" | "Weak";
 
