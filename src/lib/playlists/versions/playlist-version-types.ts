@@ -4,6 +4,7 @@ export const playlistVersionReasons = [
   "initial_generation", "full_regeneration", "advanced_regeneration",
   "manual_track_add", "manual_track_remove", "manual_reorder", "manual_edit",
   "settings_change", "restore", "undo", "import", "system_migration",
+  "recently_added_automation",
 ] as const;
 
 export type PlaylistVersionReason = typeof playlistVersionReasons[number];
@@ -84,4 +85,3 @@ export interface PlaylistVersionDiff {
   settingsChanges: SettingsDiffEntry[];
   scoreChanges: Array<{ path: string; label: string; from: number | null; to: number | null }>;
 }
-

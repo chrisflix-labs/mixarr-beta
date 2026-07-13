@@ -1401,10 +1401,10 @@ async function fetchPlexPlaylistTracksInOrder({
   };
 }
 
-export type GeneratedPlaylistSourceType = "manual_builder" | "recipe" | "smart_builder" | "unknown";
+export type GeneratedPlaylistSourceType = "manual_builder" | "recipe" | "smart_builder" | "recently_added" | "unknown";
 
 function generatedPlaylistSourceType(config: Partial<PlaylistConfigInput>, fallback?: string | null): GeneratedPlaylistSourceType {
-  if (fallback === "manual_builder" || fallback === "recipe" || fallback === "smart_builder" || fallback === "unknown") {
+  if (fallback === "manual_builder" || fallback === "recipe" || fallback === "smart_builder" || fallback === "recently_added" || fallback === "unknown") {
     return fallback;
   }
   if ((config as any).recipeId) return "recipe";
@@ -2315,7 +2315,9 @@ export async function previewAdvancedPlaylistRegeneration({ userId, generatedPla
       ...tracks.map((track) => track.id),
     ]),
   });
-  const candidatesResult = await generatePlaylistTracksWithStats({ userId, config: candidateConfig });
+  const candidatesResult = request.candidateTrackIds?.length
+    ? { tracks: await fetchOwnedTracksInOrder(userId, uniqueTrackIds(request.candidateTrackIds)) }
+    : await generatePlaylistTracksWithStats({ userId, config: candidateConfig });
   (request as any).bpmFlow = tuning.bpmFlow;
   const preview = regeneratePlaylist({
     playlistId: generatedPlaylistId,

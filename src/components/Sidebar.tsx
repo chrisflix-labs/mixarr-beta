@@ -14,6 +14,7 @@ const playlistLinks = [
   { href: "/smart-builder", label: "Smart Builder", shortLabel: "Smart", icon: Sparkles, isActive: (pathname: string) => pathname === "/smart-builder" },
   { href: "/recipes", label: "Recipes", shortLabel: "Recipes", icon: BookMarked, isActive: (pathname: string) => pathname.startsWith("/recipes") },
   { href: "/generated-playlists", label: "Generated Playlists", icon: ListRestart, isActive: (pathname: string) => pathname.startsWith("/generated-playlists") },
+  { href: "/recently-added", label: "Recently Added", icon: Sparkles, isActive: (pathname: string) => pathname.startsWith("/recently-added") },
   { href: "/playlist-history", label: "Playlist History", icon: History, isActive: (pathname: string) => pathname.startsWith("/playlist-history") },
 ];
 

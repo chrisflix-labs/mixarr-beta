@@ -34,6 +34,13 @@ export async function register() {
     } catch (error) {
       console.error("[Scheduler] Startup initialization failed", sanitizeErrorText(error));
     }
+
+    try {
+      const { initializeRecentlyAddedScheduler } = await import("./lib/recentlyAdded/scheduler");
+      await initializeRecentlyAddedScheduler();
+    } catch (error) {
+      console.error("[RecentlyAdded] Scheduler startup failed", sanitizeErrorText(error));
+    }
   }
 
   try {

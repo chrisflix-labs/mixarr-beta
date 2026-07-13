@@ -113,6 +113,15 @@
   margin-bottom: 0.85rem;
 }
 
+.recentlyAddedCard { cursor: default; border-color: rgba(139, 92, 246, 0.35); background: linear-gradient(145deg, rgba(139, 92, 246, 0.1), rgba(34, 211, 238, 0.04)), var(--panel); }
+.recentlyAddedTop { display: flex; align-items: flex-start; justify-content: space-between; }
+.recentlyAddedTop > span { padding: 0.28rem 0.5rem; border-radius: 999px; background: rgba(148, 163, 184, 0.12); color: var(--muted); font-size: 0.68rem; font-weight: 800; }
+.recentlyAddedTop > span[data-enabled="true"] { color: #86efac; background: rgba(34, 197, 94, 0.12); }
+.recentlyAddedMetrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.45rem; margin: 0.9rem 0; }
+.recentlyAddedMetrics span { padding: 0.5rem; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--muted); font-size: 0.72rem; }
+.recentlyAddedMetrics b { display: block; color: var(--fg); font-size: 1rem; }
+.recentlyAddedCard small { display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.85rem; }
+
 .card h3 {
   font-size: 1.05rem;
   margin-bottom: 0.35rem;

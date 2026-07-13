@@ -33,6 +33,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 | Playlist-use tracking | Tracks playlist generation/export history and saved playlist refresh activity. |
 | Advanced playlist regeneration | Analyzes Smart Mix v2 playlists, locks keeper tracks, previews targeted replacements, preserves curves, and supports server-side undo. |
 | Playlist version history | Saves generated playlist states, compares tracks/settings/scores, pins restore points, and safely restores earlier versions without deleting later history. |
+| Recently Added Automation | Detects new Plex tracks once, scores readiness, quarantines incomplete analysis, suggests Smart Mix matches, and optionally applies version-protected additions after explicit opt-in. |
 | BPM detection and backfill | Uses API metadata where available, with local fallback support for missing or partial BPM data. |
 | Audio feature analysis | Stores energy, mood/valence, danceability, acousticness, tempo, source, status, and confidence fields. |
 | API metadata support | Uses providers such as Deezer, Last.fm, MusicBrainz, Discogs, Spotify, and AudioDB where configured and available. |
@@ -56,6 +57,7 @@ These features exist in the current beta, but are still being tested across diff
 | Automated saved playlist refresh | Beta. Background refresh jobs include locking/protection, but playlist automation should still be tested carefully. |
 | Metrics and progress reporting | Beta. Useful for troubleshooting, but labels and coverage may continue to evolve. |
 | Advanced playlist regeneration | Beta. Review every proposed replacement before applying; aggressive sensitivity can substantially change a playlist. |
+| Recently Added Automation | Beta and disabled by default. Suggestions work manually; automatic playlist changes, schedules, publishing, and notifications each require explicit opt-in. |
 
 ## Getting Started
 

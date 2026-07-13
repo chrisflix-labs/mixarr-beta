@@ -21,6 +21,7 @@ export function describePlaylistVersion(reason: PlaylistVersionReason, context?:
     undo: context?.sourceRevision ? `Undid restore using Version ${context.sourceRevision}` : "Undid playlist change",
     import: "Imported playlist",
     system_migration: "Baseline version created for legacy playlist",
+    recently_added_automation: `Recently Added Automation added ${count} track${count === 1 ? "" : "s"}`,
   };
   return descriptions[reason];
 }

@@ -46,6 +46,7 @@ export const playlistRegenerationRequestSchema = z.object({
   playlistId: z.string().min(1).optional(),
   mode: z.enum(regenerationModes).default("replace_weak_tracks"),
   targetTrackIds: z.array(z.string().min(1)).max(5000).optional(),
+  candidateTrackIds: z.array(z.string().min(1)).max(5000).optional(),
   targetSection: sectionSchema.optional(),
   preserveLength: z.boolean().default(true),
   preserveMoodCurve: z.boolean().default(true),

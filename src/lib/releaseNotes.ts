@@ -36,6 +36,7 @@ export type ReleaseNoteBadge =
   | "Mood"
   | "Mobile"
   | "Navigation"
+  | "Notifications"
   | "Performance"
   | "Playlists"
   | "Popularity"
@@ -69,6 +70,20 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "2.0.9",
+    title: "Recently Added Automation",
+    releaseDate: "July 13, 2026",
+    badges: ["Automation", "Playlists", "Plex", "Preview", "Scheduler", "History", "Safety Rules", "Notifications", "UI"],
+    changes: [
+      "Added disabled-by-default Recently Added Automation with independent saved toggles; enabling the master switch never enables playlist-changing actions.",
+      "Added idempotent new-track detection, explainable New Music Scores, confidence bands, configurable analysis quarantine, manual override, and persistent ignore controls.",
+      "Added Smart Mix v2 playlist matching with reasons, suggested sections, expected score impact, previewable change sets, and per-playlist Off, Suggestions Only, or Automatic modes.",
+      "Added explicit automatic-add thresholds and limits, duplicate and variety protection, overlapping-run locks, chunked large-library processing, and restorable versions around playlist changes.",
+      "Added optional recently added mixes, user schedules, deduplicated notifications, detailed run history, progress phases, dashboard discovery status, and a responsive review/configuration workspace.",
+      "Manual scanning, analysis, matching, mix creation, suggestion review, and selected application remain available while all automation is disabled.",
+    ],
+  },
   {
     version: "2.0.8",
     title: "Manual BPM & Metadata Corrections",

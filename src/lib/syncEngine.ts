@@ -541,6 +541,8 @@ export const runSyncEngine = async (
             ...data,
             libraryId,
             addedAt: track.addedAt ? new Date(track.addedAt * 1000) : undefined,
+            plexAddedAt: track.addedAt ? new Date(track.addedAt * 1000) : undefined,
+            firstSeenAt: seenAt,
           },
           select: {
             id: true,
@@ -726,6 +728,22 @@ export const runSyncEngine = async (
         conflicts: conflictEvents,
       },
     };
+
+    // Detection is passive and idempotent. Scoring, matching, notifications,
+    // and playlist mutation only run when the user's master switch permits it.
+    try {
+      const { detectRecentlyAddedTracks } = await import("./recentlyAdded/detection");
+      const detected = await detectRecentlyAddedTracks({ userId: server.userId, libraryId, syncLogId: syncRunId, source: "plex_sync" });
+      const recentlyAddedSettings = await prisma.recentlyAddedSettings.findUnique({ where: { userId: server.userId } });
+      if (recentlyAddedSettings?.enabled && detected.discovered > 0) {
+        const { runRecentlyAddedAutomation } = await import("./recentlyAdded/automation");
+        await runRecentlyAddedAutomation({ userId: server.userId, triggerType: "plex_sync", libraryId, scan: false });
+      }
+    } catch (recentlyAddedError) {
+      // Plex reconciliation is already committed; an optional automation failure
+      // must not rewrite a successful library sync as failed.
+      console.error("[RecentlyAdded] post-sync processing failed", { libraryId, syncRunId, reason: recentlyAddedError instanceof Error ? recentlyAddedError.message : String(recentlyAddedError) });
+    }
 
     console.log(`[SyncEngine] Reconciliation for ${library.name}:`);
     console.log(`[SyncEngine] Active tracks seen this run: ${summary.activeTracksSeen}`);

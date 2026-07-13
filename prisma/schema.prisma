@@ -9,31 +9,36 @@ datasource db {
 }
 
 model User {
-  id                        String                           @id @default(uuid())
-  plexId                    Int                              @unique
-  username                  String
-  email                     String?
-  thumb                     String?
-  accessToken               String
-  defaultServerId           String?
-  defaultLibraryId          String?
-  createdAt                 DateTime                         @default(now())
-  updatedAt                 DateTime                         @updatedAt
-  servers                   Server[]
-  playlistRules             PlaylistRule[]
-  playlistRecipes           PlaylistRecipe[]
-  playlistHistory           PlaylistHistory[]
-  playlistHistoryEntries    PlaylistHistoryEntry[]
-  generatedPlaylists        GeneratedPlaylist[]
-  playlistRegenerations     PlaylistRegeneration[]
-  smartMixTuningPresets     SmartMixTuningPreset[]
-  blockedTracks             BlockedTrack[]
-  trackExclusions           TrackExclusion[]
-  syncSettings              SyncSettings?
-  jobHistory                JobHistory[]
-  metadataCorrections       TrackMetadataCorrection[]        @relation("MetadataCorrectionActor")
-  metadataVerifications     TrackMetadataVerification[]      @relation("MetadataVerificationActor")
-  metadataCorrectionHistory TrackMetadataCorrectionHistory[] @relation("MetadataHistoryActor")
+  id                         String                           @id @default(uuid())
+  plexId                     Int                              @unique
+  username                   String
+  email                      String?
+  thumb                      String?
+  accessToken                String
+  defaultServerId            String?
+  defaultLibraryId           String?
+  createdAt                  DateTime                         @default(now())
+  updatedAt                  DateTime                         @updatedAt
+  servers                    Server[]
+  playlistRules              PlaylistRule[]
+  playlistRecipes            PlaylistRecipe[]
+  playlistHistory            PlaylistHistory[]
+  playlistHistoryEntries     PlaylistHistoryEntry[]
+  generatedPlaylists         GeneratedPlaylist[]
+  playlistRegenerations      PlaylistRegeneration[]
+  smartMixTuningPresets      SmartMixTuningPreset[]
+  blockedTracks              BlockedTrack[]
+  trackExclusions            TrackExclusion[]
+  syncSettings               SyncSettings?
+  jobHistory                 JobHistory[]
+  metadataCorrections        TrackMetadataCorrection[]        @relation("MetadataCorrectionActor")
+  metadataVerifications      TrackMetadataVerification[]      @relation("MetadataVerificationActor")
+  metadataCorrectionHistory  TrackMetadataCorrectionHistory[] @relation("MetadataHistoryActor")
+  recentlyAddedSettings      RecentlyAddedSettings?
+  recentlyAddedBatches       RecentlyAddedBatch[]
+  recentlyAddedRuns          RecentlyAddedAutomationRun[]
+  recentlyAddedNotifications RecentlyAddedNotificationState[]
+  playlistAutomationSettings PlaylistAutomationSettings[]
 }
 
 model SyncSettings {
@@ -92,20 +97,21 @@ model Server {
 }
 
 model Library {
-  id             String                 @id @default(uuid())
-  plexId         String
-  serverId       String
-  name           String
-  type           String
-  server         Server                 @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  artists        Artist[]
-  albums         Album[]
-  tracks         Track[]
-  syncLogs       SyncLog[]
-  healthSnapshot LibraryHealthSnapshot?
-  playlistRules  PlaylistRule[]
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  id                   String                 @id @default(uuid())
+  plexId               String
+  serverId             String
+  name                 String
+  type                 String
+  server               Server                 @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  artists              Artist[]
+  albums               Album[]
+  tracks               Track[]
+  syncLogs             SyncLog[]
+  healthSnapshot       LibraryHealthSnapshot?
+  playlistRules        PlaylistRule[]
+  recentlyAddedBatches RecentlyAddedBatch[]
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
   @@unique([serverId, plexId])
 }
@@ -229,6 +235,11 @@ model Track {
   lastSeenSyncId            String?
   missingSince              DateTime?
   deletedAt                 DateTime?
+  firstSeenAt               DateTime                         @default(now())
+  plexAddedAt               DateTime?
+  recentlyAddedProcessedAt  DateTime?
+  recentlyAddedStatus       String?
+  recentlyAddedBatchId      String?
   library                   Library                          @relation(fields: [libraryId], references: [id], onDelete: Cascade)
   album                     Album                            @relation(fields: [albumId], references: [id], onDelete: Cascade)
   artist                    Artist                           @relation(fields: [artistId], references: [id], onDelete: Cascade)
@@ -241,6 +252,9 @@ model Track {
   metadataVerifications     TrackMetadataVerification[]
   metadataSourceOverrides   TrackMetadataSourceOverride[]
   metadataCorrectionHistory TrackMetadataCorrectionHistory[]
+  recentlyAddedState        RecentlyAddedTrackState?
+  recentlyAddedMatches      RecentlyAddedPlaylistMatch[]
+  recentlyAddedChanges      RecentlyAddedAutomationChange[]
 
   @@unique([libraryId, plexId])
   @@index([libraryId, syncStatus])
@@ -481,13 +495,13 @@ model PlaylistHistory {
 }
 
 model GeneratedPlaylist {
-  id                    String                   @id @default(uuid())
+  id                    String                          @id @default(uuid())
   userId                String
   serverId              String?
   plexPlaylistRatingKey String?
   plexPlaylistTitle     String
-  sourceType            String                   @default("unknown")
-  engineVersion         String                   @default("v1")
+  sourceType            String                          @default("unknown")
+  engineVersion         String                          @default("v1")
   recipeId              String?
   recipeName            String?
   smartPresetId         String?
@@ -503,17 +517,20 @@ model GeneratedPlaylist {
   filtersJson           Json
   safetyRulesJson       Json?
   qualityScoreJson      Json?
-  trackCount            Int                      @default(0)
-  lastGeneratedAt       DateTime                 @default(now())
+  trackCount            Int                             @default(0)
+  lastGeneratedAt       DateTime                        @default(now())
   lastRegeneratedAt     DateTime?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  revisionCounter       Int                      @default(0)
-  user                  User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt             DateTime                        @default(now())
+  updatedAt             DateTime                        @updatedAt
+  revisionCounter       Int                             @default(0)
+  user                  User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
   tracks                GeneratedPlaylistTrack[]
   historyEntries        PlaylistHistoryEntry[]
   regenerations         PlaylistRegeneration[]
   revisions             PlaylistRevision[]
+  automationSettings    PlaylistAutomationSettings?
+  recentlyAddedMatches  RecentlyAddedPlaylistMatch[]
+  recentlyAddedChanges  RecentlyAddedAutomationChange[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -783,6 +800,227 @@ model SystemState {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+model RecentlyAddedSettings {
+  id                             String    @id @default(uuid())
+  userId                         String    @unique
+  enabled                        Boolean   @default(false)
+  timeWindowDays                 Int       @default(7)
+  customTimeWindowDays           Int?
+  maxTracksPerRun                Int       @default(500)
+  createRecentlyAddedPlaylists   Boolean   @default(false)
+  suggestExistingPlaylistMatches Boolean   @default(true)
+  autoAddStrongMatches           Boolean   @default(false)
+  quarantineUntilAnalyzed        Boolean   @default(true)
+  quarantineRule                 String    @default("all_core")
+  quarantineTimeoutHours         Int?
+  allowLowConfidenceAutomation   Boolean   @default(false)
+  scheduledRegenerationEnabled   Boolean   @default(false)
+  notificationEnabled            Boolean   @default(false)
+  notifyStrongMatches            Boolean   @default(true)
+  notifySuggestionsReady         Boolean   @default(true)
+  notifyAutomaticAdditions       Boolean   @default(true)
+  notifyMixCreated               Boolean   @default(true)
+  notifyLowConfidence            Boolean   @default(true)
+  notifyFailures                 Boolean   @default(true)
+  matchThreshold                 Float     @default(90)
+  metadataConfidenceThreshold    Float     @default(75)
+  maxAddsPerPlaylist             Int       @default(3)
+  maxAddsPerRun                  Int       @default(25)
+  requirePreview                 Boolean   @default(true)
+  automationPreset               String    @default("balanced")
+  scheduleType                   String    @default("manual")
+  scheduleExpression             String?
+  scheduleTime                   String    @default("02:00")
+  scheduleDayOfWeek              Int       @default(0)
+  regenerationBehavior           String    @default("add_only")
+  staleLockTimeoutMinutes        Int       @default(60)
+  playlistNameTemplate           String    @default("Recently Added — {week}")
+  recentMixMinimumTrackCount     Int       @default(5)
+  recentMixMaximumTrackCount     Int       @default(100)
+  recentMixMinimumScore          Float     @default(60)
+  recentMixMinimumConfidence     Float     @default(60)
+  recentMixPublishToPlex         Boolean   @default(false)
+  recentMixVersioned             Boolean   @default(false)
+  recentMixLibraryId             String?
+  exclusionsJson                 Json?
+  lastScanAt                     DateTime?
+  lastSuccessfulRunAt            DateTime?
+  nextScheduledRunAt             DateTime?
+  createdAt                      DateTime  @default(now())
+  updatedAt                      DateTime  @updatedAt
+  user                           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RecentlyAddedBatch {
+  id              String                       @id @default(uuid())
+  userId          String
+  libraryId       String?
+  syncLogId       String?
+  source          String                       @default("manual")
+  status          String                       @default("detected")
+  discoveredCount Int                          @default(0)
+  processedCount  Int                          @default(0)
+  failedCount     Int                          @default(0)
+  startedAt       DateTime                     @default(now())
+  completedAt     DateTime?
+  createdAt       DateTime                     @default(now())
+  user            User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  library         Library?                     @relation(fields: [libraryId], references: [id], onDelete: SetNull)
+  trackStates     RecentlyAddedTrackState[]
+  matches         RecentlyAddedPlaylistMatch[]
+  runs            RecentlyAddedAutomationRun[]
+
+  @@index([userId, createdAt])
+  @@index([libraryId, createdAt])
+  @@index([syncLogId])
+}
+
+model RecentlyAddedTrackState {
+  id                 String              @id @default(uuid())
+  trackId            String              @unique
+  batchId            String?
+  status             String              @default("new")
+  newMusicScore      Float?
+  confidenceScore    Float?
+  scoreBreakdownJson Json?
+  quarantineReason   String?
+  quarantinedAt      DateTime?
+  releasedAt         DateTime?
+  manualOverride     Boolean             @default(false)
+  ignored            Boolean             @default(false)
+  neverAutoAdd       Boolean             @default(false)
+  doNotSuggest       Boolean             @default(false)
+  manualUseOnly      Boolean             @default(false)
+  failureReason      String?
+  analyzedAt         DateTime?
+  matchedAt          DateTime?
+  processedAt        DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  track              Track               @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  batch              RecentlyAddedBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([batchId, status])
+  @@index([status, createdAt])
+}
+
+model PlaylistAutomationSettings {
+  id                               String            @id @default(uuid())
+  userId                           String
+  generatedPlaylistId              String            @unique
+  mode                             String            @default("suggestions")
+  excludeFromScheduledRegeneration Boolean           @default(false)
+  createdAt                        DateTime          @default(now())
+  updatedAt                        DateTime          @updatedAt
+  user                             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedPlaylist                GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+
+  @@index([userId, mode])
+}
+
+model RecentlyAddedPlaylistMatch {
+  id                  String                          @id @default(uuid())
+  batchId             String?
+  trackId             String
+  generatedPlaylistId String
+  compatibilityScore  Float
+  newMusicScore       Float
+  confidenceScore     Float
+  recommendedSection  String?
+  matchReasonsJson    Json
+  warningsJson        Json?
+  expectedScoreChange Float?
+  status              String                          @default("pending")
+  createdAt           DateTime                        @default(now())
+  reviewedAt          DateTime?
+  appliedAt           DateTime?
+  batch               RecentlyAddedBatch?             @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  track               Track                           @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  generatedPlaylist   GeneratedPlaylist               @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  changes             RecentlyAddedAutomationChange[]
+
+  @@unique([trackId, generatedPlaylistId])
+  @@index([generatedPlaylistId, status])
+  @@index([batchId, status])
+}
+
+model RecentlyAddedAutomationRun {
+  id                 String                          @id @default(uuid())
+  userId             String
+  batchId            String?
+  triggerType        String                          @default("manual")
+  status             String                          @default("scanning")
+  phase              String                          @default("scanning")
+  tracksDiscovered   Int                             @default(0)
+  tracksAnalyzed     Int                             @default(0)
+  tracksQuarantined  Int                             @default(0)
+  playlistMatches    Int                             @default(0)
+  suggestions        Int                             @default(0)
+  automaticallyAdded Int                             @default(0)
+  rejectedOrIgnored  Int                             @default(0)
+  playlistsModified  Int                             @default(0)
+  warningsJson       Json?
+  errorsJson         Json?
+  engineVersion      String                          @default("v2.0.9")
+  settingsSnapshot   Json
+  progressJson       Json?
+  lockKey            String?
+  startedAt          DateTime                        @default(now())
+  completedAt        DateTime?
+  approvedBy         String?
+  user               User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  batch              RecentlyAddedBatch?             @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  changes            RecentlyAddedAutomationChange[]
+
+  @@index([userId, startedAt])
+  @@index([status, startedAt])
+}
+
+model RecentlyAddedAutomationChange {
+  id                  String                      @id @default(uuid())
+  runId               String
+  matchId             String?
+  trackId             String
+  generatedPlaylistId String
+  action              String                      @default("add")
+  status              String                      @default("pending")
+  beforePosition      Int?
+  afterPosition       Int?
+  scoreBefore         Float?
+  scoreAfter          Float?
+  reasonsJson         Json?
+  approvedBy          String?
+  reviewedAt          DateTime?
+  appliedAt           DateTime?
+  error               String?
+  createdAt           DateTime                    @default(now())
+  run                 RecentlyAddedAutomationRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  match               RecentlyAddedPlaylistMatch? @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  track               Track                       @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  generatedPlaylist   GeneratedPlaylist           @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, trackId, generatedPlaylistId, action])
+  @@index([runId, status])
+  @@index([generatedPlaylistId, status])
+}
+
+model RecentlyAddedNotificationState {
+  id          String    @id @default(uuid())
+  userId      String
+  batchKey    String
+  triggerType String
+  title       String
+  message     String
+  link        String?
+  readAt      DateTime?
+  sentAt      DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, batchKey, triggerType])
+  @@index([userId, readAt, sentAt])
 }
 
 model ProviderSetting {

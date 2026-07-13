@@ -13,6 +13,7 @@ import { getRecentJobSummary } from "@/lib/jobHistory";
 import { getPlaylistHistoryDashboardSummary } from "@/lib/playlistHistory";
 import { getDashboardSummary, type DashboardSummary } from "@/lib/dashboardSummary";
 import { getBetaFeatureSettings, isFeatureEnabled } from "@/lib/betaFeatures";
+import RecentlyAddedDiscoveryCard from "@/components/RecentlyAddedDiscoveryCard";
 
 const previewFeatures = [
   {
@@ -274,8 +275,11 @@ export default async function Home() {
           <WorkerHealthCard />
           <DashboardSummaryCards initialSummary={dashboardSummary} />
           <div className={styles.compactCardsGrid}>
+            <RecentlyAddedDiscoveryCard />
             <RecentJobsCard summary={jobSummary} />
             <SmartBuilderCard />
+
+            <RecentlyAddedDiscoveryCard />
             <PlaylistRecipesCard count={recipeCount} />
             <PlaylistRegenerationCard count={generatedPlaylistCount} />
             <PlaylistHistoryCard count={playlistHistoryCount} lastEvent={lastPlaylistHistoryEvent} />

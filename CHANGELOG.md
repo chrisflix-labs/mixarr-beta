@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.0.9 - Recently Added Automation
+
+- Added disabled-by-default Recently Added Automation with independent, persistent feature toggles and preview-first automatic changes.
+- Added idempotent Plex new-track detection, first-seen and batch state, explainable New Music Scores, confidence bands, quarantine rules, manual override, ignore controls, and chunked processing.
+- Added Smart Mix v2 playlist compatibility matching with reasons, suggested sections, expected score impact, global thresholds, and playlist-level Off, Suggestions Only, and Automatic Strong Matches overrides.
+- Added pending change sets, manual approval, conservative per-playlist/run limits, duplicate and variety protection, and mandatory restorable playlist versions around automatic additions.
+- Added optional recently added mixes, per-user schedules, deduplicated in-app notifications, structured automation history, progress phases, and overlapping-run locks.
+- Added a responsive dashboard discovery card and full review/configuration workspace while keeping every manual tool available when automation is disabled.
+
 ## v2.0.8 - Manual BPM & Metadata Corrections
 
 - Added durable, separately stored BPM, mood, and energy corrections with optional reasons, verified state, actor attribution, and append-only history.

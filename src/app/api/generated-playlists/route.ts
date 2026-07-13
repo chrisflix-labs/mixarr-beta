@@ -14,6 +14,7 @@ export async function GET() {
     orderBy: [{ lastGeneratedAt: "desc" }, { updatedAt: "desc" }],
     include: {
       _count: { select: { tracks: true } },
+      automationSettings: true,
     },
   });
 
