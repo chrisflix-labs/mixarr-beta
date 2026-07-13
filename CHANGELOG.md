@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.0.6 - Advanced Playlist Regeneration
+
+- Added targeted replacement for weak, low-scoring, selected, intro, middle, ending, and custom-range tracks.
+- Added per-track locks, bulk lock actions, liked-track preservation, and lock-aware warnings.
+- Added position-aware candidate scoring against both neighbors while preserving saved mood, BPM, energy, discovery, duration, order, and variety intent.
+- Added a required preview with individual accept/reject controls, before/after scoring details, and meaningful-improvement thresholds.
+- Added transactional regeneration records, playlist revisions, stale-preview protection, detailed history, and server-side undo.
+- Added responsive and keyboard-accessible advanced regeneration controls for Smart Mix Engine v2 beta playlists.
+- Kept the original track when no candidate is a meaningful improvement and limited candidate pools for large Plex libraries.
+
+## v2.0.5 - Deep Cut & Discovery Controls
+
+- Added Mostly Familiar, Balanced Discovery, and Deep Discovery profiles plus editable advanced controls.
+- Added soft deep-cut targets, relative overplay penalties, hidden-gem boosts, popular-track limits, and underplayed Plex track weighting.
+- Added efficient Mixarr playlist-history lookbacks and recent-use penalties without large database `IN` queries.
+- Added discovery previews, result labels, track-level reasons, target-match scoring, warnings, and generation diagnostics.
+- Added backward-compatible migration from Familiar vs Discovery and persisted effective configuration/results on generated playlists.
+- Preserved hard rules, missing-metadata fallbacks, and Smart Mix v1 behavior.
+
 ## v2.0.3 - Mood Blending
 
 - Added Smart Mix v2 mood blend modes for Smooth Transition, Strict Matching, and Mixed Mood playlists.

@@ -25,6 +25,7 @@ model User {
   playlistHistory PlaylistHistory[]
   playlistHistoryEntries PlaylistHistoryEntry[]
   generatedPlaylists GeneratedPlaylist[]
+  playlistRegenerations PlaylistRegeneration[]
   smartMixTuningPresets SmartMixTuningPreset[]
   blockedTracks BlockedTrack[]
   trackExclusions TrackExclusion[]
@@ -233,6 +234,7 @@ model Track {
   @@index([libraryId, lastSeenSyncId])
   @@index([libraryId, ratingKey])
   @@index([libraryId, localFileStatus])
+  @@index([libraryId, viewCount])
 }
 
 model Tag {
@@ -256,6 +258,8 @@ model Popularity {
   matchedTitle  String?
   lastUpdated DateTime @default(now())
   track       Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([score])
 }
 
 model AudioFeature {
@@ -412,6 +416,8 @@ model GeneratedPlaylist {
   bpmPresetName         String?
   tuningPresetName      String?
   tuningConfigJson      Json?
+  discoveryConfigJson   Json?
+  discoveryResultJson   Json?
   filtersJson           Json
   safetyRulesJson       Json?
   qualityScoreJson      Json?
@@ -423,6 +429,8 @@ model GeneratedPlaylist {
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   tracks                GeneratedPlaylistTrack[]
   historyEntries        PlaylistHistoryEntry[]
+  regenerations         PlaylistRegeneration[]
+  revisions             PlaylistRevision[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -434,7 +442,7 @@ model SmartMixTuningPreset {
   userId        String
   name          String
   configJson    Json
-  tuningVersion String   @default("2.0.4")
+  tuningVersion String   @default("2.0.6")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -452,11 +460,84 @@ model GeneratedPlaylistTrack {
   title               String
   artist              String?
   album               String?
+  locked              Boolean  @default(false)
+  liked               Boolean  @default(false)
+  regenerationExcluded Boolean @default(false)
   createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
   generatedPlaylist   GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
 
   @@index([generatedPlaylistId, position])
   @@index([trackId])
+  @@index([generatedPlaylistId, trackId])
+}
+
+model PlaylistRegeneration {
+  id                    String   @id @default(uuid())
+  userId                String
+  generatedPlaylistId   String
+  mode                  String
+  status                String   @default("preview")
+  settingsJson          Json
+  warningsJson          Json?
+  originalScore         Float?
+  proposedScore         Float?
+  appliedScore          Float?
+  originalDurationMs    Int      @default(0)
+  proposedDurationMs    Int      @default(0)
+  tracksAnalyzed        Int      @default(0)
+  tracksProposed        Int      @default(0)
+  tracksApplied         Int      @default(0)
+  engineVersion         String   @default("v2.0.6")
+  playlistUpdatedAt     DateTime
+  createdAt             DateTime @default(now())
+  appliedAt             DateTime?
+  undoneAt              DateTime?
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedPlaylist     GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  changes               PlaylistRegenerationChange[]
+
+  @@index([userId, createdAt])
+  @@index([generatedPlaylistId, createdAt])
+  @@index([generatedPlaylistId, status])
+}
+
+model PlaylistRegenerationChange {
+  id                    String   @id @default(uuid())
+  regenerationId        String
+  position              Int
+  originalTrackId       String
+  proposedTrackId       String
+  originalScore         Float?
+  proposedScore         Float?
+  improvement           Float?
+  reasonsJson           Json?
+  originalMetricsJson   Json?
+  proposedMetricsJson   Json?
+  accepted              Boolean?
+  createdAt             DateTime @default(now())
+  regeneration          PlaylistRegeneration @relation(fields: [regenerationId], references: [id], onDelete: Cascade)
+
+  @@unique([regenerationId, position])
+  @@index([regenerationId, accepted])
+}
+
+model PlaylistRevision {
+  id                    String   @id @default(uuid())
+  generatedPlaylistId   String
+  revisionNumber        Int
+  regenerationId        String?
+  reason                String
+  engineVersion         String?
+  settingsSnapshot      Json?
+  trackSnapshot         Json
+  scoreSnapshot         Json?
+  createdAt             DateTime @default(now())
+  generatedPlaylist     GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+
+  @@unique([generatedPlaylistId, revisionNumber])
+  @@index([generatedPlaylistId, createdAt])
+  @@index([regenerationId])
 }
 
 model PlaylistHistoryEntry {
@@ -526,6 +607,7 @@ model PlaylistHistoryTrack {
 
   @@index([historyEntryId, position])
   @@index([trackId])
+  @@index([historyEntryId, trackId])
 }
 
 model SyncLog {

@@ -70,6 +70,32 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.0.6",
+    title: "Advanced Playlist Regeneration",
+    badges: ["Beta", "Regeneration", "Playlists", "Preview", "History", "BPM", "Energy", "Mood", "UI"],
+    changes: [
+      "Added targeted replacement for weak, low-scoring, selected, and section-based playlist tracks.",
+      "Added track locking, liked-track preservation, and lock-aware transition warnings.",
+      "Added position-aware replacement scoring against both neighboring tracks and the saved mood, BPM, energy, discovery, and variety intent.",
+      "Added interactive previews with individual acceptance, before/after metrics, meaningful-improvement thresholds, and original-track fallback.",
+      "Added transaction-backed playlist revisions, stale-preview protection, regeneration history, and server-side undo.",
+      "Added responsive, keyboard-accessible regeneration controls and large-library candidate-pool limits.",
+    ],
+  },
+  {
+    version: "2.0.5",
+    title: "Deep Cut & Discovery Controls",
+    badges: ["Playlists", "Popularity", "Plex", "History", "Preview", "Diagnostics", "UI"],
+    changes: [
+      "Added Mostly Familiar, Balanced Discovery, and Deep Discovery levels with editable advanced values and Custom state.",
+      "Added deep-cut targets, relative overplay penalties, hidden-gem boosts, popular-track soft limits, and underplayed Plex track weighting.",
+      "Added efficient generated-playlist-history lookbacks that penalize recent use without hard-excluding tracks or creating large bind-variable lists.",
+      "Added pool-relative discovery classification, missing-metadata fallbacks, track-level selection reasons, result labels, warnings, and diagnostics.",
+      "Added a separate Discovery Target Match metric so intentionally less-popular playlists do not reduce the overall quality score.",
+      "Existing v2.0.2 Familiar vs Discovery values migrate into detailed discovery settings; Smart Mix v1 remains unchanged.",
+    ],
+  },
+  {
     version: "2.0.4",
     title: "BPM Ramp & Transition Tools",
     badges: ["Playlists", "BPM", "Preview", "Diagnostics", "UI"],

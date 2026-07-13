@@ -1,5 +1,5 @@
 import type { PlaylistConfigInput, PlaylistRuleInput } from "./playlistService";
-import { DEFAULT_SMART_MIX_TUNING } from "./smartMixEngine/v2";
+import { DEFAULT_SMART_MIX_TUNING, discoveryPreset, normalizeSmartMixTuningConfig } from "./smartMixEngine/v2";
 
 export const SMART_PRESET_VERSION = "v1";
 
@@ -215,6 +215,7 @@ export function getSmartPlaylistPreset(id: string) {
 }
 
 export function buildSmartPresetConfig(preset: SmartPlaylistPreset): PlaylistConfigInput {
+  const discoveryLevel = preset.id === "popular-favorites" ? "low" : preset.id === "discovery" || preset.id === "deep-cuts" ? "high" : "medium";
   return {
     ...preset.filters,
     smartPresetId: preset.id,
@@ -223,7 +224,11 @@ export function buildSmartPresetConfig(preset: SmartPlaylistPreset): PlaylistCon
     moodPresetModified: false,
     bpmPresetModified: false,
     engineVersion: "v2",
-    tuningConfig: DEFAULT_SMART_MIX_TUNING,
+    tuningConfig: normalizeSmartMixTuningConfig({
+      ...DEFAULT_SMART_MIX_TUNING,
+      familiarityDiscoveryBalance: discoveryLevel === "low" ? 78 : discoveryLevel === "high" ? 22 : 50,
+      discovery: discoveryPreset(discoveryLevel),
+    }),
     moodBlendMode: "off",
     selectedMoodPath: [],
     allowedMoods: [],

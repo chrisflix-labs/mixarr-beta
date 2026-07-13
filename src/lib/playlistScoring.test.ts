@@ -20,7 +20,7 @@ describe("playlist scoring", () => {
       track("three", { effectiveBpm: 126, popularity: { score: 28 }, audioFeature: { effectiveEnergy: 0.78, effectiveMood: 0.64 } }),
     ]);
 
-    assert.equal(score.scoreVersion, "2.0.4");
+    assert.equal(score.scoreVersion, "2.0.6");
     assert.ok(score.bpmFlowScore == null || score.bpmFlowScore >= 70);
     assert.ok(score.overallScore >= 80);
     assert.equal(score.labels.overall === "Strong" || score.labels.overall === "Excellent", true);

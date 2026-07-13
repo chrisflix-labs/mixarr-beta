@@ -25,6 +25,7 @@ import {
   type BpmFlowMode,
   type BpmStartingMode,
 } from "@/lib/smartMixEngine/v2/bpmFlow";
+import { discoveryPreset, type DiscoveryConfig, type DiscoveryLevel } from "@/lib/smartMixEngine/v2/discovery";
 import styles from "./builder.module.css";
 
 type Rule = {
@@ -83,7 +84,7 @@ type BpmPresetMetadata = {
 
 type EngineVersion = "v1" | "v2";
 type MoodBlendMode = MoodBlendBetaSettings["moodBlendMode"];
-type TuningSliderKey = Exclude<keyof SmartMixTuningConfig, "avoidRecentlyUsedTracks" | "bpmFlow" | "presetName" | "tuningVersion">;
+type TuningSliderKey = Exclude<keyof SmartMixTuningConfig, "avoidRecentlyUsedTracks" | "bpmFlow" | "discovery" | "presetName" | "tuningVersion">;
 
 type SavedRule = {
   id: string;
@@ -140,6 +141,7 @@ type PlaylistPreviewSummary = {
   bpmFlowScore?: number | null;
   bpmFlowMode?: BpmFlowMode;
   bpmFlowWarnings?: string[];
+  discovery?: any;
   artistLimitApplied?: boolean;
   albumLimitApplied?: boolean;
   artistSpacingApplied?: boolean;
@@ -566,6 +568,15 @@ export default function BuilderPage() {
     }));
     setSelectedTuningPreset("custom");
     clearPreview();
+  };
+
+  const selectDiscoveryLevel = (level: Exclude<DiscoveryLevel, "custom">) => {
+    const familiarityDiscoveryBalance = level === "low" ? 78 : level === "high" ? 22 : 50;
+    updateTuningConfig({ familiarityDiscoveryBalance, discovery: discoveryPreset(level) });
+  };
+
+  const updateDiscovery = (patch: Partial<DiscoveryConfig>) => {
+    updateTuningConfig({ discovery: { ...tuningConfig.discovery, ...patch, level: "custom" } });
   };
 
   const resetBpmFlow = () => updateBpmFlow({
@@ -1352,6 +1363,7 @@ export default function BuilderPage() {
         manualExclusionsApplied: playlistPreview.summary.manualExclusionsRemoved || 0,
         removedBySafetyRules: playlistPreview.summary.removedBySafetyRules || 0,
         safetyRulesApplied: playlistPreview.summary.safetyRulesApplied || false,
+        discoveryResult: playlistPreview.summary.discovery || undefined,
       });
       await fetchSavedRules();
       await fetchHistory();
@@ -1629,7 +1641,6 @@ export default function BuilderPage() {
           </div>
           <div className={styles.tuningGrid}>
             {tuningSlider("recommendationStrength", "Recommendation Strength", "How strongly Mixarr should follow its matching logic.", "Relaxed", "Strict")}
-            {tuningSlider("familiarityDiscoveryBalance", "Familiar vs Discovery", "Choose safer favorites or deeper cuts.", "Discovery", "Familiar")}
             {tuningSlider("popularityWeight", "Popularity Weight", "Control how much popularity affects ranking.", "Light", "Strong")}
             {tuningSlider("moodWeight", "Mood Weight", "Higher values keep the emotional feel more consistent.", "Flexible", "Consistent")}
             {tuningSlider("energyWeight", "Energy Weight", "Higher values create smoother energy movement.", "Flexible", "Smooth")}
@@ -1637,6 +1648,65 @@ export default function BuilderPage() {
             {tuningSlider("artistVariety", "Artist Variety", "Higher values reduce repeated artists.", "Repeat OK", "More variety")}
             {tuningSlider("albumVariety", "Album Variety", "Higher values reduce repeated albums.", "Repeat OK", "More variety")}
           </div>
+          <details className={styles.discoveryPanel} open>
+            <summary>
+              <span>Deep Cuts &amp; Discovery <strong>Beta</strong></span>
+              <small>{tuningConfig.discovery.level === "custom" ? "Custom Discovery" : tuningConfig.discovery.level === "low" ? "Mostly Familiar" : tuningConfig.discovery.level === "high" ? "Deep Discovery" : "Balanced Discovery"} · {tuningConfig.discovery.deepCutTarget}% deep cuts · Hidden gems {tuningConfig.discovery.includeHiddenGems ? "enabled" : "off"}</small>
+            </summary>
+            <div className={styles.discoveryLevelGrid} role="radiogroup" aria-label="Discovery level">
+              {([
+                ["low", "Mostly Familiar", "Prioritizes recognizable tracks with a small amount of discovery."],
+                ["medium", "Balanced Discovery", "Mixes familiar favorites, lesser-played tracks, and occasional deep cuts."],
+                ["high", "Deep Discovery", "Strongly favors underplayed tracks, hidden gems, and playlist freshness."],
+              ] as const).map(([level, label, description]) => (
+                <button key={level} type="button" role="radio" aria-checked={tuningConfig.discovery.level === level} className={`${styles.discoveryLevelCard} ${tuningConfig.discovery.level === level ? styles.discoveryLevelActive : ""}`} onClick={() => selectDiscoveryLevel(level)}>
+                  <strong>{label}</strong><small>{description}</small>
+                </button>
+              ))}
+            </div>
+            {tuningConfig.discovery.level === "custom" && <p className={styles.discoveryCustom}>Custom — advanced values differ from a recommended level.</p>}
+            <div className={styles.discoveryPreview} aria-label="Expected discovery mix">
+              <strong>Expected Mix</strong>
+              <div><span>Familiar tracks</span><i style={{ width: `${100 - tuningConfig.discovery.deepCutTarget}%` }} /><b>{100 - tuningConfig.discovery.deepCutTarget}%</b></div>
+              <div><span>Deep cuts</span><i style={{ width: `${tuningConfig.discovery.deepCutTarget}%` }} /><b>{tuningConfig.discovery.deepCutTarget}%</b></div>
+            </div>
+            <div className={styles.discoveryControls}>
+              <label className={styles.tuningControl}>
+                <span className={styles.tuningControlHeader}><span>Deep Cut Target</span><strong>Target: {tuningConfig.discovery.deepCutTarget}% deep cuts</strong></span>
+                <input type="range" min="0" max="100" step="5" value={tuningConfig.discovery.deepCutTarget} onChange={(e) => updateDiscovery({ deepCutTarget: Number(e.target.value) })} aria-label="Deep cut target percentage" />
+                <small>The approximate percentage that should come from less popular or underplayed tracks. This is a soft target.</small>
+              </label>
+              <label className={styles.tuningControl}>
+                <span className={styles.tuningControlHeader}><span>Underplayed Track Boost</span><strong>{tuningConfig.discovery.underplayedBoost}</strong></span>
+                <select className={styles.select} value={tuningConfig.discovery.underplayedBoost} onChange={(e) => updateDiscovery({ underplayedBoost: e.target.value as DiscoveryConfig["underplayedBoost"] })} aria-label="Underplayed track boost">
+                  <option value="off">Off</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                </select>
+                <small>Gives additional weight to tracks with lower Plex play counts relative to this candidate pool.</small>
+              </label>
+            </div>
+            <div className={styles.discoveryToggleGrid}>
+              <label className={styles.checkLabel} title="Reduces scores in the highest relative Plex play-count percentile without excluding tracks."><input type="checkbox" checked={tuningConfig.discovery.avoidOverplayed} onChange={(e) => updateDiscovery({ avoidOverplayed: e.target.checked })} /> Avoid Overplayed Tracks</label>
+              <label className={styles.checkLabel} title="Boosts compatible tracks with low play counts and fresh playlist history."><input type="checkbox" checked={tuningConfig.discovery.includeHiddenGems} onChange={(e) => updateDiscovery({ includeHiddenGems: e.target.checked })} /> Include Hidden Gems</label>
+              <label className={styles.checkLabel} title="Applies a soft quota to the top popularity percentile."><input type="checkbox" checked={tuningConfig.discovery.limitPopularTracks} onChange={(e) => updateDiscovery({ limitPopularTracks: e.target.checked })} /> Limit Most Popular Tracks</label>
+              <label className={styles.checkLabel} title="Uses generated Mixarr playlist history, not Plex listening history."><input type="checkbox" checked={tuningConfig.discovery.avoidRecentlyUsedPlaylistTracks} onChange={(e) => updateDiscovery({ avoidRecentlyUsedPlaylistTracks: e.target.checked })} /> Avoid Recently Used Playlist Tracks</label>
+            </div>
+            <div className={styles.discoveryControls}>
+              <label className={`${styles.tuningControl} ${!tuningConfig.discovery.limitPopularTracks ? styles.controlDisabled : ""}`}>
+                <span className={styles.tuningControlHeader}><span>Maximum Popular Tracks</span><strong>{tuningConfig.discovery.maxPopularTrackPercent}%</strong></span>
+                <input type="range" min="0" max="100" step="5" disabled={!tuningConfig.discovery.limitPopularTracks} value={tuningConfig.discovery.maxPopularTrackPercent} onChange={(e) => updateDiscovery({ maxPopularTrackPercent: Number(e.target.value) })} aria-label="Maximum popular tracks percentage" />
+                <small>Limits how much can come from approximately the top 20% of eligible popularity.</small>
+              </label>
+              <label className={`${styles.tuningControl} ${!tuningConfig.discovery.avoidRecentlyUsedPlaylistTracks ? styles.controlDisabled : ""}`}>
+                <span className={styles.tuningControlHeader}><span>Playlist History Lookback</span></span>
+                <select className={styles.select} disabled={!tuningConfig.discovery.avoidRecentlyUsedPlaylistTracks} value={tuningConfig.discovery.recentPlaylistLookback} onChange={(e) => updateDiscovery({ recentPlaylistLookback: e.target.value as DiscoveryConfig["recentPlaylistLookback"] })} aria-label="Recent playlist lookback">
+                  <option value="playlists_3">Last 3 playlists</option><option value="playlists_5">Last 5 playlists</option><option value="playlists_10">Last 10 playlists</option><option value="playlists_20">Last 20 playlists</option><option value="days_30">Last 30 days</option><option value="days_60">Last 60 days</option><option value="days_90">Last 90 days</option>
+                </select>
+                <small>Recently used tracks remain eligible but receive a soft penalty.</small>
+              </label>
+            </div>
+            {tuningConfig.discovery.deepCutTarget > 70 && tuningConfig.discovery.limitPopularTracks && tuningConfig.discovery.maxPopularTrackPercent > 70 && <p className={styles.discoveryNotice}>Your Deep Cut Target is high while Maximum Popular Tracks allows many popular tracks. Mixarr will prioritize the deep-cut target.</p>}
+            <button type="button" className={styles.btnSecondary} onClick={() => selectDiscoveryLevel("medium")}>Reset to recommended</button>
+          </details>
           <details className={styles.bpmRampPanel} open={tuningConfig.bpmFlow.enabled}>
             <summary>
               <span>BPM Ramp &amp; Transitions</span>
@@ -2121,6 +2191,18 @@ export default function BuilderPage() {
               </div>
             )}
 
+            {playlistPreview.summary.discovery && (
+              <div className={styles.discoveryResults} aria-label="Generated discovery mix">
+                <div className={styles.moodCurveHeader}><strong>Generated Mix</strong><span>Discovery Target Match {playlistPreview.summary.discovery.targetSatisfaction}%</span></div>
+                <div className={styles.discoveryResultStats}>
+                  <span>Deep cuts <b>{playlistPreview.summary.discovery.actualDeepCutPercent}%</b></span>
+                  <span>Popular <b>{playlistPreview.summary.discovery.actualPopularTrackPercent}%</b></span>
+                  <span>Hidden gems <b>{playlistPreview.summary.discovery.hiddenGemCount}</b></span>
+                </div>
+                <div className={styles.discoveryLabels}>{playlistPreview.summary.discovery.explanations?.map((item: any) => <span key={item.label} title={item.explanation}>{item.label}</span>)}</div>
+              </div>
+            )}
+
             {playlistPreview.summary.bpmFlow && (
               <div className={styles.bpmFlowPreview} aria-label={`BPM flow score ${playlistPreview.summary.bpmFlow.bpmFlowScore ?? "unknown"}`}>
                 <div className={styles.moodCurveHeader}>
@@ -2242,6 +2324,7 @@ export default function BuilderPage() {
                               {track.isExplicit && <span className={styles.miniBadge}>Explicit</span>}
                             </div>
                           )}
+                          {track.discoveryMetrics?.reasons?.length > 0 && <div className={styles.badgeRow}>{track.discoveryMetrics.reasons.slice(0, 2).map((reason: string) => <span key={reason} className={styles.discoveryReason} title={`Discovery: ${reason}`}>{reason}</span>)}</div>}
                         </td>
                         <td className={styles.trackArtist}>{track.artist?.title || "—"}</td>
                         <td className={styles.trackAlbum}>{track.album?.title || "—"}</td>

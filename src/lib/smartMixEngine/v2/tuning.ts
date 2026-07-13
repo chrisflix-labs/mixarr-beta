@@ -6,8 +6,9 @@ import {
   NEUTRAL_POPULARITY_SCORE,
 } from "./metadataFallbacks";
 import { DEFAULT_BPM_FLOW_CONFIG, normalizeBpmFlowConfig, type BpmFlowConfig } from "./bpmFlow";
+import { normalizeDiscoveryConfig, type DiscoveryConfig } from "./discovery";
 
-export const SMART_MIX_TUNING_VERSION = "2.0.4";
+export const SMART_MIX_TUNING_VERSION = "2.0.6";
 export const SMART_MIX_RECENTLY_USED_WINDOW_DAYS = 30;
 
 export type SmartMixTuningConfig = {
@@ -20,6 +21,7 @@ export type SmartMixTuningConfig = {
   artistVariety: number;
   albumVariety: number;
   avoidRecentlyUsedTracks: boolean;
+  discovery: DiscoveryConfig;
   bpmFlow: BpmFlowConfig;
   presetName?: string;
   tuningVersion: string;
@@ -43,6 +45,7 @@ export const DEFAULT_SMART_MIX_TUNING: SmartMixTuningConfig = {
   artistVariety: 50,
   albumVariety: 50,
   avoidRecentlyUsedTracks: true,
+  discovery: normalizeDiscoveryConfig(undefined, 50),
   bpmFlow: DEFAULT_BPM_FLOW_CONFIG,
   presetName: "Balanced",
   tuningVersion: SMART_MIX_TUNING_VERSION,
@@ -264,6 +267,9 @@ export const builtInSmartMixTuningPresets: SmartMixTuningPreset[] = builtInPrese
   config: normalizeSmartMixTuningConfig({
     ...DEFAULT_SMART_MIX_TUNING,
     ...preset.config,
+    // Presets authored before v2.0.5 migrate from their Familiar vs Discovery
+    // value instead of inheriting the global Medium object from the defaults.
+    discovery: preset.config.discovery,
     presetName: preset.name,
   }),
 }));
@@ -299,6 +305,7 @@ export function normalizeSmartMixTuningConfig(value: unknown): SmartMixTuningCon
     artistVariety: clamp(finiteNumber(source.artistVariety) ?? DEFAULT_SMART_MIX_TUNING.artistVariety),
     albumVariety: clamp(finiteNumber(source.albumVariety) ?? DEFAULT_SMART_MIX_TUNING.albumVariety),
     avoidRecentlyUsedTracks: source.avoidRecentlyUsedTracks ?? DEFAULT_SMART_MIX_TUNING.avoidRecentlyUsedTracks,
+    discovery: normalizeDiscoveryConfig(source.discovery, source.familiarityDiscoveryBalance),
     bpmFlow: normalizeBpmFlowConfig(source.bpmFlow ?? DEFAULT_SMART_MIX_TUNING.bpmFlow),
     presetName: typeof source.presetName === "string" && source.presetName.trim()
       ? source.presetName.trim().slice(0, 120)

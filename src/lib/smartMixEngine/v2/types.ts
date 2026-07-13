@@ -37,6 +37,7 @@ export type SmartMixEngineV2Config = {
   ruleTree?: SmartMixRuleTree;
   tuningConfig?: SmartMixTuningConfig;
   recentlyUsedTrackIds?: string[];
+  recentPlaylistUsage?: Record<string, number>;
   moodBlendMode?: SmartMixMoodBlendMode;
   selectedMoodPath?: string[];
   allowedMoods?: string[];
@@ -120,6 +121,12 @@ export type SmartMixScoreBreakdown = {
   tuning?: number;
   moodBlend?: number;
   recentlyUsedPenalty?: number;
+  discoveryScore?: number;
+  underplayedScore?: number;
+  playlistFreshnessScore?: number;
+  hiddenGemScore?: number;
+  overplayedPenalty?: number;
+  recentPlaylistPenalty?: number;
   fallbackPenalty?: number;
   diversity?: number;
 };
@@ -131,6 +138,7 @@ export type SmartMixScoredTrack<TTrack = any> = TTrack & {
   metadataStatus: SmartMixMetadataStatus;
   fallbacksApplied: string[];
   moodBlend?: SmartMixMoodBlendTrackData;
+  discoveryMetrics?: import("./discovery").TrackDiscoveryMetrics;
 };
 
 export type SmartMixEngineV2StageKey =

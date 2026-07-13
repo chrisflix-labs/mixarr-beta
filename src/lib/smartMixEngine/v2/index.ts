@@ -9,6 +9,7 @@ import {
   tuningVarietyPenalty,
 } from "./tuning";
 import { SMART_MIX_ENGINE_V2, type SmartMixEngineV2Config, type SmartMixScoredTrack } from "./types";
+import { discoverySelectionAdjustment, scoreDiscoveryCandidatePool, summarizeDiscovery } from "./discovery";
 
 export * from "./metadataFallbacks";
 export * from "./bpmFlow";
@@ -17,6 +18,8 @@ export * from "./pipeline";
 export * from "./scoring";
 export * from "./tuning";
 export * from "./types";
+export * from "./discovery";
+export * from "./regeneration";
 
 type SafetyResult<TTrack> = {
   tracks: TTrack[];
@@ -64,6 +67,7 @@ export type SmartMixEngineV2RunResult<TTrack extends Record<string, any>> = {
     multiMoodBridgeTracks: string[];
     missingMoodCount: number;
     bpmFlow: ReturnType<typeof summarizeBpmFlow>;
+    discovery: ReturnType<typeof summarizeDiscovery>;
   };
 };
 
@@ -117,9 +121,11 @@ function selectTunedCandidates<TTrack extends Record<string, any>>(
       const existingMoodBlend = candidate.scoreBreakdown.moodBlend || 0;
       const positionMoodBlend = moodBlendScore?.score || existingMoodBlend;
       const candidateScore = candidate.score - existingMoodBlend + positionMoodBlend + transitionScore - varietyPenalty;
+      const discoveryQuotaAdjustment = discoverySelectionAdjustment(candidate, selected, limit, tuning.discovery);
+      const adjustedCandidateScore = candidateScore + discoveryQuotaAdjustment;
       if (
-        candidateScore > bestScore
-        || (candidateScore === bestScore && candidate.smartMixV2OriginalIndex < bestTrack.smartMixV2OriginalIndex)
+        adjustedCandidateScore > bestScore
+        || (adjustedCandidateScore === bestScore && candidate.smartMixV2OriginalIndex < bestTrack.smartMixV2OriginalIndex)
       ) {
         bestTrack = moodBlendScore
           ? {
@@ -132,7 +138,7 @@ function selectTunedCandidates<TTrack extends Record<string, any>>(
               moodBlend: moodBlendScore.data,
             }
           : candidate;
-        bestScore = candidateScore;
+        bestScore = adjustedCandidateScore;
       }
     }
 
@@ -164,11 +170,18 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
   applyPlaylistSafetyRules,
 }: SmartMixEngineV2RunInput<TTrack>): SmartMixEngineV2RunResult<TTrack> {
   const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
-  const scoredPinnedTracks = pinnedTracks.map((track) => scoreSmartMixTrack(track, config));
-  const scoredCandidates = candidates.map((track, index) => ({
+  const initiallyScoredPinnedTracks = pinnedTracks.map((track) => scoreSmartMixTrack(track, config));
+  const initiallyScoredCandidates = candidates.map((track, index) => ({
     ...scoreSmartMixTrack(track, config),
     smartMixV2OriginalIndex: index,
   }));
+  const discoveryScoring = scoreDiscoveryCandidatePool({
+    candidates: [...initiallyScoredPinnedTracks, ...initiallyScoredCandidates],
+    config: tuning.discovery,
+    recentUsage: config.recentPlaylistUsage,
+  });
+  const scoredPinnedTracks = discoveryScoring.tracks.slice(0, initiallyScoredPinnedTracks.length) as SmartMixScoredTrack<TTrack>[];
+  const scoredCandidates = discoveryScoring.tracks.slice(initiallyScoredPinnedTracks.length) as Array<SmartMixScoredTrack<TTrack> & { smartMixV2OriginalIndex: number }>;
 
   const sortedCandidates = [...scoredCandidates].sort((left, right) => {
     if (right.score !== left.score) return right.score - left.score;
@@ -184,6 +197,7 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
   const safety = applyPlaylistSafetyRules(scoredPinnedTracks.concat(selectedCandidates), config);
   const bpmFlow = summarizeBpmFlow(safety.tracks, tuning.bpmFlow);
   const tracks = attachBpmTransitionMetadata(safety.tracks.map(removeInternalSortIndex), bpmFlow);
+  const discovery = summarizeDiscovery(scoredCandidates, tracks, tuning.discovery, discoveryScoring.executionTimeMs);
   const tuningWarnings = buildTuningWarnings({ tracks, tuningConfig: tuning });
   const moodBlendSummary = summarizeMoodBlend({
     tracks,
@@ -253,6 +267,7 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
       multiMoodBridgeTracks: moodBlendSummary.multiMoodBridgeTracks,
       missingMoodCount: moodBlendSummary.missingMoodCount,
       bpmFlow,
+      discovery,
     },
   };
 }

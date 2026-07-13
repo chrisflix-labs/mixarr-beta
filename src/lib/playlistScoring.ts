@@ -6,9 +6,11 @@ import {
   getTrackPopularity,
   normalizeBpmFlowConfig,
   summarizeBpmFlow,
+  normalizeSmartMixTuningConfig,
+  summarizeDiscovery,
 } from "./smartMixEngine/v2";
 
-export const PLAYLIST_SCORE_VERSION = "2.0.4";
+export const PLAYLIST_SCORE_VERSION = "2.0.6";
 
 export type PlaylistScoreLabel = "Excellent" | "Strong" | "Good" | "Fair" | "Weak";
 
@@ -29,6 +31,8 @@ export type PlaylistScoreSummary = {
   energyFlowScore: number;
   moodConsistencyScore: number;
   discoveryBalanceScore: number;
+  discoveryTargetMatch: number;
+  discoveryMetrics?: import("./smartMixEngine/v2").DiscoveryDiagnostics;
   weakSpotCount: number;
   warnings: string[];
   scoreVersion: typeof PLAYLIST_SCORE_VERSION;
@@ -40,6 +44,7 @@ export type PlaylistScoreSummary = {
     energyFlow: PlaylistScoreLabel;
     moodConsistency: PlaylistScoreLabel;
     discoveryBalance: PlaylistScoreLabel;
+    discoveryTargetMatch: PlaylistScoreLabel;
   };
   weakSpots: PlaylistWeakSpot[];
   bpmFlow?: ReturnType<typeof summarizeBpmFlow>;
@@ -324,7 +329,11 @@ function buildWarnings(tracks: any[], weakSpots: PlaylistWeakSpot[], scores: Omi
   return warnings.filter((warning, index, list) => list.indexOf(warning) === index).slice(0, 6);
 }
 
-export function scorePlaylist(tracks: any[], tuningConfig?: unknown): PlaylistScoreSummary {
+export function scorePlaylist(tracks: any[], tuningConfig?: unknown, discoveryMetrics?: import("./smartMixEngine/v2").DiscoveryDiagnostics): PlaylistScoreSummary {
+  const normalizedTuning = normalizeSmartMixTuningConfig(tuningConfig);
+  const effectiveDiscoveryMetrics = discoveryMetrics || (tracks.some((track) => track.discoveryMetrics)
+    ? summarizeDiscovery(tracks, tracks, normalizedTuning.discovery)
+    : undefined);
   const compatibilityScore = scoreCompatibility(tracks);
   const bpmConsistencyScore = scoreBpmConsistency(tracks);
   const bpmFlow = summarizeBpmFlow(tracks, normalizeBpmFlowConfig((tuningConfig as any)?.bpmFlow ?? tuningConfig));
@@ -332,13 +341,16 @@ export function scorePlaylist(tracks: any[], tuningConfig?: unknown): PlaylistSc
   const energyFlowScore = scoreEnergyFlow(tracks);
   const moodConsistencyScore = scoreMoodConsistency(tracks);
   const discoveryBalanceScore = scoreDiscoveryBalance(tracks);
+  const discoveryTargetMatch = effectiveDiscoveryMetrics?.targetSatisfaction ?? discoveryBalanceScore;
+  const incompleteMetadataTracks = tracks.filter((track) => getSmartMixMetadataStatus(track).missingFields.length >= 3).length;
+  const metadataCoveragePenalty = tracks.length ? incompleteMetadataTracks / tracks.length * 8 : 0;
   const overallScore = roundScore(
-    compatibilityScore * 0.3
-    + bpmConsistencyScore * 0.12
-    + (bpmFlowScore ?? bpmConsistencyScore) * 0.08
-    + energyFlowScore * 0.2
+    compatibilityScore * 0.4
+    + bpmConsistencyScore * 0.14
+    + (bpmFlowScore ?? bpmConsistencyScore) * 0.1
+    + energyFlowScore * 0.21
     + moodConsistencyScore * 0.15
-    + discoveryBalanceScore * 0.15,
+    - metadataCoveragePenalty,
   );
   const weakSpots = detectWeakSpots(tracks);
   const baseScores = {
@@ -349,13 +361,18 @@ export function scorePlaylist(tracks: any[], tuningConfig?: unknown): PlaylistSc
     energyFlowScore,
     moodConsistencyScore,
     discoveryBalanceScore,
+    discoveryTargetMatch,
+    ...(effectiveDiscoveryMetrics ? { discoveryMetrics: effectiveDiscoveryMetrics } : {}),
     weakSpotCount: weakSpots.length,
     bpmFlow,
   };
 
   return {
     ...baseScores,
-    warnings: buildWarnings(tracks, weakSpots, baseScores),
+    warnings: [
+      ...buildWarnings(tracks, weakSpots, baseScores),
+      ...(effectiveDiscoveryMetrics?.warnings || []),
+    ].filter((warning, index, list) => list.indexOf(warning) === index).slice(0, 8),
     scoreVersion: PLAYLIST_SCORE_VERSION,
     labels: {
       overall: playlistScoreLabel(overallScore),
@@ -365,6 +382,7 @@ export function scorePlaylist(tracks: any[], tuningConfig?: unknown): PlaylistSc
       energyFlow: playlistScoreLabel(energyFlowScore),
       moodConsistency: playlistScoreLabel(moodConsistencyScore),
       discoveryBalance: playlistScoreLabel(discoveryBalanceScore),
+      discoveryTargetMatch: playlistScoreLabel(discoveryTargetMatch),
     },
     weakSpots,
   };

@@ -67,7 +67,7 @@ describe("playlist recipe import/export", () => {
 
     assert.equal(exported.format, "mixarr.recipe");
     assert.equal(exported.formatVersion, 1);
-    assert.equal(exported.mixarrVersion, "v2.0.4");
+    assert.equal(exported.mixarrVersion, "v2.0.6");
     assert.equal(exported.exportedAt, "2026-01-04T00:00:00.000Z");
     assert.equal(exported.recipe.name, "Workout Mix");
     assert.equal(exported.recipe.smartPreset?.name, "Workout");

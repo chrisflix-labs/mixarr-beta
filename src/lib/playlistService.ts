@@ -22,6 +22,14 @@ import {
   normalizeMoodBlendConfig,
   summarizeMoodBlend,
   type SmartMixEngineVersion,
+  scoreDiscoveryCandidatePool,
+  summarizeDiscovery,
+  analyzePlaylistWeakness,
+  regeneratePlaylist,
+  playlistRegenerationRequestSchema,
+  REGENERATION_ENGINE_VERSION,
+  type PlaylistRegenerationRequest,
+  type PlaylistTrackState,
 } from "./smartMixEngine/v2";
 import {
   playlistExportDurationSeconds,
@@ -656,6 +664,7 @@ function publicPreviewTrack(track: any) {
     moodTags: track.moodBlend?.moodTags || (track.tags || []).filter((tag: any) => tag.type === "mood").map((tag: any) => tag.name).slice(0, 6),
     moodBlend: track.moodBlend || undefined,
     bpmTransitionFromPrevious: track.bpmTransitionFromPrevious || null,
+    discoveryMetrics: track.discoveryMetrics || undefined,
   };
 }
 
@@ -725,6 +734,37 @@ async function getRecentlyGeneratedTrackIds(userId: string, windowDays = SMART_M
     .filter((trackId, index, ids) => ids.indexOf(trackId) === index);
 }
 
+async function getRecentPlaylistUsage(userId: string, lookback: string) {
+  const playlistMatch = /^playlists_(3|5|10|20)$/.exec(lookback);
+  const dayMatch = /^days_(30|60|90)$/.exec(lookback);
+  let rows: Array<{ trackId: string; usageCount: bigint | number }> = [];
+  if (playlistMatch) {
+    rows = await prisma.$queryRawUnsafe(
+      `SELECT t."trackId", COUNT(*) AS "usageCount"
+       FROM "PlaylistHistoryTrack" t
+       WHERE t."trackId" IS NOT NULL AND t."historyEntryId" IN (
+         SELECT h."id" FROM "PlaylistHistoryEntry" h
+         WHERE h."userId" = $1 AND h."eventType" IN ('created', 'regenerated', 'created_copy')
+         ORDER BY h."createdAt" DESC LIMIT $2
+       ) GROUP BY t."trackId"`,
+      userId,
+      Number(playlistMatch[1]),
+    );
+  } else if (dayMatch) {
+    const since = new Date(Date.now() - Number(dayMatch[1]) * 24 * 60 * 60 * 1000);
+    rows = await prisma.$queryRawUnsafe(
+      `SELECT t."trackId", COUNT(*) AS "usageCount"
+       FROM "PlaylistHistoryTrack" t JOIN "PlaylistHistoryEntry" h ON h."id" = t."historyEntryId"
+       WHERE h."userId" = $1 AND h."createdAt" >= $2 AND t."trackId" IS NOT NULL
+         AND h."eventType" IN ('created', 'regenerated', 'created_copy')
+       GROUP BY t."trackId"`,
+      userId,
+      since,
+    );
+  }
+  return Object.fromEntries(rows.map((row) => [row.trackId, Number(row.usageCount)]));
+}
+
 type PlaylistGenerationSafetyMetadata = ReturnType<typeof applyPlaylistSafetyRules>["metadata"] & {
   manualExclusionsRemoved: number;
 };
@@ -759,8 +799,11 @@ export async function generatePlaylistTracksWithStats({
     const recentlyUsedTrackIds = useSmartMixV2 && tuningConfig.avoidRecentlyUsedTracks
       ? await getRecentlyGeneratedTrackIds(userId)
       : [];
+    const recentPlaylistUsage = useSmartMixV2 && tuningConfig.discovery.avoidRecentlyUsedPlaylistTracks
+      ? await getRecentPlaylistUsage(userId, tuningConfig.discovery.recentPlaylistLookback)
+      : {};
     const runConfig = useSmartMixV2
-      ? { ...config, tuningConfig, recentlyUsedTrackIds }
+      ? { ...config, tuningConfig, recentlyUsedTrackIds, recentPlaylistUsage }
       : config;
     const remainingLimit = Math.max(0, config.limit - pinnedTracks.length);
     const safetyCandidateLimit = safetyRulesAreEnabled(config)
@@ -812,10 +855,11 @@ export async function generatePlaylistTracksWithStats({
             ...engineResult.diagnostics.tuningWarnings,
             ...engineResult.diagnostics.moodWarnings,
             ...engineResult.diagnostics.bpmFlow.warnings,
+            ...engineResult.diagnostics.discovery.warnings,
           ].filter((warning, index, list) => list.indexOf(warning) === index),
           manualExclusionsRemoved: manualExclusionsApplied,
         } as PlaylistGenerationSafetyMetadata,
-        qualityScore: scorePlaylist(tracks, tuningConfig),
+        qualityScore: scorePlaylist(tracks, tuningConfig, engineResult.diagnostics.discovery),
         engineVersion: SMART_MIX_ENGINE_V2,
         engine: {
           version: SMART_MIX_ENGINE_V2,
@@ -1092,6 +1136,7 @@ export async function previewPlaylistTracks({
     bpmFlowScore: bpmFlow?.bpmFlowScore ?? generation.qualityScore?.bpmFlowScore ?? null,
     bpmFlowMode: bpmFlow?.config?.mode || tuningConfig.bpmFlow.mode,
     bpmFlowWarnings: bpmFlow?.warnings || [],
+    discovery: moodDiagnostics.discovery || null,
     qualityScore: generation.qualityScore,
     artistLimitApplied: generation.safety.artistLimitApplied,
     albumLimitApplied: generation.safety.albumLimitApplied,
@@ -1122,6 +1167,7 @@ export async function previewPlaylistTracks({
     ...(config.bpmPresetName ? [{ label: "BPM preset", value: `${config.bpmPresetName}${config.bpmPresetModified ? " modified" : ""}` }] : []),
     ...(useSmartMixV2 ? [{ label: "Tuning preset", value: tuningConfig.presetName || "Custom" }] : []),
     ...(useSmartMixV2 ? [{ label: "BPM flow", value: tuningConfig.bpmFlow.enabled ? `${tuningConfig.bpmFlow.mode.replace("_", " ")} (${tuningConfig.bpmFlow.maxPreferredGap} BPM gap)` : "No BPM ordering" }] : []),
+    ...(useSmartMixV2 ? [{ label: "Discovery", value: tuningConfig.discovery.level === "custom" ? "Custom Discovery" : tuningConfig.discovery.level === "low" ? "Mostly Familiar" : tuningConfig.discovery.level === "high" ? "Deep Discovery" : "Balanced Discovery" }] : []),
     ...(moodBlend.enabled ? [{ label: "Mood blend", value: moodBlendModeLabel(moodBlend.moodBlendMode) }] : []),
     ...(moodBlend.moodBlendMode === "smooth_transition" || moodBlend.moodBlendMode === "strict_matching"
       ? [{ label: "Mood path", value: moodBlend.selectedMoodPath.join(" > ") || "None" }]
@@ -1372,18 +1418,29 @@ function rulesJsonFromConfig(config: PlaylistConfigInput) {
 }
 
 async function replaceGeneratedPlaylistSnapshot(generatedPlaylistId: string, tracks: any[]) {
+  const previousStates = await prisma.generatedPlaylistTrack.findMany({
+    where: { generatedPlaylistId, trackId: { not: null } },
+    select: { trackId: true, locked: true, liked: true, regenerationExcluded: true },
+  });
+  const stateByTrackId = new Map(previousStates.map((state) => [state.trackId, state]));
   await prisma.$transaction([
     prisma.generatedPlaylistTrack.deleteMany({ where: { generatedPlaylistId } }),
     prisma.generatedPlaylistTrack.createMany({
-      data: tracks.map((track, index) => ({
-        generatedPlaylistId,
-        trackId: track.id,
-        plexTrackRatingKey: track.ratingKey || track.plexId || null,
-        position: index + 1,
-        title: track.title || "Unknown track",
-        artist: track.artist?.title || null,
-        album: track.album?.title || null,
-      })),
+      data: tracks.map((track, index) => {
+        const previous = stateByTrackId.get(track.id);
+        return {
+          generatedPlaylistId,
+          trackId: track.id,
+          plexTrackRatingKey: track.ratingKey || track.plexId || null,
+          position: index + 1,
+          title: track.title || "Unknown track",
+          artist: track.artist?.title || null,
+          album: track.album?.title || null,
+          locked: Boolean(previous?.locked),
+          liked: Boolean(previous?.liked || Number(track.rating) >= 8),
+          regenerationExcluded: Boolean(previous?.regenerationExcluded),
+        };
+      }),
     }),
   ]);
 }
@@ -1398,6 +1455,7 @@ export async function recordGeneratedPlaylist({
   recipeName,
   filters,
   trackIds,
+  discoveryResult: suppliedDiscoveryResult,
 }: {
   userId: string;
   serverId?: string | null;
@@ -1408,12 +1466,27 @@ export async function recordGeneratedPlaylist({
   recipeName?: string | null;
   filters: unknown;
   trackIds: string[];
+  discoveryResult?: unknown;
 }) {
   const config = normalizeGeneratedPlaylistConfig(filters);
   const tracks = trackIds.length ? await fetchOwnedTracksInOrder(userId, trackIds) : [];
   const resolvedSourceType = generatedPlaylistSourceType(config, sourceType);
   const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
-  const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks, tuningConfig) : null;
+  let discoveryResult = suppliedDiscoveryResult && typeof suppliedDiscoveryResult === "object" && Number.isFinite((suppliedDiscoveryResult as any).targetSatisfaction)
+    ? suppliedDiscoveryResult as any
+    : null;
+  if (config.engineVersion === SMART_MIX_ENGINE_V2 && !discoveryResult) {
+    const recentPlaylistUsage = tuningConfig.discovery.avoidRecentlyUsedPlaylistTracks
+      ? await getRecentPlaylistUsage(userId, tuningConfig.discovery.recentPlaylistLookback)
+      : {};
+    const discoveryScoring = scoreDiscoveryCandidatePool({
+      candidates: tracks.map((track) => ({ ...track, score: 75 })),
+      config: tuningConfig.discovery,
+      recentUsage: recentPlaylistUsage,
+    });
+    discoveryResult = summarizeDiscovery(discoveryScoring.tracks, discoveryScoring.tracks, tuningConfig.discovery, discoveryScoring.executionTimeMs);
+  }
+  const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks, tuningConfig, discoveryResult || undefined) : null;
   const data = {
     userId,
     serverId: serverId || tracks[0]?.library?.server?.id || null,
@@ -1430,6 +1503,8 @@ export async function recordGeneratedPlaylist({
     bpmPresetName: config.bpmPresetName || null,
     tuningPresetName: tuningConfig.presetName || null,
     tuningConfigJson: tuningConfig as any,
+    discoveryConfigJson: config.engineVersion === SMART_MIX_ENGINE_V2 ? tuningConfig.discovery as any : undefined,
+    discoveryResultJson: config.engineVersion === SMART_MIX_ENGINE_V2 ? discoveryResult as any : undefined,
     engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
     filtersJson: config as any,
     safetyRulesJson: config.safetyRules as any,
@@ -1939,13 +2014,24 @@ export async function regenerateGeneratedPlaylistFromPreview({
     });
 
     const config = normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson, generatedPlaylist.engineVersion);
-    const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks, config.tuningConfig) : null;
+    const regenerationTuning = normalizeSmartMixTuningConfig(config.tuningConfig);
+    let regenerationDiscovery = null;
+    if (config.engineVersion === SMART_MIX_ENGINE_V2) {
+      const recentPlaylistUsage = regenerationTuning.discovery.avoidRecentlyUsedPlaylistTracks
+        ? await getRecentPlaylistUsage(userId, regenerationTuning.discovery.recentPlaylistLookback)
+        : {};
+      const discoveryScoring = scoreDiscoveryCandidatePool({ candidates: tracks.map((track) => ({ ...track, score: 75 })), config: regenerationTuning.discovery, recentUsage: recentPlaylistUsage });
+      regenerationDiscovery = summarizeDiscovery(discoveryScoring.tracks, discoveryScoring.tracks, regenerationTuning.discovery, discoveryScoring.executionTimeMs);
+    }
+    const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks, regenerationTuning, regenerationDiscovery || undefined) : null;
     await prisma.generatedPlaylist.update({
       where: { id: generatedPlaylist.id },
       data: {
         serverId: targetServer.id,
         engineVersion: config.engineVersion,
         qualityScoreJson: qualityScore as any,
+        discoveryConfigJson: config.engineVersion === SMART_MIX_ENGINE_V2 ? regenerationTuning.discovery as any : undefined,
+        discoveryResultJson: config.engineVersion === SMART_MIX_ENGINE_V2 ? regenerationDiscovery as any : undefined,
         trackCount: tracks.length,
         lastRegeneratedAt: new Date(),
         lastGeneratedAt: new Date(),
@@ -2106,6 +2192,446 @@ export async function regenerateGeneratedPlaylistFromPreview({
     });
     throw error;
   }
+}
+
+function advancedTrackStates(snapshot: Array<{ trackId: string | null; position: number; locked: boolean; liked: boolean; regenerationExcluded: boolean }>): PlaylistTrackState[] {
+  return snapshot.filter((item): item is typeof item & { trackId: string } => Boolean(item.trackId)).map((item) => ({
+    trackId: item.trackId,
+    position: item.position,
+    locked: item.locked,
+    liked: item.liked,
+    regenerationExcluded: item.regenerationExcluded,
+  }));
+}
+
+async function loadAdvancedRegenerationPlaylist(userId: string, generatedPlaylistId: string) {
+  const generatedPlaylist = await prisma.generatedPlaylist.findFirst({
+    where: { id: generatedPlaylistId, userId },
+    include: { tracks: { orderBy: { position: "asc" } } },
+  });
+  if (!generatedPlaylist) throw new Error("Generated playlist not found");
+  if (generatedPlaylist.engineVersion !== SMART_MIX_ENGINE_V2) {
+    throw new Error("Advanced regeneration is available for Smart Mix Engine v2 playlists.");
+  }
+  const trackIds = generatedPlaylist.tracks.map((track) => track.trackId).filter((id): id is string => Boolean(id));
+  if (trackIds.length === 0) throw new Error("This playlist does not have a track snapshot to regenerate.");
+  const tracks = await fetchOwnedTracksInOrder(userId, trackIds);
+  return { generatedPlaylist, tracks, states: advancedTrackStates(generatedPlaylist.tracks) };
+}
+
+function publicWeaknessTrack(track: any, state: PlaylistTrackState, weakness: any) {
+  return {
+    ...publicPreviewTrack(track),
+    position: state.position,
+    locked: state.locked,
+    liked: Boolean(state.liked),
+    regenerationExcluded: Boolean(state.regenerationExcluded),
+    weakness,
+  };
+}
+
+export async function analyzeAdvancedPlaylistRegeneration({ userId, generatedPlaylistId, input }: {
+  userId: string;
+  generatedPlaylistId: string;
+  input?: unknown;
+}) {
+  const { generatedPlaylist, tracks, states } = await loadAdvancedRegenerationPlaylist(userId, generatedPlaylistId);
+  const request = playlistRegenerationRequestSchema.parse({ ...(input as any || {}), playlistId: generatedPlaylistId });
+  const weakness = analyzePlaylistWeakness({ tracks, states, request });
+  const tuning = normalizeSmartMixTuningConfig((generatedPlaylist.filtersJson as any)?.tuningConfig || generatedPlaylist.tuningConfigJson);
+  console.info("[SmartMixV2:Regeneration] playlist analyzed", {
+    playlistId: generatedPlaylistId,
+    engineVersion: REGENERATION_ENGINE_VERSION,
+    mode: request.mode,
+    tracksAnalyzed: tracks.length,
+    weakTracks: weakness.filter((item) => item.overallWeakness >= REPLACEMENT_THRESHOLDS_FOR_LOG(request)).length,
+  });
+  return {
+    playlist: {
+      id: generatedPlaylist.id,
+      name: generatedPlaylist.plexPlaylistTitle,
+      updatedAt: generatedPlaylist.updatedAt,
+      engineVersion: generatedPlaylist.engineVersion,
+      qualityScore: generatedPlaylist.qualityScoreJson,
+    },
+    analysis: weakness,
+    tracks: tracks.map((track, index) => publicWeaknessTrack(track, states[index], weakness[index])),
+    qualityScore: scorePlaylist(tracks, tuning),
+    settings: request,
+  };
+}
+
+function REPLACEMENT_THRESHOLDS_FOR_LOG(request: PlaylistRegenerationRequest) {
+  return request.replacementSensitivity === "conservative" ? 70 : request.replacementSensitivity === "aggressive" ? 35 : 50;
+}
+
+export async function previewAdvancedPlaylistRegeneration({ userId, generatedPlaylistId, input }: {
+  userId: string;
+  generatedPlaylistId: string;
+  input: unknown;
+}) {
+  const startedAt = Date.now();
+  const { generatedPlaylist, tracks, states } = await loadAdvancedRegenerationPlaylist(userId, generatedPlaylistId);
+  const request = playlistRegenerationRequestSchema.parse({ ...(input as any || {}), playlistId: generatedPlaylistId });
+  const tuning = normalizeSmartMixTuningConfig((generatedPlaylist.filtersJson as any)?.tuningConfig || generatedPlaylist.tuningConfigJson);
+  const candidateCount = Math.min(500, Math.max(60, request.maximumReplacements * 30));
+  const candidateConfig = playlistConfigSchema.parse({
+    ...normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson, generatedPlaylist.engineVersion),
+    limit: candidateCount,
+    pinnedTrackIds: [],
+    excludedTrackIds: uniqueTrackIds([
+      ...((generatedPlaylist.filtersJson as any)?.excludedTrackIds || []),
+      ...tracks.map((track) => track.id),
+    ]),
+  });
+  const candidatesResult = await generatePlaylistTracksWithStats({ userId, config: candidateConfig });
+  (request as any).bpmFlow = tuning.bpmFlow;
+  const preview = regeneratePlaylist({
+    playlistId: generatedPlaylistId,
+    tracks,
+    states,
+    candidates: candidatesResult.tracks,
+    request,
+    tuningConfig: tuning,
+  });
+  await prisma.playlistRegeneration.updateMany({
+    where: { generatedPlaylistId, status: "preview" },
+    data: { status: "superseded" },
+  });
+  const persisted = await prisma.playlistRegeneration.create({
+    data: {
+      userId,
+      generatedPlaylistId,
+      mode: request.mode,
+      status: "preview",
+      settingsJson: request as any,
+      warningsJson: preview.warnings as any,
+      originalScore: preview.originalPlaylistScore,
+      proposedScore: preview.proposedPlaylistScore,
+      originalDurationMs: preview.originalDurationMs,
+      proposedDurationMs: preview.proposedDurationMs,
+      tracksAnalyzed: preview.analyzedTrackCount,
+      tracksProposed: preview.changes.length,
+      engineVersion: REGENERATION_ENGINE_VERSION,
+      playlistUpdatedAt: generatedPlaylist.updatedAt,
+      changes: {
+        create: preview.changes.map((change) => ({
+          position: change.position,
+          originalTrackId: change.originalTrackId,
+          proposedTrackId: change.proposedTrackId,
+          originalScore: change.originalScore,
+          proposedScore: change.proposedScore,
+          improvement: change.improvement,
+          reasonsJson: change.reasons as any,
+          originalMetricsJson: change.originalMetrics as any,
+          proposedMetricsJson: change.proposedMetrics as any,
+        })),
+      },
+    },
+    include: { changes: { orderBy: { position: "asc" } } },
+  });
+  console.info("[SmartMixV2:Regeneration] preview generated", {
+    playlistId: generatedPlaylistId,
+    regenerationId: persisted.id,
+    engineVersion: REGENERATION_ENGINE_VERSION,
+    mode: request.mode,
+    candidatePoolSize: candidatesResult.tracks.length,
+    proposedChanges: preview.changes.length,
+    durationMs: Date.now() - startedAt,
+  });
+  return {
+    ...preview,
+    previewId: persisted.id,
+    changes: preview.changes.map((change, index) => ({
+      ...change,
+      id: persisted.changes[index]?.id,
+      originalTrack: publicPreviewTrack(change.originalTrack),
+      proposedTrack: publicPreviewTrack(change.proposedTrack),
+    })),
+    candidatePoolSize: candidatesResult.tracks.length,
+    progressStages: ["Analyzing playlist", "Finding weak tracks", "Searching replacement candidates", "Scoring transitions", "Preserving curves", "Building preview", "Ready for review"],
+  };
+}
+
+type StoredTrackSnapshot = {
+  trackId: string | null;
+  plexTrackRatingKey: string | null;
+  position: number;
+  title: string;
+  artist: string | null;
+  album: string | null;
+  locked: boolean;
+  liked: boolean;
+  regenerationExcluded: boolean;
+};
+
+function storedTrackSnapshot(tracks: StoredTrackSnapshot[]) {
+  return tracks.map((track) => ({
+    trackId: track.trackId,
+    plexTrackRatingKey: track.plexTrackRatingKey,
+    position: track.position,
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    locked: track.locked,
+    liked: track.liked,
+    regenerationExcluded: track.regenerationExcluded,
+  }));
+}
+
+async function nextRevisionNumber(tx: any, generatedPlaylistId: string) {
+  const latest = await tx.playlistRevision.findFirst({
+    where: { generatedPlaylistId },
+    orderBy: { revisionNumber: "desc" },
+    select: { revisionNumber: true },
+  });
+  return (latest?.revisionNumber || 0) + 1;
+}
+
+export async function applyAdvancedPlaylistRegeneration({
+  userId,
+  generatedPlaylistId,
+  previewId,
+  acceptedPositions,
+  lockProposedPositions = [],
+}: {
+  userId: string;
+  generatedPlaylistId: string;
+  previewId: string;
+  acceptedPositions?: number[];
+  lockProposedPositions?: number[];
+}) {
+  const regeneration = await prisma.playlistRegeneration.findFirst({
+    where: { id: previewId, generatedPlaylistId, userId },
+    include: {
+      generatedPlaylist: { include: { tracks: { orderBy: { position: "asc" } } } },
+      changes: { orderBy: { position: "asc" } },
+    },
+  });
+  if (!regeneration) throw new Error("Regeneration preview not found");
+  if (regeneration.status !== "preview") throw new Error("This regeneration preview is no longer available to apply.");
+  if (regeneration.generatedPlaylist.updatedAt.getTime() !== regeneration.playlistUpdatedAt.getTime()) {
+    throw new Error("Playlist changed. Generate a new preview before applying changes.");
+  }
+  const accepted = new Set(acceptedPositions || regeneration.changes.map((change) => change.position));
+  const acceptedChanges = regeneration.changes.filter((change) => accepted.has(change.position));
+  if (acceptedChanges.length === 0) {
+    await prisma.playlistRegeneration.update({ where: { id: regeneration.id }, data: { status: "rejected" } });
+    return { success: true, rejected: true, tracksReplaced: 0 };
+  }
+  const snapshot = regeneration.generatedPlaylist.tracks as StoredTrackSnapshot[];
+  const nextIds = snapshot.map((track) => track.trackId);
+  for (const change of acceptedChanges) {
+    const current = snapshot[change.position - 1];
+    if (!current || current.trackId !== change.originalTrackId) {
+      await prisma.playlistRegeneration.update({ where: { id: regeneration.id }, data: { status: "stale" } });
+      throw new Error("Playlist changed. Generate a new preview before applying changes.");
+    }
+    if (current.locked || current.regenerationExcluded || current.liked && (regeneration.settingsJson as any)?.keepLikedTracks !== false) {
+      await prisma.playlistRegeneration.update({ where: { id: regeneration.id }, data: { status: "stale" } });
+      throw new Error(`Track at position ${change.position} is locked or preserved.`);
+    }
+    nextIds[change.position - 1] = change.proposedTrackId;
+  }
+  const orderedIds = nextIds.filter((id): id is string => Boolean(id));
+  const [tracks, targetServer] = await Promise.all([
+    fetchOwnedTracksInOrder(userId, orderedIds),
+    regeneration.generatedPlaylist.serverId
+      ? prisma.server.findFirst({ where: { id: regeneration.generatedPlaylist.serverId, userId } })
+      : Promise.resolve(null),
+  ]);
+  const server = targetServer || assertSingleServer(tracks);
+  if (!regeneration.generatedPlaylist.plexPlaylistRatingKey) throw new Error("Mixarr could not find the existing Plex playlist.");
+  const config = normalizeGeneratedPlaylistConfig(regeneration.generatedPlaylist.filtersJson, regeneration.generatedPlaylist.engineVersion);
+  const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
+  const qualityScore = scorePlaylist(tracks, tuning);
+  const lockProposed = new Set(lockProposedPositions);
+  const claimed = await prisma.playlistRegeneration.updateMany({
+    where: { id: regeneration.id, status: "preview" },
+    data: { status: "applying" },
+  });
+  if (claimed.count !== 1) throw new Error("This regeneration preview is already being applied.");
+  try {
+    await assertPlexPlaylistExists({ server, playlistId: regeneration.generatedPlaylist.plexPlaylistRatingKey });
+    await pushTracksToPlex({
+      server,
+      name: regeneration.generatedPlaylist.plexPlaylistTitle,
+      ratingKeys: tracks.map((track) => track.ratingKey || track.plexId),
+      playlistId: regeneration.generatedPlaylist.plexPlaylistRatingKey,
+    });
+    await prisma.$transaction(async (tx) => {
+      const revisionNumber = await nextRevisionNumber(tx, generatedPlaylistId);
+      await tx.playlistRevision.create({
+        data: {
+          generatedPlaylistId,
+          regenerationId: regeneration.id,
+          revisionNumber,
+          reason: "regeneration",
+          engineVersion: REGENERATION_ENGINE_VERSION,
+          settingsSnapshot: regeneration.generatedPlaylist.filtersJson as any,
+          trackSnapshot: storedTrackSnapshot(snapshot) as any,
+          scoreSnapshot: regeneration.generatedPlaylist.qualityScoreJson as any,
+        },
+      });
+      await tx.generatedPlaylistTrack.deleteMany({ where: { generatedPlaylistId } });
+      await tx.generatedPlaylistTrack.createMany({
+        data: tracks.map((track, index) => {
+          const previous = snapshot[index];
+          const wasReplaced = acceptedChanges.some((change) => change.position === index + 1);
+          return {
+            generatedPlaylistId,
+            trackId: track.id,
+            plexTrackRatingKey: track.ratingKey || track.plexId || null,
+            position: index + 1,
+            title: track.title || "Unknown track",
+            artist: track.artist?.title || null,
+            album: track.album?.title || null,
+            locked: wasReplaced ? lockProposed.has(index + 1) : Boolean(previous?.locked),
+            liked: wasReplaced ? Number(track.rating) >= 8 : Boolean(previous?.liked),
+            regenerationExcluded: wasReplaced ? false : Boolean(previous?.regenerationExcluded),
+          };
+        }),
+      });
+      await tx.generatedPlaylist.update({
+        where: { id: generatedPlaylistId },
+        data: { qualityScoreJson: qualityScore as any, trackCount: tracks.length, lastRegeneratedAt: new Date(), lastGeneratedAt: new Date() },
+      });
+      await tx.playlistRegenerationChange.updateMany({ where: { regenerationId: regeneration.id }, data: { accepted: false } });
+      await tx.playlistRegenerationChange.updateMany({ where: { regenerationId: regeneration.id, position: { in: acceptedChanges.map((change) => change.position) } }, data: { accepted: true } });
+      await tx.playlistRegeneration.update({
+        where: { id: regeneration.id },
+        data: { status: "applied", appliedScore: qualityScore.overallScore, tracksApplied: acceptedChanges.length, appliedAt: new Date() },
+      });
+    });
+  } catch (error) {
+    console.error("[SmartMixV2:Regeneration] apply transaction failed", { playlistId: generatedPlaylistId, regenerationId: regeneration.id, engineVersion: REGENERATION_ENGINE_VERSION });
+    await pushTracksToPlex({
+      server,
+      name: regeneration.generatedPlaylist.plexPlaylistTitle,
+      ratingKeys: snapshot.map((track) => track.plexTrackRatingKey).filter((key): key is string => Boolean(key)),
+      playlistId: regeneration.generatedPlaylist.plexPlaylistRatingKey,
+    }).catch(() => undefined);
+    await prisma.playlistRegeneration.update({ where: { id: regeneration.id }, data: { status: "failed" } }).catch(() => undefined);
+    throw error;
+  }
+  await recordPlaylistHistoryEntry({
+    userId,
+    generatedPlaylistId,
+    serverId: server.id,
+    plexPlaylistRatingKey: regeneration.generatedPlaylist.plexPlaylistRatingKey,
+    playlistName: regeneration.generatedPlaylist.plexPlaylistTitle,
+    eventType: "regenerated",
+    sourceType: "regeneration",
+    engineVersion: SMART_MIX_ENGINE_V2,
+    regenerationMode: regeneration.mode,
+    trackCount: tracks.length,
+    previousTrackCount: snapshot.length,
+    keptCount: tracks.length - acceptedChanges.length,
+    replacedCount: acceptedChanges.length,
+    newCount: acceptedChanges.length,
+    removedCount: acceptedChanges.length,
+    warnings: regeneration.warningsJson,
+    filters: config,
+    safetyRules: config.safetyRules,
+    qualityScore,
+    summary: `Advanced regeneration replaced ${acceptedChanges.length} track${acceptedChanges.length === 1 ? "" : "s"}. Score ${regeneration.originalScore ?? "-"} to ${qualityScore.overallScore}.`,
+    tracks,
+  });
+  console.info("[SmartMixV2:Regeneration] changes applied", { playlistId: generatedPlaylistId, regenerationId: regeneration.id, engineVersion: REGENERATION_ENGINE_VERSION, mode: regeneration.mode, replacements: acceptedChanges.length });
+  return {
+    success: true,
+    regenerationId: regeneration.id,
+    tracksReplaced: acceptedChanges.length,
+    trackCount: tracks.length,
+    originalScore: regeneration.originalScore,
+    appliedScore: qualityScore.overallScore,
+  };
+}
+
+export async function undoAdvancedPlaylistRegeneration({ userId, generatedPlaylistId }: { userId: string; generatedPlaylistId: string }) {
+  const regeneration = await prisma.playlistRegeneration.findFirst({
+    where: { generatedPlaylistId, userId, status: "applied" },
+    orderBy: { appliedAt: "desc" },
+    include: { generatedPlaylist: { include: { tracks: { orderBy: { position: "asc" } } } } },
+  });
+  if (!regeneration) throw new Error("No applied regeneration is available to undo.");
+  const revision = await prisma.playlistRevision.findFirst({ where: { generatedPlaylistId, regenerationId: regeneration.id, reason: "regeneration" } });
+  if (!revision || !Array.isArray(revision.trackSnapshot)) throw new Error("The server-side revision for this regeneration is unavailable.");
+  const restoreSnapshot = revision.trackSnapshot as unknown as StoredTrackSnapshot[];
+  const currentSnapshot = regeneration.generatedPlaylist.tracks as StoredTrackSnapshot[];
+  const restoreIds = restoreSnapshot.map((track) => track.trackId).filter((id): id is string => Boolean(id));
+  const tracks = await fetchOwnedTracksInOrder(userId, restoreIds);
+  const server = regeneration.generatedPlaylist.serverId
+    ? await prisma.server.findFirst({ where: { id: regeneration.generatedPlaylist.serverId, userId } })
+    : assertSingleServer(tracks);
+  if (!server || !regeneration.generatedPlaylist.plexPlaylistRatingKey) throw new Error("The Plex playlist is unavailable for undo.");
+  const claimed = await prisma.playlistRegeneration.updateMany({ where: { id: regeneration.id, status: "applied" }, data: { status: "undoing" } });
+  if (claimed.count !== 1) throw new Error("This regeneration is already being undone.");
+  try {
+    await pushTracksToPlex({ server, name: regeneration.generatedPlaylist.plexPlaylistTitle, ratingKeys: tracks.map((track) => track.ratingKey || track.plexId), playlistId: regeneration.generatedPlaylist.plexPlaylistRatingKey });
+    await prisma.$transaction(async (tx) => {
+      await tx.playlistRevision.create({
+        data: {
+          generatedPlaylistId,
+          regenerationId: regeneration.id,
+          revisionNumber: await nextRevisionNumber(tx, generatedPlaylistId),
+          reason: "undo",
+          engineVersion: REGENERATION_ENGINE_VERSION,
+          settingsSnapshot: regeneration.generatedPlaylist.filtersJson as any,
+          trackSnapshot: storedTrackSnapshot(currentSnapshot) as any,
+          scoreSnapshot: regeneration.generatedPlaylist.qualityScoreJson as any,
+        },
+      });
+      await tx.generatedPlaylistTrack.deleteMany({ where: { generatedPlaylistId } });
+      await tx.generatedPlaylistTrack.createMany({ data: restoreSnapshot.map((track) => ({ ...track, generatedPlaylistId, trackId: track.trackId })) });
+      await tx.generatedPlaylist.update({ where: { id: generatedPlaylistId }, data: { trackCount: restoreSnapshot.length, qualityScoreJson: revision.scoreSnapshot as any, lastRegeneratedAt: new Date() } });
+      await tx.playlistRegeneration.update({ where: { id: regeneration.id }, data: { status: "undone", undoneAt: new Date() } });
+    });
+  } catch (error) {
+    await pushTracksToPlex({ server, name: regeneration.generatedPlaylist.plexPlaylistTitle, ratingKeys: currentSnapshot.map((track) => track.plexTrackRatingKey).filter((key): key is string => Boolean(key)), playlistId: regeneration.generatedPlaylist.plexPlaylistRatingKey }).catch(() => undefined);
+    await prisma.playlistRegeneration.update({ where: { id: regeneration.id }, data: { status: "applied" } }).catch(() => undefined);
+    throw error;
+  }
+  console.info("[SmartMixV2:Regeneration] undo completed", { playlistId: generatedPlaylistId, regenerationId: regeneration.id, engineVersion: REGENERATION_ENGINE_VERSION });
+  return { success: true, regenerationId: regeneration.id, restoredTrackCount: restoreSnapshot.length };
+}
+
+export async function getAdvancedPlaylistRegenerationHistory(userId: string, generatedPlaylistId: string, limit = 25) {
+  const playlist = await prisma.generatedPlaylist.findFirst({ where: { id: generatedPlaylistId, userId }, select: { id: true } });
+  if (!playlist) return null;
+  return prisma.playlistRegeneration.findMany({
+    where: { generatedPlaylistId, userId },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(100, Math.max(1, limit)),
+    include: { changes: { orderBy: { position: "asc" } } },
+  });
+}
+
+export async function setGeneratedPlaylistTrackLock({ userId, generatedPlaylistId, trackId, locked }: { userId: string; generatedPlaylistId: string; trackId: string; locked: boolean }) {
+  const playlist = await prisma.generatedPlaylist.findFirst({ where: { id: generatedPlaylistId, userId }, select: { id: true } });
+  if (!playlist) throw new Error("Generated playlist not found");
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.generatedPlaylistTrack.updateMany({ where: { generatedPlaylistId, trackId }, data: { locked } });
+    if (updated.count === 0) throw new Error("Playlist track not found");
+    await tx.generatedPlaylist.update({ where: { id: generatedPlaylistId }, data: { updatedAt: new Date() } });
+    await tx.playlistRegeneration.updateMany({ where: { generatedPlaylistId, status: "preview" }, data: { status: "stale" } });
+    return updated;
+  });
+  return { success: true, trackId, locked, updated: result.count };
+}
+
+export async function bulkSetGeneratedPlaylistTrackLocks({ userId, generatedPlaylistId, trackIds, locked, likedOnly = false }: { userId: string; generatedPlaylistId: string; trackIds?: string[]; locked: boolean; likedOnly?: boolean }) {
+  const playlist = await prisma.generatedPlaylist.findFirst({ where: { id: generatedPlaylistId, userId }, select: { id: true } });
+  if (!playlist) throw new Error("Generated playlist not found");
+  const uniqueIds = uniqueTrackIds(trackIds || []);
+  const where = { generatedPlaylistId, ...(likedOnly ? { liked: true } : uniqueIds.length ? { trackId: { in: uniqueIds } } : {}) };
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.generatedPlaylistTrack.updateMany({ where, data: { locked } });
+    await tx.generatedPlaylist.update({ where: { id: generatedPlaylistId }, data: { updatedAt: new Date() } });
+    await tx.playlistRegeneration.updateMany({ where: { generatedPlaylistId, status: "preview" }, data: { status: "stale" } });
+    return updated;
+  });
+  return { success: true, locked, updated: result.count };
 }
 
 export async function exportTracksToPlex({

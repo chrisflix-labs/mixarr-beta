@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, trackIds, savedRuleId, rulesSnapshot, optionsSnapshot, previewId, recipeId, recipeName, filters, sourceType, manualExclusionsApplied, removedBySafetyRules, safetyRulesApplied } = await req.json();
+    const { name, trackIds, savedRuleId, rulesSnapshot, optionsSnapshot, previewId, recipeId, recipeName, filters, sourceType, manualExclusionsApplied, removedBySafetyRules, safetyRulesApplied, discoveryResult } = await req.json();
 
     const trimmedName = typeof name === "string" ? name.trim() : "";
 
@@ -104,6 +104,7 @@ export async function POST(req: Request) {
         recipeName: resolvedRecipeName,
         filters: generationFilters,
         trackIds: result.exportedTrackIds || trackIds,
+        discoveryResult,
       });
     }
     const creationSummary = smartPresetName

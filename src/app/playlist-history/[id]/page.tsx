@@ -54,6 +54,7 @@ type PlaylistQualityScore = {
   energyFlowScore: number;
   moodConsistencyScore: number;
   discoveryBalanceScore: number;
+  discoveryTargetMatch?: number;
   weakSpotCount: number;
   warnings?: string[];
   scoreVersion?: string;
@@ -63,6 +64,7 @@ type PlaylistQualityScore = {
     energyFlow?: string;
     moodConsistency?: string;
     discoveryBalance?: string;
+    discoveryTargetMatch?: string;
   };
 };
 
@@ -191,6 +193,7 @@ export default async function PlaylistHistoryDetailPage({ params }: { params: { 
               <div><span>Mood Match</span><strong>{qualityScore.labels?.moodConsistency || formatNumber(qualityScore.moodConsistencyScore)}</strong></div>
               <div><span>Energy Curve</span><strong>{qualityScore.labels?.energyFlow || formatNumber(qualityScore.energyFlowScore)}</strong></div>
               <div><span>Discovery Balance</span><strong>{qualityScore.labels?.discoveryBalance || formatNumber(qualityScore.discoveryBalanceScore)}</strong></div>
+              {qualityScore.discoveryTargetMatch != null && <div><span>Discovery Target Match</span><strong>{qualityScore.discoveryTargetMatch}% {qualityScore.labels?.discoveryTargetMatch ? `(${qualityScore.labels.discoveryTargetMatch})` : ""}</strong></div>}
               <div><span>Weak Spots</span><strong>{qualityScore.weakSpotCount} track{qualityScore.weakSpotCount === 1 ? "" : "s"}</strong></div>
             </div>
             {qualityScore.warnings && qualityScore.warnings.length > 0 && (

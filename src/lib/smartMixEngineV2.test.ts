@@ -5,6 +5,7 @@ import {
   getSmartMixMetadataFallbacks,
   getTrackMoodTags,
   analyzeBpmTransition,
+  discoveryPreset,
   normalizeBpmFlowConfig,
   normalizeMoodBlendConfig,
   normalizeSmartMixTuningConfig,
@@ -143,7 +144,7 @@ describe("Smart Mix Engine v2 foundation", () => {
     assert.equal(tuning.bpmWeight, 90);
     assert.equal(tuning.recommendationStrength, 100);
     assert.equal(tuning.artistVariety, 50);
-    assert.equal(tuning.tuningVersion, "2.0.4");
+    assert.equal(tuning.tuningVersion, "2.0.6");
     assert.equal(tuning.bpmFlow.maxPreferredGap, 8);
     assert.equal(tuning.bpmFlow.mode, "DISABLED");
   });
@@ -270,6 +271,27 @@ describe("Smart Mix Engine v2 foundation", () => {
 
     assert.ok(deepCut.score > popular.score);
     assert.equal(popular.metadataStatus.hasPopularity, true);
+  });
+
+  it("selects more deep cuts at High than Low from the same eligible pool", () => {
+    const candidates = Array.from({ length: 12 }, (_, index) => track(`track-${index}`, {
+      bpm: 118,
+      viewCount: index < 6 ? 30 - index : index - 6,
+      popularity: { score: index < 6 ? 90 - index : 25 - index },
+      audioFeature: { effectiveEnergy: 0.7, effectiveMood: 0.65 },
+    }));
+    const low = runV2(candidates, {
+      ...config,
+      limit: 6,
+      tuningConfig: normalizeSmartMixTuningConfig({ familiarityDiscoveryBalance: 78, discovery: discoveryPreset("low") }),
+    });
+    const high = runV2(candidates, {
+      ...config,
+      limit: 6,
+      tuningConfig: normalizeSmartMixTuningConfig({ familiarityDiscoveryBalance: 22, discovery: discoveryPreset("high") }),
+    });
+    const deepCount = (result: any) => result.tracks.filter((item: any) => ["deep_cut", "hidden_gem"].includes(item.discoveryMetrics?.classification)).length;
+    assert.ok(deepCount(high) > deepCount(low));
   });
 
   it("softly penalizes recently used tracks instead of removing them", () => {

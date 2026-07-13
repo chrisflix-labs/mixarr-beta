@@ -555,6 +555,29 @@
   margin-top: 0.85rem;
 }
 
+.discoveryPanel { margin-top: 1rem; padding: 0.9rem; border: 1px solid rgba(139, 92, 246, 0.38); border-radius: var(--radius-md); background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(53, 174, 234, 0.025)); }
+.discoveryPanel summary { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; cursor: pointer; color: var(--fg); font-weight: 800; }
+.discoveryPanel summary span { display: flex; align-items: center; gap: 0.45rem; }
+.discoveryPanel summary strong { padding: 0.15rem 0.4rem; border: 1px solid rgba(139, 92, 246, 0.5); border-radius: var(--radius-sm); color: #bca7ff; font-size: 0.65rem; text-transform: uppercase; }
+.discoveryPanel summary small { color: var(--muted); font-size: 0.7rem; font-weight: 600; text-align: right; }
+.discoveryLevelGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.65rem; margin-top: 0.9rem; }
+.discoveryLevelCard { display: grid; gap: 0.3rem; padding: 0.8rem; border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(255,255,255,0.025); color: var(--fg); text-align: left; cursor: pointer; }
+.discoveryLevelCard small { color: var(--muted); line-height: 1.35; }
+.discoveryLevelActive { border-color: #9f82ff; box-shadow: inset 0 0 0 1px rgba(159,130,255,0.3); background: rgba(139,92,246,0.12); }
+.discoveryCustom, .discoveryNotice { margin: 0.65rem 0 0; color: #bca7ff; font-size: 0.76rem; }
+.discoveryNotice { padding: 0.6rem; border-radius: var(--radius-sm); background: rgba(245,158,11,0.1); color: #f8c46b; }
+.discoveryControls, .discoveryToggleGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.7rem; margin-top: 0.75rem; }
+.discoveryToggleGrid { padding: 0.7rem; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.controlDisabled { opacity: 0.55; }
+.discoveryPreview { display: grid; gap: 0.45rem; margin-top: 0.8rem; padding: 0.7rem; border-radius: var(--radius-md); background: rgba(0,0,0,0.12); }
+.discoveryPreview > div { display: grid; grid-template-columns: 110px 1fr 42px; gap: 0.5rem; align-items: center; font-size: 0.72rem; }
+.discoveryPreview i { display: block; min-width: 2px; height: 7px; border-radius: 99px; background: linear-gradient(90deg, #8b5cf6, var(--accent)); }
+.discoveryPreview b { text-align: right; }
+.discoveryResults { margin-top: 0.8rem; padding: 0.8rem; border: 1px solid rgba(139,92,246,0.32); border-radius: var(--radius-md); background: rgba(139,92,246,0.06); }
+.discoveryResultStats, .discoveryLabels { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+.discoveryResultStats span, .discoveryLabels span, .discoveryReason { padding: 0.25rem 0.5rem; border-radius: 999px; background: rgba(139,92,246,0.14); color: #d4c8ff; font-size: 0.68rem; }
+.discoveryReason { display: inline-block; }
+
 .bpmRampPanel {
   margin-top: 1rem;
   padding: 0.8rem;
@@ -1566,9 +1589,15 @@
   .tuningGrid,
   .moodBlendGrid,
   .bpmModeGrid,
-  .bpmControlsGrid {
+  .bpmControlsGrid,
+  .discoveryLevelGrid,
+  .discoveryControls,
+  .discoveryToggleGrid {
     grid-template-columns: 1fr;
   }
+
+  .discoveryPanel summary { align-items: flex-start; flex-direction: column; }
+  .discoveryPanel summary small { text-align: left; }
 
   .tuningPresetActions {
     width: 100%;

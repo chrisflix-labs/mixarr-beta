@@ -5,6 +5,7 @@ import axios from "axios";
 import Link from "next/link";
 import { Activity, AlertTriangle, Ban, CheckCircle2, History, ListRestart, RefreshCw, Repeat2, ShieldCheck, Sparkles, Trash2, Wand2 } from "lucide-react";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
+import AdvancedRegenerationWorkspace from "@/components/AdvancedRegenerationWorkspace";
 import { orderTracksByBpmFlow, summarizeBpmFlow, type BpmFlowMode } from "@/lib/smartMixEngine/v2/bpmFlow";
 import { normalizeSmartMixTuningConfig } from "@/lib/smartMixEngine/v2/tuning";
 import styles from "./generated-playlists.module.css";
@@ -21,6 +22,8 @@ type GeneratedPlaylist = {
   moodPresetName?: string | null;
   bpmPresetName?: string | null;
   tuningPresetName?: string | null;
+  discoveryConfigJson?: any;
+  discoveryResultJson?: any;
   filtersJson?: {
     moodBlendMode?: "off" | "smooth_transition" | "strict_matching" | "mixed_mood";
     selectedMoodPath?: string[];
@@ -100,6 +103,8 @@ type PlaylistQualityScore = {
   energyFlowScore: number;
   moodConsistencyScore: number;
   discoveryBalanceScore: number;
+  discoveryTargetMatch?: number;
+  discoveryMetrics?: any;
   weakSpotCount: number;
   warnings?: string[];
   scoreVersion?: string;
@@ -110,6 +115,7 @@ type PlaylistQualityScore = {
     energyFlow?: string;
     moodConsistency?: string;
     discoveryBalance?: string;
+    discoveryTargetMatch?: string;
   };
 };
 
@@ -241,6 +247,7 @@ function PlaylistQualityCard({ score }: { score?: PlaylistQualityScore | null })
         <div><dt>Mood Match</dt><dd>{score.labels?.moodConsistency || `${score.moodConsistencyScore}%`}</dd></div>
         <div><dt>Energy Curve</dt><dd>{score.labels?.energyFlow || `${score.energyFlowScore}%`}</dd></div>
         <div><dt>Discovery Balance</dt><dd>{score.labels?.discoveryBalance || `${score.discoveryBalanceScore}%`}</dd></div>
+        {score.discoveryTargetMatch != null && <div><dt>Discovery Target Match</dt><dd>{score.discoveryTargetMatch}% {score.labels?.discoveryTargetMatch ? `(${score.labels.discoveryTargetMatch})` : ""}</dd></div>}
         <div><dt>Weak Spots</dt><dd>{score.weakSpotCount} track{score.weakSpotCount === 1 ? "" : "s"}</dd></div>
       </dl>
       {score.warnings && score.warnings.length > 0 && (
@@ -292,6 +299,7 @@ export default function GeneratedPlaylistsPage() {
   const [busyId, setBusyId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [advancedPlaylist, setAdvancedPlaylist] = useState<GeneratedPlaylist | null>(null);
 
   const selectedPlaylist = useMemo(
     () => playlists.find((playlist) => playlist.id === selectedId) || null,
@@ -542,7 +550,12 @@ export default function GeneratedPlaylistsPage() {
                   </details>
                 )}
                 <PlaylistQualityCard score={qualityScoreForDisplay(playlist.qualityScoreJson)} />
-                <div className={styles.controls} aria-label={`Regeneration options for ${playlist.plexPlaylistTitle}`}>
+                {playlist.discoveryResultJson?.explanations?.length > 0 && (
+                  <div className={styles.discoverySummary} aria-label="Discovery explanation labels">
+                    {playlist.discoveryResultJson.explanations.map((item: any) => <span key={item.label} title={item.explanation}>{item.label}</span>)}
+                  </div>
+                )}
+                {playlist.engineVersion !== "v2" && <div className={styles.controls} aria-label={`Legacy regeneration options for ${playlist.plexPlaylistTitle}`}>
                   <div className={styles.modeGroup}>
                     <label className={styles.radioOption}>
                       <input
@@ -589,15 +602,23 @@ export default function GeneratedPlaylistsPage() {
                     />
                     <span>Prefer different tracks than last time</span>
                   </label>
-                </div>
+                </div>}
                 <div className={styles.actions}>
-                  <button type="button" onClick={() => previewRegeneration(playlist)} disabled={Boolean(busyId)} className={styles.primaryButton}>
-                    {isBusy ? <RefreshCw size={15} className="animate-spin" /> : <Repeat2 size={15} />}
-                    Preview Regeneration
-                  </button>
-                  <button type="button" disabled={!isSelected || !preview || Boolean(busyId)} onClick={regeneratePlaylist} className={styles.dangerButton}>
-                    Regenerate
-                  </button>
+                  {playlist.engineVersion === "v2" && (
+                    <button type="button" onClick={() => setAdvancedPlaylist(playlist)} disabled={Boolean(busyId)} className={styles.primaryButton}>
+                      <Sparkles size={15} />
+                      Regenerate Playlist <span className={styles.betaBadge}>BETA</span>
+                    </button>
+                  )}
+                  {playlist.engineVersion !== "v2" && <>
+                    <button type="button" onClick={() => previewRegeneration(playlist)} disabled={Boolean(busyId)} className={styles.primaryButton}>
+                      {isBusy ? <RefreshCw size={15} className="animate-spin" /> : <Repeat2 size={15} />}
+                      Preview Regeneration
+                    </button>
+                    <button type="button" disabled={!isSelected || !preview || Boolean(busyId)} onClick={regeneratePlaylist} className={styles.dangerButton}>
+                      Regenerate
+                    </button>
+                  </>}
                   <Link href={`/playlist-history?generatedPlaylistId=${playlist.id}`} className={styles.secondaryButton}>
                     <History size={15} />
                     View History
@@ -729,6 +750,19 @@ export default function GeneratedPlaylistsPage() {
             ))}
           </div>
         </section>
+      )}
+
+      {advancedPlaylist && (
+        <AdvancedRegenerationWorkspace
+          playlistId={advancedPlaylist.id}
+          playlistName={advancedPlaylist.plexPlaylistTitle}
+          onClose={() => setAdvancedPlaylist(null)}
+          onApplied={(nextMessage) => {
+            setMessage(nextMessage);
+            setError("");
+            fetchPlaylists();
+          }}
+        />
       )}
     </main>
   );
