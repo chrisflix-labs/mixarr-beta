@@ -32,6 +32,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 | Track genre tools | Syncs, filters, inspects, and retries track-level genre metadata from supported providers. |
 | Playlist-use tracking | Tracks playlist generation/export history and saved playlist refresh activity. |
 | Advanced playlist regeneration | Analyzes Smart Mix v2 playlists, locks keeper tracks, previews targeted replacements, preserves curves, and supports server-side undo. |
+| Playlist version history | Saves generated playlist states, compares tracks/settings/scores, pins restore points, and safely restores earlier versions without deleting later history. |
 | BPM detection and backfill | Uses API metadata where available, with local fallback support for missing or partial BPM data. |
 | Audio feature analysis | Stores energy, mood/valence, danceability, acousticness, tempo, source, status, and confidence fields. |
 | API metadata support | Uses providers such as Deezer, Last.fm, MusicBrainz, Discogs, Spotify, and AudioDB where configured and available. |

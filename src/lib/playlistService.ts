@@ -1,5 +1,6 @@
 import axios from "axios";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import prisma from "./prisma";
 import { effectiveBpmTrackWhere, getBpmDisplayMetadata, getEffectiveBpm } from "./bpm";
 import { audioFeatureFilterGuardWhere, type AudioFeatureFilterOptions } from "./audioFeatures";
@@ -1413,19 +1414,33 @@ function normalizeGeneratedPlaylistConfig(filters: unknown, engineVersion?: stri
   });
 }
 
+export async function syncGeneratedPlaylistToPlex(userId: string, generatedPlaylistId: string) {
+  const playlist = await prisma.generatedPlaylist.findFirst({
+    where: { id: generatedPlaylistId, userId },
+    include: { tracks: { orderBy: { position: "asc" } } },
+  });
+  if (!playlist) throw new Error("Generated playlist not found");
+  if (!playlist.serverId || !playlist.plexPlaylistRatingKey) throw new Error("The Plex playlist is unavailable for synchronization.");
+  const server = await prisma.server.findFirst({ where: { id: playlist.serverId, userId } });
+  if (!server) throw new Error("The Plex server is unavailable for synchronization.");
+  const ratingKeys = playlist.tracks.map((track) => track.plexTrackRatingKey).filter((key): key is string => Boolean(key));
+  if (ratingKeys.length !== playlist.tracks.length) throw new Error("Some restored tracks do not have a Plex identifier.");
+  await assertPlexPlaylistExists({ server, playlistId: playlist.plexPlaylistRatingKey });
+  await pushTracksToPlex({ server, name: playlist.plexPlaylistTitle, ratingKeys, playlistId: playlist.plexPlaylistRatingKey });
+}
+
 function rulesJsonFromConfig(config: PlaylistConfigInput) {
   return JSON.stringify(config.ruleTree || config.rules || []);
 }
 
-async function replaceGeneratedPlaylistSnapshot(generatedPlaylistId: string, tracks: any[]) {
-  const previousStates = await prisma.generatedPlaylistTrack.findMany({
+async function replaceGeneratedPlaylistSnapshot(generatedPlaylistId: string, tracks: any[], db: typeof prisma | Prisma.TransactionClient = prisma) {
+  const previousStates = await db.generatedPlaylistTrack.findMany({
     where: { generatedPlaylistId, trackId: { not: null } },
     select: { trackId: true, locked: true, liked: true, regenerationExcluded: true },
   });
   const stateByTrackId = new Map(previousStates.map((state) => [state.trackId, state]));
-  await prisma.$transaction([
-    prisma.generatedPlaylistTrack.deleteMany({ where: { generatedPlaylistId } }),
-    prisma.generatedPlaylistTrack.createMany({
+  await db.generatedPlaylistTrack.deleteMany({ where: { generatedPlaylistId } });
+  await db.generatedPlaylistTrack.createMany({
       data: tracks.map((track, index) => {
         const previous = stateByTrackId.get(track.id);
         return {
@@ -1441,8 +1456,7 @@ async function replaceGeneratedPlaylistSnapshot(generatedPlaylistId: string, tra
           regenerationExcluded: Boolean(previous?.regenerationExcluded),
         };
       }),
-    }),
-  ]);
+    });
 }
 
 export async function recordGeneratedPlaylist({
@@ -1516,14 +1530,19 @@ export async function recordGeneratedPlaylist({
   const existing = plexPlaylistRatingKey
     ? await prisma.generatedPlaylist.findFirst({ where: { userId, plexPlaylistRatingKey } })
     : null;
-  const generatedPlaylist = existing
-    ? await prisma.generatedPlaylist.update({
-        where: { id: existing.id },
-        data,
-      })
-    : await prisma.generatedPlaylist.create({ data });
-
-  await replaceGeneratedPlaylistSnapshot(generatedPlaylist.id, tracks);
+  const { createPlaylistVersionInTransaction } = await import("./playlists/versions/playlist-version-service");
+  const generatedPlaylist = await prisma.$transaction(async (tx) => {
+    const saved = existing
+      ? await tx.generatedPlaylist.update({ where: { id: existing.id }, data })
+      : await tx.generatedPlaylist.create({ data });
+    await replaceGeneratedPlaylistSnapshot(saved.id, tracks, tx);
+    await createPlaylistVersionInTransaction(tx, {
+      generatedPlaylistId: saved.id,
+      reason: existing ? "full_regeneration" : "initial_generation",
+      description: existing ? "Regenerated entire playlist" : "Initial playlist generation",
+    });
+    return saved;
+  });
   return generatedPlaylist;
 }
 
@@ -2024,20 +2043,24 @@ export async function regenerateGeneratedPlaylistFromPreview({
       regenerationDiscovery = summarizeDiscovery(discoveryScoring.tracks, discoveryScoring.tracks, regenerationTuning.discovery, discoveryScoring.executionTimeMs);
     }
     const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks, regenerationTuning, regenerationDiscovery || undefined) : null;
-    await prisma.generatedPlaylist.update({
-      where: { id: generatedPlaylist.id },
-      data: {
-        serverId: targetServer.id,
-        engineVersion: config.engineVersion,
-        qualityScoreJson: qualityScore as any,
-        discoveryConfigJson: config.engineVersion === SMART_MIX_ENGINE_V2 ? regenerationTuning.discovery as any : undefined,
-        discoveryResultJson: config.engineVersion === SMART_MIX_ENGINE_V2 ? regenerationDiscovery as any : undefined,
-        trackCount: tracks.length,
-        lastRegeneratedAt: new Date(),
-        lastGeneratedAt: new Date(),
-      },
+    const { createPlaylistVersionInTransaction } = await import("./playlists/versions/playlist-version-service");
+    await prisma.$transaction(async (tx) => {
+      await tx.generatedPlaylist.update({
+        where: { id: generatedPlaylist.id },
+        data: {
+          serverId: targetServer.id,
+          engineVersion: config.engineVersion,
+          qualityScoreJson: qualityScore as any,
+          discoveryConfigJson: config.engineVersion === SMART_MIX_ENGINE_V2 ? regenerationTuning.discovery as any : undefined,
+          discoveryResultJson: config.engineVersion === SMART_MIX_ENGINE_V2 ? regenerationDiscovery as any : undefined,
+          trackCount: tracks.length,
+          lastRegeneratedAt: new Date(),
+          lastGeneratedAt: new Date(),
+        },
+      });
+      await replaceGeneratedPlaylistSnapshot(generatedPlaylist.id, tracks, tx);
+      await createPlaylistVersionInTransaction(tx, { generatedPlaylistId: generatedPlaylist.id, reason: "full_regeneration", description: "Regenerated entire playlist" });
     });
-    await replaceGeneratedPlaylistSnapshot(generatedPlaylist.id, tracks);
     await prisma.playlistHistory.create({
       data: {
         userId,
@@ -2379,15 +2402,6 @@ function storedTrackSnapshot(tracks: StoredTrackSnapshot[]) {
   }));
 }
 
-async function nextRevisionNumber(tx: any, generatedPlaylistId: string) {
-  const latest = await tx.playlistRevision.findFirst({
-    where: { generatedPlaylistId },
-    orderBy: { revisionNumber: "desc" },
-    select: { revisionNumber: true },
-  });
-  return (latest?.revisionNumber || 0) + 1;
-}
-
 export async function applyAdvancedPlaylistRegeneration({
   userId,
   generatedPlaylistId,
@@ -2460,17 +2474,20 @@ export async function applyAdvancedPlaylistRegeneration({
       playlistId: regeneration.generatedPlaylist.plexPlaylistRatingKey,
     });
     await prisma.$transaction(async (tx) => {
-      const revisionNumber = await nextRevisionNumber(tx, generatedPlaylistId);
+      const revisionCounter = await tx.generatedPlaylist.update({ where: { id: generatedPlaylistId }, data: { revisionCounter: { increment: 1 } }, select: { revisionCounter: true } });
       await tx.playlistRevision.create({
         data: {
           generatedPlaylistId,
           regenerationId: regeneration.id,
-          revisionNumber,
-          reason: "regeneration",
+          revisionNumber: revisionCounter.revisionCounter,
+          reason: "manual_edit",
+          description: "Automatic backup before advanced regeneration",
           engineVersion: REGENERATION_ENGINE_VERSION,
           settingsSnapshot: regeneration.generatedPlaylist.filtersJson as any,
           trackSnapshot: storedTrackSnapshot(snapshot) as any,
           scoreSnapshot: regeneration.generatedPlaylist.qualityScoreJson as any,
+          trackCount: snapshot.length,
+          isCurrent: false,
         },
       });
       await tx.generatedPlaylistTrack.deleteMany({ where: { generatedPlaylistId } });
@@ -2501,6 +2518,14 @@ export async function applyAdvancedPlaylistRegeneration({
       await tx.playlistRegeneration.update({
         where: { id: regeneration.id },
         data: { status: "applied", appliedScore: qualityScore.overallScore, tracksApplied: acceptedChanges.length, appliedAt: new Date() },
+      });
+      const { createPlaylistVersionInTransaction } = await import("./playlists/versions/playlist-version-service");
+      await createPlaylistVersionInTransaction(tx, {
+        generatedPlaylistId,
+        reason: "advanced_regeneration",
+        regenerationId: regeneration.id,
+        description: `Advanced regeneration — ${String(regeneration.mode).replaceAll("_", " ")}; replaced ${acceptedChanges.length} track${acceptedChanges.length === 1 ? "" : "s"}`,
+        force: true,
       });
     });
   } catch (error) {
@@ -2555,7 +2580,7 @@ export async function undoAdvancedPlaylistRegeneration({ userId, generatedPlayli
     include: { generatedPlaylist: { include: { tracks: { orderBy: { position: "asc" } } } } },
   });
   if (!regeneration) throw new Error("No applied regeneration is available to undo.");
-  const revision = await prisma.playlistRevision.findFirst({ where: { generatedPlaylistId, regenerationId: regeneration.id, reason: "regeneration" } });
+  const revision = await prisma.playlistRevision.findFirst({ where: { generatedPlaylistId, regenerationId: regeneration.id, reason: { in: ["regeneration", "manual_edit"] } }, orderBy: { revisionNumber: "asc" } });
   if (!revision || !Array.isArray(revision.trackSnapshot)) throw new Error("The server-side revision for this regeneration is unavailable.");
   const restoreSnapshot = revision.trackSnapshot as unknown as StoredTrackSnapshot[];
   const currentSnapshot = regeneration.generatedPlaylist.tracks as StoredTrackSnapshot[];
@@ -2570,22 +2595,34 @@ export async function undoAdvancedPlaylistRegeneration({ userId, generatedPlayli
   try {
     await pushTracksToPlex({ server, name: regeneration.generatedPlaylist.plexPlaylistTitle, ratingKeys: tracks.map((track) => track.ratingKey || track.plexId), playlistId: regeneration.generatedPlaylist.plexPlaylistRatingKey });
     await prisma.$transaction(async (tx) => {
+      const revisionCounter = await tx.generatedPlaylist.update({ where: { id: generatedPlaylistId }, data: { revisionCounter: { increment: 1 } }, select: { revisionCounter: true } });
       await tx.playlistRevision.create({
         data: {
           generatedPlaylistId,
           regenerationId: regeneration.id,
-          revisionNumber: await nextRevisionNumber(tx, generatedPlaylistId),
-          reason: "undo",
+          revisionNumber: revisionCounter.revisionCounter,
+          reason: "manual_edit",
+          description: "Automatic backup before undoing regeneration",
           engineVersion: REGENERATION_ENGINE_VERSION,
           settingsSnapshot: regeneration.generatedPlaylist.filtersJson as any,
           trackSnapshot: storedTrackSnapshot(currentSnapshot) as any,
           scoreSnapshot: regeneration.generatedPlaylist.qualityScoreJson as any,
+          trackCount: currentSnapshot.length,
+          isCurrent: false,
         },
       });
       await tx.generatedPlaylistTrack.deleteMany({ where: { generatedPlaylistId } });
       await tx.generatedPlaylistTrack.createMany({ data: restoreSnapshot.map((track) => ({ ...track, generatedPlaylistId, trackId: track.trackId })) });
       await tx.generatedPlaylist.update({ where: { id: generatedPlaylistId }, data: { trackCount: restoreSnapshot.length, qualityScoreJson: revision.scoreSnapshot as any, lastRegeneratedAt: new Date() } });
       await tx.playlistRegeneration.update({ where: { id: regeneration.id }, data: { status: "undone", undoneAt: new Date() } });
+      const { createPlaylistVersionInTransaction } = await import("./playlists/versions/playlist-version-service");
+      await createPlaylistVersionInTransaction(tx, {
+        generatedPlaylistId,
+        reason: "undo",
+        regenerationId: regeneration.id,
+        description: "Undid advanced regeneration",
+        force: true,
+      });
     });
   } catch (error) {
     await pushTracksToPlex({ server, name: regeneration.generatedPlaylist.plexPlaylistTitle, ratingKeys: currentSnapshot.map((track) => track.plexTrackRatingKey).filter((key): key is string => Boolean(key)), playlistId: regeneration.generatedPlaylist.plexPlaylistRatingKey }).catch(() => undefined);

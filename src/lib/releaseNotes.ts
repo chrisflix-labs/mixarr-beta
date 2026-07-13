@@ -70,6 +70,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.0.7",
+    title: "Playlist Version History & Restore",
+    badges: ["Playlists", "History", "Backup", "Regeneration", "Plex", "Security", "UI"],
+    changes: [
+      "Added complete ordered playlist snapshots for initial generation, full regeneration, advanced regeneration, restore, undo, and named manual restore points.",
+      "Added a responsive version timeline with version details, engine and application metadata, stored scores, historical tracks, labels, and pin protection.",
+      "Added current-to-history and arbitrary two-version comparisons for added, removed, moved, possibly replaced, state-changed tracks, generation settings, and scores.",
+      "Added preview-first restoration with stale-playlist protection, an automatic safety version, explicit unavailable-track handling, current score recalculation, and Plex sync status.",
+      "Added schema-versioned snapshot migration for v2.0.6 revisions, corrupt snapshot safeguards, recursive credential redaction, stable atomic revision counters, pagination, storage estimates, and protected retention cleanup.",
+      "Added Playlist Version History settings with conservative defaults: enabled, 25-version retention, manual edit and score snapshots enabled, and automatic cleanup disabled.",
+    ],
+  },
+  {
     version: "2.0.6",
     title: "Advanced Playlist Regeneration",
     badges: ["Beta", "Regeneration", "Playlists", "Preview", "History", "BPM", "Energy", "Mood", "UI"],

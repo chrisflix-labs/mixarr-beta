@@ -47,6 +47,11 @@ model SyncSettings {
   preferLocalBpm       Boolean?
   reprocessApiBpmWithLocal Boolean?
   localBpmAnalysisScope String?
+  playlistVersionHistoryEnabled Boolean @default(true)
+  playlistVersionRetention Int @default(25)
+  saveManualPlaylistVersions Boolean @default(true)
+  savePlaylistScoreSnapshots Boolean @default(true)
+  cleanupPlaylistVersionsAutomatically Boolean @default(false)
   enableApiAudioFeatures Boolean?
   enableLocalAudioFeatures Boolean?
   preferLocalAudioFeatures Boolean?
@@ -63,6 +68,7 @@ model SyncSettings {
   hardDeleteMissingAfterDays Int?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+  revisionCounter       Int      @default(0)
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -426,6 +432,7 @@ model GeneratedPlaylist {
   lastRegeneratedAt     DateTime?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+  revisionCounter       Int      @default(0)
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   tracks                GeneratedPlaylistTrack[]
   historyEntries        PlaylistHistoryEntry[]
@@ -528,15 +535,30 @@ model PlaylistRevision {
   revisionNumber        Int
   regenerationId        String?
   reason                String
+  label                 String?
+  description           String?
+  engineFamily          String?
   engineVersion         String?
+  applicationVersion    String?
+  snapshotSchemaVersion Int      @default(1)
   settingsSnapshot      Json?
   trackSnapshot         Json
   scoreSnapshot         Json?
+  trackCount            Int      @default(0)
+  durationMs             Int      @default(0)
+  restoredFromVersionId String?
+  isPinned               Boolean  @default(false)
+  isAutomatic            Boolean  @default(true)
+  isCurrent              Boolean  @default(false)
+  syncStatus             String   @default("synced")
+  snapshotSizeBytes      Int?
   createdAt             DateTime @default(now())
   generatedPlaylist     GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
 
   @@unique([generatedPlaylistId, revisionNumber])
   @@index([generatedPlaylistId, createdAt])
+  @@index([generatedPlaylistId, isCurrent])
+  @@index([generatedPlaylistId, isPinned])
   @@index([regenerationId])
 }
 

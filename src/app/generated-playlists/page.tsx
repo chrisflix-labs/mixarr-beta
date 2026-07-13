@@ -619,9 +619,9 @@ export default function GeneratedPlaylistsPage() {
                       Regenerate
                     </button>
                   </>}
-                  <Link href={`/playlist-history?generatedPlaylistId=${playlist.id}`} className={styles.secondaryButton}>
+                  <Link href={`/generated-playlists/${playlist.id}/versions`} className={styles.secondaryButton}>
                     <History size={15} />
-                    View History
+                    History &amp; Restore
                   </Link>
                   <button type="button" disabled={Boolean(busyId)} onClick={() => removeGeneratedPlaylist(playlist)} className={styles.secondaryDangerButton}>
                     <Trash2 size={15} />

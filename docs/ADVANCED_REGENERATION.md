@@ -16,7 +16,7 @@ Curve preservation treats the original value at each position as the target. Ene
 
 ## Preview, apply, and undo
 
-Every preview stores its settings, proposed changes, playlist score, duration, and the playlist update timestamp. Individual positions may be accepted or rejected. Apply recalculates scores on the server and creates a `PlaylistRevision`; stale previews are rejected. Undo restores the previous revision from the database rather than relying on browser state.
+Every preview stores its settings, proposed changes, playlist score, duration, and the playlist update timestamp. Individual positions may be accepted or rejected. Apply recalculates scores on the server and creates a complete playlist version; stale previews are rejected. The pre-change safety state remains available, and undo creates another version rather than deleting history. See [Playlist Version History](./PLAYLIST_VERSION_HISTORY.md).
 
 ## API
 

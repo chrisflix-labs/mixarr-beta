@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.0.7 - Playlist Version History & Restore
+
+- Added complete, schema-versioned playlist state snapshots with ordered tracks, track state, display metadata, generation settings, engine/app versions, scores, duration, and secret redaction.
+- Added a playlist version timeline, detailed historical track view, pinning, labels, named manual restore points, lightweight pagination, storage estimates, and protected retention cleanup.
+- Added deterministic comparison between current or arbitrary versions, including added, removed, moved, state-changed, and possible replacement tracks plus settings and score changes.
+- Added preview-first restoration with ownership checks, stale-preview protection, unavailable-track warnings, automatic safety versions, current score recalculation, new restore revisions, and Plex synchronization status.
+- Integrated initial generation, full regeneration, advanced regeneration, and undo with the existing `PlaylistRevision` model while preserving and migrating v2.0.6 revisions in memory.
+- Added conservative user settings. History defaults on, the retention target is 25, manual and score snapshots default on, and destructive automatic cleanup defaults off.
+
 ## v2.0.6 - Advanced Playlist Regeneration
 
 - Added targeted replacement for weak, low-scoring, selected, intro, middle, ending, and custom-range tracks.
