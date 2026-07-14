@@ -6,6 +6,7 @@ import { syncGeneratedPlaylistToPlex } from "../../playlistService";
 import { diffPlaylistVersions } from "./playlist-version-diff";
 import { capturePlaylistSnapshot } from "./playlist-version-snapshot";
 import { createPlaylistVersionInTransaction, describePlaylistVersion, getPlaylistVersion } from "./playlist-version-service";
+import { recordTrackInteractionInBackground } from "../../personalization";
 
 export type MissingTrackStrategy = "cancel" | "restore_available";
 
@@ -126,6 +127,18 @@ export async function restorePlaylistVersion(input: {
     syncError = error instanceof Error ? error.message : "Plex synchronization failed";
   }
   await prisma.playlistRevision.update({ where: { id: result.restored.id }, data: { syncStatus } });
+  for (const snapshotTrack of selected) {
+    recordTrackInteractionInBackground({
+      userId: input.userId,
+      trackId: snapshotTrack.trackId,
+      playlistId: input.generatedPlaylistId,
+      playlistVersionId: target.version.id,
+      eventType: "PLAYLIST_RESTORED",
+      eventSource: "VERSION_RESTORE",
+      generationId: result.restored.id,
+      idempotencyKey: `restore:${result.restored.id}:${snapshotTrack.trackId}`,
+    });
+  }
   console.info("[PlaylistVersions] restore completed", { playlistId: input.generatedPlaylistId, sourceVersionId: target.version.id, targetVersionId: result.restored.id, revisionNumber: result.restored.revisionNumber, missingTrackCount: missing.length, syncStatus });
   return {
     success: true,

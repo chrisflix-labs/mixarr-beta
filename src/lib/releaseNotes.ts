@@ -38,6 +38,7 @@ export type ReleaseNoteBadge =
   | "Navigation"
   | "Notifications"
   | "Performance"
+  | "Personalization"
   | "Playlists"
   | "Popularity"
   | "Plex"
@@ -70,6 +71,20 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "2.1.0",
+    title: "Personalization Foundation",
+    releaseDate: "July 13, 2026",
+    badges: ["Personalization", "Smart Builder", "Playlists", "Settings", "Database", "Security", "History", "Roadmap", "UI"],
+    changes: [
+      "Added user recommendation profiles, optional playlist preference profiles, local interaction history, and typed selection/rejection service boundaries.",
+      "Added conservative, explainable personal score adjustments with an internal eight-point cap and explicit separation from global and playlist-context scoring.",
+      "Added independent personalization and behavior-learning toggles, readable profile summaries, confidence states, recent learning signals, and mobile-friendly controls.",
+      "Added confirmed reset modes for learned behavior or all personalization while preserving Plex metadata, playlists, versions, manual metadata corrections, and global Smart Mix settings.",
+      "Personalization behavior remains in the local Mixarr database; no external behavioral analytics, cloud profile synchronization, or third-party profile storage was added.",
+      "Updated the product roadmap to mark v2.0.x complete and present v2.1.x Personalization & Adaptive Recommendations as the current cycle.",
+    ],
+  },
   {
     version: "2.0.10",
     title: "Beta Feature Polish & Advanced Flags",

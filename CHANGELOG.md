@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.1.0 - Personalization Foundation
+
+- Added opt-in user recommendation profiles, optional playlist profiles, append-oriented interaction history, compact derived adjustments, and safe user-owned reset behavior.
+- Added a dedicated personalization scoring layer with structured explanations, confidence gating, playlist/user de-duplication, and a conservative eight-point maximum adjustment.
+- Added independent personalization and learning toggles, profile summaries, preference/avoidance cards, recent signals, playlist profiles, privacy copy, and mobile-safe controls.
+- Connected reliable lock, accepted regeneration replacement, and playlist restore actions to non-blocking local event collection.
+- Added user-scoped profile, history, rebuild, reset, and playlist-preference APIs with typed validation and pagination.
+- Marked v2.0.x complete and v2.1.x current in a typed, centralized product roadmap source.
+- Personalization data remains local; no external behavioral analytics or profile synchronization was added.
+
 ## v2.0.10 - Beta Feature Polish & Advanced Flags
 
 - Replaced scattered beta checks with a shared feature registry and authoritative server resolver covering server ceilings, access tiers, administrator restrictions, user opt-in, per-feature preferences, runtime overrides, and emergency kill switches.

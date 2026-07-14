@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Settings as SettingsIcon, Ban, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
+import { Settings as SettingsIcon, Ban, Brain, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
 import ProviderTestButton from "@/components/ProviderTestButton";
 import BetaFeatureSettingsForm from "@/components/BetaFeatureSettingsForm";
 import ExternalApiSettingsPanel from "@/components/ExternalApiSettingsPanel";
@@ -10,17 +10,20 @@ import BackgroundSchedulerSettings from "@/components/BackgroundSchedulerSetting
 import TrackExclusionsManager from "@/components/TrackExclusionsManager";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
 import PlaylistVersionSettings from "@/components/PlaylistVersionSettings";
+import PersonalizationProfilePanel from "@/components/PersonalizationProfilePanel";
 import { APP_DESCRIPTION, APP_NAME, MIXARR_GITHUB_URL } from "@/lib/appInfo";
 import { APP_VERSION } from "@/lib/appVersion";
 import { getExternalApiSettingsPayload } from "@/lib/externalApiSettings";
 import { getAppReadiness } from "@/lib/readiness";
+import { getPersonalizationProfileSummary } from "@/lib/personalization";
 import styles from "./settings.module.css";
 
 export default async function SettingsPage() {
   const userId = cookies().get("mixarr_session")?.value;
-  const [readiness, externalApis] = await Promise.all([
+  const [readiness, externalApis, personalization] = await Promise.all([
     getAppReadiness({ userId }).catch(() => null),
     getExternalApiSettingsPayload().catch(() => null),
+    userId ? getPersonalizationProfileSummary(userId).catch(() => null) : Promise.resolve(null),
   ]);
   const readinessChecks = readiness?.checks ? Object.values(readiness.checks) : [];
   const validationMessages = readinessChecks
@@ -179,6 +182,14 @@ export default async function SettingsPage() {
         <h3 className={styles.sectionTitle}><History size={20} color="var(--accent)" /> Playlist Version History</h3>
         <p className={styles.sectionDesc}>Control automatic restore protection and conservative history retention.</p>
         <PlaylistVersionSettings />
+      </section>
+
+      <section className={`glass-panel ${styles.section}`} aria-labelledby="personalization-settings">
+        <h3 id="personalization-settings" className={styles.sectionTitle}>
+          <Brain size={20} color="var(--accent)" /> Personalization
+        </h3>
+        <p className={styles.sectionDesc}>Opt in to conservative, explainable Smart Mix adjustments learned from supported actions.</p>
+        {personalization ? <PersonalizationProfilePanel initialData={personalization} /> : <p className={styles.errorText}>Personalization settings are unavailable. Check database readiness and migrations.</p>}
       </section>
 
       {/* Sync Controls */}

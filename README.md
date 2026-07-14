@@ -44,7 +44,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.0.10 keeps experimental Smart Mix behavior disabled by default and resolves every feature on the server. Administrators configure the server ceiling with `MIXARR_BETA_PROGRAM_ENABLED`, `MIXARR_PRIVATE_BETA_ENABLED`, and `MIXARR_DEVELOPER_FEATURES_ENABLED`; users must then opt in and enable eligible flags individually. Emergency overrides can disable all experiments or named flags without deleting preferences or playlist history. See [Beta features and advanced flags](docs/BETA_FEATURES.md).
+Mixarr v2.1.0 keeps experimental Smart Mix behavior and personalization disabled by default. Personalization and behavior learning are separate opt-ins, and interaction data remains in the local Mixarr database. Administrators configure the beta server ceiling with `MIXARR_BETA_PROGRAM_ENABLED`, `MIXARR_PRIVATE_BETA_ENABLED`, and `MIXARR_DEVELOPER_FEATURES_ENABLED`; users must then opt in and enable eligible flags individually. See [Beta features and advanced flags](docs/BETA_FEATURES.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 
@@ -206,33 +206,11 @@ When reporting an issue, please include as much of the following as possible:
 
 Please avoid posting secrets such as Plex tokens, API keys, database passwords, or private file paths you do not want to share.
 
-## Roadmap to v2.0.0 and Beyond
+## Product Roadmap
 
-v2.0.0 is planned as a major step toward making Mixarr a more capable, more transparent, and more useful Plex music companion app. The items below are future-focused placeholders and may change as beta testing continues.
+The v2.0.x Smart Mix Engine v2 cycle is complete. It delivered visible scoring, tuning, mood blending, BPM flow, discovery controls, advanced regeneration, playlist versions, manual metadata corrections, Recently Added automation, and advanced beta flags.
 
-### Planned for v2.0.0
-
-- Smarter playlist builder with more expressive controls.
-- Improved genre intelligence and genre cleanup workflows.
-- Better mood, energy, BPM, and audio-feature confidence scoring.
-- Advanced local audio analysis options.
-- More detailed library health diagnostics.
-- Better retry, repair, and backfill tools.
-- Playlist recommendations based on your library metadata.
-- More dashboard insights and clearer status cards.
-- User-configurable metadata/audio enrichment providers.
-- Improved UI polish across desktop and mobile.
-- Better duplicate and metadata cleanup tools.
-- More automation around Plex playlist updates.
-
-### Future Ideas Beyond v2.0.0
-
-- Possible AI-assisted playlist ideas and playlist prompts.
-- More advanced recommendation logic across genres, moods, eras, and listening contexts.
-- Deeper duplicate detection and release/version grouping.
-- More automation controls for scheduled playlist updates.
-- Additional provider integrations where they make sense for self-hosted users.
-- More export, reporting, and diagnostics tools for library maintenance.
+The current v2.1.x cycle adds optional, locally stored personalization and adaptive recommendations. v2.1.0 establishes user and playlist preference profiles, append-oriented interaction history, conservative score adjustments, privacy controls, and safe reset behavior. See the in-app Product Roadmap for the typed release list and future themes.
 
 ## Previews
 

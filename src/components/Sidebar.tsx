@@ -2,7 +2,7 @@
 
 import styles from "./Sidebar.module.css";
 import { useEffect, useMemo, useState } from "react";
-import { AudioWaveform, BookMarked, ChevronDown, ExternalLink, FlaskConical, Github, HeartPulse, History, LayoutDashboard, LifeBuoy, ListMusic, ListRestart, Map, MoreHorizontal, ScrollText, Settings, Sparkles, Tags, Wand2, X } from "lucide-react";
+import { AudioWaveform, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, HeartPulse, History, LayoutDashboard, LifeBuoy, ListMusic, ListRestart, Map, MoreHorizontal, ScrollText, Settings, Sparkles, Tags, Wand2, X } from "lucide-react";
 import PlexLoginButton from "./PlexLoginButton";
 import LogoutButton from "./LogoutButton";
 import Link from "next/link";
@@ -26,6 +26,7 @@ const libraryLinks = [
 ];
 
 const activityLinks = [
+  { href: "/personalization", label: "Personalization", icon: Brain, isActive: (pathname: string) => pathname.startsWith("/personalization") },
   { href: "/job-history", label: "Job History", icon: History, isActive: (pathname: string) => pathname.startsWith("/job-history") || pathname.startsWith("/jobs") },
   { href: "/support", label: "Beta Support", icon: LifeBuoy, isActive: (pathname: string) => pathname.startsWith("/support") },
   { href: "/release-notes", label: "Release Notes", icon: ScrollText, isActive: (pathname: string) => pathname.startsWith("/release-notes") },

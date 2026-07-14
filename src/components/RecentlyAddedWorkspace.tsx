@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Clock3, History, Loader2, Music2, Play, RefreshCw, Save, Search, Settings2, ShieldCheck, Sparkles, Wand2 } from "lucide-react";
 import styles from "@/app/recently-added/recently-added.module.css";
+import { APP_VERSION } from "@/lib/appVersion";
 
 const presetValues: Record<string, any> = {
   conservative: { matchThreshold: 95, maxAddsPerPlaylist: 1, maxAddsPerRun: 10, metadataConfidenceThreshold: 90 },
@@ -91,7 +92,7 @@ export default function RecentlyAddedWorkspace() {
   if (!settings) return <div className={styles.empty}><Loader2 className="spin" /> Loading Recently Added Automation…</div>;
   const counts = summary?.counts || {};
   return <main className={styles.page}>
-    <header className={styles.header}><div><span className={styles.kicker}><Sparkles size={14} /> Mixarr v2.0.10 Beta</span><h2>Recently Added Automation</h2><p>Analyze new Plex music, review explainable Smart Mix matches, and opt into safe playlist updates.</p></div><div className={styles.status}><span>Recently Added Automation</span><strong>{String(summary?.status || "disabled").replaceAll("_", " ")}</strong><span><Clock3 size={12} /> Last scan: {summary?.lastScanAt ? new Date(summary.lastScanAt).toLocaleString() : "Never"}</span><span>Next run: {summary?.nextScheduledRunAt ? new Date(summary.nextScheduledRunAt).toLocaleString() : "Manual only"}</span></div></header>
+    <header className={styles.header}><div><span className={styles.kicker}><Sparkles size={14} /> Mixarr {APP_VERSION} Beta</span><h2>Recently Added Automation</h2><p>Analyze new Plex music, review explainable Smart Mix matches, and opt into safe playlist updates.</p></div><div className={styles.status}><span>Recently Added Automation</span><strong>{String(summary?.status || "disabled").replaceAll("_", " ")}</strong><span><Clock3 size={12} /> Last scan: {summary?.lastScanAt ? new Date(summary.lastScanAt).toLocaleString() : "Never"}</span><span>Next run: {summary?.nextScheduledRunAt ? new Date(summary.nextScheduledRunAt).toLocaleString() : "Manual only"}</span></div></header>
     {!settings.enabled && <div className={styles.disabledNotice}><strong>Recently Added Automation is disabled.</strong><span>Mixarr will not automatically create, regenerate, modify, or notify about playlists. Manual tools below remain available.</span></div>}
     {settings.enabled && settings.autoAddStrongMatches && <div className={styles.warning}><strong><AlertTriangle size={15} /> Automatic playlist updates are enabled.</strong><span>Only strong, analyzed matches for playlists explicitly set to Automatic can be added. A restorable version is saved first.</span></div>}
     <section className={styles.metrics}>{[

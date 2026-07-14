@@ -9,6 +9,7 @@ import {
 import { normalizeMoodBlendConfig, scoreMoodBlendForTrack } from "./moodBlending";
 import { applyTuningToCandidateScore, normalizeSmartMixTuningConfig, tuningWeightFactor } from "./tuning";
 import { SMART_MIX_ENGINE_V2, type SmartMixEngineV2Config, type SmartMixRuleLike, type SmartMixRuleTree, type SmartMixScoredTrack, type SmartMixScoreBreakdown } from "./types";
+import { scorePersonalizationAdjustment } from "../../personalization/scoring";
 
 const metadataRuleFields = new Set(["tempo", "valence", "energy", "popularity"]);
 
@@ -138,13 +139,22 @@ export function scoreSmartMixTrack<TTrack extends Record<string, any>>(
     ...(recentlyUsedPenalty < 0 ? ["recently used: softened ranking"] : []),
   ];
 
+  const personalizationScore = config.personalization?.profile.enabled
+    ? scorePersonalizationAdjustment(tunedScore, track, config.personalization)
+    : null;
+  if (personalizationScore) {
+    scoreBreakdown.playlistPreference = personalizationScore.playlistContextScore;
+    scoreBreakdown.personalization = personalizationScore.personalizationAdjustment;
+  }
+
   return {
     ...track,
     engineVersion: SMART_MIX_ENGINE_V2,
-    score: roundScore(tunedScore),
+    score: personalizationScore?.finalScore ?? roundScore(tunedScore),
     scoreBreakdown,
     metadataStatus: fallback.metadataStatus,
     fallbacksApplied,
+    ...(personalizationScore ? { personalizationScore } : {}),
     ...(moodBlendScore ? { moodBlend: moodBlendScore.data } : {}),
   };
 }

@@ -14,6 +14,7 @@ import { sanitizeDiagnostics, sanitizeErrorText } from "./supportRedaction";
 import { getAppReadiness } from "./readiness";
 import { getExternalApiDiagnostics } from "./externalApiSettings";
 import { getBetaStatus } from "./featureFlagService";
+import { getPersonalizationDiagnostics } from "./personalization";
 
 export function getSupportLinks() {
   const discordSupportUrl = validDiscordSupportUrl(process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL);
@@ -167,7 +168,7 @@ export async function getSupportSummary(userId: string) {
 }
 
 export async function getSupportDiagnostics(userId: string) {
-  const [summary, dashboard, worker, settings, libraries, recentJobs, readiness, externalApis] = await Promise.all([
+  const [summary, dashboard, worker, settings, libraries, recentJobs, readiness, externalApis, personalization] = await Promise.all([
     getSupportSummary(userId),
     getDashboardSummary(userId).catch((error) => ({ error: sanitizeErrorText(error) })),
     getWorkerHealthSummary().catch((error) => ({ error: sanitizeErrorText(error) })),
@@ -184,6 +185,7 @@ export async function getSupportDiagnostics(userId: string) {
     }),
     getAppReadiness({ userId }).catch((error) => ({ error: sanitizeErrorText(error) })),
     getExternalApiDiagnostics().catch((error) => ({ error: sanitizeErrorText(error) })),
+    getPersonalizationDiagnostics().catch((error) => ({ available: false, error: sanitizeErrorText(error) })),
   ]);
   const providerSettings = resolveMetadataProviderSettings(settings);
   const [libraryHealth, dataEnrichment] = await Promise.all([
@@ -214,6 +216,7 @@ export async function getSupportDiagnostics(userId: string) {
     dashboardSummary: dashboard,
     "Library Health Diagnostics": libraryHealth,
     "Data Enrichment Diagnostics": dataEnrichment,
+    "Personalization Diagnostics": personalization,
     "Worker & Scheduler Diagnostics": {
       worker: compactWorker("status" in worker ? worker as any : null) || worker,
       scheduler: "status" in worker ? compactWorker(worker as any)?.scheduler : null,

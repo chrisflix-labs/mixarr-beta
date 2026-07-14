@@ -288,8 +288,8 @@ export default async function Home() {
             {showExperimentalPreviewCards && <BetaDashboardPreviewCards />}
             <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
               <Map size={22} className={styles.cardIcon} />
-              <h3>Roadmap to v2.0.0</h3>
-              <p>Follow Mixarr&apos;s path toward the Smart Mix Engine, saved playlist recipes, better library health tools, and experimental beta features.</p>
+              <h3>Mixarr Product Roadmap</h3>
+              <p>See the completed Smart Mix v2 cycle and the current v2.1.x personalization cycle.</p>
               <span className={styles.cardAction}>View Roadmap</span>
             </Link>
           </div>
@@ -297,10 +297,10 @@ export default async function Home() {
             <div className={styles.comingSoonHeader}>
               <div>
                 <span className={styles.kicker}>Preview</span>
-                <h3 id="coming-soon-v2">Coming Soon in v2.0.0</h3>
-                <p>Next-level playlist intelligence is coming to Mixarr.</p>
+                <h3 id="coming-soon-v2">Current v2.1.x Cycle</h3>
+                <p>Optional, local personalization now builds on Smart Mix Engine v2.</p>
               </div>
-              <span className={styles.versionPill}>v2.0.0</span>
+              <span className={styles.versionPill}>v2.1.x</span>
             </div>
             <p className={styles.enrichmentNote}>
               Data enrichment controls now live in a dedicated section for BPM, audio features, genres, popularity, local analysis, preflight checks, and Library Health links.
@@ -381,8 +381,8 @@ export default async function Home() {
 
             <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
               <Map size={24} className={styles.cardIcon} />
-              <h3>Roadmap to v2.0.0</h3>
-              <p>Follow Mixarr&apos;s path toward the Smart Mix Engine, saved playlist recipes, better library health tools, and experimental beta features.</p>
+              <h3>Mixarr Product Roadmap</h3>
+              <p>See completed releases and the current personalization cycle.</p>
               <span className={styles.cardAction}>View Roadmap</span>
             </Link>
           </div>

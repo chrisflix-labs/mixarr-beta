@@ -1,0 +1,39 @@
+.wrapper { display: grid; gap: 1rem; }
+.controlGrid, .preferenceColumns, .detailGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
+.toggleCard { position: relative; display: grid; gap: .35rem; padding: .9rem; border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(255,255,255,.025); }
+.toggleCard > span, .dangerRow > span, .privacy { display: flex; align-items: flex-start; gap: .55rem; }
+.toggleCard small, .dangerRow small, .preference small, .signalList small { color: var(--muted); line-height: 1.4; }
+.toggleCard input { position: absolute; top: .9rem; right: .9rem; width: 19px; height: 19px; accent-color: var(--accent); }
+.disabled { opacity: .58; }
+.stateMessage, .error { margin: 0; padding: .7rem .8rem; border: 1px solid rgba(53,174,234,.22); border-radius: var(--radius-sm); color: #b9e9ff; background: rgba(53,174,234,.07); }
+.error { border-color: rgba(255,100,100,.28); color: #ffb0b0; background: rgba(255,80,80,.06); }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: .6rem; margin: 0; }
+.stats div { padding: .75rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(0,0,0,.12); }
+.stats dt { color: var(--muted); font-size: .73rem; }
+.stats dd { margin: .25rem 0 0; font-weight: 800; overflow-wrap: anywhere; }
+.privacy { padding: .85rem; border: 1px solid rgba(142,88,255,.25); border-radius: var(--radius-md); background: rgba(142,88,255,.07); }
+.privacy p { margin: 0; line-height: 1.55; }
+.sectionHeading, .actions, .dangerRow, .modalActions { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+.sectionHeading h3, .detailGrid h3, .preferenceColumns h4 { margin: 0; }
+.sectionHeading button, .actions button, .actions a, .dangerRow button, .modalActions button { display: inline-flex; align-items: center; gap: .4rem; min-height: 36px; padding: .5rem .7rem; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--fg); background: rgba(255,255,255,.04); font-weight: 750; cursor: pointer; text-decoration: none; }
+.preferenceColumns > section, .detailGrid > section { min-width: 0; display: grid; align-content: start; gap: .55rem; padding: .85rem; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.preference, .signalList > div { display: grid; gap: .22rem; padding: .65rem; border-radius: var(--radius-sm); background: rgba(255,255,255,.03); overflow-wrap: anywhere; }
+.empty { color: var(--muted); margin: .2rem 0; }
+.signalList { display: grid; gap: .45rem; }
+.signalList span { color: #b9e9ff; font-size: .7rem; font-weight: 800; }
+.playlistPreference select { width: 100%; min-width: 0; padding: .5rem; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--fg); background: #0d111b; }
+.playlistPreference button { justify-self: start; padding: 0; border: 0; color: #b9e9ff; background: transparent; font-size: .75rem; cursor: pointer; }
+.playlistOverrides { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: .35rem; }
+.playlistOverrides label { display: flex; align-items: center; gap: .35rem; color: var(--muted); font-size: .72rem; }
+.playlistOverrides input { accent-color: var(--accent); }
+.dangerRow { padding: .85rem; border: 1px solid rgba(255,100,100,.22); border-radius: var(--radius-md); background: rgba(255,80,80,.04); }
+.dangerRow > span > span { display: grid; gap: .2rem; }
+.dangerRow button, .destructive { border-color: rgba(255,100,100,.35) !important; color: #ffb0b0 !important; }
+.modalLayer { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 1rem; background: rgba(0,0,0,.72); }
+.modal { width: min(540px, 100%); display: grid; gap: .9rem; padding: 1.1rem; border: 1px solid var(--line); border-radius: var(--radius-lg); background: #141824; box-shadow: 0 24px 80px rgba(0,0,0,.5); }
+.modal h3, .modal p { margin: 0; }
+.modal p { color: var(--muted); line-height: 1.55; }
+.modal label { display: grid; gap: .35rem; font-size: .8rem; font-weight: 750; }
+.modal input, .modal select { width: 100%; min-width: 0; padding: .65rem; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--fg); background: #0d111b; }
+.modal button:disabled, .wrapper button:disabled { cursor: not-allowed; opacity: .55; }
+@media (max-width: 760px) { .controlGrid, .preferenceColumns, .detailGrid, .stats, .playlistOverrides { grid-template-columns: 1fr; } .dangerRow { align-items: stretch; } .dangerRow > button { width: 100%; justify-content: center; } }

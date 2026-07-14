@@ -1,4 +1,5 @@
 import type { SmartMixTuningConfig } from "./tuning";
+import type { PersonalizationScoreResult, PersonalizationScoringContext } from "../../personalization/types";
 
 export const SMART_MIX_ENGINE_V1 = "v1";
 export const SMART_MIX_ENGINE_V2 = "v2";
@@ -38,6 +39,7 @@ export type SmartMixEngineV2Config = {
   tuningConfig?: SmartMixTuningConfig;
   recentlyUsedTrackIds?: string[];
   recentPlaylistUsage?: Record<string, number>;
+  personalization?: PersonalizationScoringContext;
   moodBlendMode?: SmartMixMoodBlendMode;
   selectedMoodPath?: string[];
   allowedMoods?: string[];
@@ -129,6 +131,8 @@ export type SmartMixScoreBreakdown = {
   recentPlaylistPenalty?: number;
   fallbackPenalty?: number;
   diversity?: number;
+  playlistPreference?: number;
+  personalization?: number;
 };
 
 export type SmartMixScoredTrack<TTrack = any> = TTrack & {
@@ -139,6 +143,7 @@ export type SmartMixScoredTrack<TTrack = any> = TTrack & {
   fallbacksApplied: string[];
   moodBlend?: SmartMixMoodBlendTrackData;
   discoveryMetrics?: import("./discovery").TrackDiscoveryMetrics;
+  personalizationScore?: PersonalizationScoreResult;
 };
 
 export type SmartMixEngineV2StageKey =

@@ -44,6 +44,10 @@ model User {
   betaAccess                 UserBetaAccess?
   betaFeatureUsage           BetaFeatureUsage[]
   betaFeedbackReports        BetaFeedbackReport[]
+  recommendationProfile      UserRecommendationProfile?
+  playlistPreferenceProfiles PlaylistPreferenceProfile[]
+  trackInteractionEvents     TrackInteractionEvent[]
+  personalScoringAdjustments PersonalScoringAdjustment[]
 }
 
 model SyncSettings {
@@ -260,6 +264,7 @@ model Track {
   recentlyAddedState        RecentlyAddedTrackState?
   recentlyAddedMatches      RecentlyAddedPlaylistMatch[]
   recentlyAddedChanges      RecentlyAddedAutomationChange[]
+  interactionEvents         TrackInteractionEvent[]
 
   @@unique([libraryId, plexId])
   @@index([libraryId, syncStatus])
@@ -539,6 +544,8 @@ model GeneratedPlaylist {
   automationSettings    PlaylistAutomationSettings?
   recentlyAddedMatches  RecentlyAddedPlaylistMatch[]
   recentlyAddedChanges  RecentlyAddedAutomationChange[]
+  preferenceProfile     PlaylistPreferenceProfile?
+  interactionEvents     TrackInteractionEvent[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -850,6 +857,118 @@ model UserBetaAccess {
   @@index([accessLevel, expiresAt])
 }
 
+model UserRecommendationProfile {
+  id                         String    @id @default(uuid())
+  userId                     String    @unique
+  enabled                    Boolean   @default(false)
+  learningEnabled            Boolean   @default(false)
+  profileVersion             String    @default("1")
+  confidence                 Float     @default(0)
+  confidenceState            String    @default("NOT_ENOUGH_DATA")
+  minimumEventsRequired      Int       @default(10)
+  interactionCount           Int       @default(0)
+  lastCalculatedAt           DateTime?
+  preferredEnergyMin         Float?
+  preferredEnergyMax         Float?
+  preferredBpmMin            Float?
+  preferredBpmMax            Float?
+  preferredDiscoveryLevel    Float?
+  preferredDeepCutWeight     Float?
+  preferredPopularityWeight  Float?
+  preferredMoodWeight        Float?
+  preferredEnergyWeight      Float?
+  preferredBpmWeight         Float?
+  preferredArtistVariety     Float?
+  preferredAlbumVariety      Float?
+  avoidRecentlyPlayed        Boolean   @default(false)
+  avoidRecentlyUsedArtists   Boolean   @default(false)
+  avoidLiveRecordings        Boolean   @default(false)
+  avoidLowConfidenceMetadata Boolean   @default(false)
+  secondaryTraits            Json?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+  user                       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([enabled, learningEnabled])
+  @@index([lastCalculatedAt])
+}
+
+model PlaylistPreferenceProfile {
+  id                         String            @id @default(uuid())
+  playlistId                 String            @unique
+  userId                     String
+  name                       String?
+  enabled                    Boolean           @default(true)
+  mode                       String            @default("GENERAL_PROFILE")
+  source                     String            @default("MANUAL")
+  isLearned                  Boolean           @default(false)
+  energyMin                  Float?
+  energyMax                  Float?
+  bpmMin                     Float?
+  bpmMax                     Float?
+  discoveryPreference        Float?
+  deepCutPreference          Float?
+  artistVarietyPreference    Float?
+  albumVarietyPreference     Float?
+  repetitionTolerance        Float?
+  avoidLiveRecordings        Boolean?
+  avoidLowConfidenceMetadata Boolean?
+  avoidRecentlyPlayedTracks  Boolean?
+  confidence                 Float             @default(0)
+  evidenceCount              Int               @default(0)
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+  playlist                   GeneratedPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  user                       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@index([userId, source])
+}
+
+model TrackInteractionEvent {
+  id                String             @id @default(uuid())
+  userId            String
+  trackId           String
+  playlistId        String?
+  playlistVersionId String?
+  eventType         String
+  eventSource       String
+  generationId      String?
+  idempotencyKey    String?            @unique
+  contextJson       Json?
+  weight            Float              @default(1)
+  occurredAt        DateTime           @default(now())
+  createdAt         DateTime           @default(now())
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track             Track              @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  playlist          GeneratedPlaylist? @relation(fields: [playlistId], references: [id], onDelete: SetNull)
+
+  @@index([userId, occurredAt])
+  @@index([userId, trackId])
+  @@index([userId, eventType])
+  @@index([playlistId, occurredAt])
+  @@index([generationId])
+  @@index([playlistVersionId])
+}
+
+model PersonalScoringAdjustment {
+  id            String    @id @default(uuid())
+  userId        String
+  featureType   String
+  featureKey    String
+  adjustment    Float
+  confidence    Float     @default(0)
+  sampleSize    Int       @default(0)
+  calculatedAt  DateTime  @default(now())
+  expiresAt     DateTime?
+  invalidatedAt DateTime?
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, featureType, featureKey])
+  @@index([userId, calculatedAt])
+  @@index([expiresAt])
+}
+
 model BetaFeatureUsage {
   id            String   @id @default(uuid())
   userId        String?
@@ -1047,7 +1166,7 @@ model RecentlyAddedAutomationRun {
   playlistsModified     Int                             @default(0)
   warningsJson          Json?
   errorsJson            Json?
-  engineVersion         String                          @default("v2.0.10")
+  engineVersion         String                          @default("v2.1.0")
   settingsSnapshot      Json
   requiredFeatureFlags  Json?
   requestedScoringModel String?
