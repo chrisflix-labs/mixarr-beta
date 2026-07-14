@@ -193,16 +193,18 @@ export default async function JobHistoryPage({
 
                   {plexCounts && (
                     <div className={styles.counts} aria-label="Plex sync summary">
-                      <span>Scanned {countValue(plexCounts.scanned ?? null)}</span>
-                      <span>Matched {countValue(plexCounts.matched ?? null)}</span>
-                      <span>New {countValue(plexCounts.newTracks ?? null)}</span>
+                      <span title="All Plex track items returned by the completed library scan.">Plex scanned {countValue(plexCounts.scanned ?? null)}</span>
+                      <span title="Plex items confidently matched to existing Mixarr records.">Matched {countValue(plexCounts.matched ?? null)}</span>
+                      <span title="New Mixarr track records created by this sync.">New {countValue(plexCounts.newTracks ?? null)}</span>
                       <span>Updated {countValue(plexCounts.updatedMetadata ?? null)}</span>
                       <span>Moved {countValue(plexCounts.movedFiles ?? null)}</span>
                       <span>Renamed {countValue(plexCounts.renamedTracks ?? null)}</span>
-                      <span>Missing {countValue(plexCounts.markedMissing ?? null)}</span>
-                      <span>Restored {countValue(plexCounts.restored ?? null)}</span>
-                      <span>Duplicates {countValue(plexCounts.duplicateCandidates ?? null)}</span>
-                      <span>Conflicts {countValue(plexCounts.matchConflicts ?? null)}</span>
+                      <span title="Previously active Mixarr records not seen in this successful full scan.">Missing {countValue(plexCounts.markedMissing ?? null)}</span>
+                      <span title="Previously inactive records whose database availability state changed back to active.">Restored {countValue(plexCounts.restored ?? null)}</span>
+                      <span title="Persisted active Mixarr records after the reconciliation transaction committed.">Active Mixarr {countValue(plexCounts.activeDatabaseRecords ?? null)}</span>
+                      <span title="Possible duplicate physical items retained for review; no records were merged automatically.">Duplicates {countValue(plexCounts.duplicateCandidates ?? null)}</span>
+                      <span title="Plex items not safely resolved. Conflicts can make the active Mixarr count differ from the Plex scanned total.">Unresolved {countValue(plexCounts.unresolvedPlexTracks ?? plexCounts.matchConflicts ?? null)}</span>
+                      <span title="Restore candidates whose conditional database update or persisted-state verification failed.">Restore verification failures {countValue(plexCounts.restoreVerificationFailures ?? null)}</span>
                     </div>
                   )}
 

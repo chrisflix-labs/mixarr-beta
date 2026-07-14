@@ -41,6 +41,7 @@ export type ReconciliationSummary = {
   renamedTracks: number;
   markedMissing: number;
   restored: number;
+  restoreVerificationFailures: number;
   duplicateCandidates: number;
   matchConflicts: number;
   durationMs: number;
@@ -48,6 +49,20 @@ export type ReconciliationSummary = {
   hardDeleted: number;
   message: string;
   metadata: Record<string, any>;
+};
+
+export type RestoreCandidate = {
+  trackId: string;
+  plexRatingKey: string;
+  previousSyncStatus: string;
+};
+
+type RestoreDiagnostic = RestoreCandidate & {
+  libraryId: string;
+  previousMissingState: boolean;
+  newMissingState: boolean;
+  databaseRowsChanged: number;
+  syncBatchId: string;
 };
 
 function plexHeaders(accessToken: string) {
@@ -238,19 +253,79 @@ export async function reconcileCompletedLibrary(
     syncRunId,
     seenAt,
     snapshotComplete,
+    restoreCandidates = [],
+    conflictProtectedTrackIds = [],
   }: {
     libraryId: string;
     syncRunId: string;
     seenAt: Date;
     snapshotComplete: boolean;
+    restoreCandidates?: RestoreCandidate[];
+    conflictProtectedTrackIds?: string[];
   },
 ) {
   if (!snapshotComplete) {
     throw new Error("Plex snapshot did not complete; reconciliation skipped");
   }
 
+  let restored = 0;
+  let restoreVerificationFailures = 0;
+  const restoreDiagnostics: RestoreDiagnostic[] = [];
+
+  for (const candidate of restoreCandidates) {
+    const update = await tx.track.updateMany({
+      where: {
+        id: candidate.trackId,
+        libraryId,
+        syncStatus: candidate.previousSyncStatus,
+        lastSeenSyncId: syncRunId,
+      },
+      data: {
+        syncStatus: "active",
+        missingSince: null,
+        deletedAt: null,
+        syncConflictReason: null,
+        duplicateWarning: null,
+      },
+    });
+    const persisted = await tx.track.findFirst({
+      where: { id: candidate.trackId, libraryId },
+      select: { syncStatus: true, missingSince: true, deletedAt: true },
+    });
+    const verified = update.count === 1
+      && persisted?.syncStatus === "active"
+      && persisted.missingSince === null
+      && persisted.deletedAt === null;
+    const diagnostic = {
+      ...candidate,
+      libraryId,
+      previousMissingState: candidate.previousSyncStatus !== "active",
+      newMissingState: persisted?.syncStatus !== "active",
+      databaseRowsChanged: update.count,
+      syncBatchId: syncRunId,
+    };
+    if (restoreDiagnostics.length < 500 || !verified) restoreDiagnostics.push(diagnostic);
+
+    if (verified) {
+      restored += 1;
+      console.info("[SyncEngine] Restored track availability", diagnostic);
+    } else {
+      restoreVerificationFailures += 1;
+      console.warn("[SyncEngine] Restore verification failed", {
+        ...diagnostic,
+        expectedMissing: false,
+        persistedMissing: persisted?.syncStatus !== "active",
+      });
+    }
+  }
+
   const missingTracks = await tx.track.updateMany({
-    where: { libraryId, syncStatus: "active", ...unseenThisRun(syncRunId) },
+    where: {
+      libraryId,
+      syncStatus: "active",
+      ...(conflictProtectedTrackIds.length ? { id: { notIn: conflictProtectedTrackIds } } : {}),
+      ...unseenThisRun(syncRunId),
+    },
     data: {
       syncStatus: "missing",
       missingSince: seenAt,
@@ -272,8 +347,13 @@ export async function reconcileCompletedLibrary(
     data: { syncStatus: "missing", missingSince: seenAt },
   });
 
-  const activeDashboardCount = await tx.track.count({ where: { libraryId, syncStatus: "active" } });
-  return { markedMissing: missingTracks.count, hardDeleted: 0, activeDashboardCount };
+  return {
+    markedMissing: missingTracks.count,
+    restored,
+    restoreVerificationFailures,
+    restoreDiagnostics,
+    hardDeleted: 0,
+  };
 }
 
 export const runSyncEngine = async (
@@ -435,6 +515,8 @@ export const runSyncEngine = async (
     const syncEvents: any[] = [];
     const conflictEvents: any[] = [];
     const duplicateEvents: any[] = [];
+    const restoreCandidates: RestoreCandidate[] = [];
+    const conflictProtectedTrackIds = new Set<string>();
 
     await processSequentially(plexTracks, async (track) => {
       const artistPlexId = sanitizeOptionalMetadataString(track.grandparentRatingKey, { entity: "Track", entityId: track.ratingKey, field: "artistPlexId" }) || "";
@@ -453,6 +535,7 @@ export const runSyncEngine = async (
       if (match.type === "conflict" || duplicatePlexKey) {
         const candidates = match.type === "conflict" ? match.candidates : existingTracks.filter((candidate) => candidate.ratingKey === normalizedTrack.ratingKey || candidate.plexId === normalizedTrack.plexId);
         const candidateIds = candidates.map((candidate) => candidate.id);
+        candidateIds.forEach((candidateId) => conflictProtectedTrackIds.add(candidateId));
         incrementChangeCounts(changeCounts, ["match_conflict", "duplicate_candidate"]);
         addEvent(conflictEvents, {
           plexRatingKey: normalizedTrack.ratingKey,
@@ -464,42 +547,18 @@ export const runSyncEngine = async (
           reason: duplicatePlexKey ? "Duplicate Plex key" : "Multiple Mixarr records matched this Plex item.",
           candidates: candidateIds,
         });
-        if (candidateIds.length) {
-          await prisma.track.updateMany({
-            where: { id: { in: candidateIds } },
-            data: {
-              syncStatus: "match_conflict",
-              syncConflictReason: duplicatePlexKey
-                ? "Duplicate Plex key"
-                : "Multiple Mixarr records matched this Plex item. Mixarr kept them separate for safety.",
-              duplicateWarning: duplicatePlexKey ? "Duplicate Plex key" : "Possible duplicate track",
-              lastSyncChangeTypes: serializeSyncChangeTypes(["match_conflict", "duplicate_candidate"]),
-              lastSeenAt: seenAt,
-              lastSeenSyncId: syncRunId,
-            },
-          });
-        }
         console.warn(`[PlexSync] Match conflict plexRatingKey=${normalizedTrack.ratingKey} candidates=${candidateIds.join(",")} reason=${duplicatePlexKey ? "duplicate_plex_rating_key" : match.reason}`);
         return;
       }
 
       const existing = match.type === "matched" ? match.track : null;
       if (existing && matchedRecordIds.has(existing.id)) {
+        conflictProtectedTrackIds.add(existing.id);
         incrementChangeCounts(changeCounts, ["match_conflict"]);
         addEvent(conflictEvents, {
           plexRatingKey: normalizedTrack.ratingKey,
           reason: "one_mixarr_record_matched_multiple_plex_tracks",
           candidates: [existing.id],
-        });
-        await prisma.track.update({
-          where: { id: existing.id },
-          data: {
-            syncStatus: "match_conflict",
-            syncConflictReason: "One Mixarr record matched multiple Plex tracks. Mixarr kept them separate for safety.",
-            lastSyncChangeTypes: serializeSyncChangeTypes(["match_conflict"]),
-            lastSeenAt: seenAt,
-            lastSeenSyncId: syncRunId,
-          },
         });
         console.warn(`[PlexSync] Match conflict plexRatingKey=${normalizedTrack.ratingKey} candidates=${existing.id} reason=one_mixarr_record_matched_multiple_plex_tracks`);
         return;
@@ -508,6 +567,11 @@ export const runSyncEngine = async (
       const changeSet = buildTrackSyncChangeSet(existing, normalizedTrack, { artistId, albumId });
       incrementChangeCounts(changeCounts, changeSet.changeTypes);
       const localFileStatus = localFileStatusForPath(normalizedTrack.mediaPath);
+      const seenWithoutAvailability = {
+        plexLibraryId: seenData.plexLibraryId,
+        lastSeenAt: seenData.lastSeenAt,
+        lastSeenSyncId: seenData.lastSeenSyncId,
+      };
       const data = {
         plexId: normalizedTrack.plexId,
         ratingKey: normalizedTrack.ratingKey,
@@ -528,17 +592,25 @@ export const runSyncEngine = async (
         viewCount: track.viewCount || track.playCount || 0,
         lastViewedAt: track.lastViewedAt ? new Date(track.lastViewedAt * 1000) : undefined,
         updatedAt: track.updatedAt ? new Date(track.updatedAt * 1000) : undefined,
-        ...seenData,
+        ...seenWithoutAvailability,
       };
 
       if (existing) {
         matchedRecordIds.add(existing.id);
+        if (existing.syncStatus === "missing" || existing.syncStatus === "match_conflict") {
+          restoreCandidates.push({
+            trackId: existing.id,
+            plexRatingKey: normalizedTrack.ratingKey,
+            previousSyncStatus: existing.syncStatus,
+          });
+        }
         await prisma.track.update({ where: { id: existing.id }, data });
         existingById.set(existing.id, { ...existing, ...data, artist: { title: normalizedTrack.artistTitle }, album: { title: normalizedTrack.albumTitle } });
       } else {
         const created = await prisma.track.create({
           data: {
             ...data,
+            ...seenData,
             libraryId,
             addedAt: track.addedAt ? new Date(track.addedAt * 1000) : undefined,
             plexAddedAt: track.addedAt ? new Date(track.addedAt * 1000) : undefined,
@@ -648,21 +720,40 @@ export const runSyncEngine = async (
         syncRunId,
         seenAt,
         snapshotComplete: true,
+        restoreCandidates,
+        conflictProtectedTrackIds: Array.from(conflictProtectedTrackIds),
       });
       await tx.syncLog.update({
         where: { id: syncLog.id },
         data: {
-          status: "success",
+          status: reconciled.restoreVerificationFailures > 0 ? "warning" : "success",
           endedAt: new Date(),
           reconciliationAt: new Date(),
           snapshotComplete: true,
           plexReportedTrackCount: plexTracks.length,
+          restoredTrackCount: reconciled.restored,
+          unresolvedTrackCount: changeCounts.match_conflict,
+          restoreVerificationFailureCount: reconciled.restoreVerificationFailures,
         },
       });
       return reconciled;
     });
 
+    // The authoritative count is deliberately read after the reconciliation
+    // transaction commits; it never comes from pre-restoration objects or cache.
+    const activeDashboardCount = await prisma.track.count({ where: { libraryId, syncStatus: "active" } });
+    await prisma.syncLog.update({
+      where: { id: syncRunId },
+      data: { activeTrackCountAfterCommit: activeDashboardCount },
+    });
+    const { invalidateLibraryHealthCache } = await import("./libraryHealth");
+    const invalidatedHealthSnapshots = await invalidateLibraryHealthCache(server.userId, {
+      libraryId,
+      reason: "plex_sync_committed",
+    });
+
     changeCounts.missing_from_plex = reconciliation.markedMissing;
+    changeCounts.restored_from_plex = reconciliation.restored;
     const durationMs = Math.max(0, Date.now() - syncLog.startedAt.getTime());
     const matchedExisting = Math.max(0, matchedRecordIds.size - changeCounts.new_track);
     const metadataUpdates = changeCounts.updated_metadata + changeCounts.changed_album + changeCounts.changed_artist;
@@ -678,7 +769,7 @@ export const runSyncEngine = async (
       restored: changeCounts.restored_from_plex,
       duplicateCandidates: changeCounts.duplicate_candidate,
       matchConflicts: changeCounts.match_conflict,
-      failed: changeCounts.sync_error,
+      failed: changeCounts.sync_error + reconciliation.restoreVerificationFailures,
       durationMs,
     });
 
@@ -688,7 +779,7 @@ export const runSyncEngine = async (
       attempted: plexTracks.length,
       processed: matchedRecordIds.size,
       skipped: changeCounts.match_conflict,
-      failed: changeCounts.sync_error,
+      failed: changeCounts.sync_error + reconciliation.restoreVerificationFailures,
       scanned: plexTracks.length,
       matched: matchedExisting,
       newTracks: changeCounts.new_track,
@@ -697,10 +788,11 @@ export const runSyncEngine = async (
       renamedTracks: changeCounts.renamed_track,
       markedMissing: reconciliation.markedMissing,
       restored: changeCounts.restored_from_plex,
+      restoreVerificationFailures: reconciliation.restoreVerificationFailures,
       duplicateCandidates: changeCounts.duplicate_candidate,
       matchConflicts: changeCounts.match_conflict,
       durationMs,
-      activeDashboardCount: reconciliation.activeDashboardCount,
+      activeDashboardCount,
       hardDeleted: reconciliation.hardDeleted,
       message: summaryText,
       metadata: {
@@ -719,13 +811,18 @@ export const runSyncEngine = async (
           changedArtists: changeCounts.changed_artist,
           markedMissing: reconciliation.markedMissing,
           restored: changeCounts.restored_from_plex,
+          activeDatabaseRecords: activeDashboardCount,
+          unresolvedPlexTracks: changeCounts.match_conflict,
+          restoreVerificationFailures: reconciliation.restoreVerificationFailures,
           duplicateCandidates: changeCounts.duplicate_candidate,
           matchConflicts: changeCounts.match_conflict,
-          failed: changeCounts.sync_error,
+          failed: changeCounts.sync_error + reconciliation.restoreVerificationFailures,
         },
         events: syncEvents,
         duplicates: duplicateEvents,
         conflicts: conflictEvents,
+        restorations: reconciliation.restoreDiagnostics,
+        invalidatedHealthSnapshots,
       },
     };
 
@@ -746,11 +843,15 @@ export const runSyncEngine = async (
     }
 
     console.log(`[SyncEngine] Reconciliation for ${library.name}:`);
-    console.log(`[SyncEngine] Active tracks seen this run: ${summary.activeTracksSeen}`);
-    console.log(`[SyncEngine] Marked missing: ${summary.markedMissing}`);
-    console.log(`[SyncEngine] Previously missing restored: ${summary.restored}`);
-    console.log(`[SyncEngine] Active dashboard count: ${summary.activeDashboardCount}`);
-    console.log(`[PlexSync] Completed scanned=${summary.scanned} matched=${summary.matched} new=${summary.newTracks} updated=${summary.updatedMetadata} moved=${summary.movedFiles} missing=${summary.markedMissing} duplicates=${summary.duplicateCandidates} conflicts=${summary.matchConflicts} duration=${Math.round(summary.durationMs / 1000)}s`);
+    console.log(`[SyncEngine] Plex tracks scanned: ${summary.scanned}`);
+    console.log(`[SyncEngine] Existing records matched: ${summary.matched}`);
+    console.log(`[SyncEngine] New records created: ${summary.newTracks}`);
+    console.log(`[SyncEngine] Records restored this run: ${summary.restored}`);
+    console.log(`[SyncEngine] Records marked missing this run: ${summary.markedMissing}`);
+    console.log(`[SyncEngine] Unresolved Plex tracks: ${summary.matchConflicts}`);
+    console.log(`[SyncEngine] Active database records after commit: ${summary.activeDashboardCount}`);
+    console.log(`[SyncEngine] Restore verification failures: ${summary.restoreVerificationFailures}`);
+    console.log(`[PlexSync] Completed scanned=${summary.scanned} matched=${summary.matched} new=${summary.newTracks} restored=${summary.restored} active=${summary.activeDashboardCount} updated=${summary.updatedMetadata} moved=${summary.movedFiles} missing=${summary.markedMissing} duplicates=${summary.duplicateCandidates} conflicts=${summary.matchConflicts} restoreVerificationFailures=${summary.restoreVerificationFailures} duration=${Math.round(summary.durationMs / 1000)}s`);
     if (summary.hardDeleted > 0) console.log(`[SyncEngine] Hard-deleted after grace period: ${summary.hardDeleted}`);
 
   } catch (error: any) {

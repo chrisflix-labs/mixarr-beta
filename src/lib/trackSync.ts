@@ -188,20 +188,23 @@ export function matchPlexTrackToExistingRecord(
   );
   if (byRatingKey) return byRatingKey;
 
-  if (identity.plexGuid) {
-    const byGuid = oneOrConflict(
-      existingTracks.filter((track) => track.plexGuid && track.plexGuid === identity.plexGuid),
-      "plex_guid",
-    );
-    if (byGuid) return byGuid;
-  }
-
   if (identity.mediaPath) {
     const byPath = oneOrConflict(
       existingTracks.filter((track) => track.mediaPath && track.mediaPath === identity.mediaPath),
       "file_path",
     );
     if (byPath) return byPath;
+  }
+
+  // Plex GUIDs identify media metadata, not a unique physical library item. Copies,
+  // editions, and duplicate entries can legitimately share one. If the stable
+  // rating key and physical path did not match, surface the GUID overlap for review
+  // instead of allowing GUID (or a later metadata fallback) to claim the record.
+  if (identity.plexGuid) {
+    const guidCandidates = uniqueCandidates(existingTracks.filter((track) => track.plexGuid === identity.plexGuid));
+    if (guidCandidates.length) {
+      return { type: "conflict", reason: "plex_guid_requires_review", candidates: guidCandidates };
+    }
   }
 
   const exactMetadata = oneOrConflict(

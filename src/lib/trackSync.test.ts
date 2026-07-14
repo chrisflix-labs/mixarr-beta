@@ -100,6 +100,20 @@ describe("Plex track sync matching", () => {
     }
   });
 
+  it("does not merge a different Plex item that shares a GUID", () => {
+    const match = matchPlexTrackToExistingRecord(plexTrack({
+      ratingKey: "different-rating-key",
+      title: "Different Physical Copy",
+      Media: [{ Part: [{ file: "D:\\Music\\Different Physical Copy.flac" }] }],
+    }), [existingTrack]);
+
+    assert.equal(match.type, "conflict");
+    if (match.type === "conflict") {
+      assert.equal(match.reason, "plex_guid_requires_review");
+      assert.deepEqual(match.candidates.map((candidate) => candidate.id), ["track-1"]);
+    }
+  });
+
   it("marks inactive records as restored when the identity returns", () => {
     const changes = buildTrackSyncChangeSet({ ...existingTrack, syncStatus: "missing" }, plexTrack(), { artistId: "artist-1", albumId: "album-1" });
 

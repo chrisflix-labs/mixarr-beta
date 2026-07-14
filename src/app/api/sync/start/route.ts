@@ -59,7 +59,6 @@ export async function POST(req: Request) {
         userId,
         task: async () => {
           const result = await runSyncEngine(libraryId, syncSettings);
-          await invalidateLibraryHealthCache(userId, { libraryId, reason: "plex_sync_completed" });
           revalidatePath("/");
           revalidatePath("/library");
           revalidatePath("/library-health");

@@ -51,8 +51,8 @@ export const roadmapReleases: RoadmapRelease[] = [
     title: "Personalization Foundation",
     cycle: "2.1.x",
     status: "current",
-    description: "Creates the data models and services required for adaptive recommendations while keeping initial scoring changes conservative and fully optional.",
-    featureLabels: ["User recommendation profiles", "Playlist preference profiles", "Interaction history", "Personal scoring adjustments", "Global and user scoring separation", "Privacy controls", "Reset personalization data"],
+    description: "Creates the data models and services required for adaptive recommendations while keeping initial scoring changes conservative and fully optional. Also fixes repeated missing-track restoration during Plex sync: restored availability now persists, post-commit totals are authoritative, and reconciliation verifies every restore.",
+    featureLabels: ["User recommendation profiles", "Playlist preference profiles", "Interaction history", "Personal scoring adjustments", "Global and user scoring separation", "Privacy controls", "Reset personalization data", "Reliable Plex availability reconciliation"],
     releaseOrder: 100,
     route: "/release-notes",
   },
@@ -79,4 +79,3 @@ export const roadmapCycles: RoadmapCycle[] = [
 export function currentRoadmapRelease() {
   return roadmapReleases.find((release) => release.status === "current") || null;
 }
-

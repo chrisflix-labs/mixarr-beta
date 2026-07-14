@@ -234,6 +234,9 @@ export async function getDashboardSummary(userId: string) {
         updatedMetadata: Number(plexCounts.updatedMetadata || 0),
         duplicateCandidates: Number(plexCounts.duplicateCandidates || 0),
         matchConflicts: Number(plexCounts.matchConflicts || 0),
+        restored: Number(plexCounts.restored || 0),
+        restoreVerificationFailures: Number(plexCounts.restoreVerificationFailures || 0),
+        activeDatabaseRecords: Number(plexCounts.activeDatabaseRecords || 0),
       },
     },
   };

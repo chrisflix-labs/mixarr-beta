@@ -81,6 +81,8 @@ type HealthLibrary = {
   plexReportedTrackCount: number | null;
   mixarrActiveTrackCount: number;
   difference: number | null;
+  unresolvedTrackCount: number;
+  restoreVerificationFailureCount: number;
 };
 
 type MissingTrack = {
@@ -817,6 +819,8 @@ export default function LibraryHealthPage() {
               <div><span>Plex reported</span><b>{formatNumber(library.plexReportedTrackCount)}</b></div>
               <div><span>Mixarr active</span><b>{formatNumber(library.mixarrActiveTrackCount)}</b></div>
               <div><span>Difference</span><b className={library.difference === 0 ? styles.good : styles.bad}>{library.difference === null ? "â€”" : library.difference > 0 ? `+${library.difference}` : library.difference}</b></div>
+              <div title="Plex tracks retained for review because Mixarr could not resolve their identity safely."><span>Unresolved Plex tracks</span><b>{formatNumber(library.unresolvedTrackCount)}</b></div>
+              <div title="Availability restorations that did not update and verify exactly one expected database record."><span>Restore verification failures</span><b className={library.restoreVerificationFailureCount === 0 ? styles.good : styles.bad}>{formatNumber(library.restoreVerificationFailureCount)}</b></div>
             </div>
             <h4 className={styles.healthGroupTitle}>BPM Health</h4>
             <p className={styles.healthGroupCopy}>Mode: {library.bpmProviderMode}</p>

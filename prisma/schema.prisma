@@ -742,16 +742,20 @@ model PlaylistHistoryTrack {
 }
 
 model SyncLog {
-  id                     String    @id @default(uuid())
-  libraryId              String
-  status                 String // in_progress, success, failed
-  startedAt              DateTime  @default(now())
-  endedAt                DateTime?
-  reconciliationAt       DateTime?
-  snapshotComplete       Boolean   @default(false)
-  plexReportedTrackCount Int?
-  error                  String?
-  library                Library   @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  id                              String    @id @default(uuid())
+  libraryId                       String
+  status                          String // in_progress, success, warning, failed
+  startedAt                       DateTime  @default(now())
+  endedAt                         DateTime?
+  reconciliationAt                DateTime?
+  snapshotComplete                Boolean   @default(false)
+  plexReportedTrackCount          Int?
+  activeTrackCountAfterCommit     Int?
+  restoredTrackCount              Int       @default(0)
+  unresolvedTrackCount            Int       @default(0)
+  restoreVerificationFailureCount Int       @default(0)
+  error                           String?
+  library                         Library   @relation(fields: [libraryId], references: [id], onDelete: Cascade)
 
   @@index([libraryId, startedAt])
 }

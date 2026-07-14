@@ -1,8 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { GLOBAL_SYNC_JOB_KEY, acquireJobLock, getJobDebugSnapshot, resetJobLocksForTests, setJobPhase } from "./jobLock";
+import { syncJobKeys } from "./syncJobRunner";
 
 describe("sync job locking", () => {
+  it("uses a stable library-scoped lock for concurrent Plex sync attempts", () => {
+    assert.deepEqual(syncJobKeys("plex", "library-1"), [
+      "plex-sync:library:library-1",
+      GLOBAL_SYNC_JOB_KEY,
+      "plex",
+    ]);
+    assert.equal(syncJobKeys("plex", "library-1")[0], syncJobKeys("plex", "library-1")[0]);
+    assert.notEqual(syncJobKeys("plex", "library-1")[0], syncJobKeys("plex", "library-2")[0]);
+  });
+
   it("prevents duplicate manual sync jobs and releases cleanly", () => {
     resetJobLocksForTests();
     const first = acquireJobLock({ name: "audio features sync", keys: [GLOBAL_SYNC_JOB_KEY, "audio"] });

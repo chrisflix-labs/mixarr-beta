@@ -83,6 +83,7 @@ export const releaseNotes: ReleaseNote[] = [
       "Added confirmed reset modes for learned behavior or all personalization while preserving Plex metadata, playlists, versions, manual metadata corrections, and global Smart Mix settings.",
       "Personalization behavior remains in the local Mixarr database; no external behavioral analytics, cloud profile synchronization, or third-party profile storage was added.",
       "Updated the product roadmap to mark v2.0.x complete and present v2.1.x Personalization & Adaptive Recommendations as the current cycle.",
+      "Fixed repeated missing-track restoration during Plex sync. Restored tracks now persist as active, dashboard totals are recalculated after commit, and sync reconciliation includes stronger verification and diagnostics.",
     ],
   },
   {

@@ -57,6 +57,8 @@ describe("library health", () => {
     assert.equal(determineLibraryHealthStatus({ ...base, lastSyncStatus: "failed" }), "error");
     assert.equal(determineLibraryHealthStatus({ ...base, lastSyncStatus: "success", snapshotComplete: false }), "error");
     assert.equal(determineLibraryHealthStatus({ ...base, lastSyncStatus: "success", snapshotComplete: true, plexReportedTrackCount: 11 }), "error");
+    assert.equal(determineLibraryHealthStatus({ ...base, lastSyncStatus: "success", snapshotComplete: true, plexReportedTrackCount: 12, unresolvedTrackCount: 2 }), "warning");
+    assert.equal(determineLibraryHealthStatus({ ...base, lastSyncStatus: "warning", snapshotComplete: true, restoreVerificationFailureCount: 1 }), "error");
     assert.equal(determineLibraryHealthStatus({ ...base, lastSyncStatus: "in_progress", lastSyncAt: "2026-06-20T00:00:00Z" }), "error");
     assert.equal(determineLibraryHealthStatus({ ...base, lastSyncStatus: "in_progress", plexReportedTrackCount: 11 }), "warning");
   });
@@ -403,6 +405,7 @@ describe("library health", () => {
 
   it("invalidates Library Health cache after audio feature retry and sync completion", async () => {
     const syncStartRoute = await readFile(path.join(process.cwd(), "src/app/api/sync/start/route.ts"), "utf8");
+    const syncEngine = await readFile(path.join(process.cwd(), "src/lib/syncEngine.ts"), "utf8");
     const audioStartRoute = await readFile(path.join(process.cwd(), "src/app/api/audio-features/start/route.ts"), "utf8");
     const settingsRetryRoute = await readFile(path.join(process.cwd(), "src/app/api/settings/library-health/audio-feature-retry/route.ts"), "utf8");
     const detailRetryRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/retry/route.ts"), "utf8");
@@ -410,6 +413,8 @@ describe("library health", () => {
     const syncProgress = await readFile(path.join(process.cwd(), "src/components/SyncProgress.tsx"), "utf8");
 
     assert.match(syncStartRoute, /invalidateLibraryHealthCache\(userId, \{ libraryId, reason: "audio_feature_sync_completed" \}\)/);
+    assert.match(syncEngine, /reason: "plex_sync_committed"/);
+    assert.match(syncEngine, /const activeDashboardCount = await prisma\.track\.count/);
     assert.match(audioStartRoute, /invalidateLibraryHealthCache\(userId, \{ reason: "audio_feature_sync_completed" \}\)/);
     assert.match(settingsRetryRoute, /runAudioFeatureRetry/);
     assert.match(detailRetryRoute, /runAudioFeatureRetry/);

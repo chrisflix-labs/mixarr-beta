@@ -9,6 +9,7 @@
 - Added user-scoped profile, history, rebuild, reset, and playlist-preference APIs with typed validation and pagination.
 - Marked v2.0.x complete and v2.1.x current in a typed, centralized product roadmap source.
 - Personalization data remains local; no external behavioral analytics or profile synchronization was added.
+- Fixed repeated missing-track restoration during Plex sync with conditional persisted-state transitions, post-commit active totals, verified cache invalidation, and non-destructive conflict handling.
 
 ## v2.0.10 - Beta Feature Polish & Advanced Flags
 

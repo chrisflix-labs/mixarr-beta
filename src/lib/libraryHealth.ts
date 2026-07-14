@@ -122,6 +122,8 @@ export function determineLibraryHealthStatus(input: {
   lastSyncStatus?: string | null;
   snapshotComplete?: boolean | null;
   plexReportedTrackCount?: number | null;
+  unresolvedTrackCount?: number | null;
+  restoreVerificationFailureCount?: number | null;
   activeTrackCount: number;
   missingTrackCount: number;
   bpmFailureCount: number;
@@ -133,16 +135,19 @@ export function determineLibraryHealthStatus(input: {
   const staleAfterHours = input.staleAfterHours || Number(process.env.LIBRARY_HEALTH_STALE_HOURS || 24);
   const lastSyncAt = input.lastSyncAt ? new Date(input.lastSyncAt) : null;
   const stale = !lastSyncAt || now.getTime() - lastSyncAt.getTime() > staleAfterHours * 3_600_000;
-  const countMismatch = input.plexReportedTrackCount !== null
+  const countDifference = input.plexReportedTrackCount !== null
     && input.plexReportedTrackCount !== undefined
-    && input.plexReportedTrackCount !== input.activeTrackCount;
+    ? Math.abs(input.plexReportedTrackCount - input.activeTrackCount)
+    : 0;
+  const countMismatch = countDifference > Math.max(0, input.unresolvedTrackCount || 0);
 
   if (!input.lastSyncStatus || input.lastSyncStatus === "failed") return "error";
+  if ((input.restoreVerificationFailureCount || 0) > 0) return "error";
   if (input.lastSyncStatus === "success" && countMismatch) return "error";
   if (input.lastSyncStatus === "success" && input.snapshotComplete !== true) return "error";
   if (input.lastSyncStatus === "in_progress" && stale) return "error";
   if (input.lastSyncStatus !== "success") return "warning";
-  if (input.missingTrackCount > 0 || input.bpmFailureCount > 0 || stale) return "warning";
+  if (input.missingTrackCount > 0 || input.bpmFailureCount > 0 || (input.unresolvedTrackCount || 0) > 0 || stale) return "warning";
   return "healthy";
 }
 
@@ -611,6 +616,8 @@ type LibraryForHealth = {
     endedAt: Date | null;
     snapshotComplete: boolean;
     error: string | null;
+    unresolvedTrackCount: number;
+    restoreVerificationFailureCount: number;
   }>;
 };
 
@@ -681,6 +688,8 @@ type LibraryHealthSnapshotPayload = {
   plexReportedTrackCount: number | null;
   mixarrActiveTrackCount: number;
   difference: number | null;
+  unresolvedTrackCount: number;
+  restoreVerificationFailureCount: number;
 };
 
 function snapshotInvariant(section: string, counts: Record<string, number>, ok: boolean, message: string) {
@@ -993,7 +1002,7 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
   const genres = await timedHealthGroup(library, "genres", () => getGenreHealthCounts(library.id));
   const popularity = await timedHealthGroup(library, "popularity", () => getPopularityHealthCounts(library.id));
   const lastReconciliation = await timedHealthGroup(library, "reconciliation", () => prisma.syncLog.findFirst({
-    where: { libraryId: library.id, status: "success", snapshotComplete: true, reconciliationAt: { not: null } },
+    where: { libraryId: library.id, status: { in: ["success", "warning"] }, snapshotComplete: true, reconciliationAt: { not: null } },
     orderBy: { reconciliationAt: "desc" },
   }));
   const latest = library.syncLogs[0] || null;
@@ -1003,6 +1012,8 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
     lastSyncStatus: latest?.status,
     snapshotComplete: latest?.snapshotComplete,
     plexReportedTrackCount,
+    unresolvedTrackCount: lastReconciliation?.unresolvedTrackCount || 0,
+    restoreVerificationFailureCount: lastReconciliation?.restoreVerificationFailureCount || 0,
     activeTrackCount: base.activeTracks,
     missingTrackCount: base.missingTracks,
     bpmFailureCount: bpm.bpmFailed,
@@ -1074,6 +1085,8 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
     plexReportedTrackCount,
     mixarrActiveTrackCount: base.activeTracks,
     difference,
+    unresolvedTrackCount: lastReconciliation?.unresolvedTrackCount || 0,
+    restoreVerificationFailureCount: lastReconciliation?.restoreVerificationFailureCount || 0,
   };
   const durationMs = Date.now() - started;
   console.log(`[LibraryHealth] calculated library=${library.id} name=${JSON.stringify(library.name)} activeTracks=${base.activeTracks} durationMs=${durationMs} source=fresh`);
@@ -1173,7 +1186,15 @@ export async function invalidateLibraryHealthCache(userId: string, options: {
     },
   };
   const result = await prisma.libraryHealthSnapshot.deleteMany({ where });
-  console.log(`[LibraryHealth] invalidated health snapshot cache count=${result.count} reason=${options.reason || "manual"}${options.libraryId ? ` library=${options.libraryId}` : ""}`);
+  const remaining = await prisma.libraryHealthSnapshot.count({ where });
+  console.log(`[LibraryHealth] invalidated health snapshot cache count=${result.count} remaining=${remaining} reason=${options.reason || "manual"}${options.libraryId ? ` library=${options.libraryId}` : ""}`);
+  if (remaining > 0) {
+    console.warn("[LibraryHealth] health snapshot cache invalidation incomplete", {
+      userId,
+      libraryId: options.libraryId || null,
+      remaining,
+    });
+  }
   return result.count;
 }
 
