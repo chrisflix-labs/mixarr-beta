@@ -358,7 +358,7 @@ export default async function LibraryPage({
                       <tr key={track.id}>
                         <td><TrackSelectionCheckbox trackId={track.id} /></td>
                         <td className={styles.titleCell}>
-                          <div className={styles.trackTitle}>{track.title}</div>
+                          <Link href={`/tracks/${track.id}`} className={styles.trackTitle}>{track.title}</Link>
                           <div className={styles.subtle}>{formatDuration(track.duration)}</div>
                           {track.syncStatus !== "active" && (
                             <div className={styles.badges}>

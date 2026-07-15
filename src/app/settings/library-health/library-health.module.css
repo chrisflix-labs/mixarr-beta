@@ -88,6 +88,14 @@
 .pagination { margin-top: .8rem; color: var(--muted); font-size: .76rem; }
 .pagination div { display: flex; align-items: center; gap: .5rem; }
 .pagination button { display: grid; place-items: center; background: rgba(255,255,255,.04); border: 1px solid var(--line); color: var(--fg); border-radius: var(--radius-sm); padding: .35rem; cursor: pointer; }
+.statsGrid { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: .65rem; margin: 1rem 0; }
+.statsGrid > div { padding: .75rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(255,255,255,.025); }
+.statsGrid span { display: block; color: var(--muted); font-size: .7rem; }
+.statsGrid strong { display: block; margin-top: .2rem; font-size: 1.1rem; }
+.actions { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; }
+.notice { padding: .75rem 1rem; border: 1px solid rgba(53,174,234,.3); border-radius: var(--radius-sm); background: rgba(53,174,234,.08); }
+.statLink { display: inline-flex; width: fit-content; margin-top: .15rem; padding: 0; border: 0; border-bottom: 1px solid currentColor; background: transparent; color: var(--accent); font: inherit; font-size: 1.05rem; font-weight: 800; cursor: pointer; text-decoration: none; }
+.statLink:hover, .statLink:focus-visible { color: var(--fg); outline: 2px solid var(--accent); outline-offset: 3px; }
 .modalBackdrop { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.72); display: grid; place-items: center; padding: 1rem; }
 .modal { width: min(100%,520px); background: var(--panel); border: 1px solid rgba(215,91,91,.3); border-radius: var(--radius-lg); padding: 1.35rem; box-shadow: 0 24px 80px rgba(0,0,0,.5); }
 .modal h3 { margin: .6rem 0; }

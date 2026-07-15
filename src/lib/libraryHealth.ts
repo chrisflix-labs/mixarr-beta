@@ -631,6 +631,11 @@ type LibraryHealthSnapshotPayload = {
   missingTracks: number;
   missingAlbums: number;
   missingArtists: number;
+  duplicateGroups: number;
+  possibleDuplicates: number;
+  unmatchedMetadata: number;
+  missingMood: number;
+  missingEnergy: number;
   tracksWithBpm: number;
   bpmApi: number;
   bpmLocal: number;
@@ -759,7 +764,13 @@ async function getBaseHealthCounts(libraryId: string) {
       (SELECT COUNT(*) FROM "Track" WHERE "libraryId" = ${libraryId} AND "syncStatus" = 'active') AS active_tracks,
       (SELECT COUNT(*) FROM "Track" WHERE "libraryId" = ${libraryId} AND "syncStatus" = 'missing') AS missing_tracks,
       (SELECT COUNT(*) FROM "Album" WHERE "libraryId" = ${libraryId} AND "syncStatus" = 'missing') AS missing_albums,
-      (SELECT COUNT(*) FROM "Artist" WHERE "libraryId" = ${libraryId} AND "syncStatus" = 'missing') AS missing_artists
+      (SELECT COUNT(*) FROM "Artist" WHERE "libraryId" = ${libraryId} AND "syncStatus" = 'missing') AS missing_artists,
+      (SELECT COUNT(*) FROM "CanonicalRecording" WHERE "libraryId" = ${libraryId}) AS duplicate_groups,
+      (SELECT COUNT(*) FROM "Track" WHERE "libraryId" = ${libraryId} AND "syncStatus" = 'active' AND "duplicateReviewStatus" = 'needs_review') AS possible_duplicates,
+      (SELECT COUNT(*) FROM "Track" WHERE "libraryId" = ${libraryId} AND "syncStatus" = 'active' AND ("normalizedTitle" IS NULL OR "normalizedTitle" = '')) AS unmatched_metadata,
+      (SELECT COUNT(*) FROM "Track" t LEFT JOIN "AudioFeature" af ON af."trackId" = t."id" WHERE t."libraryId" = ${libraryId} AND t."syncStatus" = 'active' AND af."effectiveMood" IS NULL AND af."localMood" IS NULL AND af."apiMood" IS NULL AND af."valence" IS NULL AND NOT EXISTS (SELECT 1 FROM "TrackMetadataCorrection" mc WHERE mc."trackId" = t."id" AND mc."field" = 'mood' AND mc."isActive")) AS missing_mood,
+      (SELECT COUNT(*) FROM "Track" t LEFT JOIN "AudioFeature" af ON af."trackId" = t."id" WHERE t."libraryId" = ${libraryId} AND t."syncStatus" = 'active' AND af."effectiveEnergy" IS NULL AND af."localEnergy" IS NULL AND af."apiEnergy" IS NULL AND af."energy" IS NULL AND NOT EXISTS (SELECT 1 FROM "TrackMetadataCorrection" mc WHERE mc."trackId" = t."id" AND mc."field" = 'energy' AND mc."isActive")) AS missing_energy,
+      (SELECT COUNT(*) FROM "PlexSyncConflict" WHERE "libraryId" = ${libraryId} AND "resolutionStatus" = 'unresolved') AS unresolved_plex_tracks
   `;
   const row = rows[0];
   return {
@@ -767,6 +778,12 @@ async function getBaseHealthCounts(libraryId: string) {
     missingTracks: countValue(row, "missing_tracks"),
     missingAlbums: countValue(row, "missing_albums"),
     missingArtists: countValue(row, "missing_artists"),
+    duplicateGroups: countValue(row, "duplicate_groups"),
+    possibleDuplicates: countValue(row, "possible_duplicates"),
+    unmatchedMetadata: countValue(row, "unmatched_metadata"),
+    missingMood: countValue(row, "missing_mood"),
+    missingEnergy: countValue(row, "missing_energy"),
+    unresolvedPlexTracks: countValue(row, "unresolved_plex_tracks"),
   };
 }
 
@@ -1008,11 +1025,12 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
   const latest = library.syncLogs[0] || null;
   const plexReportedTrackCount = lastReconciliation?.plexReportedTrackCount ?? null;
   const difference = plexReportedTrackCount === null ? null : base.activeTracks - plexReportedTrackCount;
+  const unresolvedTrackCount = Math.max(base.unresolvedPlexTracks, lastReconciliation?.unresolvedTrackCount || 0);
   const status = determineLibraryHealthStatus({
     lastSyncStatus: latest?.status,
     snapshotComplete: latest?.snapshotComplete,
     plexReportedTrackCount,
-    unresolvedTrackCount: lastReconciliation?.unresolvedTrackCount || 0,
+    unresolvedTrackCount,
     restoreVerificationFailureCount: lastReconciliation?.restoreVerificationFailureCount || 0,
     activeTrackCount: base.activeTracks,
     missingTrackCount: base.missingTracks,
@@ -1036,6 +1054,11 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
     missingTracks: base.missingTracks,
     missingAlbums: base.missingAlbums,
     missingArtists: base.missingArtists,
+    duplicateGroups: base.duplicateGroups,
+    possibleDuplicates: base.possibleDuplicates,
+    unmatchedMetadata: base.unmatchedMetadata,
+    missingMood: base.missingMood,
+    missingEnergy: base.missingEnergy,
     tracksWithBpm: bpm.tracksWithBpm,
     bpmApi: bpm.bpmApi,
     bpmLocal: bpm.bpmLocal,
@@ -1085,7 +1108,7 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
     plexReportedTrackCount,
     mixarrActiveTrackCount: base.activeTracks,
     difference,
-    unresolvedTrackCount: lastReconciliation?.unresolvedTrackCount || 0,
+    unresolvedTrackCount,
     restoreVerificationFailureCount: lastReconciliation?.restoreVerificationFailureCount || 0,
   };
   const durationMs = Date.now() - started;

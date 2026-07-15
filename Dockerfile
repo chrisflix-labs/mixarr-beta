@@ -82,5 +82,7 @@ ENV PORT=3000
 # set hostname to localhost
 ENV HOSTNAME="0.0.0.0"
 
-# Run Prisma migrations and then start Next.js
-CMD ["sh", "-c", "npx --yes prisma@5.14.0 db push --skip-generate && node server.js"]
+# Existing installations historically used `db push`, so required identity fields
+# must be added and populated before Prisma reconciles the final schema. The
+# post-push step performs the same idempotent data backfill as the v2.1.1 migration.
+CMD ["sh", "-c", "npx --yes prisma@5.14.0 db execute --schema prisma/schema.prisma --file prisma/db-push-preflight.sql && npx --yes prisma@5.14.0 db push --skip-generate && npx --yes prisma@5.14.0 db execute --schema prisma/schema.prisma --file prisma/db-push-v2.1.1-backfill.sql && node server.js"]

@@ -50,7 +50,7 @@ const booleanFields = ["isLive", "isRemaster", "isExplicit", "hasPopularity"] as
 const fields = ["popularity", "energy", "valence", "tempo", "year", "duration", "rating", "playCount", "isLive", "isRemaster", "isExplicit", "hasPopularity", "genre", "title", "artist", "album"] as const;
 const operators = ["eq", "contains", "not_contains", "gt", "lt", "gte", "lte"] as const;
 const combinators = ["AND", "OR"] as const;
-const duplicateStrategies = ["allow", "song_artist"] as const;
+const duplicateStrategies = ["allow", "song_artist", "avoid_recordings", "allow_alternate_copies", "prefer_highest_quality", "prefer_existing_playlist_copy"] as const;
 const smartMixEngineVersions = [SMART_MIX_ENGINE_V1, SMART_MIX_ENGINE_V2] as const;
 const moodBlendModes = ["off", "smooth_transition", "strict_matching", "mixed_mood"] as const;
 const v2SoftMetadataFilterFields = new Set<string>(["popularity", "energy", "valence", "tempo"]);
@@ -371,11 +371,19 @@ export function buildTrackWhereClause(
 }
 
 function duplicateKey(track: any) {
-  return `${track.artistId}:${track.normalizedTitle || normalizeTitle(track.title)}`;
+  return track.canonicalRecordingId ? `canonical:${track.canonicalRecordingId}` : `${track.artistId}:${track.normalizedTitle || normalizeTitle(track.title)}`;
 }
 
 function duplicateScore(track: any, index: number, config: PlaylistConfigInput) {
   let score = 100000 - index;
+  if (track.preferredDuplicateCopy) score += 1_000_000;
+  if (track.syncStatus === "active" && track.localFileStatus !== "missing") score += 100_000;
+  const formatRank: Record<string, number> = { flac: 9, alac: 8, wav: 8, aiff: 8, opus: 6, aac: 5, m4a: 5, mp3: 4, ogg: 4 };
+  score += (formatRank[String(track.fileFormat || "").toLowerCase()] || 0) * 5_000;
+  score += Math.min(4_000, Math.max(0, Number(track.bitrate) || 0));
+  if (track.plexGuid && track.mediaPath) score += 1_500;
+  if (config.pinnedTrackIds?.includes(track.id)) score += 250_000;
+  if (config.duplicateStrategy === "prefer_existing_playlist_copy" && config.pinnedTrackIds?.includes(track.id)) score += 750_000;
   if (config.preferNonLive && !track.isLive) score += 10000;
   if (!track.isRemaster) score += 5000;
   if (track.popularity?.score) score += track.popularity.score;
@@ -383,8 +391,8 @@ function duplicateScore(track: any, index: number, config: PlaylistConfigInput) 
   return score;
 }
 
-function applyDuplicatePolicy(tracks: any[], config: PlaylistConfigInput, limit: number) {
-  if (config.duplicateStrategy === "allow") return tracks.slice(0, limit);
+export function applyDuplicatePolicy(tracks: any[], config: PlaylistConfigInput, limit: number) {
+  if (config.duplicateStrategy === "allow" || config.duplicateStrategy === "allow_alternate_copies") return tracks.slice(0, limit);
 
   const selected: any[] = [];
   for (let index = 0; index < tracks.length; index += 1) {
@@ -848,7 +856,7 @@ export async function generatePlaylistTracksWithStats({
       maxPlaylistSize,
       useSmartMixV2
         ? Math.max(safetyCandidateLimit * 8, safetyCandidateLimit + 50)
-        : config.duplicateStrategy === "allow"
+        : config.duplicateStrategy === "allow" || config.duplicateStrategy === "allow_alternate_copies"
         ? safetyCandidateLimit
         : Math.max(safetyCandidateLimit * 5, safetyCandidateLimit + 25),
     );
@@ -1196,7 +1204,7 @@ export async function previewPlaylistTracks({
     sortMode: tuningConfig.bpmFlow.enabled && tuningConfig.bpmFlow.mode !== "DISABLED"
       ? `BPM ${tuningConfig.bpmFlow.mode.replace("_", " ").toLowerCase()} flow`
       : "Popularity score descending",
-    duplicateStrategy: config.duplicateStrategy === "allow" ? "Allow duplicates" : "One version per song",
+    duplicateStrategy: config.duplicateStrategy === "allow" || config.duplicateStrategy === "allow_alternate_copies" ? "Allow alternate copies" : config.duplicateStrategy === "prefer_highest_quality" ? "Prefer highest-quality copy" : config.duplicateStrategy === "prefer_existing_playlist_copy" ? "Prefer the Plex copy already in the playlist" : "Avoid duplicate recordings",
     diversity: {
       artistCount: new Set(previewTracks.map((track) => track.artist?.title).filter(Boolean)).size,
       albumCount: new Set(previewTracks.map((track) => track.album?.title).filter(Boolean)).size,

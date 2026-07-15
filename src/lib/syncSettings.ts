@@ -31,6 +31,7 @@ export type SyncEngineOptions = {
   audioFeatureMinimumConfidence?: number | null;
   providerDelayMs?: number | null;
   rateLimitBackoffEnabled?: boolean | null;
+  automaticallyShareDuplicateEnrichment?: boolean | null;
 };
 
 export const numericSyncSettingKeys = [
@@ -59,6 +60,7 @@ export const booleanSyncSettingKeys = [
   "reprocessLocalAudioFeatures",
   "includeEstimatedAudioFeaturesInFilters",
   "rateLimitBackoffEnabled",
+  "automaticallyShareDuplicateEnrichment",
 ] as const;
 
 export const stringSyncSettingKeys = [
@@ -235,6 +237,7 @@ export async function getUserSyncSettings(userId: string): Promise<SyncEngineOpt
       audioFeatureMinimumConfidence: true,
       providerDelayMs: true,
       rateLimitBackoffEnabled: true,
+      automaticallyShareDuplicateEnrichment: true,
     },
   });
 

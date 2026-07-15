@@ -37,6 +37,7 @@ const syncSettingsSelect = {
   audioFeatureMinimumConfidence: true,
   providerDelayMs: true,
   rateLimitBackoffEnabled: true,
+  automaticallyShareDuplicateEnrichment: true,
 } as const;
 
 export async function GET() {

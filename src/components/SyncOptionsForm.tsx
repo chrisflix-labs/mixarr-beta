@@ -31,6 +31,7 @@ type FormState = Record<SyncOptionKey, string> & {
   localAudioFeaturesScope: "windows" | "whole_track" | "";
   includeEstimatedAudioFeaturesInFilters: boolean;
   rateLimitBackoffEnabled: boolean;
+  automaticallyShareDuplicateEnrichment: boolean;
 };
 
 const emptyState: FormState = {
@@ -58,6 +59,7 @@ const emptyState: FormState = {
   localAudioFeaturesScope: "",
   includeEstimatedAudioFeaturesInFilters: false,
   rateLimitBackoffEnabled: true,
+  automaticallyShareDuplicateEnrichment: true,
 };
 
 const fields: Array<{
@@ -177,6 +179,7 @@ export default function SyncOptionsForm() {
       nextState.localAudioFeaturesScope = res.data?.localAudioFeaturesScope === "whole_track" ? "whole_track" : res.data?.localAudioFeaturesScope === "windows" ? "windows" : "";
       nextState.includeEstimatedAudioFeaturesInFilters = res.data?.includeEstimatedAudioFeaturesInFilters === true;
       nextState.rateLimitBackoffEnabled = res.data?.rateLimitBackoffEnabled !== false;
+      nextState.automaticallyShareDuplicateEnrichment = res.data?.automaticallyShareDuplicateEnrichment !== false;
       setForm(nextState);
     } finally {
       setLoading(false);
@@ -209,6 +212,7 @@ export default function SyncOptionsForm() {
         localAudioFeaturesScope: form.localAudioFeaturesScope || null,
         includeEstimatedAudioFeaturesInFilters: form.includeEstimatedAudioFeaturesInFilters,
         rateLimitBackoffEnabled: form.rateLimitBackoffEnabled,
+        automaticallyShareDuplicateEnrichment: form.automaticallyShareDuplicateEnrichment,
       });
       const nextState = { ...emptyState };
       fields.forEach(({ key }) => {
@@ -232,6 +236,7 @@ export default function SyncOptionsForm() {
       nextState.localAudioFeaturesScope = res.data?.localAudioFeaturesScope === "whole_track" ? "whole_track" : res.data?.localAudioFeaturesScope === "windows" ? "windows" : "";
       nextState.includeEstimatedAudioFeaturesInFilters = res.data?.includeEstimatedAudioFeaturesInFilters === true;
       nextState.rateLimitBackoffEnabled = res.data?.rateLimitBackoffEnabled !== false;
+      nextState.automaticallyShareDuplicateEnrichment = res.data?.automaticallyShareDuplicateEnrichment !== false;
       setForm(nextState);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1800);
@@ -267,6 +272,7 @@ export default function SyncOptionsForm() {
       nextState.localAudioFeaturesScope = res.data?.localAudioFeaturesScope === "whole_track" ? "whole_track" : res.data?.localAudioFeaturesScope === "windows" ? "windows" : "";
       nextState.includeEstimatedAudioFeaturesInFilters = res.data?.includeEstimatedAudioFeaturesInFilters === true;
       nextState.rateLimitBackoffEnabled = res.data?.rateLimitBackoffEnabled !== false;
+      nextState.automaticallyShareDuplicateEnrichment = res.data?.automaticallyShareDuplicateEnrichment !== false;
       setForm(nextState);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1800);
@@ -513,6 +519,19 @@ export default function SyncOptionsForm() {
           <span style={hintStyle}>
             Off keeps confirmed no-data and failed BPM attempts out of the queue. On retries them, including extraction failures, on the next BPM backfill run.
           </span>
+        </span>
+      </label>
+
+      <label style={toggleStyle}>
+        <input
+          type="checkbox"
+          checked={form.automaticallyShareDuplicateEnrichment}
+          onChange={(event) => setForm((current) => ({ ...current, automaticallyShareDuplicateEnrichment: event.target.checked }))}
+          style={checkboxStyle}
+        />
+        <span style={{ display: "grid", gap: "0.25rem" }}>
+          <span style={labelStyle}>Automatically share enrichment across confirmed duplicates</span>
+          <span style={hintStyle}>Confirmed duplicate recordings can reuse BPM, mood, energy, and other analysis data. Each Plex library item remains stored separately.</span>
         </span>
       </label>
 

@@ -77,7 +77,7 @@ export function summarizePlaylistRecipeFilters(filters: PlaylistConfigInput) {
 
   parts.push(`Limit: ${filters.limit}`);
   parts.push("Sort: Popularity");
-  parts.push(`Duplicates: ${filters.duplicateStrategy === "allow" ? "Allowed" : "One per song"}`);
+  parts.push(`Duplicates: ${filters.duplicateStrategy === "allow" || filters.duplicateStrategy === "allow_alternate_copies" ? "Alternate copies allowed" : filters.duplicateStrategy === "prefer_highest_quality" ? "Highest-quality copy preferred" : filters.duplicateStrategy === "prefer_existing_playlist_copy" ? "Existing playlist copy preferred" : "Duplicate recordings avoided"}`);
 
   const negative = negativeFilterLabels(filters.negativeFilters);
   if (negative.length) parts.push(`Filters: ${negative.slice(0, 3).join(", ")}${negative.length > 3 ? "..." : ""}`);

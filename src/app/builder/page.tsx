@@ -284,7 +284,7 @@ export default function BuilderPage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [serverId, setServerId] = useState("");
   const [libraryId, setLibraryId] = useState("");
-  const [duplicateStrategy, setDuplicateStrategy] = useState<"allow" | "song_artist">("song_artist");
+  const [duplicateStrategy, setDuplicateStrategy] = useState<"allow" | "song_artist" | "avoid_recordings" | "allow_alternate_copies" | "prefer_highest_quality" | "prefer_existing_playlist_copy">("avoid_recordings");
   const [preferNonLive, setPreferNonLive] = useState(true);
   const [excludeRemasters, setExcludeRemasters] = useState(false);
   const [negativeFilters, setNegativeFilters] = useState<NegativeFilters>({
@@ -1588,9 +1588,11 @@ export default function BuilderPage() {
             <div className={styles.behaviorRow}>
               <label className={styles.optionLabel}>
                 Duplicate Control
-                <select value={duplicateStrategy} onChange={(e) => { setDuplicateStrategy(e.target.value as "allow" | "song_artist"); clearPreview(); }} className={styles.select}>
-                  <option value="song_artist">One version per song</option>
-                  <option value="allow">Allow duplicates</option>
+                <select value={duplicateStrategy} onChange={(e) => { setDuplicateStrategy(e.target.value as typeof duplicateStrategy); clearPreview(); }} className={styles.select}>
+                  <option value="avoid_recordings">Avoid duplicate recordings</option>
+                  <option value="allow_alternate_copies">Allow alternate copies</option>
+                  <option value="prefer_highest_quality">Prefer highest-quality copy</option>
+                  <option value="prefer_existing_playlist_copy">Prefer the Plex copy already in the playlist</option>
                 </select>
               </label>
               <label className={styles.optionLabel}>

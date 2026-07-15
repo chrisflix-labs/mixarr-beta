@@ -34,7 +34,7 @@ export default function RoadmapPage() {
         </section>
       ))}
 
-      <section className={styles.releasePanel} aria-labelledby="current-release"><div className={styles.panelIcon}><CalendarCheck size={20} /></div><div><span className={styles.badge}>Current release</span><h3 id="current-release">v2.1.0 — Personalization Foundation</h3><p>Optional local profiles and conservative personal scoring begin the v2.1.x adaptive recommendation cycle.</p></div></section>
+      <section className={styles.releasePanel} aria-labelledby="current-release"><div className={styles.panelIcon}><CalendarCheck size={20} /></div><div><span className={styles.badge}>Current release</span><h3 id="current-release">v2.1.1 — Duplicate Preservation & Plex Conflict Inspector</h3><p>Every Plex item is preserved as a physical instance while confirmed recordings can share trusted enrichment non-destructively.</p></div></section>
 
       <section className={styles.communityGrid} aria-label="Community and beta access">
         <article className={styles.callout}><div className={styles.calloutIcon}><MessageCircle size={18} /></div><div><h3>Community feedback</h3><p>Follow development, report bugs, and suggest roadmap ideas.</p>{MIXARR_BETA_DISCORD_URL ? <a href={MIXARR_BETA_DISCORD_URL} target="_blank" rel="noopener noreferrer">Open Discord</a> : <Link href="/support">Open Beta Support</Link>}</div></article>

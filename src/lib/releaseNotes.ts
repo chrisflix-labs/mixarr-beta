@@ -72,6 +72,22 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.1.1",
+    title: "Duplicate Preservation & Plex Conflict Inspector",
+    releaseDate: "July 14, 2026",
+    badges: ["Plex", "Library Sync", "Library Health", "Track Matching", "Database", "Data Enrichment", "Playlists", "Diagnostics", "Performance", "Reliability", "UI"],
+    changes: [
+      "Changed Plex synchronization identity to server, library, and rating key so GUID, path, or metadata overlap can never suppress a physical Plex track instance.",
+      "Added canonical recording groups with confidence, evidence, review state, preferred sources, and non-destructive split/merge controls while preserving every existing Track ID and relationship.",
+      "Added duplicate enrichment sharing for BPM, mood, and energy with manual/local/API precedence, field provenance, track-level overrides, and a default-enabled setting.",
+      "Added a searchable, filterable, paginated Plex Conflict Inspector with row and bulk resolution actions plus a calculated, idempotent Repair Unresolved Plex Tracks preview.",
+      "Made non-zero Library Health counts actionable and added missing album, artist, and track detail views, duplicate-group inspection, and duplicate-copy details on track pages.",
+      "Updated Plex summaries and structured logs to distinguish active instances, grouped duplicates, inherited data, review relationships, and genuine persistence failures; duplicate relationships no longer count as skipped tracks.",
+      "Added duplicate-aware playlist controls that avoid canonical recording repeats by default while allowing alternate copies and deterministic quality or existing-copy preferences.",
+      "Added safe schema backfill, indexed duplicate lookups, server-side pagination, bounded bulk operations, and regression coverage for preservation, grouping, inheritance, manual overrides, ambiguous matches, repeat syncs, and repair totals.",
+    ],
+  },
+  {
     version: "2.1.0",
     title: "Personalization Foundation",
     releaseDate: "July 13, 2026",

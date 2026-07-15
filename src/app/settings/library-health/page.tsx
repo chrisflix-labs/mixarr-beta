@@ -18,6 +18,11 @@ type HealthLibrary = {
   missingTracks: number;
   missingAlbums: number;
   missingArtists: number;
+  duplicateGroups: number;
+  possibleDuplicates: number;
+  unmatchedMetadata: number;
+  missingMood: number;
+  missingEnergy: number;
   tracksWithBpm: number;
   bpmApi: number;
   bpmLocal: number;
@@ -810,17 +815,23 @@ export default function LibraryHealthPage() {
             <h4 className={styles.healthGroupTitle}>Plex Sync Health</h4>
             <p className={styles.healthGroupCopy}>Normal health stats count active Plex tracks only. Missing and deleted records are excluded from metadata totals.</p>
             <div className={styles.primaryStats}>
-              <div><span>Active tracks</span><strong>{formatNumber(library.activeTracks)}</strong></div>
-              <div><span>Missing tracks</span><strong>{formatNumber(library.missingTracks)}</strong></div>
-              <div><span>Missing albums</span><strong>{formatNumber(library.missingAlbums)}</strong></div>
-              <div><span>Missing artists</span><strong>{formatNumber(library.missingArtists)}</strong></div>
+              <div><span>Active tracks</span>{library.activeTracks > 0 ? <Link className={styles.statLink} href={`/library-health?category=all_tracks&libraryId=${library.id}`}>{formatNumber(library.activeTracks)}</Link> : <strong>0</strong>}</div>
+              <div><span>Missing tracks</span>{library.missingTracks > 0 ? <Link className={styles.statLink} href={`/settings/library-health/missing/tracks?libraryId=${library.id}`}>{formatNumber(library.missingTracks)}</Link> : <strong>0</strong>}</div>
+              <div><span>Missing albums</span>{library.missingAlbums > 0 ? <Link className={styles.statLink} href={`/settings/library-health/missing/albums?libraryId=${library.id}`}>{formatNumber(library.missingAlbums)}</Link> : <strong>0</strong>}</div>
+              <div><span>Missing artists</span>{library.missingArtists > 0 ? <Link className={styles.statLink} href={`/settings/library-health/missing/artists?libraryId=${library.id}`}>{formatNumber(library.missingArtists)}</Link> : <strong>0</strong>}</div>
             </div>
             <div className={styles.integrity}>
-              <div><span>Plex reported</span><b>{formatNumber(library.plexReportedTrackCount)}</b></div>
-              <div><span>Mixarr active</span><b>{formatNumber(library.mixarrActiveTrackCount)}</b></div>
-              <div><span>Difference</span><b className={library.difference === 0 ? styles.good : styles.bad}>{library.difference === null ? "â€”" : library.difference > 0 ? `+${library.difference}` : library.difference}</b></div>
-              <div title="Plex tracks retained for review because Mixarr could not resolve their identity safely."><span>Unresolved Plex tracks</span><b>{formatNumber(library.unresolvedTrackCount)}</b></div>
-              <div title="Availability restorations that did not update and verify exactly one expected database record."><span>Restore verification failures</span><b className={library.restoreVerificationFailureCount === 0 ? styles.good : styles.bad}>{formatNumber(library.restoreVerificationFailureCount)}</b></div>
+              <div><span>Plex reported</span>{(library.plexReportedTrackCount || 0) > 0 ? <Link className={styles.statLink} href={`/settings/library-health/plex-conflicts?libraryId=${library.id}&status=all`}>{formatNumber(library.plexReportedTrackCount)}</Link> : <b>0</b>}</div>
+              <div><span>Mixarr active</span>{library.mixarrActiveTrackCount > 0 ? <Link className={styles.statLink} href={`/library-health?category=all_tracks&libraryId=${library.id}`}>{formatNumber(library.mixarrActiveTrackCount)}</Link> : <b>0</b>}</div>
+              <div><span>Difference</span>{library.difference ? <Link className={`${styles.statLink} ${styles.bad}`} href={`/settings/library-health/plex-conflicts?libraryId=${library.id}`}>{library.difference > 0 ? `+${library.difference}` : library.difference}</Link> : <b className={styles.good}>{library.difference === null ? "—" : "0"}</b>}</div>
+              <div title="Plex items are stored as active tracks even when their duplicate relationship needs review."><span>Unresolved Plex tracks</span>{library.unresolvedTrackCount > 0 ? <Link className={styles.statLink} href={`/settings/library-health/plex-conflicts?libraryId=${library.id}`}>{formatNumber(library.unresolvedTrackCount)}</Link> : <b>0</b>}</div>
+              <div title="Availability restorations that did not update and verify exactly one expected database record."><span>Restore verification failures</span>{library.restoreVerificationFailureCount > 0 ? <Link className={`${styles.statLink} ${styles.bad}`} href={`/settings/library-health/plex-conflicts?libraryId=${library.id}&status=all`}>{formatNumber(library.restoreVerificationFailureCount)}</Link> : <b className={styles.good}>0</b>}</div>
+              <div><span>Duplicate groups</span>{(library.duplicateGroups || 0) > 0 ? <Link className={styles.statLink} href={`/settings/library-health/duplicate-groups?libraryId=${library.id}`}>{formatNumber(library.duplicateGroups)}</Link> : <b>0</b>}</div>
+              <div><span>Possible duplicates</span>{(library.possibleDuplicates || 0) > 0 ? <Link className={styles.statLink} href={`/settings/library-health/plex-conflicts?libraryId=${library.id}`}>{formatNumber(library.possibleDuplicates)}</Link> : <b>0</b>}</div>
+              <div><span>Unmatched metadata</span>{(library.unmatchedMetadata || 0) > 0 ? <Link className={styles.statLink} href={`/library-health?category=all_tracks&libraryId=${library.id}&search=`}>{formatNumber(library.unmatchedMetadata)}</Link> : <b>0</b>}</div>
+              <div><span>Tracks missing BPM</span>{library.missingBpm > 0 ? <button className={styles.statLink} type="button" onClick={() => selectBpmFilter("missing_bpm", library.id)}>{formatNumber(library.missingBpm)}</button> : <b>0</b>}</div>
+              <div><span>Tracks missing mood</span>{(library.missingMood || 0) > 0 ? <Link className={styles.statLink} href={`/library-health?category=missing_mood&libraryId=${library.id}`}>{formatNumber(library.missingMood)}</Link> : <b>0</b>}</div>
+              <div><span>Tracks missing energy</span>{(library.missingEnergy || 0) > 0 ? <Link className={styles.statLink} href={`/library-health?category=missing_energy&libraryId=${library.id}`}>{formatNumber(library.missingEnergy)}</Link> : <b>0</b>}</div>
             </div>
             <h4 className={styles.healthGroupTitle}>BPM Health</h4>
             <p className={styles.healthGroupCopy}>Mode: {library.bpmProviderMode}</p>

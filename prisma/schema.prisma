@@ -82,6 +82,7 @@ model SyncSettings {
   audioFeatureMinimumConfidence          Float?
   providerDelayMs                        Int?
   rateLimitBackoffEnabled                Boolean?
+  automaticallyShareDuplicateEnrichment  Boolean  @default(true)
   hardDeleteMissingAfterDays             Int?
   createdAt                              DateTime @default(now())
   updatedAt                              DateTime @updatedAt
@@ -119,6 +120,8 @@ model Library {
   healthSnapshot       LibraryHealthSnapshot?
   playlistRules        PlaylistRule[]
   recentlyAddedBatches RecentlyAddedBatch[]
+  canonicalRecordings  CanonicalRecording[]
+  plexSyncConflicts    PlexSyncConflict[]
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
 
@@ -172,6 +175,7 @@ model Album {
   summary        String?
   thumb          String?
   year           Int?
+  plexTrackCount Int?
   addedAt        DateTime?
   updatedAt      DateTime?
   viewCount      Int       @default(0)
@@ -193,85 +197,156 @@ model Album {
 }
 
 model Track {
-  id                        String                           @id @default(uuid())
-  plexId                    String
-  ratingKey                 String
-  plexGuid                  String?
-  mediaPath                 String?
-  libraryId                 String
-  albumId                   String
-  artistId                  String
-  title                     String
-  duration                  Int?
-  trackIndex                Int?
-  rating                    Float?
-  contentRating             String?
-  normalizedTitle           String?
-  isExplicit                Boolean                          @default(false)
-  isLive                    Boolean                          @default(false)
-  isRemaster                Boolean                          @default(false)
-  isHoliday                 Boolean                          @default(false)
-  isIntroOutro              Boolean                          @default(false)
-  viewCount                 Int                              @default(0)
-  lastViewedAt              DateTime?
-  addedAt                   DateTime?
-  updatedAt                 DateTime?
-  tagsSyncedAt              DateTime?
-  genreStatus               String?
-  genreAttemptedAt          DateTime?
-  genreFailureReason        String?
-  popularityStatus          String?
-  popularityAttemptedAt     DateTime?
-  popularityFailureReason   String?
-  bpm                       Float?
-  apiBpm                    Float?
-  localBpm                  Float?
-  effectiveBpm              Float?
-  bpmSource                 String?
-  bpmConfidence             Float?
-  bpmAnalyzedAt             DateTime?
-  bpmAnalysisStatus         String?
-  bpmAnalysisScope          String?
-  bpmFailureReason          String?
-  plexLibraryId             String?
-  syncStatus                String                           @default("active")
-  lastSyncChangeTypes       String?
-  duplicateWarning          String?
-  syncConflictReason        String?
-  localFileStatus           String                           @default("not_checked")
-  localFileCheckedAt        DateTime?
-  lastSeenAt                DateTime?
-  lastSeenSyncId            String?
-  missingSince              DateTime?
-  deletedAt                 DateTime?
-  firstSeenAt               DateTime                         @default(now())
-  plexAddedAt               DateTime?
-  recentlyAddedProcessedAt  DateTime?
-  recentlyAddedStatus       String?
-  recentlyAddedBatchId      String?
-  library                   Library                          @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  album                     Album                            @relation(fields: [albumId], references: [id], onDelete: Cascade)
-  artist                    Artist                           @relation(fields: [artistId], references: [id], onDelete: Cascade)
-  tags                      Tag[]                            @relation("TrackTags")
-  popularity                Popularity?
-  audioFeature              AudioFeature?
-  blockedBy                 BlockedTrack[]
-  exclusions                TrackExclusion[]
-  metadataCorrections       TrackMetadataCorrection[]
-  metadataVerifications     TrackMetadataVerification[]
-  metadataSourceOverrides   TrackMetadataSourceOverride[]
-  metadataCorrectionHistory TrackMetadataCorrectionHistory[]
-  recentlyAddedState        RecentlyAddedTrackState?
-  recentlyAddedMatches      RecentlyAddedPlaylistMatch[]
-  recentlyAddedChanges      RecentlyAddedAutomationChange[]
-  interactionEvents         TrackInteractionEvent[]
+  id                         String                           @id @default(uuid())
+  plexId                     String
+  ratingKey                  String
+  plexGuid                   String?
+  plexGuids                  Json?
+  mediaPath                  String?
+  plexServerId               String
+  plexMediaPartId            String?
+  fileSize                   BigInt?
+  fileFormat                 String?
+  bitrate                    Int?
+  plexMetadata               Json?
+  libraryId                  String
+  albumId                    String
+  artistId                   String
+  title                      String
+  duration                   Int?
+  trackIndex                 Int?
+  rating                     Float?
+  contentRating              String?
+  normalizedTitle            String?
+  isExplicit                 Boolean                          @default(false)
+  isLive                     Boolean                          @default(false)
+  isRemaster                 Boolean                          @default(false)
+  isHoliday                  Boolean                          @default(false)
+  isIntroOutro               Boolean                          @default(false)
+  viewCount                  Int                              @default(0)
+  lastViewedAt               DateTime?
+  addedAt                    DateTime?
+  updatedAt                  DateTime?
+  tagsSyncedAt               DateTime?
+  genreStatus                String?
+  genreAttemptedAt           DateTime?
+  genreFailureReason         String?
+  popularityStatus           String?
+  popularityAttemptedAt      DateTime?
+  popularityFailureReason    String?
+  bpm                        Float?
+  apiBpm                     Float?
+  localBpm                   Float?
+  effectiveBpm               Float?
+  bpmSource                  String?
+  bpmConfidence              Float?
+  bpmAnalyzedAt              DateTime?
+  bpmAnalysisStatus          String?
+  bpmAnalysisScope           String?
+  bpmFailureReason           String?
+  plexLibraryId              String
+  syncStatus                 String                           @default("active")
+  lastSyncChangeTypes        String?
+  duplicateWarning           String?
+  syncConflictReason         String?
+  canonicalRecordingId       String?
+  duplicateConfidence        String?
+  duplicateMatchEvidence     Json?
+  duplicateReviewStatus      String                           @default("not_duplicate")
+  enrichmentProvenance       Json?
+  inheritDuplicateEnrichment Boolean                          @default(true)
+  preferredDuplicateCopy     Boolean                          @default(false)
+  localFileStatus            String                           @default("not_checked")
+  localFileCheckedAt         DateTime?
+  lastSeenAt                 DateTime?
+  lastSeenSyncId             String?
+  missingSince               DateTime?
+  deletedAt                  DateTime?
+  firstSeenAt                DateTime                         @default(now())
+  plexAddedAt                DateTime?
+  recentlyAddedProcessedAt   DateTime?
+  recentlyAddedStatus        String?
+  recentlyAddedBatchId       String?
+  library                    Library                          @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  album                      Album                            @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  artist                     Artist                           @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  tags                       Tag[]                            @relation("TrackTags")
+  popularity                 Popularity?
+  audioFeature               AudioFeature?
+  blockedBy                  BlockedTrack[]
+  exclusions                 TrackExclusion[]
+  metadataCorrections        TrackMetadataCorrection[]
+  metadataVerifications      TrackMetadataVerification[]
+  metadataSourceOverrides    TrackMetadataSourceOverride[]
+  metadataCorrectionHistory  TrackMetadataCorrectionHistory[]
+  recentlyAddedState         RecentlyAddedTrackState?
+  recentlyAddedMatches       RecentlyAddedPlaylistMatch[]
+  recentlyAddedChanges       RecentlyAddedAutomationChange[]
+  interactionEvents          TrackInteractionEvent[]
+  canonicalRecording         CanonicalRecording?              @relation("CanonicalRecordingTracks", fields: [canonicalRecordingId], references: [id], onDelete: SetNull)
+  preferredForRecordings     CanonicalRecording[]             @relation("PreferredEnrichmentTrack")
+  plexSyncConflicts          PlexSyncConflict[]
 
   @@unique([libraryId, plexId])
+  @@unique([plexServerId, plexLibraryId, ratingKey])
   @@index([libraryId, syncStatus])
   @@index([libraryId, lastSeenSyncId])
   @@index([libraryId, ratingKey])
   @@index([libraryId, localFileStatus])
   @@index([libraryId, viewCount])
+  @@index([canonicalRecordingId, syncStatus])
+  @@index([libraryId, duplicateReviewStatus])
+  @@index([libraryId, plexGuid])
+}
+
+model CanonicalRecording {
+  id                         String   @id @default(uuid())
+  libraryId                  String
+  canonicalArtist            String
+  canonicalTitle             String
+  confidence                 String   @default("medium")
+  matchEvidence              Json?
+  reviewStatus               String   @default("confirmed")
+  sharedEnrichment           Json?
+  enrichmentProvenance       Json?
+  preferredEnrichmentTrackId String?
+  inheritanceEnabled         Boolean  @default(true)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+  library                    Library  @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  tracks                     Track[]  @relation("CanonicalRecordingTracks")
+  preferredEnrichmentTrack   Track?   @relation("PreferredEnrichmentTrack", fields: [preferredEnrichmentTrackId], references: [id], onDelete: SetNull)
+
+  @@index([libraryId, reviewStatus])
+  @@index([libraryId, canonicalArtist, canonicalTitle])
+}
+
+model PlexSyncConflict {
+  id                  String    @id @default(uuid())
+  libraryId           String
+  trackId             String?
+  plexRatingKey       String
+  plexGuid            String?
+  conflictReason      String
+  candidateTrackIds   Json?
+  duplicateConfidence String?
+  matchEvidence       Json?
+  plexMetadata        Json?
+  resolutionStatus    String    @default("unresolved")
+  hasInheritedData    Boolean   @default(false)
+  firstDetectedAt     DateTime  @default(now())
+  lastDetectedAt      DateTime  @default(now())
+  lastSyncBatchId     String?
+  resolvedAt          DateTime?
+  reviewedAt          DateTime?
+  reviewedBy          String?
+  library             Library   @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  track               Track?    @relation(fields: [trackId], references: [id], onDelete: SetNull)
+
+  @@unique([libraryId, plexRatingKey])
+  @@index([libraryId, resolutionStatus, lastDetectedAt])
+  @@index([trackId])
+  @@index([conflictReason])
 }
 
 model TrackMetadataCorrection {

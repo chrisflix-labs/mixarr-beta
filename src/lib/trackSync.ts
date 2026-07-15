@@ -21,8 +21,16 @@ export type NormalizedPlexTrackForSync = {
   plexId: string;
   ratingKey: string;
   plexGuid: string | null;
+  plexServerId?: string | null;
+  plexLibraryId?: string | null;
+  plexGuids: string[];
   librarySectionId: string;
   mediaPath: string | null;
+  plexMediaPartId: string | null;
+  fileSize: bigint | null;
+  fileFormat: string | null;
+  bitrate: number | null;
+  plexMetadata: Record<string, unknown>;
   title: string;
   artistTitle: string;
   albumTitle: string;
@@ -37,6 +45,8 @@ export type ExistingTrackForSync = {
   plexId: string;
   ratingKey: string;
   plexGuid: string | null;
+  plexServerId?: string | null;
+  plexLibraryId?: string | null;
   mediaPath: string | null;
   title: string;
   duration: number | null;
@@ -46,6 +56,7 @@ export type ExistingTrackForSync = {
   lastSyncChangeTypes?: string | null;
   artistId?: string | null;
   albumId?: string | null;
+  canonicalRecordingId?: string | null;
   artist?: { title: string | null } | null;
   album?: { title: string | null } | null;
 };
@@ -80,6 +91,22 @@ function normalizedDuration(value: unknown) {
 function firstMediaPath(track: any) {
   const value = track.Media?.flatMap((media: any) => media.Part || []).find((part: any) => part.file)?.file;
   return sanitizeOptionalMetadataString(value, { entity: "Track", entityId: track.ratingKey, field: "mediaPath" });
+}
+
+function firstMediaPart(track: any) {
+  return track.Media?.flatMap((media: any) => media.Part || [])[0] || null;
+}
+
+function positiveInteger(value: unknown) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 ? number : null;
+}
+
+function plexGuidList(track: any, primary: string | null) {
+  return Array.from(new Set([
+    primary,
+    ...(Array.isArray(track.Guid) ? track.Guid.map((entry: any) => sanitizeOptionalMetadataString(entry?.id)) : []),
+  ].filter((value): value is string => Boolean(value))));
 }
 
 function metadataKey(input: {
@@ -121,13 +148,47 @@ export function normalizePlexTrackForSync(track: any, librarySectionId: string):
   const albumTitle = sanitizeRequiredMetadataString(track.parentTitle, { entity: "Track", entityId: track.ratingKey, field: "album" });
   const plexGuid = sanitizeOptionalMetadataString(track.guid, { entity: "Track", entityId: track.ratingKey, field: "plexGuid" });
   const mediaPath = firstMediaPath(track);
+  const mediaPart = firstMediaPart(track);
+  const media = track.Media?.[0] || null;
   const duration = normalizedDuration(track.duration);
+  const plexGuids = plexGuidList(track, plexGuid);
   const normalized = {
     plexId: ratingKey,
     ratingKey,
     plexGuid,
+    plexGuids,
     librarySectionId,
     mediaPath,
+    plexMediaPartId: sanitizeOptionalMetadataString(mediaPart?.id ?? mediaPart?.key),
+    fileSize: positiveInteger(mediaPart?.size) === null ? null : BigInt(positiveInteger(mediaPart?.size)!),
+    fileFormat: sanitizeOptionalMetadataString(media?.container ?? mediaPart?.container),
+    bitrate: positiveInteger(media?.bitrate),
+    plexMetadata: {
+      ratingKey,
+      guid: plexGuid,
+      guids: plexGuids,
+      key: sanitizeOptionalMetadataString(track.key),
+      title,
+      artist: artistTitle,
+      album: albumTitle,
+      duration,
+      index: positiveInteger(track.index),
+      addedAt: positiveInteger(track.addedAt),
+      updatedAt: positiveInteger(track.updatedAt),
+      media: media ? {
+        id: sanitizeOptionalMetadataString(media.id),
+        container: sanitizeOptionalMetadataString(media.container),
+        bitrate: positiveInteger(media.bitrate),
+        audioCodec: sanitizeOptionalMetadataString(media.audioCodec),
+        channels: positiveInteger(media.audioChannels),
+      } : null,
+      part: mediaPart ? {
+        id: sanitizeOptionalMetadataString(mediaPart.id ?? mediaPart.key),
+        file: mediaPath,
+        size: positiveInteger(mediaPart.size),
+        container: sanitizeOptionalMetadataString(mediaPart.container),
+      } : null,
+    },
     title,
     artistTitle,
     albumTitle,

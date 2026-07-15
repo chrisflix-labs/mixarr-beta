@@ -9,6 +9,7 @@ import {
   type CorrectableMetadataField,
 } from "./metadataCorrections";
 import { normalizeMoodList } from "./selectableMoods";
+import { refreshCanonicalEnrichmentForTrack } from "./duplicateRecordings";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -117,6 +118,7 @@ export async function setTrackMetadataCorrection(input: {
     const track = await findOwnedTrackWithMetadata(input.userId, input.trackId, tx);
     await writeCorrection(tx, { ...input, field, track });
   });
+  await refreshCanonicalEnrichmentForTrack(input.trackId);
   return getTrackMetadataCorrectionDetails(input.userId, input.trackId);
 }
 
@@ -133,6 +135,7 @@ export async function removeTrackMetadataCorrection(userId: string, trackId: str
       newValue: fieldValue(resolveEffectiveTrackMetadata(without), field), source: "manual", reason,
     }) });
   });
+  await refreshCanonicalEnrichmentForTrack(trackId);
   return getTrackMetadataCorrectionDetails(userId, trackId);
 }
 
@@ -185,6 +188,7 @@ export async function setMetadataVerification(input: {
       userId: input.userId, source, reason: input.note,
     }) });
   });
+  if (input.verified) await refreshCanonicalEnrichmentForTrack(input.trackId);
   return getTrackMetadataCorrectionDetails(input.userId, input.trackId);
 }
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.1.1 - Duplicate Preservation & Plex Conflict Inspector
+
+- Made Plex server, library, and rating key the authoritative physical track-instance identity; Plex GUIDs, file paths, and metadata now provide duplicate evidence without claiming or suppressing another item.
+- Preserved every valid Plex item as a separate active `Track` row and replaced conflict skip paths with separate-instance creation, confidence grouping, or durable review state.
+- Added canonical recording groups, match evidence, preferred enrichment sources, split/merge controls, review status, and indexed non-destructive membership.
+- Added BPM, mood, and energy inheritance with manual correction, verified local, high-confidence API, inherited, and fallback precedence plus source-track/provider/confidence provenance.
+- Added the default-enabled “Automatically share enrichment across confirmed duplicates” setting while retaining track-level overrides and instance-specific Plex, file, play, playlist, and interaction fields.
+- Added a calculated, idempotent Repair Unresolved Plex Tracks preview and repair action that uses the existing per-library sync lock and persists missing rating-key instances without resetting or deleting data.
+- Added a searchable, filterable, paginated Plex Conflict Inspector with candidate records, evidence, status, row actions, and bounded bulk actions.
+- Made non-zero Library Health values interactive and added missing album, artist, track, duplicate-group, and track-copy detail views.
+- Updated playlist duplicate handling to avoid canonical recording repeats by default, allow alternates, prefer quality, or prefer an existing playlist copy without hiding tracks from the library.
+- Replaced ambiguous conflict/skip summaries with active-instance, new-instance, grouped-duplicate, inherited-data, needs-review, and persistence-failure counts and credential-safe structured logs.
+- Added safe v2.1.1 migrations and high-confidence backfill while preserving all existing IDs, corrections, analysis, history, personalization, and playlists.
+
 ## v2.1.0 - Personalization Foundation
 
 - Added opt-in user recommendation profiles, optional playlist profiles, append-oriented interaction history, compact derived adjustments, and safe user-owned reset behavior.
