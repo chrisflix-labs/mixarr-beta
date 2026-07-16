@@ -2,8 +2,14 @@ name: Publish Multi-Arch Docker Image
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches:
+      - main
+      - master
   workflow_dispatch:
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
@@ -13,53 +19,47 @@ env:
 jobs:
   build-and-push-image:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       packages: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: all
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
-      - name: Log in to the Container registry
-        uses: docker/login-action@v3
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata for Docker
-        id: meta
-        uses: docker/metadata-action@v5
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=${{ env.IMAGE_TAG }}
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           labels: |
             org.opencontainers.image.title=Mixarr Beta
             org.opencontainers.image.description=Smart Playlist Engine for Plex Media Server - Dynamic, vibe-based mixes for your self-hosted music library
             org.opencontainers.image.vendor=chrisflix-labs
             org.opencontainers.image.licenses=MIT
             org.opencontainers.image.version=${{ env.IMAGE_TAG }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.documentation=https://github.com/${{ github.repository }}#readme
+            org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.authors=chrisflix-labs
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             NEXT_PUBLIC_APP_VERSION=${{ env.IMAGE_TAG }}
           cache-from: type=gha
