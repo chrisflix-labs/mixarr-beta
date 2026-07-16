@@ -1655,3 +1655,11 @@
     width: 100%;
   }
 }
+.contextTrackExplanation {
+  margin-top: .4rem;
+  font-size: .76rem;
+  color: var(--text-muted, #aeb8d4);
+}
+
+.contextTrackExplanation summary { cursor: pointer; color: #b9c8ff; }
+.contextTrackExplanation div { display: flex; flex-direction: column; gap: .2rem; margin-top: .3rem; }

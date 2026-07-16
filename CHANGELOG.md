@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.1.6 - Contextual Mixes
+
+- Added seven built-in contexts for focus, energy, driving, discovery, acoustic listening, summer parties, and winter relaxation.
+- Added persistent user-isolated custom contexts with clone, edit, enable/disable, duplicate, and delete workflows.
+- Added visible context application summaries, apply-only-unset behavior, manual override markers, individual restoration, and reset-to-context-default actions.
+- Integrated a confidence-aware, capped contextual adjustment into Smart Mix Engine v2 while preserving identity, personalization, feedback, exclusions, and protected tracks.
+- Added context-aware playlist previews and real per-track explanations with missing-metadata confidence.
+- Stored versioned context snapshots, influence, overrides, and resolved settings in generated playlists and history.
+- Added optional local-time/day suggestions without location tracking or inferred activities.
+- Added the additive `20260716040000_contextual_mixes` PostgreSQL migration, APIs, responsive UI, tests, documentation, release notes, and Roadmap update.
+
 ## v2.1.5 - Listening History & Playback Awareness
 
 - Added incremental, paginated Plex playback-history import with idempotent events, safe retry state, bounded matching, retention, and dedicated Job History records.

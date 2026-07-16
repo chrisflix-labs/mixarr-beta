@@ -25,6 +25,9 @@ type GeneratedPlaylist = {
   moodPresetName?: string | null;
   bpmPresetName?: string | null;
   tuningPresetName?: string | null;
+  contextProfileName?: string | null;
+  contextInfluence?: string | null;
+  contextOverridesJson?: string[] | null;
   discoveryConfigJson?: any;
   discoveryResultJson?: any;
   filtersJson?: {
@@ -514,6 +517,7 @@ export default function GeneratedPlaylistsPage() {
               playlist.moodPresetName ? `Mood: ${playlist.moodPresetName}` : "",
               playlist.bpmPresetName ? `BPM: ${playlist.bpmPresetName}` : "",
               playlist.tuningPresetName ? `Tuning Preset: ${playlist.tuningPresetName}` : "",
+              playlist.contextProfileName ? `Context: ${playlist.contextProfileName} (${(playlist.contextInfluence || "BALANCED").toLowerCase()})` : "",
               moodBlendLabel(playlist.filtersJson),
             ].filter(Boolean);
 
@@ -552,6 +556,7 @@ export default function GeneratedPlaylistsPage() {
                     </div>
                   </details>
                 )}
+                {playlist.contextProfileName && <p className={styles.contextSummary}>Generated with {playlist.contextProfileName} · {(playlist.contextInfluence || "BALANCED").toLowerCase()} influence · {playlist.contextOverridesJson?.length || 0} manual override{playlist.contextOverridesJson?.length === 1 ? "" : "s"}</p>}
                 <PlaylistQualityCard score={qualityScoreForDisplay(playlist.qualityScoreJson)} />
                 <PlaylistIdentityPanel playlistId={playlist.id} playlistName={playlist.plexPlaylistTitle} onClone={fetchPlaylists} />
                 {playlist.discoveryResultJson?.explanations?.length > 0 && (

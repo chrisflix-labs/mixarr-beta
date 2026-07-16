@@ -13,6 +13,7 @@ import { scorePersonalizationAdjustment } from "../../personalization/scoring";
 import { scorePlaylistIdentityTrack } from "../../playlistIdentity/scoring";
 import { scoreAdaptiveSmartMixTrack } from "../../adaptiveScoring/scoring";
 import { scorePlaybackAwareTrack } from "../../playbackAwareness/scoring";
+import { scoreContextMatch } from "../../contextualMixes";
 
 const metadataRuleFields = new Set(["tempo", "valence", "energy", "popularity"]);
 
@@ -227,5 +228,16 @@ export function scoreSmartMixTrack<TTrack extends Record<string, any>>(
     fallbacksApplied,
     ...(moodBlendScore ? { moodBlend: moodBlendScore.data } : {}),
   } as SmartMixScoredTrack<TTrack>;
+  if (config.contextSelection) {
+    const contextScore = scoreContextMatch(track, config.contextSelection);
+    baseTrack.score = roundScore(baseTrack.score + contextScore.adjustment);
+    baseTrack.baseScore = baseTrack.score;
+    baseTrack.personalizedScore = baseTrack.score;
+    baseTrack.scoreBreakdown = { ...baseTrack.scoreBreakdown, context: contextScore.adjustment };
+    baseTrack.contextScore = contextScore;
+    if (contextScore.missingMetadata.length) {
+      baseTrack.fallbacksApplied = [...baseTrack.fallbacksApplied, `context confidence ${contextScore.confidence.toLowerCase()}: missing ${contextScore.missingMetadata.join(", ")}`];
+    }
+  }
   return applyAdaptiveScoringToTrack(baseTrack, config);
 }

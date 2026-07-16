@@ -82,6 +82,7 @@ export async function POST(req: Request) {
     const bpmPresetName = parsedOptions?.bpmPresetName || null;
     const bpmPresetDisplayName = bpmPresetName ? `${bpmPresetName}${parsedOptions?.bpmPresetModified ? " modified" : ""}` : null;
     const tuningPresetName = parsedOptions?.engineVersion === "v2" ? parsedOptions.tuningConfig?.presetName || "Custom" : null;
+    const selectedContext = parsedOptions?.contextSelection || null;
     const presetSummaries = [
       ...(moodPresetDisplayName ? [`mood preset "${moodPresetDisplayName}"`] : []),
       ...(bpmPresetDisplayName ? [`BPM preset "${bpmPresetDisplayName}"`] : []),
@@ -144,6 +145,7 @@ export async function POST(req: Request) {
       filters: generationFilters || null,
       safetyRules: parsedOptions?.safetyRules || null,
       qualityScore: (generatedPlaylist?.qualityScoreJson as any) || null,
+      context: selectedContext,
       summary: creationSummary,
       trackIds: result.exportedTrackIds || trackIds,
     });
@@ -194,6 +196,7 @@ export async function POST(req: Request) {
         engineVersion: parsedOptions?.engineVersion || "v1",
         filters: filters || optionsSnapshot || null,
         qualityScore: generatedPlaylist?.qualityScoreJson || null,
+        context: selectedContext,
       },
     });
 

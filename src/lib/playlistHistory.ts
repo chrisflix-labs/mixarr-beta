@@ -75,6 +75,11 @@ async function ensurePlaylistHistoryTables() {
           "filtersJson" JSONB,
           "safetyRulesJson" JSONB,
           "qualityScoreJson" JSONB,
+          "contextProfileId" TEXT,
+          "contextProfileName" TEXT,
+          "contextInfluence" TEXT,
+          "contextSnapshotJson" JSONB,
+          "contextOverridesJson" JSONB,
           "summary" TEXT,
           "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT "PlaylistHistoryEntry_pkey" PRIMARY KEY ("id")
@@ -110,6 +115,11 @@ async function ensurePlaylistHistoryTables() {
       await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "PlaylistHistoryTrack_trackId_idx" ON "PlaylistHistoryTrack"("trackId")`);
       await prisma.$executeRawUnsafe(`ALTER TABLE "PlaylistHistoryEntry" ADD COLUMN IF NOT EXISTS "engineVersion" TEXT NOT NULL DEFAULT 'v1'`);
       await prisma.$executeRawUnsafe(`ALTER TABLE "PlaylistHistoryEntry" ADD COLUMN IF NOT EXISTS "qualityScoreJson" JSONB`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "PlaylistHistoryEntry" ADD COLUMN IF NOT EXISTS "contextProfileId" TEXT`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "PlaylistHistoryEntry" ADD COLUMN IF NOT EXISTS "contextProfileName" TEXT`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "PlaylistHistoryEntry" ADD COLUMN IF NOT EXISTS "contextInfluence" TEXT`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "PlaylistHistoryEntry" ADD COLUMN IF NOT EXISTS "contextSnapshotJson" JSONB`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "PlaylistHistoryEntry" ADD COLUMN IF NOT EXISTS "contextOverridesJson" JSONB`);
 
       await prisma.$executeRawUnsafe(`
         DO $$
@@ -287,6 +297,7 @@ export async function recordPlaylistHistoryEntry({
   filters,
   safetyRules,
   qualityScore,
+  context,
   summary,
   tracks,
   trackIds,
@@ -323,6 +334,7 @@ export async function recordPlaylistHistoryEntry({
   filters?: unknown;
   safetyRules?: unknown;
   qualityScore?: PlaylistScoreSummary | null;
+  context?: any;
   summary?: string | null;
   tracks?: any[];
   trackIds?: string[];
@@ -340,14 +352,16 @@ export async function recordPlaylistHistoryEntry({
         "moodPresetId", "moodPresetName", "bpmPresetId", "bpmPresetName", "regenerationMode",
         "keepPercent", "preferDifferentTracks", "trackCount", "previousTrackCount", "keptCount",
         "replacedCount", "newCount", "removedCount", "manualExclusionsRemoved", "safetyRulesApplied",
-        "safetyRulesRemoved", "warningsJson", "filtersJson", "safetyRulesJson", "qualityScoreJson", "summary"
+        "safetyRulesRemoved", "warningsJson", "filtersJson", "safetyRulesJson", "qualityScoreJson",
+        "contextProfileId", "contextProfileName", "contextInfluence", "contextSnapshotJson", "contextOverridesJson", "summary"
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10, $11, $12, $13,
         $14, $15, $16, $17, $18,
         $19, $20, $21, $22, $23,
         $24, $25, $26, $27, $28,
-        $29, $30::jsonb, $31::jsonb, $32::jsonb, $33::jsonb, $34
+        $29, $30::jsonb, $31::jsonb, $32::jsonb, $33::jsonb,
+        $34, $35, $36, $37::jsonb, $38::jsonb, $39
       ) RETURNING *`,
       entryId,
       userId,
@@ -382,6 +396,11 @@ export async function recordPlaylistHistoryEntry({
       jsonParam(filters),
       jsonParam(safetyRules),
       jsonParam(qualityScore),
+      context?.profileId || null,
+      context?.profileName || null,
+      context?.influence || null,
+      jsonParam(context),
+      jsonParam(context?.manualOverrides || []),
       summary || null,
     );
 

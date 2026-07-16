@@ -18,6 +18,7 @@ import { loadExplicitFeedbackScoringContext, loadPersonalizationScoringContext, 
 import { ensurePlaylistIdentity, loadPlaylistIdentityScoringContext, recordPlaylistIdentityEvent, rememberPlaylistRejection, trainPlaylistIdentity, updatePlaylistTrackMemory } from "./playlistIdentity";
 import { loadAdaptiveScoringContext } from "./adaptiveScoring";
 import { loadPlaybackScoringContext } from "./playbackAwareness";
+import { contextSelectionSchema } from "./contextualMixes";
 import {
   runSmartMixEngineV2,
   smartMixEngineLabel,
@@ -156,6 +157,7 @@ export const playlistConfigSchema = z.object({
   moodVariety: moodBlendSliderSchema.default(45),
   conflictSensitivity: moodBlendSliderSchema.default(70),
   selectedMoodPreset: z.string().trim().max(80).default("balanced_flow"),
+  contextSelection: contextSelectionSchema.optional().nullable(),
   engineVersion: z.enum(smartMixEngineVersions).default(SMART_MIX_ENGINE_V1),
   scoringModel: z.string().trim().min(1).max(80).optional(),
   allowStableFallback: z.boolean().optional(),
@@ -696,6 +698,7 @@ function publicPreviewTrack(track: any) {
     playlistIdentityScore: track.playlistIdentityScore || undefined,
     adaptiveScore: track.adaptiveScore || undefined,
     playbackScore: track.playbackScore || undefined,
+    contextScore: track.contextScore || undefined,
     baseScore: typeof track.baseScore === "number" ? track.baseScore : undefined,
     personalizedScore: typeof track.personalizedScore === "number" ? track.personalizedScore : undefined,
   };
@@ -1237,6 +1240,13 @@ export async function previewPlaylistTracks({
     engineDiagnostics: generation.engine.diagnostics,
     tuningPresetName: tuningConfig.presetName || null,
     tuningConfig,
+    context: config.contextSelection || null,
+    contextMatches: config.contextSelection ? {
+      strong: previewTracks.filter((track) => Number(track.contextScore?.adjustment) >= 4).length,
+      moderate: previewTracks.filter((track) => Number(track.contextScore?.adjustment) > 0 && Number(track.contextScore?.adjustment) < 4).length,
+      poor: previewTracks.filter((track) => Number(track.contextScore?.adjustment) < 0).length,
+      lowConfidence: previewTracks.filter((track) => track.contextScore?.confidence === "LOW").length,
+    } : null,
     moodBlendMode: moodDiagnostics.moodBlendMode || moodBlend.moodBlendMode,
     moodBlendLabel: moodBlendModeLabel(moodDiagnostics.moodBlendMode || moodBlend.moodBlendMode),
     selectedMoodPath: moodDiagnostics.selectedMoodPath || moodBlend.selectedMoodPath,
@@ -1290,6 +1300,7 @@ export async function previewPlaylistTracks({
     ...(config.moodPresetName ? [{ label: "Mood preset", value: `${config.moodPresetName}${config.moodPresetModified ? " modified" : ""}` }] : []),
     ...(config.bpmPresetName ? [{ label: "BPM preset", value: `${config.bpmPresetName}${config.bpmPresetModified ? " modified" : ""}` }] : []),
     ...(useSmartMixV2 ? [{ label: "Tuning preset", value: tuningConfig.presetName || "Custom" }] : []),
+    ...(config.contextSelection ? [{ label: "Selected context", value: `${config.contextSelection.profileName} (${config.contextSelection.influence.toLowerCase()} influence)` }] : []),
     ...(useSmartMixV2 ? [{ label: "BPM flow", value: tuningConfig.bpmFlow.enabled ? `${tuningConfig.bpmFlow.mode.replace("_", " ")} (${tuningConfig.bpmFlow.maxPreferredGap} BPM gap)` : "No BPM ordering" }] : []),
     ...(useSmartMixV2 ? [{ label: "Discovery", value: tuningConfig.discovery.level === "custom" ? "Custom Discovery" : tuningConfig.discovery.level === "low" ? "Mostly Familiar" : tuningConfig.discovery.level === "high" ? "Deep Discovery" : "Balanced Discovery" }] : []),
     ...(moodBlend.enabled ? [{ label: "Mood blend", value: moodBlendModeLabel(moodBlend.moodBlendMode) }] : []),
@@ -1723,6 +1734,11 @@ export async function recordGeneratedPlaylist({
     adaptiveScoringVersion: config.engineVersion === SMART_MIX_ENGINE_V2 ? "1" : null,
     adaptiveSettingsJson: adaptiveSettingsSnapshot as any,
     playbackSettingsJson: playbackSettingsSnapshot as any,
+    contextProfileId: config.contextSelection?.profileId || null,
+    contextProfileName: config.contextSelection?.profileName || null,
+    contextInfluence: config.contextSelection?.influence || null,
+    contextSnapshotJson: config.contextSelection as any,
+    contextOverridesJson: config.contextSelection?.manualOverrides as any,
     filtersJson: config as any,
     safetyRulesJson: config.safetyRules as any,
     qualityScoreJson: qualityScore as any,

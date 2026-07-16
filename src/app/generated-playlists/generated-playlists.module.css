@@ -1091,3 +1091,4 @@
     transform: rotate(90deg);
   }
 }
+.contextSummary { margin: .6rem 0; color: var(--muted); font-size: .8rem; }

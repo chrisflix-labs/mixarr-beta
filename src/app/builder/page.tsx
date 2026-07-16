@@ -6,6 +6,8 @@ import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, Refre
 import { useRouter, useSearchParams } from "next/navigation";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import AdaptiveScoreBreakdown from "@/components/AdaptiveScoreBreakdown";
+import ContextualMixesPanel from "@/components/ContextualMixesPanel";
+import type { ContextSelection } from "@/lib/contextualMixes";
 import MoodBlendingBetaPanel, {
   DEFAULT_MOOD_BLEND_BETA_SETTINGS,
   type MoodBlendBetaSettings,
@@ -147,6 +149,8 @@ type PlaylistPreviewSummary = {
   bpmFlowMode?: BpmFlowMode;
   bpmFlowWarnings?: string[];
   discovery?: any;
+  context?: ContextSelection | null;
+  contextMatches?: { strong: number; moderate: number; poor: number; lowConfidence: number } | null;
   artistLimitApplied?: boolean;
   albumLimitApplied?: boolean;
   artistSpacingApplied?: boolean;
@@ -322,6 +326,9 @@ export default function BuilderPage() {
   const [selectedTuningPreset, setSelectedTuningPreset] = useState(tuningPresetSelectValue(builtInSmartMixTuningPresets[0]));
   const [customTuningPresetName, setCustomTuningPresetName] = useState("");
   const [savingTuningPreset, setSavingTuningPreset] = useState(false);
+  const [contextSelection, setContextSelection] = useState<ContextSelection | null>(null);
+  const [contextDefaultTuning, setContextDefaultTuning] = useState<SmartMixTuningConfig | null>(null);
+  const [contextManualOverrides, setContextManualOverrides] = useState<string[]>([]);
   const [pinnedTrackIds, setPinnedTrackIds] = useState<string[]>([]);
   const [excludedTrackIds, setExcludedTrackIds] = useState<string[]>([]);
   const [draggedTrackId, setDraggedTrackId] = useState("");
@@ -568,6 +575,7 @@ export default function BuilderPage() {
       presetName: patch.presetName ?? "Custom",
     }));
     setSelectedTuningPreset("custom");
+    setContextManualOverrides((current) => Array.from(new Set([...current, ...Object.keys(patch).filter((key) => !["presetName", "tuningVersion"].includes(key))])));
     clearPreview();
   };
 
@@ -583,6 +591,7 @@ export default function BuilderPage() {
       presetName: "Custom",
     }));
     setSelectedTuningPreset("custom");
+    setContextManualOverrides((current) => Array.from(new Set([...current, "bpmFlow"])));
     clearPreview();
   };
 
@@ -620,6 +629,7 @@ export default function BuilderPage() {
 
     setEngineVersion("v2");
     setTuningConfig(normalizeSmartMixTuningConfig(preset.config));
+    setContextManualOverrides(Object.keys(preset.config).filter((key) => !["presetName", "tuningVersion"].includes(key)));
     setCustomTuningPresetName(preset.builtIn ? "" : preset.name);
     clearPreview();
   };
@@ -706,6 +716,7 @@ export default function BuilderPage() {
     moodVariety: moodBlendSettings.moodVariety,
     conflictSensitivity: moodBlendSettings.conflictSensitivity,
     selectedMoodPreset: moodBlendSettings.selectedMoodPreset,
+    contextSelection: contextSelection ? { ...contextSelection, manualOverrides: contextManualOverrides } : null,
     ...smartPresetMetadata,
     ...moodPresetMetadata,
     ...bpmPresetMetadata,
@@ -780,6 +791,7 @@ export default function BuilderPage() {
     moodVariety: filters.moodVariety ?? DEFAULT_MOOD_BLEND_BETA_SETTINGS.moodVariety,
     conflictSensitivity: filters.conflictSensitivity ?? DEFAULT_MOOD_BLEND_BETA_SETTINGS.conflictSensitivity,
     selectedMoodPreset: filters.selectedMoodPreset || DEFAULT_MOOD_BLEND_BETA_SETTINGS.selectedMoodPreset,
+    contextSelection: filters.contextSelection || null,
     engineVersion: (filters.engineVersion === "v2" ? "v2" : "v1") as EngineVersion,
     scoringModel: typeof filters.scoringModel === "string" ? filters.scoringModel : "stable-v2",
     allowStableFallback: true,
@@ -897,6 +909,9 @@ export default function BuilderPage() {
     setEngineVersion("v1");
     restoreTuningConfig(DEFAULT_SMART_MIX_TUNING);
     restoreMoodBlend({});
+    setContextSelection(null);
+    setContextManualOverrides([]);
+    setContextDefaultTuning(null);
     if (!id) return;
 
     const savedRule = savedRules.find(rule => rule.id === id);
@@ -943,6 +958,9 @@ export default function BuilderPage() {
     restoreTuningConfig(savedRule.options?.tuningConfig);
     restoreMoodBlend(savedRule.options);
     setEngineVersion(savedRule.options?.engineVersion === "v2" ? "v2" : "v1");
+    setContextSelection(savedRule.options?.contextSelection || null);
+    setContextManualOverrides(savedRule.options?.contextSelection?.manualOverrides || []);
+    setContextDefaultTuning(savedRule.options?.contextSelection ? normalizeSmartMixTuningConfig(savedRule.options?.tuningConfig) : null);
     setScoringModel(betaStatus?.enabled && typeof savedRule.options?.scoringModel === "string" ? savedRule.options.scoringModel : "stable-v2");
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
@@ -1002,6 +1020,9 @@ export default function BuilderPage() {
     restoreTuningConfig(filters.tuningConfig);
     restoreMoodBlend(filters);
     setEngineVersion(filters.engineVersion === "v2" ? "v2" : "v1");
+    setContextSelection(filters.contextSelection || null);
+    setContextManualOverrides(filters.contextSelection?.manualOverrides || []);
+    setContextDefaultTuning(filters.contextSelection ? normalizeSmartMixTuningConfig(filters.tuningConfig) : null);
     setScoringModel(betaStatus?.enabled && typeof filters.scoringModel === "string" ? filters.scoringModel : "stable-v2");
     setPinnedTrackIds(filters.pinnedTrackIds || []);
     setExcludedTrackIds(filters.excludedTrackIds || []);
@@ -1151,6 +1172,9 @@ export default function BuilderPage() {
     setEngineVersion("v1");
     restoreTuningConfig(DEFAULT_SMART_MIX_TUNING);
     restoreMoodBlend({});
+    setContextSelection(null);
+    setContextManualOverrides([]);
+    setContextDefaultTuning(null);
     if (templateName === "deep_cuts") {
       setRules([{ field: "popularity", operator: "lt", value: "30" }]);
       setPlaylistName("Deep Cuts Discovered");
@@ -1443,6 +1467,37 @@ export default function BuilderPage() {
     </label>
   );
 
+  const applyContextResult = (value: { context: ContextSelection; tuningConfig: SmartMixTuningConfig }) => {
+    setEngineVersion("v2");
+    setContextSelection(value.context);
+    setContextDefaultTuning(normalizeSmartMixTuningConfig(value.tuningConfig));
+    setContextManualOverrides([]);
+    setTuningConfig(normalizeSmartMixTuningConfig(value.tuningConfig));
+    setSelectedTuningPreset("custom");
+    clearPreview();
+  };
+
+  const clearContext = () => {
+    setContextSelection(null);
+    setContextDefaultTuning(null);
+    setContextManualOverrides([]);
+    clearPreview();
+  };
+
+  const restoreContextField = (key: string) => {
+    if (!contextDefaultTuning || !(key in contextDefaultTuning)) return;
+    setTuningConfig((current) => normalizeSmartMixTuningConfig({ ...current, [key]: (contextDefaultTuning as any)[key] }));
+    setContextManualOverrides((current) => current.filter((item) => item !== key));
+    clearPreview();
+  };
+
+  const resetContextDefaults = () => {
+    if (!contextDefaultTuning) return;
+    setTuningConfig(normalizeSmartMixTuningConfig(contextDefaultTuning));
+    setContextManualOverrides([]);
+    clearPreview();
+  };
+
   return (
     <>
     <div className="builder-container">
@@ -1458,6 +1513,17 @@ export default function BuilderPage() {
             Try Smart Builder
           </button>
         </header>
+
+        <ContextualMixesPanel
+          currentTuning={tuningConfig}
+          selection={contextSelection}
+          manualOverrides={contextManualOverrides}
+          defaultTuning={contextDefaultTuning}
+          onApply={applyContextResult}
+          onClear={clearContext}
+          onRestoreField={restoreContextField}
+          onResetAll={resetContextDefaults}
+        />
 
         {smartPresetMetadata.smartPresetName && (
           <div className={styles.recipeNotice}>
@@ -2264,6 +2330,19 @@ export default function BuilderPage() {
               </div>
             )}
 
+            {playlistPreview.summary.context && playlistPreview.summary.contextMatches && (
+              <div className={styles.discoveryPreview} aria-label={`${playlistPreview.summary.context.profileName} context preview`}>
+                <div className={styles.moodCurveHeader}><strong>{playlistPreview.summary.context.profileName} Preview</strong><span>{playlistPreview.summary.context.influence.toLowerCase()} influence</span></div>
+                <div className={styles.discoveryResultStats}>
+                  <span>Strong matches <b>{playlistPreview.summary.contextMatches.strong}</b></span>
+                  <span>Moderate matches <b>{playlistPreview.summary.contextMatches.moderate}</b></span>
+                  <span>Low confidence <b>{playlistPreview.summary.contextMatches.lowConfidence}</b></span>
+                  <span>Poor matches <b>{playlistPreview.summary.contextMatches.poor}</b></span>
+                </div>
+                <p>Context is combined with playlist identity, adaptive personalization, explicit feedback, and manual tuning. It does not replace exclusions or locked tracks.</p>
+              </div>
+            )}
+
             {playlistPreview.summary.discovery && (
               <div className={styles.discoveryResults} aria-label="Generated discovery mix">
                 <div className={styles.moodCurveHeader}><strong>Generated Mix</strong><span>Discovery Target Match {playlistPreview.summary.discovery.targetSatisfaction}%</span></div>
@@ -2398,6 +2477,7 @@ export default function BuilderPage() {
                             </div>
                           )}
                           {track.discoveryMetrics?.reasons?.length > 0 && <div className={styles.badgeRow}>{track.discoveryMetrics.reasons.slice(0, 2).map((reason: string) => <span key={reason} className={styles.discoveryReason} title={`Discovery: ${reason}`}>{reason}</span>)}</div>}
+                          {track.contextScore && <details className={styles.contextTrackExplanation}><summary>Why this track fits {contextSelection?.profileName} · {track.contextScore.adjustment >= 0 ? "+" : ""}{track.contextScore.adjustment}</summary><div><strong>Context confidence: {track.contextScore.confidence.toLowerCase()}</strong>{track.contextScore.reasons.map((reason: string) => <span key={reason}>{reason}</span>)}{track.contextScore.missingMetadata.length > 0 && <span>Limited metadata: {track.contextScore.missingMetadata.join(", ")}</span>}</div></details>}
                           <AdaptiveScoreBreakdown score={track.adaptiveScore} playback={track.playbackScore} />
                         </td>
                         <td className={styles.trackArtist}>{track.artist?.title || "—"}</td>

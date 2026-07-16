@@ -3,6 +3,7 @@ import type { PersonalizationScoreResult, PersonalizationScoringContext } from "
 import type { PlaylistIdentityScoringContext } from "../../playlistIdentity/types";
 import type { AdaptiveScoreResult, AdaptiveScoringContext } from "../../adaptiveScoring/types";
 import type { PlaybackScoreResult, PlaybackScoringContext } from "../../playbackAwareness/types";
+import type { ContextScoreResult, ContextSelection } from "../../contextualMixes";
 
 export const SMART_MIX_ENGINE_V1 = "v1";
 export const SMART_MIX_ENGINE_V2 = "v2";
@@ -46,6 +47,7 @@ export type SmartMixEngineV2Config = {
   playlistIdentity?: PlaylistIdentityScoringContext;
   adaptiveScoring?: AdaptiveScoringContext;
   playbackScoring?: PlaybackScoringContext;
+  contextSelection?: ContextSelection | null;
   moodBlendMode?: SmartMixMoodBlendMode;
   selectedMoodPath?: string[];
   allowedMoods?: string[];
@@ -159,6 +161,7 @@ export type SmartMixScoreBreakdown = {
   playbackSkip?: number;
   forgottenFavorite?: number;
   playbackDiscovery?: number;
+  context?: number;
 };
 
 export type SmartMixScoredTrack<TTrack = any> = TTrack & {
@@ -173,6 +176,7 @@ export type SmartMixScoredTrack<TTrack = any> = TTrack & {
   playlistIdentityScore?: import("../../playlistIdentity/types").PlaylistIdentityScoreResult;
   adaptiveScore?: AdaptiveScoreResult;
   playbackScore?: PlaybackScoreResult;
+  contextScore?: ContextScoreResult;
   baseScore?: number;
   personalizedScore?: number;
   exclusionReason?: string | null;

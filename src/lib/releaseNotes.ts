@@ -73,6 +73,22 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.1.6",
+    title: "Contextual Mixes",
+    releaseDate: "July 16, 2026",
+    badges: ["Smart Builder", "Playlists", "Personalization", "Identity", "Mood", "Energy", "BPM", "Database", "History", "Settings", "Mobile", "UI"],
+    changes: [
+      "Added seven built-in context cards: Monday Morning Focus, Friday Night Energy, Late Night Drive, Weekend Discovery, Sunday Acoustic, Summer Party, and Winter Chill.",
+      "Added reusable custom context profiles with identity, availability, energy, discovery, familiarity, popularity, BPM flow, mood, variety, deep-cut, and recency controls.",
+      "Added a visible Low, Balanced, or Strong context influence layer with strict caps, confidence-aware missing-metadata fallback, and real per-track context explanations.",
+      "Added context application summaries, apply-only-unset behavior, manual override indicators, individual restoration, and reset-to-context-default actions.",
+      "Integrated context scoring with the existing Smart Mix Engine v2 before separate playlist identity, adaptive personalization, explicit feedback, and playback layers; hard exclusions and protected tracks remain authoritative.",
+      "Added authenticated user-isolated context CRUD, clone, apply/preview, and settings APIs plus optional local-time/day suggestions without location or activity inference.",
+      "Stored the selected context, versioned snapshot, influence, overrides, and final resolved settings with generated playlists and generation history.",
+      "Added an additive PostgreSQL migration, responsive accessible UI, tests, documentation, release notes, and Roadmap completion.",
+    ],
+  },
+  {
     version: "2.1.5",
     title: "Listening History & Playback Awareness",
     releaseDate: "July 16, 2026",

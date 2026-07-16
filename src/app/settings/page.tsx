@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Settings as SettingsIcon, Ban, Brain, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
+import { Settings as SettingsIcon, Ban, Brain, CalendarDays, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
 import ProviderTestButton from "@/components/ProviderTestButton";
 import BetaFeatureSettingsForm from "@/components/BetaFeatureSettingsForm";
 import ExternalApiSettingsPanel from "@/components/ExternalApiSettingsPanel";
@@ -12,6 +12,7 @@ import WorkerHealthCard from "@/components/WorkerHealthCard";
 import PlaylistVersionSettings from "@/components/PlaylistVersionSettings";
 import PersonalizationProfilePanel from "@/components/PersonalizationProfilePanel";
 import PlaylistIdentitySettings from "@/components/PlaylistIdentitySettings";
+import ContextualMixSettings from "@/components/ContextualMixSettings";
 import { APP_DESCRIPTION, APP_NAME, MIXARR_GITHUB_URL } from "@/lib/appInfo";
 import { APP_VERSION } from "@/lib/appVersion";
 import { getExternalApiSettingsPayload } from "@/lib/externalApiSettings";
@@ -143,6 +144,12 @@ export default async function SettingsPage() {
         <h3 id="playlist-identity-settings" className={styles.sectionTitle}><Brain size={20} color="var(--accent)" /> Playlist Identity &amp; Memory</h3>
         <p className={styles.sectionDesc}>Control automatic identity learning across all of your playlists. Per-playlist controls remain available in Generated Playlists.</p>
         <PlaylistIdentitySettings />
+      </section>
+
+      <section className={`glass-panel ${styles.section}`} aria-labelledby="contextual-mix-settings">
+        <h3 id="contextual-mix-settings" className={styles.sectionTitle}><CalendarDays size={20} color="var(--accent)" /> Contextual Mixes</h3>
+        <p className={styles.sectionDesc}>Control context cards, local-time suggestions, confirmation behavior, and default influence.</p>
+        <ContextualMixSettings />
       </section>
 
       {/* API Keys & Integrations */}

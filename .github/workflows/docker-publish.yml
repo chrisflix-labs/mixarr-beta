@@ -8,7 +8,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: chrisflix-labs/mixarr
-  IMAGE_TAG: latest
+  IMAGE_TAG: beta
 
 jobs:
   build-and-push-image:
