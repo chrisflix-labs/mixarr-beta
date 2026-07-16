@@ -158,6 +158,22 @@ export async function runScheduledBackgroundSync(activeCron: string) {
     stages.push({ name: "plex_sync", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, ...plexCounts });
     console.log(`[Scheduler] Step 1/5 completed name=plex_sync duration=${Math.round(durationMs / 1000)}s scanned=${plexCounts.scanned} created=${plexCounts.created} missing=${plexCounts.missing} failed=${plexCounts.failed}`);
 
+    if (remaining()) {
+      stageStartedAt = Date.now();
+      const servers = await prisma.server.findMany({ select: { id: true, userId: true } });
+      const playbackResults: any[] = [];
+      const { startPlaybackHistorySync } = await import("./playbackAwareness");
+      console.log(`[Scheduler] Playback history stage started servers=${servers.length}`);
+      for (const server of servers) {
+        if (!remaining()) break;
+        const playback = await startPlaybackHistorySync({ serverId: server.id, userId: server.userId, source: "scheduled", mode: "incremental", background: false });
+        playbackResults.push({ serverId: server.id, started: playback.started, result: "result" in playback ? playback.result : null });
+      }
+      durationMs = Date.now() - stageStartedAt;
+      stages.push({ name: "playback_history", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, servers: playbackResults });
+      console.log(`[Scheduler] Playback history stage completed duration=${Math.round(durationMs / 1000)}s servers=${playbackResults.length}`);
+    }
+
     setJobPhase(lock.job, "Step 2/5: popularity");
     stageStartedAt = Date.now();
     console.log("[Scheduler] Step 2/5 started name=popularity");

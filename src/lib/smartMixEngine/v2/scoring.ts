@@ -12,6 +12,7 @@ import { SMART_MIX_ENGINE_V2, type SmartMixEngineV2Config, type SmartMixRuleLike
 import { scorePersonalizationAdjustment } from "../../personalization/scoring";
 import { scorePlaylistIdentityTrack } from "../../playlistIdentity/scoring";
 import { scoreAdaptiveSmartMixTrack } from "../../adaptiveScoring/scoring";
+import { scorePlaybackAwareTrack } from "../../playbackAwareness/scoring";
 
 const metadataRuleFields = new Set(["tempo", "valence", "energy", "popularity"]);
 
@@ -121,17 +122,34 @@ export function applyAdaptiveScoringToTrack<TTrack extends Record<string, any>>(
   const finalScore = adaptiveScore
     ? adaptiveScore.personalizedScore
     : identityScore.excluded ? legacyScoreBeforeIdentity : roundScore(legacyScoreBeforeIdentity + identityScore.adjustment);
+  const alreadyExcluded = adaptiveScore?.excluded || personalizationScore?.excluded || identityScore.excluded;
+  const playbackScore = !alreadyExcluded && config.playbackScoring
+    ? scorePlaybackAwareTrack(finalScore, track, config.playbackScoring)
+    : null;
+  if (playbackScore) {
+    scoreBreakdown.playback = playbackScore.appliedAdjustment;
+    for (const item of playbackScore.reasons) {
+      if (item.key === "recent") scoreBreakdown.recentlyPlayedPlayback = (scoreBreakdown.recentlyPlayedPlayback || 0) + item.adjustment;
+      if (item.key === "completion") scoreBreakdown.playbackCompletion = (scoreBreakdown.playbackCompletion || 0) + item.adjustment;
+      if (item.key === "replay") scoreBreakdown.playbackReplay = (scoreBreakdown.playbackReplay || 0) + item.adjustment;
+      if (item.key === "skip") scoreBreakdown.playbackSkip = (scoreBreakdown.playbackSkip || 0) + item.adjustment;
+      if (item.key === "forgotten") scoreBreakdown.forgottenFavorite = (scoreBreakdown.forgottenFavorite || 0) + item.adjustment;
+      if (item.key === "discovery") scoreBreakdown.playbackDiscovery = (scoreBreakdown.playbackDiscovery || 0) + item.adjustment;
+    }
+  }
+  const scoreAfterPlayback = playbackScore?.finalScore ?? finalScore;
   return {
     ...track,
-    score: finalScore,
+    score: scoreAfterPlayback,
     baseScore,
-    personalizedScore: finalScore,
+    personalizedScore: scoreAfterPlayback,
     scoreBreakdown,
     ...(personalizationScore ? { personalizationScore } : {}),
     ...(identityScore.applied ? { playlistIdentityScore: identityScore } : {}),
     ...(adaptiveScore ? { adaptiveScore } : {}),
-    ...(adaptiveScore?.excluded || personalizationScore?.excluded || identityScore.excluded
-      ? { exclusionReason: adaptiveScore?.exclusionReason || personalizationScore?.exclusionReason || identityScore.exclusionReason }
+    ...(playbackScore ? { playbackScore } : {}),
+    ...(alreadyExcluded || playbackScore?.excluded
+      ? { exclusionReason: adaptiveScore?.exclusionReason || personalizationScore?.exclusionReason || identityScore.exclusionReason || playbackScore?.exclusionReason }
       : {}),
   };
 }

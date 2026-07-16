@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.1.5 - Listening History & Playback Awareness
+
+- Added incremental, paginated Plex playback-history import with idempotent events, safe retry state, bounded matching, retention, and dedicated Job History records.
+- Added explicit per-server Plex user mapping and user-isolated playback profiles.
+- Added conservative completion, replay, recent-play, skip, forgotten-favorite, discovery, and confidence calculations.
+- Integrated playback as a separately capped and explained layer after existing Smart Mix and adaptive scoring.
+- Added soft and strict recent-play controls with locked, important, and selected-track protection.
+- Added the responsive playback settings/dashboard, sync and rebuild actions, privacy controls, paginated profile categories, and unmatched-event administration.
+- Added the non-destructive `20260716030000_playback_awareness` PostgreSQL migration, tests, upgrade documentation, and Roadmap update.
+
 ## v2.1.4 - Adaptive Smart Mix Scoring
 
 - Added a dedicated adaptive scoring service layered on top of the unchanged Smart Mix Engine v2 base score.

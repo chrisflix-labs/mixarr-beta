@@ -25,6 +25,7 @@ describe("release notes", () => {
     ordered.pop();
     ordered.pop();
     ordered.pop();
+    ordered.pop();
 
     assert.deepEqual(ordered.map((note) => note.version), ["1.0.3", "1.0.4", "1.0.5", "1.1.0", "1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5", "1.1.6", "1.1.6-hotfix", "1.1.7", "1.1.8", "1.1.9", "1.1.9.1", "1.1.10", "1.2.0", "1.2.1", "1.2.2", "1.2.2-hotfix", "1.2.3", "1.2.4", "1.2.5", "1.2.6", "1.2.7", "1.2.8", "1.2.8-hotfix", "1.2.8-hotfix.2", "1.2.8-hotfix.3", "1.2.8-hotfix.4", "1.2.8-hotfix.5", "1.2.8-hotfix.6", "1.2.8-hotfix.7", "1.2.9", "1.2.9.1", "1.3.0", "1.3.0.1", "1.3.1", "1.3.2", "1.3.3", "1.3.4", "1.3.5", "1.3.6", "1.3.7", "1.3.7.1", "1.3.7.2", "1.3.8", "1.3.9", "1.3.9.1", "1.3.9.2", "1.5.0", "2.0.0", "2.0.1", "2.0.2", "2.0.3", "2.0.4"]);
   });
@@ -32,6 +33,7 @@ describe("release notes", () => {
   it("sorts release notes from newest to oldest", () => {
     const ordered = getReleaseNotesNewestFirst();
     ordered.shift(); // v2.1.4 through v2.0.5 are asserted separately below.
+    ordered.shift();
     ordered.shift();
     ordered.shift();
     ordered.shift();
@@ -343,11 +345,11 @@ describe("release notes", () => {
     assert.deepEqual(ordered.map((note) => note.version), ["v2.0.0", "v1.3.10", "v1.3.9.2", "v1.3.9.1", "v1.3.9", "v1.3.8"]);
   });
 
-  it("adds the v2.1.4 release note at the top", () => {
+  it("adds the v2.1.5 release note at the top", () => {
     const [latest] = getReleaseNotesNewestFirst();
 
-    assert.equal(latest.version, "2.1.4");
-    assert.equal(latest.title, "Adaptive Smart Mix Scoring");
+    assert.equal(latest.version, "2.1.5");
+    assert.equal(latest.title, "Listening History & Playback Awareness");
     assert.ok(latest.badges.includes("Personalization"));
   });
 

@@ -35,6 +35,7 @@ const typeOptions = [
   ["bpm", "BPM"],
   ["audio_features", "Audio Features"],
   ["plex_sync", "Plex Sync"],
+  ["playback_history", "Playback History"],
   ["playlist", "Playlist"],
   ["library_health", "Library Health"],
   ["cleanup", "Cleanup"],

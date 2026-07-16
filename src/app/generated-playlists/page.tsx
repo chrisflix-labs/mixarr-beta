@@ -745,7 +745,7 @@ export default function GeneratedPlaylistsPage() {
                     <span>Mood {(track.audioFeature?.effectiveMood ?? track.audioFeature?.valence)?.toFixed(2) || "-"}</span>
                     <span>Popularity {track.popularity?.score?.toFixed(0) || "-"}</span>
                   </div>
-                  <AdaptiveScoreBreakdown score={track.adaptiveScore} />
+                  <AdaptiveScoreBreakdown score={track.adaptiveScore} playback={track.playbackScore} />
                 </div>
                 <div className={styles.trackActions}>
                   <TrackPreviewButton trackId={track.id} />

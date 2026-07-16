@@ -73,6 +73,23 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.1.5",
+    title: "Listening History & Playback Awareness",
+    releaseDate: "July 16, 2026",
+    badges: ["Personalization", "Plex", "History", "Playlists", "Jobs", "Database", "Performance", "Security", "Settings", "Mobile", "UI"],
+    changes: [
+      "Added paginated incremental Plex playback-history synchronization with timestamp overlap, idempotent event keys, bounded rating-key lookups, retention controls, retry-safe state, and summarized Job History records.",
+      "Added discovered Plex accounts and explicit per-server Mixarr-to-Plex user mappings so listening histories and recommendation profiles remain user-separated.",
+      "Added conservative event normalization for completion, partial playback, accidental starts, missing duration or offsets, and confidence-limited skip inference.",
+      "Added aggregated per-user track playback profiles with completion and skip rates, replay counts, recent windows, affinity, forgotten-favorite scores, and evidence confidence.",
+      "Integrated playback awareness after existing Smart Mix and adaptive scoring as a separate capped layer with soft or strict recent-play behavior, completion and replay bonuses, cautious skip penalties, forgotten favorites, and deeper-cut support.",
+      "Protected locked, important, and explicitly selected tracks from strict recent-play removal while keeping explicit dislikes and never-recommend feedback authoritative.",
+      "Added a responsive Playback Awareness settings and dashboard page with mapping, influence, recency, forgotten-favorite, signal toggles, sync status, profile categories, rebuild, reset, privacy, and error states.",
+      "Added authenticated, validated APIs for settings, mappings, sync, status, summary, paginated track details, rebuild, reset, and admin-only unmatched-event review.",
+      "Added additive database migration, scheduled daily integration, score snapshots and explanations, automated coverage, privacy documentation, upgrade notes, and Roadmap completion.",
+    ],
+  },
+  {
     version: "2.1.4",
     title: "Adaptive Smart Mix Scoring",
     releaseDate: "July 16, 2026",

@@ -2,6 +2,8 @@ import prisma from "../prisma";
 import { metadataCorrectionRelations } from "../metadataCorrections";
 import { playlistConfigSchema } from "../playlistService";
 import { scoreSmartMixTrack } from "../smartMixEngine/v2/scoring";
+import { getAdaptiveScoringSettings } from "../adaptiveScoring";
+import { loadPlaybackScoringContext } from "../playbackAwareness";
 import { scoreNewMusic } from "./scoring";
 import { getRecentlyAddedSettings } from "./settings";
 
@@ -45,6 +47,12 @@ export async function findRecentlyAddedPlaylistMatches({ userId, batchId }: { us
   ]);
   // A missing playlist-level row intentionally means the documented default: Suggestions Only.
   const eligiblePlaylists = playlists.filter((playlist) => playlist.automationSettings?.mode !== "off");
+  const adaptive = await getAdaptiveScoringSettings(userId).catch(() => null);
+  const playbackScoring = await loadPlaybackScoringContext({
+    userId,
+    trackIds: states.map((state) => state.trackId),
+    maximumPersonalizationInfluence: adaptive?.settings.maximumInfluence ?? 1,
+  });
   let created = 0;
   let strong = 0;
   for (const state of states) {
@@ -57,7 +65,8 @@ export async function findRecentlyAddedPlaylistMatches({ userId, batchId }: { us
         console.warn("[RecentlyAdded] playlist skipped", { playlistId: playlist.id, reason: "invalid_smart_mix_configuration" });
         continue;
       }
-      const scored = scoreSmartMixTrack(state.track, parsed.data);
+      const scored = scoreSmartMixTrack(state.track, { ...parsed.data, ...(playbackScoring ? { playbackScoring } : {}) });
+      if (scored.exclusionReason === "PLAYBACK_RECENT") continue;
       const compatibilityScore = Math.round(clamp((scored.score - 40) * 3));
       bestCompatibility = Math.max(bestCompatibility, compatibilityScore);
       const newMusic = scoreNewMusic(state.track, compatibilityScore);

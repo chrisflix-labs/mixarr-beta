@@ -17,6 +17,7 @@ import { getBetaStatus, getFeatureState, recordBetaUsage } from "./featureFlagSe
 import { loadExplicitFeedbackScoringContext, loadPersonalizationScoringContext, recordTrackInteractionInBackground } from "./personalization";
 import { ensurePlaylistIdentity, loadPlaylistIdentityScoringContext, recordPlaylistIdentityEvent, rememberPlaylistRejection, trainPlaylistIdentity, updatePlaylistTrackMemory } from "./playlistIdentity";
 import { loadAdaptiveScoringContext } from "./adaptiveScoring";
+import { loadPlaybackScoringContext } from "./playbackAwareness";
 import {
   runSmartMixEngineV2,
   smartMixEngineLabel,
@@ -37,6 +38,7 @@ import {
   REGENERATION_ENGINE_VERSION,
   type PlaylistRegenerationRequest,
   type PlaylistTrackState,
+  type SmartMixEngineV2Config,
   scoreSmartMixTrack,
 } from "./smartMixEngine/v2";
 import {
@@ -693,6 +695,7 @@ function publicPreviewTrack(track: any) {
     personalizationScore: track.personalizationScore || undefined,
     playlistIdentityScore: track.playlistIdentityScore || undefined,
     adaptiveScore: track.adaptiveScore || undefined,
+    playbackScore: track.playbackScore || undefined,
     baseScore: typeof track.baseScore === "number" ? track.baseScore : undefined,
     personalizedScore: typeof track.personalizedScore === "number" ? track.personalizedScore : undefined,
   };
@@ -865,7 +868,7 @@ export async function generatePlaylistTracksWithStats({
     const adaptiveScoring = useSmartMixV2
       ? await loadAdaptiveScoringContext({ userId, playlistId: personalizationPlaylistId, personalization, playlistIdentity })
       : undefined;
-    let runConfig = useSmartMixV2
+    let runConfig: SmartMixEngineV2Config = useSmartMixV2
       ? { ...config, scoringModel: scoringResolution.model.id, tuningConfig, ...(moodFeatureState && !moodFeatureState.enabled ? { moodBlendMode: "off" as const, selectedMoodPath: [], allowedMoods: [] } : {}), recentlyUsedTrackIds, recentPlaylistUsage, ...(personalization ? { personalization } : {}), ...(playlistIdentity ? { playlistIdentity } : {}), ...(adaptiveScoring ? { adaptiveScoring } : {}) }
       : config;
     let remainingLimit = Math.max(0, config.limit - pinnedTracks.length);
@@ -910,6 +913,20 @@ export async function generatePlaylistTracksWithStats({
         personalization: personalizationWithFeedback,
         ...(adaptiveScoring ? { adaptiveScoring: { ...adaptiveScoring, personalization: personalizationWithFeedback } } : {}),
       };
+    }
+    if (useSmartMixV2) {
+      const importantTrackIds = playlistIdentity
+        ? Object.entries(playlistIdentity.trackMemory)
+            .filter(([, memory]: any) => ["LOCKED", "ANCHOR", "IMPORTANT"].includes(memory.importance))
+            .map(([trackId]) => trackId)
+        : [];
+      const playbackScoring = await loadPlaybackScoringContext({
+        userId,
+        trackIds: [...effectivePinnedTracks, ...candidates].map((track) => track.id),
+        protectedTrackIds: [...effectivePinnedTracks.map((track) => track.id), ...importantTrackIds],
+        maximumPersonalizationInfluence: adaptiveScoring?.settings.maximumInfluence ?? 1,
+      });
+      if (playbackScoring) runConfig = { ...runConfig, playbackScoring };
     }
     const reasons = collectRuleReasons(config.ruleTree, config.rules);
 
@@ -1561,6 +1578,7 @@ async function replaceGeneratedPlaylistSnapshot(generatedPlaylistId: string, tra
           liked: Boolean(previous?.liked || Number(track.rating) >= 8),
           regenerationExcluded: Boolean(previous?.regenerationExcluded),
           adaptiveScoreJson: track.adaptiveScore || undefined,
+          playbackScoreJson: track.playbackScore || undefined,
         };
       }),
     });
@@ -1620,6 +1638,7 @@ export async function recordGeneratedPlaylist({
     : null;
   let scoredTracks = tracks;
   let adaptiveSettingsSnapshot: unknown = null;
+  let playbackSettingsSnapshot: unknown = null;
   if (config.engineVersion === SMART_MIX_ENGINE_V2 && tracks.length) {
     const personalization = await loadPersonalizationScoringContext(userId, existing?.id);
     const playlistIdentity = await loadPlaylistIdentityScoringContext(userId, existing?.id);
@@ -1632,13 +1651,31 @@ export async function recordGeneratedPlaylist({
       );
     }
     const adaptiveScoring = await loadAdaptiveScoringContext({ userId, playlistId: existing?.id, personalization, playlistIdentity });
+    const lockedTrackIds = existing
+      ? (await prisma.generatedPlaylistTrack.findMany({ where: { generatedPlaylistId: existing.id, locked: true, trackId: { not: null } }, select: { trackId: true } }))
+          .map((row) => row.trackId)
+          .filter((trackId): trackId is string => Boolean(trackId))
+      : [];
+    const importantTrackIds = playlistIdentity
+      ? Object.entries(playlistIdentity.trackMemory)
+          .filter(([, memory]) => ["LOCKED", "ANCHOR", "IMPORTANT"].includes(memory.importance))
+          .map(([trackId]) => trackId)
+      : [];
+    const playbackScoring = await loadPlaybackScoringContext({
+      userId,
+      trackIds: tracks.map((track) => track.id),
+      protectedTrackIds: [...lockedTrackIds, ...importantTrackIds],
+      maximumPersonalizationInfluence: adaptiveScoring?.settings.maximumInfluence ?? 1,
+    });
     adaptiveSettingsSnapshot = adaptiveScoring?.settings || null;
+    playbackSettingsSnapshot = playbackScoring?.settings || null;
     scoredTracks = tracks.map((track) => scoreSmartMixTrack(track, {
       ...config,
       tuningConfig,
       ...(personalization ? { personalization } : {}),
       ...(playlistIdentity ? { playlistIdentity } : {}),
       ...(adaptiveScoring ? { adaptiveScoring } : {}),
+      ...(playbackScoring ? { playbackScoring } : {}),
     }));
   }
   const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(scoredTracks, tuningConfig, discoveryResult || undefined) : null;
@@ -1685,6 +1722,7 @@ export async function recordGeneratedPlaylist({
     } as any : undefined,
     adaptiveScoringVersion: config.engineVersion === SMART_MIX_ENGINE_V2 ? "1" : null,
     adaptiveSettingsJson: adaptiveSettingsSnapshot as any,
+    playbackSettingsJson: playbackSettingsSnapshot as any,
     filtersJson: config as any,
     safetyRulesJson: config.safetyRules as any,
     qualityScoreJson: qualityScore as any,

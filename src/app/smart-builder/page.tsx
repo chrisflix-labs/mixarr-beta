@@ -894,7 +894,7 @@ export default function SmartBuilderPage() {
                             <span>Mood {(track.audioFeature?.effectiveMood ?? track.audioFeature?.valence)?.toFixed(2) || "-"}{track.audioFeature?.moodSource ? ` | ${track.audioFeature.moodSource}` : ""}{track.audioFeature?.moodConfidence ? ` | ${track.audioFeature.moodConfidence}` : ""}</span>
                             <span>Popularity {track.popularity?.score?.toFixed(0) || "-"}</span>
                           </div>
-                          <AdaptiveScoreBreakdown score={track.adaptiveScore} />
+                          <AdaptiveScoreBreakdown score={track.adaptiveScore} playback={track.playbackScore} />
                         </div>
                         <div className={styles.trackActions}>
                           <TrackPreviewButton trackId={track.id} />

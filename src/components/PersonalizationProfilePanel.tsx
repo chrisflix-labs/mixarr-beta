@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Brain, Database, Gauge, RefreshCw, ShieldCheck, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Brain, Database, Gauge, Headphones, RefreshCw, ShieldCheck, SlidersHorizontal, Trash2 } from "lucide-react";
 import styles from "./PersonalizationProfilePanel.module.css";
 import FeedbackManagement from "./FeedbackManagement";
 
@@ -188,6 +188,8 @@ export default function PersonalizationProfilePanel({ initialData, detailed = fa
           <button type="button" className={styles.advancedToggle} disabled={busy !== null} onClick={() => updateAdaptive({ preset: "balanced" })}>Restore recommended defaults</button>
         </section>
       )}
+
+      <div className={styles.actions}><Link href="/settings/personalization/playback"><Headphones size={15} /> Configure playback awareness</Link></div>
 
       {!profile.enabled && <p className={styles.stateMessage}>Smart Mix is currently using global scoring only.</p>}
       {profile.enabled && !profile.learningEnabled && <p className={styles.stateMessage}>Behavior learning is off. Your existing profile can still be used.</p>}

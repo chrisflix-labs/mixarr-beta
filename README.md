@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. The v2.1.4 migration adds adaptive scoring settings, aggregated statistics, per-playlist overrides, and optional score snapshots; existing playlists, tracks, interactions, feedback, personalization profiles, playlist identities, and versions are preserved. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. The v2.1.5 migration adds local Plex playback events, explicit Plex-user mappings, aggregated per-user playback profiles, synchronization state, settings, and optional score snapshots; existing playlists, tracks, interactions, feedback, personalization profiles, playlist identities, adaptive statistics, and versions are preserved. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -33,6 +33,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 | Library browsing | Provides searchable library and genre views for synced Plex music. |
 | Track genre tools | Syncs, filters, inspects, and retries track-level genre metadata from supported providers. |
 | Playlist-use tracking | Tracks playlist generation/export history and saved playlist refresh activity. |
+| Playback awareness | Optionally imports per-user Plex listening history and applies confidence-limited recent-play, completion, replay, skip, forgotten-favorite, and discovery adjustments. |
 | Advanced playlist regeneration | Analyzes Smart Mix v2 playlists, locks keeper tracks, previews targeted replacements, preserves curves, and supports server-side undo. |
 | Playlist version history | Saves generated playlist states, compares tracks/settings/scores, pins restore points, and safely restores earlier versions without deleting later history. |
 | Recently Added Automation | Detects new Plex tracks once, scores readiness, quarantines incomplete analysis, suggests Smart Mix matches, and optionally applies version-protected additions after explicit opt-in. |
@@ -46,7 +47,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.1.4 keeps personalization user-controlled and confidence-limited. Adaptive scoring preserves the original Smart Mix v2 base score, then applies visible personal, playlist-identity, history, artist, mood, discovery, and repeat adjustments within the selected influence cap. Likes, dislikes, playlist-specific rejection memory, preference statistics, membership history, important tracks, identity snapshots, transition feedback, and interaction data remain in the local Mixarr database. Confirmed duplicate recordings may share trusted enrichment by default, but every Plex library item remains a separate physical track record. See [Adaptive Smart Mix Scoring](docs/ADAPTIVE_SCORING_V214.md) and [Beta features and advanced flags](docs/BETA_FEATURES.md).
+Mixarr v2.1.5 keeps personalization user-controlled and confidence-limited. Adaptive scoring preserves the original Smart Mix v2 base score, then playback awareness may apply one additional visible, capped layer. Playback history is disabled until the user enables it and maps the correct Plex user. Raw events, mappings, and derived profiles stay in the local Mixarr database. Confirmed duplicate recordings remain separate physical track records and their playback is matched by server, library, and Plex rating key. See [Listening History & Playback Awareness](docs/PLAYBACK_AWARENESS_V215.md), [Adaptive Smart Mix Scoring](docs/ADAPTIVE_SCORING_V214.md), and [Beta features and advanced flags](docs/BETA_FEATURES.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 
@@ -62,6 +63,7 @@ These features exist in the current beta, but are still being tested across diff
 | Metrics and progress reporting | Beta. Useful for troubleshooting, but labels and coverage may continue to evolve. |
 | Advanced playlist regeneration | Beta. Review every proposed replacement before applying; aggressive sensitivity can substantially change a playlist. |
 | Recently Added Automation | Beta and disabled by default. Suggestions work manually; automatic playlist changes, schedules, publishing, and notifications each require explicit opt-in. |
+| Playback awareness | Beta and disabled by default. Requires an explicit Plex user mapping; skip inference is conservative and depends on the history fields supplied by the Plex server. |
 
 ## Getting Started
 
@@ -212,7 +214,7 @@ Please avoid posting secrets such as Plex tokens, API keys, database passwords, 
 
 The v2.0.x Smart Mix Engine v2 cycle is complete. It delivered visible scoring, tuning, mood blending, BPM flow, discovery controls, advanced regeneration, playlist versions, manual metadata corrections, Recently Added automation, and advanced beta flags.
 
-The current v2.1.x cycle adds optional, locally stored personalization and adaptive recommendations. v2.1.4 is the active release and adds confidence-limited adaptive Smart Mix scoring, base-score comparison, explanations, influence controls, recalculation, and scoped reset workflows. See the in-app Product Roadmap for the typed release list and future themes.
+The current v2.1.x cycle adds optional, locally stored personalization and adaptive recommendations. v2.1.5 is the active release and adds per-user Plex playback synchronization, listening profiles, playback-aware scoring, explanations, controls, and privacy protections. See the in-app Product Roadmap for the typed release list and future themes.
 
 ## Previews
 

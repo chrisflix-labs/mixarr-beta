@@ -198,8 +198,8 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
   applyPlaylistSafetyRules,
 }: SmartMixEngineV2RunInput<TTrack>): SmartMixEngineV2RunResult<TTrack> {
   const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
-  const baseConfig = config.adaptiveScoring
-    ? { ...config, personalization: undefined, playlistIdentity: undefined, adaptiveScoring: undefined }
+  const baseConfig = config.adaptiveScoring || config.playbackScoring
+    ? { ...config, personalization: undefined, playlistIdentity: undefined, adaptiveScoring: undefined, playbackScoring: undefined }
     : config;
   const initiallyScoredPinnedTracks = pinnedTracks.map((track) => scoreSmartMixTrack(track, baseConfig));
   const initiallyScoredCandidates = candidates.map((track, index) => ({
@@ -211,11 +211,13 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
     config: tuning.discovery,
     recentUsage: config.recentPlaylistUsage,
   });
-  const fullyScoredTracks = config.adaptiveScoring
+  const fullyScoredTracks = config.adaptiveScoring || config.playbackScoring
     ? discoveryScoring.tracks.map((track) => applyAdaptiveScoringToTrack(track as SmartMixScoredTrack<TTrack>, config))
     : discoveryScoring.tracks;
   const scoredPinnedTracks = fullyScoredTracks.slice(0, initiallyScoredPinnedTracks.length) as SmartMixScoredTrack<TTrack>[];
-  const scoredCandidates = fullyScoredTracks.slice(initiallyScoredPinnedTracks.length) as Array<SmartMixScoredTrack<TTrack> & { smartMixV2OriginalIndex: number }>;
+  const scoredCandidates = fullyScoredTracks
+    .slice(initiallyScoredPinnedTracks.length)
+    .filter((track) => track.exclusionReason !== "PLAYBACK_RECENT") as Array<SmartMixScoredTrack<TTrack> & { smartMixV2OriginalIndex: number }>;
 
   const sortedCandidates = [...scoredCandidates].sort((left, right) => {
     if (right.score !== left.score) return right.score - left.score;

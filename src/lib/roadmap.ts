@@ -101,12 +101,23 @@ export const roadmapReleases: RoadmapRelease[] = [
     version: "2.1.4",
     title: "Adaptive Smart Mix Scoring",
     cycle: "2.1.x",
-    status: "current",
+    status: "completed",
     description: "Builds on the v2.1.0 personalization profile, v2.1.2 feedback, and v2.1.3 playlist identity to adjust Smart Mix rankings through a separate, confidence-limited, reversible, explainable scoring layer.",
     featureLabels: ["Unchanged base Smart Mix score", "Personalized score comparison", "Eight adaptive scoring components", "Confidence multipliers", "Maximum influence slider", "Presets and advanced controls", "Playlist-specific overrides", "Source and scope labels", "Track-level explanations", "Aggregated history statistics", "Recalculation jobs", "Scoped reset and retraining", "Scoring version snapshots", "Large-library batching"],
     releaseOrder: 105,
     completionDate: "2026-07-16",
     route: "/personalization",
+  },
+  {
+    version: "2.1.5",
+    title: "Listening History & Playback Awareness",
+    cycle: "2.1.x",
+    status: "current",
+    description: "Uses per-user Plex listening history as a separate, confidence-weighted, capped Smart Mix layer for recent-play avoidance, completion and replay affinity, cautious skip signals, forgotten favorites, and playback-aware discovery.",
+    featureLabels: ["Incremental Plex history sync", "Per-user Plex mapping", "Normalized playback events", "Aggregated track profiles", "Recently played controls", "Forgotten favorites", "Completion and replay affinity", "Confidence-limited skip signals", "Playback-aware discovery", "Visible score explanations", "Job History integration", "Local privacy controls", "Large-history batching"],
+    releaseOrder: 106,
+    completionDate: "2026-07-16",
+    route: "/settings/personalization/playback",
   },
 ];
 
@@ -124,7 +135,7 @@ export const roadmapCycles: RoadmapCycle[] = [
     status: "current",
     description: "The v2.1.x cycle adds optional, locally stored personalization so Smart Mix can gradually adapt to each user's selections, rejections, playlist habits, and recommendation preferences.",
     releases: roadmapReleases.filter((release) => release.cycle === "2.1.x"),
-    futureThemes: ["Adaptive preference learning", "Personalized playlist explanations", "User feedback controls", "Playlist-specific learning", "Personal recommendation insights", "Personalization tuning and safeguards"],
+    futureThemes: ["Cross-playlist preference insights", "More playback-source adapters", "Long-term recommendation health", "Additional user-controlled personalization safeguards"],
   },
 ];
 

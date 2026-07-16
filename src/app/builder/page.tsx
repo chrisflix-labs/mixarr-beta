@@ -2398,7 +2398,7 @@ export default function BuilderPage() {
                             </div>
                           )}
                           {track.discoveryMetrics?.reasons?.length > 0 && <div className={styles.badgeRow}>{track.discoveryMetrics.reasons.slice(0, 2).map((reason: string) => <span key={reason} className={styles.discoveryReason} title={`Discovery: ${reason}`}>{reason}</span>)}</div>}
-                          <AdaptiveScoreBreakdown score={track.adaptiveScore} />
+                          <AdaptiveScoreBreakdown score={track.adaptiveScore} playback={track.playbackScore} />
                         </td>
                         <td className={styles.trackArtist}>{track.artist?.title || "—"}</td>
                         <td className={styles.trackAlbum}>{track.album?.title || "—"}</td>
