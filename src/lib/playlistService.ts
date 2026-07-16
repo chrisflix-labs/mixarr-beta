@@ -15,6 +15,7 @@ import { scorePlaylist, type PlaylistScoreSummary } from "./playlistScoring";
 import { resolveScoringModel, STABLE_SCORING_MODEL_ID } from "./scoringModels";
 import { getBetaStatus, getFeatureState, recordBetaUsage } from "./featureFlagService";
 import { loadExplicitFeedbackScoringContext, loadPersonalizationScoringContext, recordTrackInteractionInBackground } from "./personalization";
+import { ensurePlaylistIdentity, loadPlaylistIdentityScoringContext, recordPlaylistIdentityEvent, rememberPlaylistRejection, trainPlaylistIdentity, updatePlaylistTrackMemory } from "./playlistIdentity";
 import {
   runSmartMixEngineV2,
   smartMixEngineLabel,
@@ -851,8 +852,11 @@ export async function generatePlaylistTracksWithStats({
     const personalization = useSmartMixV2
       ? await loadPersonalizationScoringContext(userId, personalizationPlaylistId)
       : undefined;
+    const playlistIdentity = useSmartMixV2
+      ? await loadPlaylistIdentityScoringContext(userId, personalizationPlaylistId)
+      : undefined;
     let runConfig = useSmartMixV2
-      ? { ...config, scoringModel: scoringResolution.model.id, tuningConfig, ...(moodFeatureState && !moodFeatureState.enabled ? { moodBlendMode: "off" as const, selectedMoodPath: [], allowedMoods: [] } : {}), recentlyUsedTrackIds, recentPlaylistUsage, ...(personalization ? { personalization } : {}) }
+      ? { ...config, scoringModel: scoringResolution.model.id, tuningConfig, ...(moodFeatureState && !moodFeatureState.enabled ? { moodBlendMode: "off" as const, selectedMoodPath: [], allowedMoods: [] } : {}), recentlyUsedTrackIds, recentPlaylistUsage, ...(personalization ? { personalization } : {}), ...(playlistIdentity ? { playlistIdentity } : {}) }
       : config;
     let remainingLimit = Math.max(0, config.limit - pinnedTracks.length);
     let safetyCandidateLimit = safetyRulesAreEnabled(config)
@@ -870,6 +874,12 @@ export async function generatePlaylistTracksWithStats({
       ? await queryCandidateTracks(userId, config, omittedIds, take, audioFeatureFilterOptions, useSmartMixV2)
       : [];
     let effectivePinnedTracks = pinnedTracks;
+    if (useSmartMixV2 && playlistIdentity) {
+      candidates = candidates.filter((track) => {
+        const memory = playlistIdentity.trackMemory[track.id];
+        return !memory?.permanentRejection && memory?.rejectionState !== "NEVER_USE";
+      });
+    }
     if (useSmartMixV2 && personalization) {
       const feedback = await loadExplicitFeedbackScoringContext(
         userId,
@@ -1659,6 +1669,10 @@ export async function recordGeneratedPlaylist({
       await recordBetaUsage({ userId, featureKey, playlistId: generatedPlaylist.id, action: existing ? "playlist_regeneration" : "playlist_generation", success: true, fallbackUsed: stableFallbackUsed, engineVersion: config.engineVersion, scoringModel: scoringResolution.model.id, errorCode: fallbackReason });
     }
   }
+  await ensurePlaylistIdentity(userId, generatedPlaylist.id, existing ? "REGENERATION" : "GENERATED");
+  trainPlaylistIdentity({ userId, playlistId: generatedPlaylist.id, source: existing ? "REGENERATION" : "GENERATION" }).catch((error: unknown) => {
+    console.warn("[PlaylistIdentity] automatic training failed; playlist remains available", { playlistId: generatedPlaylist.id, message: error instanceof Error ? error.message : "unknown error" });
+  });
   return generatedPlaylist;
 }
 
@@ -2445,6 +2459,7 @@ export async function previewAdvancedPlaylistRegeneration({ userId, generatedPla
     candidates: candidatesResult.tracks,
     request,
     tuningConfig: tuning,
+    identity: await loadPlaylistIdentityScoringContext(userId, generatedPlaylistId),
   });
   await prisma.playlistRegeneration.updateMany({
     where: { generatedPlaylistId, status: "preview" },
@@ -2582,6 +2597,7 @@ export async function applyAdvancedPlaylistRegeneration({
   }
   for (const change of rejectedChanges) {
     recordTrackInteractionInBackground({ userId, trackId: change.proposedTrackId, playlistId: generatedPlaylistId, eventType: "TRACK_REJECTED_FROM_PREVIEW", eventSource: "REGENERATION_PREVIEW", generationId: regeneration.id, idempotencyKey: `regeneration:${regeneration.id}:${change.position}:rejected`, context: { baseScore: change.proposedScore ?? undefined } });
+    rememberPlaylistRejection({ userId, playlistId: generatedPlaylistId, trackId: change.proposedTrackId, source: "REGENERATION_PREVIEW", eventKey: `regeneration:${regeneration.id}:${change.position}:rejected`, strong: false }).catch(() => undefined);
   }
   const orderedIds = nextIds.filter((id): id is string => Boolean(id));
   const [tracks, targetServer] = await Promise.all([
@@ -2719,7 +2735,10 @@ export async function applyAdvancedPlaylistRegeneration({
       idempotencyKey: `regeneration:${regeneration.id}:${change.position}:accepted`,
       context: { baseScore: change.proposedScore ?? undefined },
     });
+    recordPlaylistIdentityEvent({ userId, playlistId: generatedPlaylistId, trackId: change.originalTrackId, eventType: "TRACK_REPLACED", eventSource: "REGENERATION", eventKey: `regeneration:${regeneration.id}:${change.position}:removed`, previousPosition: change.position, generationRunId: regeneration.id, engineVersion: REGENERATION_ENGINE_VERSION }).catch(() => undefined);
+    recordPlaylistIdentityEvent({ userId, playlistId: generatedPlaylistId, trackId: change.proposedTrackId, eventType: "TRACK_ADDED", eventSource: "REGENERATION", eventKey: `regeneration:${regeneration.id}:${change.position}:added`, newPosition: change.position, generationRunId: regeneration.id, engineVersion: REGENERATION_ENGINE_VERSION }).catch(() => undefined);
   }
+  trainPlaylistIdentity({ userId, playlistId: generatedPlaylistId, source: "REGENERATION" }).catch(() => undefined);
   console.info("[SmartMixV2:Regeneration] changes applied", { playlistId: generatedPlaylistId, regenerationId: regeneration.id, engineVersion: REGENERATION_ENGINE_VERSION, mode: regeneration.mode, replacements: acceptedChanges.length });
   return {
     success: true,
@@ -2816,6 +2835,7 @@ export async function setGeneratedPlaylistTrackLock({ userId, generatedPlaylistI
     return updated;
   });
   if (locked) recordTrackInteractionInBackground({ userId, trackId, playlistId: generatedPlaylistId, eventType: "TRACK_LOCKED", eventSource: "PLAYLIST_EDITOR" });
+  updatePlaylistTrackMemory(userId, generatedPlaylistId, trackId, { importance: locked ? "LOCKED" : "NORMAL" }).catch(() => undefined);
   return { success: true, trackId, locked, updated: result.count };
 }
 

@@ -10,6 +10,7 @@ import { normalizeMoodBlendConfig, scoreMoodBlendForTrack } from "./moodBlending
 import { applyTuningToCandidateScore, normalizeSmartMixTuningConfig, tuningWeightFactor } from "./tuning";
 import { SMART_MIX_ENGINE_V2, type SmartMixEngineV2Config, type SmartMixRuleLike, type SmartMixRuleTree, type SmartMixScoredTrack, type SmartMixScoreBreakdown } from "./types";
 import { scorePersonalizationAdjustment } from "../../personalization/scoring";
+import { scorePlaylistIdentityTrack } from "../../playlistIdentity/scoring";
 
 const metadataRuleFields = new Set(["tempo", "valence", "energy", "popularity"]);
 
@@ -150,16 +151,21 @@ export function scoreSmartMixTrack<TTrack extends Record<string, any>>(
     scoreBreakdown.playlistFitFeedback = personalizationScore.components?.playlistFitAdjustment || 0;
     scoreBreakdown.learnedProfile = personalizationScore.components?.learnedProfileAdjustment || 0;
   }
+  const identityScore = scorePlaylistIdentityTrack(track, config.playlistIdentity);
+  if (identityScore.applied) scoreBreakdown.playlistIdentity = identityScore.adjustment;
+  const scoreBeforeIdentity = personalizationScore?.finalScore ?? roundScore(tunedScore);
+  const finalScore = identityScore.excluded ? scoreBeforeIdentity : roundScore(scoreBeforeIdentity + identityScore.adjustment);
 
   return {
     ...track,
     engineVersion: SMART_MIX_ENGINE_V2,
-    score: personalizationScore?.finalScore ?? roundScore(tunedScore),
+    score: finalScore,
     scoreBreakdown,
     metadataStatus: fallback.metadataStatus,
     fallbacksApplied,
     ...(personalizationScore ? { personalizationScore } : {}),
-    ...(personalizationScore?.excluded ? { exclusionReason: personalizationScore.exclusionReason } : {}),
+    ...(identityScore.applied ? { playlistIdentityScore: identityScore } : {}),
+    ...(personalizationScore?.excluded || identityScore.excluded ? { exclusionReason: personalizationScore?.exclusionReason || identityScore.exclusionReason } : {}),
     ...(moodBlendScore ? { moodBlend: moodBlendScore.data } : {}),
   };
 }

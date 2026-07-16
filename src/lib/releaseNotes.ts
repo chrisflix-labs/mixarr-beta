@@ -23,6 +23,7 @@ export type ReleaseNoteBadge =
   | "Essentia"
   | "Hotfix"
   | "History"
+  | "Identity"
   | "Import"
   | "Export"
   | "Genres"
@@ -71,6 +72,22 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "2.1.3",
+    title: "Playlist Identity & Memory",
+    releaseDate: "July 16, 2026",
+    badges: ["Identity", "Playlists", "Personalization", "Regeneration", "History", "Database", "BPM", "Mood", "Energy", "Mobile", "UI"],
+    changes: [
+      "Added stable playlist identities keyed by the internal GeneratedPlaylist ID, with preserved Plex linkage independent of playlist names.",
+      "Added normalized identity attributes, playlist track memory, idempotent membership events, artist and genre preferences, training runs, and compact snapshots.",
+      "Added weighted current/history learning for mood distribution, energy and BPM character, discovery, artists, genres, metadata coverage, and explainable confidence states.",
+      "Separated learned, user-defined, locked, inherited, and effective identity values; manual values and explicit playlist feedback take precedence over inferred behavior.",
+      "Added playlist-specific temporary, weak, strong, and permanent rejection memory plus preferred, important, anchor, and locked track importance.",
+      "Integrated playlist identity as a distinct Smart Mix v2 score component and added identity-aware regeneration reasons, hard playlist rejections, and impact warnings.",
+      "Added a responsive Playlist Identity panel with selectable moods, range controls, preservation modes, characteristic locks, retraining, scoped reset, cloning, and important-track management.",
+      "Added lazy initialization for legacy playlists, batched historical track loading, summarized Job History, local-data privacy documentation, and an additive PostgreSQL migration.",
+    ],
+  },
   {
     version: "2.1.2",
     title: "Likes, Dislikes & Track Feedback",

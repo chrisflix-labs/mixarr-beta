@@ -118,6 +118,8 @@ export type ReplacementCandidateScore = {
   discoveryScore: number;
   varietyScore: number;
   metadataConfidenceScore: number;
+  identityMatchScore: number;
+  identityAdjustment: number;
   improvementOverOriginal: number;
   reasons: string[];
 };
@@ -130,6 +132,7 @@ export type RegenerationPreviewChange = {
   proposedScore: number;
   improvement: number;
   reasons: string[];
+  identityReasons?: string[];
   originalMetrics: TrackMetrics;
   proposedMetrics: TrackMetrics;
   originalTrack?: unknown;
@@ -151,6 +154,11 @@ export type RegenerationPreview = {
   analyzedTrackCount: number;
   finalTrackIds: string[];
   weakness: TrackWeaknessAnalysis[];
+  identityImpact?: {
+    level: "Low" | "Medium" | "High";
+    summary: string[];
+    lockedTracksRemoved: number;
+  };
 };
 
 export type RegenerationTrack = Record<string, any> & { id: string };

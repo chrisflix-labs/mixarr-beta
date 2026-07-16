@@ -87,6 +87,16 @@ export const roadmapReleases: RoadmapRelease[] = [
     completionDate: "2026-07-15",
     route: "/release-notes",
   },
+  {
+    version: "2.1.3",
+    title: "Playlist Identity & Memory",
+    cycle: "2.1.x",
+    status: "current",
+    description: "Gives every managed playlist a stable, explainable identity with learned mood, energy, BPM, artist, genre, discovery, importance, rejection, and historical membership memory that survives regeneration and Plex changes.",
+    featureLabels: ["Stable playlist identity", "Learned and manual effective values", "Per-field locks", "Playlist rejection memory", "Important and anchor tracks", "Historical membership events", "Identity-aware regeneration", "Personality summaries", "Confidence explanations", "Clone, retrain, and reset workflows", "Identity snapshots", "Lazy legacy initialization"],
+    releaseOrder: 104,
+    route: "/release-notes",
+  },
 ];
 
 export const roadmapCycles: RoadmapCycle[] = [

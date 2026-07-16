@@ -3,6 +3,7 @@ import { rankReplacementCandidates } from "./candidateScorer";
 import { selectablePositions, trackMetrics } from "./curvePreservation";
 import { buildRegenerationPreview } from "./preview";
 import { REPLACEMENT_THRESHOLDS, type PlaylistRegenerationRequest, type PlaylistTrackState, type RegenerationPreviewChange, type RegenerationTrack } from "./types";
+import type { PlaylistIdentityScoringContext } from "../../../playlistIdentity/types";
 
 function targetIndexes({
   tracks,
@@ -43,6 +44,7 @@ export function regeneratePlaylist({
   candidates,
   request,
   tuningConfig,
+  identity,
 }: {
   playlistId: string;
   tracks: RegenerationTrack[];
@@ -50,6 +52,7 @@ export function regeneratePlaylist({
   candidates: RegenerationTrack[];
   request: PlaylistRegenerationRequest;
   tuningConfig?: unknown;
+  identity?: PlaylistIdentityScoringContext;
 }) {
   const weakness = analyzePlaylistWeakness({ tracks, states, request });
   const positions = targetIndexes({ tracks, states, request, weakness });
@@ -74,6 +77,7 @@ export function regeneratePlaylist({
       playlist: proposedTracks,
       position,
       request,
+      identity,
     });
     const best = ranked.find((item) => item.score.improvementOverOriginal >= request.minimumReplacementImprovement);
     if (!best) {
@@ -90,6 +94,7 @@ export function regeneratePlaylist({
       proposedScore: best.score.totalScore,
       improvement: best.score.improvementOverOriginal,
       reasons: best.score.reasons,
+      identityReasons: best.score.reasons.filter((reason) => /identity|playlist|mood|BPM|energy|artist|genre|rejected|accepted/i.test(reason)),
       originalMetrics: trackMetrics(original),
       proposedMetrics: trackMetrics(best.candidate),
       originalTrack: original,
@@ -100,6 +105,5 @@ export function regeneratePlaylist({
   const lockedTargetCount = selectablePositions({ tracks, states, section: request.targetSection, targetTrackIds: request.targetTrackIds })
     .filter(({ state }) => state?.locked || state?.regenerationExcluded).length;
   if (lockedTargetCount > 0) warnings.push("This transition could not be fully improved because one or more tracks are locked.");
-  return buildRegenerationPreview({ playlistId, originalTracks: tracks, proposedTracks, changes, weakness, request, tuningConfig, warnings });
+  return buildRegenerationPreview({ playlistId, originalTracks: tracks, proposedTracks, changes, weakness, request, tuningConfig, warnings, identity });
 }
-

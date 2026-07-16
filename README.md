@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. The v2.1.2 migration adds only user-scoped feedback tables, indexes, and foreign keys; existing playlists, tracks, interactions, and personalization profiles are preserved. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. The v2.1.3 migration adds only playlist identity, memory, preference, event, training, and snapshot tables; existing playlists, tracks, interactions, feedback, personalization profiles, and versions are preserved. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -46,7 +46,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.1.2 keeps experimental Smart Mix behavior and personalization disabled by default. Personalization and behavior learning are separate opt-ins; likes, dislikes, never-recommend choices, artist preferences, playlist-fit feedback, transition feedback, and interaction data remain in the local Mixarr database. Confirmed duplicate recordings may share trusted enrichment by default, but every Plex library item remains a separate physical track record. Administrators configure the beta server ceiling with `MIXARR_BETA_PROGRAM_ENABLED`, `MIXARR_PRIVATE_BETA_ENABLED`, and `MIXARR_DEVELOPER_FEATURES_ENABLED`; users must then opt in and enable eligible flags individually. See [Beta features and advanced flags](docs/BETA_FEATURES.md).
+Mixarr v2.1.3 keeps experimental Smart Mix behavior and personalization disabled by default. Personalization, behavior learning, and playlist identity are separate controls; likes, dislikes, playlist-specific rejection memory, artist and genre preference scores, membership history, important tracks, identity snapshots, transition feedback, and interaction data remain in the local Mixarr database. Confirmed duplicate recordings may share trusted enrichment by default, but every Plex library item remains a separate physical track record. Administrators configure the beta server ceiling with `MIXARR_BETA_PROGRAM_ENABLED`, `MIXARR_PRIVATE_BETA_ENABLED`, and `MIXARR_DEVELOPER_FEATURES_ENABLED`; users must then opt in and enable eligible flags individually. See [Beta features and advanced flags](docs/BETA_FEATURES.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 
@@ -212,7 +212,7 @@ Please avoid posting secrets such as Plex tokens, API keys, database passwords, 
 
 The v2.0.x Smart Mix Engine v2 cycle is complete. It delivered visible scoring, tuning, mood blending, BPM flow, discovery controls, advanced regeneration, playlist versions, manual metadata corrections, Recently Added automation, and advanced beta flags.
 
-The current v2.1.x cycle adds optional, locally stored personalization and adaptive recommendations. v2.1.0 established user and playlist preference profiles; v2.1.1 preserves every Plex track instance, adds non-destructive canonical duplicate groups and enrichment reuse, and provides clickable Library Health conflict/missing-record diagnostics. See the in-app Product Roadmap for the typed release list and future themes.
+The current v2.1.x cycle adds optional, locally stored personalization and adaptive recommendations. v2.1.3 is the active implementation target and adds persistent playlist identity and memory across regeneration, history, feedback, and Plex synchronization. See the in-app Product Roadmap for the typed release list and future themes.
 
 ## Previews
 

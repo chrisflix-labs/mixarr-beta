@@ -7,6 +7,7 @@ import { Activity, AlertTriangle, Ban, CheckCircle2, History, ListRestart, Refre
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import TrackFeedbackMenu from "@/components/TrackFeedbackMenu";
 import AdvancedRegenerationWorkspace from "@/components/AdvancedRegenerationWorkspace";
+import PlaylistIdentityPanel from "@/components/PlaylistIdentityPanel";
 import { orderTracksByBpmFlow, summarizeBpmFlow, type BpmFlowMode } from "@/lib/smartMixEngine/v2/bpmFlow";
 import { normalizeSmartMixTuningConfig } from "@/lib/smartMixEngine/v2/tuning";
 import styles from "./generated-playlists.module.css";
@@ -551,6 +552,7 @@ export default function GeneratedPlaylistsPage() {
                   </details>
                 )}
                 <PlaylistQualityCard score={qualityScoreForDisplay(playlist.qualityScoreJson)} />
+                <PlaylistIdentityPanel playlistId={playlist.id} playlistName={playlist.plexPlaylistTitle} onClone={fetchPlaylists} />
                 {playlist.discoveryResultJson?.explanations?.length > 0 && (
                   <div className={styles.discoverySummary} aria-label="Discovery explanation labels">
                     {playlist.discoveryResultJson.explanations.map((item: any) => <span key={item.label} title={item.explanation}>{item.label}</span>)}

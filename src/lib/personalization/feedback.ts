@@ -117,6 +117,14 @@ export async function setPlaylistFitFeedback(userId: string, raw: unknown) {
     const data = { state: input.state, reason: input.reason || null, note: input.note || null, generationId: input.generationId || null, engineVersion: input.engineVersion || scope.engineVersion || null, playlistId: scope.playlistId, playlistProfileId: scope.playlistProfileId, lastFeedbackEventId: event.id };
     return tx.playlistFitFeedback.upsert({ where: key, create: { userId, trackId: input.trackId, scopeKey, ...data }, update: data });
   });
+  if (scope.playlistId) {
+    const identity = await import("../playlistIdentity");
+    if (input.state === "POOR_FIT") {
+      await identity.rememberPlaylistRejection({ userId, playlistId: scope.playlistId, trackId: input.trackId, reason: input.reason, source: input.sourceSurface, strong: true, eventKey: `feedback:${feedback.lastFeedbackEventId}` });
+    } else {
+      await identity.recordPlaylistIdentityEvent({ userId, playlistId: scope.playlistId, trackId: input.trackId, eventType: "GOOD_PLAYLIST_FIT", eventSource: input.sourceSurface, eventKey: `feedback:${feedback.lastFeedbackEventId}`, feedbackReason: input.reason });
+    }
+  }
   return { feedback, unchanged: false };
 }
 

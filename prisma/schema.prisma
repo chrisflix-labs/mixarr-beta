@@ -53,6 +53,7 @@ model User {
   playlistFitFeedback        PlaylistFitFeedback[]
   transitionFeedback         TransitionFeedback[]
   feedbackEvents             FeedbackEvent[]
+  playlistIdentities         PlaylistIdentity[]
 }
 
 model SyncSettings {
@@ -88,6 +89,7 @@ model SyncSettings {
   providerDelayMs                        Int?
   rateLimitBackoffEnabled                Boolean?
   automaticallyShareDuplicateEnrichment  Boolean  @default(true)
+  playlistIdentityLearningEnabled        Boolean  @default(true)
   hardDeleteMissingAfterDays             Int?
   createdAt                              DateTime @default(now())
   updatedAt                              DateTime @updatedAt
@@ -112,23 +114,25 @@ model Server {
 }
 
 model Library {
-  id                   String                 @id @default(uuid())
-  plexId               String
-  serverId             String
-  name                 String
-  type                 String
-  server               Server                 @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  artists              Artist[]
-  albums               Album[]
-  tracks               Track[]
-  syncLogs             SyncLog[]
-  healthSnapshot       LibraryHealthSnapshot?
-  playlistRules        PlaylistRule[]
-  recentlyAddedBatches RecentlyAddedBatch[]
-  canonicalRecordings  CanonicalRecording[]
-  plexSyncConflicts    PlexSyncConflict[]
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  id                       String                    @id @default(uuid())
+  plexId                   String
+  serverId                 String
+  name                     String
+  type                     String
+  server                   Server                    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  artists                  Artist[]
+  albums                   Album[]
+  tracks                   Track[]
+  syncLogs                 SyncLog[]
+  healthSnapshot           LibraryHealthSnapshot?
+  playlistRules            PlaylistRule[]
+  recentlyAddedBatches     RecentlyAddedBatch[]
+  canonicalRecordings      CanonicalRecording[]
+  plexSyncConflicts        PlexSyncConflict[]
+  playlistTrackMemories    PlaylistTrackMemory[]
+  playlistMembershipEvents PlaylistMembershipEvent[]
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
 
   @@unique([serverId, plexId])
 }
@@ -145,27 +149,28 @@ model LibraryHealthSnapshot {
 }
 
 model Artist {
-  id              String                 @id @default(uuid())
-  plexId          String
-  libraryId       String
-  title           String
-  summary         String?
-  thumb           String?
-  addedAt         DateTime?
-  updatedAt       DateTime?
-  viewCount       Int                    @default(0)
-  lastViewedAt    DateTime?
-  plexLibraryId   String?
-  syncStatus      String                 @default("active")
-  lastSeenAt      DateTime?
-  lastSeenSyncId  String?
-  missingSince    DateTime?
-  deletedAt       DateTime?
-  library         Library                @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  albums          Album[]
-  tracks          Track[]
-  tags            Tag[]                  @relation("ArtistTags")
-  userPreferences UserArtistPreference[]
+  id                          String                     @id @default(uuid())
+  plexId                      String
+  libraryId                   String
+  title                       String
+  summary                     String?
+  thumb                       String?
+  addedAt                     DateTime?
+  updatedAt                   DateTime?
+  viewCount                   Int                        @default(0)
+  lastViewedAt                DateTime?
+  plexLibraryId               String?
+  syncStatus                  String                     @default("active")
+  lastSeenAt                  DateTime?
+  lastSeenSyncId              String?
+  missingSince                DateTime?
+  deletedAt                   DateTime?
+  library                     Library                    @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  albums                      Album[]
+  tracks                      Track[]
+  tags                        Tag[]                      @relation("ArtistTags")
+  userPreferences             UserArtistPreference[]
+  playlistIdentityPreferences PlaylistArtistPreference[]
 
   @@unique([libraryId, plexId])
   @@index([libraryId, syncStatus])
@@ -297,6 +302,8 @@ model Track {
   canonicalRecording         CanonicalRecording?              @relation("CanonicalRecordingTracks", fields: [canonicalRecordingId], references: [id], onDelete: SetNull)
   preferredForRecordings     CanonicalRecording[]             @relation("PreferredEnrichmentTrack")
   plexSyncConflicts          PlexSyncConflict[]
+  PlaylistTrackMemory        PlaylistTrackMemory[]
+  PlaylistMembershipEvent    PlaylistMembershipEvent[]
 
   @@unique([libraryId, plexId])
   @@unique([plexServerId, plexLibraryId, ratingKey])
@@ -634,6 +641,7 @@ model GeneratedPlaylist {
   interactionEvents     TrackInteractionEvent[]
   playlistFitFeedback   PlaylistFitFeedback[]
   transitionFeedback    TransitionFeedback[]
+  identity              PlaylistIdentity?
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -726,7 +734,7 @@ model PlaylistRegenerationChange {
 }
 
 model PlaylistRevision {
-  id                    String            @id @default(uuid())
+  id                    String                    @id @default(uuid())
   generatedPlaylistId   String
   revisionNumber        Int
   regenerationId        String?
@@ -736,27 +744,243 @@ model PlaylistRevision {
   engineFamily          String?
   engineVersion         String?
   applicationVersion    String?
-  snapshotSchemaVersion Int               @default(1)
+  snapshotSchemaVersion Int                       @default(1)
   settingsSnapshot      Json?
   trackSnapshot         Json
   scoreSnapshot         Json?
   betaMetadata          Json?
-  trackCount            Int               @default(0)
-  durationMs            Int               @default(0)
+  trackCount            Int                       @default(0)
+  durationMs            Int                       @default(0)
   restoredFromVersionId String?
-  isPinned              Boolean           @default(false)
-  isAutomatic           Boolean           @default(true)
-  isCurrent             Boolean           @default(false)
-  syncStatus            String            @default("synced")
+  isPinned              Boolean                   @default(false)
+  isAutomatic           Boolean                   @default(true)
+  isCurrent             Boolean                   @default(false)
+  syncStatus            String                    @default("synced")
   snapshotSizeBytes     Int?
-  createdAt             DateTime          @default(now())
-  generatedPlaylist     GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  createdAt             DateTime                  @default(now())
+  generatedPlaylist     GeneratedPlaylist         @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  identitySnapshot      PlaylistIdentitySnapshot?
 
   @@unique([generatedPlaylistId, revisionNumber])
   @@index([generatedPlaylistId, createdAt])
   @@index([generatedPlaylistId, isCurrent])
   @@index([generatedPlaylistId, isPinned])
   @@index([regenerationId])
+}
+
+model PlaylistIdentity {
+  id                    String                        @id @default(uuid())
+  playlistId            String                        @unique
+  userId                String
+  plexPlaylistId        String?
+  displayName           String
+  description           String?
+  enabled               Boolean                       @default(true)
+  learningEnabled       Boolean                       @default(true)
+  preservationMode      String                        @default("BALANCED")
+  strength              Float                         @default(0.6)
+  confidence            Float                         @default(0)
+  confidenceState       String                        @default("INSUFFICIENT_DATA")
+  creationSource        String                        @default("GENERATED")
+  schemaVersion         Int                           @default(1)
+  trainingSampleCount   Int                           @default(0)
+  historicalTrackCount  Int                           @default(0)
+  currentTrackCount     Int                           @default(0)
+  versionCount          Int                           @default(0)
+  moodConfidence        Float                         @default(0)
+  energyConfidence      Float                         @default(0)
+  bpmConfidence         Float                         @default(0)
+  artistConfidence      Float                         @default(0)
+  genreConfidence       Float                         @default(0)
+  discoveryConfidence   Float                         @default(0)
+  avoidanceConfidence   Float                         @default(0)
+  transitionConfidence  Float                         @default(0)
+  learnedProfileJson    Json?
+  userProfileJson       Json?
+  effectiveProfileJson  Json?
+  confidenceReasonsJson Json?
+  learningSettingsJson  Json?
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+  lastTrainedAt         DateTime?
+  lastRegeneratedAt     DateTime?
+  playlist              GeneratedPlaylist             @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  user                  User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attributes            PlaylistIdentityAttribute[]
+  trackMemories         PlaylistTrackMemory[]
+  membershipEvents      PlaylistMembershipEvent[]
+  artistPreferences     PlaylistArtistPreference[]
+  genrePreferences      PlaylistGenrePreference[]
+  trainingRuns          PlaylistIdentityTrainingRun[]
+  snapshots             PlaylistIdentitySnapshot[]
+
+  @@index([userId, updatedAt])
+  @@index([plexPlaylistId])
+  @@index([enabled, learningEnabled])
+}
+
+model PlaylistIdentityAttribute {
+  id                 String           @id @default(uuid())
+  playlistIdentityId String
+  key                String
+  userValueJson      Json?
+  learnedValueJson   Json?
+  effectiveValueJson Json?
+  locked             Boolean          @default(false)
+  inherited          Boolean          @default(false)
+  source             String           @default("LEARNED")
+  confidence         Float            @default(0)
+  insufficientData   Boolean          @default(true)
+  evidenceCount      Int              @default(0)
+  updatedAt          DateTime         @updatedAt
+  playlistIdentity   PlaylistIdentity @relation(fields: [playlistIdentityId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistIdentityId, key])
+  @@index([playlistIdentityId, source])
+}
+
+model PlaylistTrackMemory {
+  id                     String           @id @default(uuid())
+  playlistIdentityId     String
+  trackId                String
+  importance             String           @default("NORMAL")
+  section                String?
+  positionLocked         Boolean          @default(false)
+  rejectionState         String           @default("NONE")
+  rejectionReason        String?
+  rejectionSource        String?
+  rejectionCount         Int              @default(0)
+  firstRejectedAt        DateTime?
+  lastRejectedAt         DateTime?
+  rejectionExpiresAt     DateTime?
+  permanentRejection     Boolean          @default(false)
+  userConfirmedRejection Boolean          @default(false)
+  inferenceConfidence    Float            @default(0)
+  acceptanceScore        Float            @default(0)
+  membershipCount        Int              @default(0)
+  retainedCount          Int              @default(0)
+  restoredCount          Int              @default(0)
+  manualAddCount         Int              @default(0)
+  manualRemoveCount      Int              @default(0)
+  firstSeenAt            DateTime?
+  lastSeenAt             DateTime?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+  playlistIdentity       PlaylistIdentity @relation(fields: [playlistIdentityId], references: [id], onDelete: Cascade)
+  track                  Track            @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  Library                Library?         @relation(fields: [libraryId], references: [id])
+  libraryId              String?
+
+  @@unique([playlistIdentityId, trackId])
+  @@index([playlistIdentityId, rejectionState, updatedAt])
+  @@index([playlistIdentityId, importance])
+  @@index([trackId])
+}
+
+model PlaylistMembershipEvent {
+  id                 String           @id @default(uuid())
+  playlistIdentityId String
+  trackId            String?
+  eventType          String
+  eventSource        String
+  previousPosition   Int?
+  newPosition        Int?
+  playlistVersionId  String?
+  engineVersion      String?
+  generationRunId    String?
+  userId             String?
+  feedbackReason     String?
+  eventKey           String           @unique
+  snapshotJson       Json?
+  occurredAt         DateTime         @default(now())
+  createdAt          DateTime         @default(now())
+  playlistIdentity   PlaylistIdentity @relation(fields: [playlistIdentityId], references: [id], onDelete: Cascade)
+  track              Track?           @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  Library            Library?         @relation(fields: [libraryId], references: [id])
+  libraryId          String?
+
+  @@index([playlistIdentityId, occurredAt])
+  @@index([playlistIdentityId, trackId, occurredAt])
+  @@index([playlistVersionId])
+  @@index([generationRunId])
+}
+
+model PlaylistArtistPreference {
+  id                 String           @id @default(uuid())
+  playlistIdentityId String
+  artistId           String
+  score              Float            @default(0)
+  state              String           @default("NEUTRAL")
+  evidenceCount      Int              @default(0)
+  positiveEvidence   Float            @default(0)
+  negativeEvidence   Float            @default(0)
+  userDefined        Boolean          @default(false)
+  locked             Boolean          @default(false)
+  updatedAt          DateTime         @updatedAt
+  playlistIdentity   PlaylistIdentity @relation(fields: [playlistIdentityId], references: [id], onDelete: Cascade)
+  artist             Artist           @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistIdentityId, artistId])
+  @@index([playlistIdentityId, score])
+  @@index([artistId])
+}
+
+model PlaylistGenrePreference {
+  id                 String           @id @default(uuid())
+  playlistIdentityId String
+  genreKey           String
+  displayName        String
+  genreType          String           @default("genre")
+  score              Float            @default(0)
+  state              String           @default("NEUTRAL")
+  evidenceCount      Int              @default(0)
+  positiveEvidence   Float            @default(0)
+  negativeEvidence   Float            @default(0)
+  userDefined        Boolean          @default(false)
+  locked             Boolean          @default(false)
+  updatedAt          DateTime         @updatedAt
+  playlistIdentity   PlaylistIdentity @relation(fields: [playlistIdentityId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistIdentityId, genreKey])
+  @@index([playlistIdentityId, score])
+}
+
+model PlaylistIdentityTrainingRun {
+  id                 String           @id @default(uuid())
+  playlistIdentityId String
+  status             String           @default("RUNNING")
+  source             String
+  stagesJson         Json?
+  inputSummaryJson   Json?
+  beforeProfileJson  Json?
+  afterProfileJson   Json?
+  comparisonJson     Json?
+  tracksAnalyzed     Int              @default(0)
+  eventsAnalyzed     Int              @default(0)
+  versionsAnalyzed   Int              @default(0)
+  error              String?
+  startedAt          DateTime         @default(now())
+  completedAt        DateTime?
+  playlistIdentity   PlaylistIdentity @relation(fields: [playlistIdentityId], references: [id], onDelete: Cascade)
+
+  @@index([playlistIdentityId, startedAt])
+  @@index([status, startedAt])
+}
+
+model PlaylistIdentitySnapshot {
+  id                 String            @id @default(uuid())
+  playlistIdentityId String
+  playlistVersionId  String?           @unique
+  schemaVersion      Int               @default(1)
+  reason             String
+  profileJson        Json
+  confidenceJson     Json?
+  summaryJson        Json?
+  createdAt          DateTime          @default(now())
+  playlistIdentity   PlaylistIdentity  @relation(fields: [playlistIdentityId], references: [id], onDelete: Cascade)
+  playlistVersion    PlaylistRevision? @relation(fields: [playlistVersionId], references: [id], onDelete: SetNull)
+
+  @@index([playlistIdentityId, createdAt])
 }
 
 model PlaylistHistoryEntry {

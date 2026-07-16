@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.1.3 - Playlist Identity & Memory
+
+- Added stable playlist identities independent of playlist names, with durable Mixarr and Plex linkage.
+- Added normalized learned/manual/effective attributes, field locks, playlist track memory, idempotent membership history, artist and genre weights, training runs, and snapshots.
+- Learned mood, energy, BPM, discovery, metadata coverage, artist, genre, and historical character from current and versioned playlist membership without requiring complete metadata.
+- Added playlist-specific rejection strength, permanent never-use memory, important/anchor/locked tracks, and explicit feedback integration.
+- Integrated playlist identity as a separate Smart Mix v2 scoring component and added identity reasons and impact summaries to advanced regeneration previews.
+- Added the responsive Playlist Identity panel and editor with retrain, reset, clone, confidence, visual distributions, selectable moods, effective-value previews, and track-memory controls.
+- Added lazy legacy initialization, batched historical processing, safe fallbacks, local privacy documentation, Job History summaries, and the additive `20260716010000_playlist_identity_memory` migration.
+
 ## v2.1.2 - Likes, Dislikes & Track Feedback
 
 - Added user-specific liked, disliked, and never-recommend track states plus preferred and recommend-less artist states.

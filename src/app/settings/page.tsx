@@ -11,6 +11,7 @@ import TrackExclusionsManager from "@/components/TrackExclusionsManager";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
 import PlaylistVersionSettings from "@/components/PlaylistVersionSettings";
 import PersonalizationProfilePanel from "@/components/PersonalizationProfilePanel";
+import PlaylistIdentitySettings from "@/components/PlaylistIdentitySettings";
 import { APP_DESCRIPTION, APP_NAME, MIXARR_GITHUB_URL } from "@/lib/appInfo";
 import { APP_VERSION } from "@/lib/appVersion";
 import { getExternalApiSettingsPayload } from "@/lib/externalApiSettings";
@@ -136,6 +137,12 @@ export default async function SettingsPage() {
           <FlaskConical size={20} color="var(--warning)" /> Beta &amp; Experimental Features
         </h3>
         <BetaFeatureSettingsForm />
+      </section>
+
+      <section className={`glass-panel ${styles.section}`} aria-labelledby="playlist-identity-settings">
+        <h3 id="playlist-identity-settings" className={styles.sectionTitle}><Brain size={20} color="var(--accent)" /> Playlist Identity &amp; Memory</h3>
+        <p className={styles.sectionDesc}>Control automatic identity learning across all of your playlists. Per-playlist controls remain available in Generated Playlists.</p>
+        <PlaylistIdentitySettings />
       </section>
 
       {/* API Keys & Integrations */}

@@ -38,6 +38,7 @@ export default function PlaylistVersionsPage({ params }: { params: { id: string 
   const [compareId, setCompareId] = useState<string>("");
   const [comparison, setComparison] = useState<any>(null);
   const [restorePreview, setRestorePreview] = useState<any>(null);
+  const [restoreIdentitySnapshot, setRestoreIdentitySnapshot] = useState(false);
   const [undoVersion, setUndoVersion] = useState<{ id: string; revisionNumber: number } | null>(null);
   const [filter, setFilter] = useState("all");
   const [busy, setBusy] = useState("");
@@ -90,7 +91,15 @@ export default function PlaylistVersionsPage({ params }: { params: { id: string 
   async function previewRestore() {
     if (!selectedId) return;
     setBusy("restore-preview"); setError("");
-    try { setRestorePreview((await axios.post(`/api/playlists/${params.id}/versions/${selectedId}/restore`, { confirm: false })).data); }
+    try {
+      setRestorePreview((await axios.post(`/api/playlists/${params.id}/versions/${selectedId}/restore`, { confirm: false })).data);
+      setRestoreIdentitySnapshot(
+        Boolean(detail?.identitySnapshot) &&
+          window.confirm(
+            "This version has a saved playlist identity snapshot. Select OK to restore both tracks and identity, or Cancel to restore tracks only.",
+          ),
+      );
+    }
     catch (requestError: any) { setError(requestError.response?.data?.error || "Restore preview failed."); }
     finally { setBusy(""); }
   }
@@ -102,7 +111,7 @@ export default function PlaylistVersionsPage({ params }: { params: { id: string 
       const missing = restorePreview.missingTracks.length > 0;
       const response = await axios.post(`/api/playlists/${params.id}/versions/${selectedId}/restore`, {
         confirm: true, expectedPlaylistUpdatedAt: restorePreview.current.updatedAt,
-        missingTrackStrategy: missing ? "restore_available" : "cancel", restoreSettings: true, restorePlaylistMetadata: false,
+        missingTrackStrategy: missing ? "restore_available" : "cancel", restoreSettings: true, restorePlaylistMetadata: false, restoreIdentitySnapshot,
       });
       setMessage(`Version ${selected?.revisionNumber} restored. The previous state was saved as Version ${response.data.safetyVersion.revisionNumber}.${response.data.syncStatus === "failed" ? " Plex synchronization failed and needs retry." : ""}`);
       setUndoVersion({ id: response.data.safetyVersion.id, revisionNumber: response.data.safetyVersion.revisionNumber });

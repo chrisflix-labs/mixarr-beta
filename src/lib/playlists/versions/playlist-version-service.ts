@@ -85,6 +85,19 @@ export async function createPlaylistVersionInTransaction(tx: Prisma.TransactionC
       snapshotSizeBytes: Buffer.byteLength(serialized, "utf8"),
     },
   });
+  const identity = await tx.playlistIdentity.findUnique({ where: { playlistId: input.generatedPlaylistId } });
+  if (identity?.effectiveProfileJson) {
+    await tx.playlistIdentitySnapshot.create({
+      data: {
+        playlistIdentityId: identity.id,
+        playlistVersionId: version.id,
+        reason: input.reason,
+        profileJson: identity.effectiveProfileJson as Prisma.InputJsonValue,
+        confidenceJson: { overall: identity.confidence, state: identity.confidenceState, mood: identity.moodConfidence, energy: identity.energyConfidence, bpm: identity.bpmConfidence, artist: identity.artistConfidence, genre: identity.genreConfidence } as Prisma.InputJsonValue,
+        summaryJson: { trainingSampleCount: identity.trainingSampleCount, historicalTrackCount: identity.historicalTrackCount, currentTrackCount: identity.currentTrackCount } as Prisma.InputJsonValue,
+      },
+    });
+  }
   if (preferences?.cleanupPlaylistVersionsAutomatically) await cleanupPlaylistVersions(tx, input.generatedPlaylistId, preferences.playlistVersionRetention);
   console.info("[PlaylistVersions] version created", { playlistId: input.generatedPlaylistId, versionId: version.id, revisionNumber: version.revisionNumber, reason: input.reason, trackCount: version.trackCount, snapshotSizeBytes: version.snapshotSizeBytes });
   return version;
@@ -135,7 +148,7 @@ export async function listPlaylistVersions(userId: string, generatedPlaylistId: 
 export async function getPlaylistVersion(userId: string, generatedPlaylistId: string, versionId: string) {
   const version = await prisma.playlistRevision.findFirst({
     where: { id: versionId, generatedPlaylistId, generatedPlaylist: { userId } },
-    include: { generatedPlaylist: { select: { plexPlaylistTitle: true } } },
+    include: { generatedPlaylist: { select: { plexPlaylistTitle: true } }, identitySnapshot: true },
   });
   if (!version) return null;
   const parsed = readPlaylistSnapshot(version.trackSnapshot, { name: version.generatedPlaylist.plexPlaylistTitle, engineVersion: version.engineVersion, settings: version.settingsSnapshot, scores: version.scoreSnapshot });
@@ -143,7 +156,7 @@ export async function getPlaylistVersion(userId: string, generatedPlaylistId: st
   const availableIds = parsed.snapshot?.data.tracks.map((track) => track.trackId).filter((id): id is string => Boolean(id)) || [];
   const available = availableIds.length ? new Set((await prisma.track.findMany({ where: { id: { in: availableIds }, library: { server: { userId } }, syncStatus: "active" }, select: { id: true } })).map((track) => track.id)) : new Set<string>();
   const snapshot = parsed.snapshot ? { ...parsed.snapshot, data: { ...parsed.snapshot.data, tracks: parsed.snapshot.data.tracks.map((track) => ({ ...track, availability: track.trackId && available.has(track.trackId) ? "available" : "track_deleted" })) } } : null;
-  return { version: { ...version, trackSnapshot: undefined, settingsSnapshot: undefined, scoreSnapshot: undefined, generatedPlaylist: undefined }, snapshot, restorable: Boolean(snapshot), validationError: parsed.error, legacySnapshot: parsed.legacy };
+  return { version: { ...version, trackSnapshot: undefined, settingsSnapshot: undefined, scoreSnapshot: undefined, generatedPlaylist: undefined }, snapshot, identitySnapshot: version.identitySnapshot, restorable: Boolean(snapshot), validationError: parsed.error, legacySnapshot: parsed.legacy };
 }
 
 export async function comparePlaylistVersions(userId: string, generatedPlaylistId: string, fromVersionId: string, toVersionId: string) {

@@ -1,6 +1,8 @@
 import { scorePlaylist } from "../../../playlistScoring";
 import { durationWithinTolerance, trackMetrics } from "./curvePreservation";
 import type { PlaylistRegenerationRequest, RegenerationPreview, RegenerationPreviewChange, RegenerationTrack, TrackWeaknessAnalysis } from "./types";
+import type { PlaylistIdentityScoringContext } from "../../../playlistIdentity/types";
+import { scorePlaylistIdentityTrack } from "../../../playlistIdentity/scoring";
 
 export function buildRegenerationPreview({
   playlistId,
@@ -11,6 +13,7 @@ export function buildRegenerationPreview({
   request,
   tuningConfig,
   warnings = [],
+  identity,
 }: {
   playlistId: string;
   originalTracks: RegenerationTrack[];
@@ -20,6 +23,7 @@ export function buildRegenerationPreview({
   request: PlaylistRegenerationRequest;
   tuningConfig?: unknown;
   warnings?: string[];
+  identity?: PlaylistIdentityScoringContext;
 }): RegenerationPreview {
   const originalScore = scorePlaylist(originalTracks, tuningConfig);
   const proposedScore = scorePlaylist(proposedTracks, tuningConfig);
@@ -35,6 +39,19 @@ export function buildRegenerationPreview({
   if (changes.length === 0) {
     previewWarnings.push("No replacement improved a position enough to justify a change.");
   }
+  const originalIdentity = identity ? originalTracks.reduce((sum, track) => sum + scorePlaylistIdentityTrack(track, identity).matchScore, 0) / Math.max(1, originalTracks.length) : 50;
+  const proposedIdentity = identity ? proposedTracks.reduce((sum, track) => sum + scorePlaylistIdentityTrack(track, identity).matchScore, 0) / Math.max(1, proposedTracks.length) : 50;
+  const identityDelta = proposedIdentity - originalIdentity;
+  const identityImpact = {
+    level: (Math.abs(identityDelta) < 6 ? "Low" : Math.abs(identityDelta) < 14 ? "Medium" : "High") as "Low" | "Medium" | "High",
+    summary: [
+      identityDelta >= -4 ? "Core playlist character preserved" : "Playlist character may shift",
+      identity?.profile.bpmRange ? "Preferred BPM range considered" : "BPM identity has insufficient data",
+      `${changes.filter((change) => change.identityReasons?.length).length} replacement${changes.filter((change) => change.identityReasons?.length).length === 1 ? "" : "s"} include identity evidence`,
+      "No locked tracks removed",
+    ],
+    lockedTracksRemoved: 0,
+  };
   return {
     previewId: "",
     playlistId,
@@ -50,6 +67,6 @@ export function buildRegenerationPreview({
     analyzedTrackCount: originalTracks.length,
     finalTrackIds: proposedTracks.map((track) => track.id),
     weakness,
+    identityImpact,
   };
 }
-

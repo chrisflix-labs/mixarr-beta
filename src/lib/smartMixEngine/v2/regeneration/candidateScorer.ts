@@ -2,6 +2,8 @@ import { scoreTransition } from "../../../playlistScoring";
 import { normalizeBpmFlowConfig, scoreBpmTransition } from "../bpmFlow";
 import { clamp, positionalCurveScore, trackMetrics } from "./curvePreservation";
 import type { PlaylistRegenerationRequest, RegenerationTrack, ReplacementCandidateScore } from "./types";
+import type { PlaylistIdentityScoringContext } from "../../../playlistIdentity/types";
+import { scorePlaylistIdentityTrack } from "../../../playlistIdentity/scoring";
 
 type CandidateContext = {
   candidate: RegenerationTrack;
@@ -11,6 +13,7 @@ type CandidateContext = {
   playlist: RegenerationTrack[];
   position: number;
   request: PlaylistRegenerationRequest;
+  identity?: PlaylistIdentityScoringContext;
 };
 
 type Weights = Omit<ReplacementCandidateScore, "candidateTrackId" | "totalScore" | "improvementOverOriginal" | "reasons">;
@@ -25,6 +28,8 @@ const BASE_WEIGHTS: Record<keyof Weights, number> = {
   discoveryScore: 0.05,
   varietyScore: 0.03,
   metadataConfidenceScore: 0.02,
+  identityMatchScore: 0,
+  identityAdjustment: 0,
 };
 
 function weightsForMode(mode: PlaylistRegenerationRequest["mode"]) {
@@ -56,7 +61,7 @@ function average(values: Array<number | null | undefined>, fallback: number) {
 }
 
 function scoreCandidateComponents(context: CandidateContext): Omit<ReplacementCandidateScore, "improvementOverOriginal"> {
-  const { candidate, original, previous, next, playlist, request } = context;
+  const { candidate, original, previous, next, playlist, request, identity } = context;
   const metrics = trackMetrics(candidate);
   const originalMetrics = trackMetrics(original);
   const previousMetrics = previous ? trackMetrics(previous) : null;
@@ -85,6 +90,9 @@ function scoreCandidateComponents(context: CandidateContext): Omit<ReplacementCa
   const albumRepeats = metrics.album ? playlist.filter((track) => trackMetrics(track).album === metrics.album && track.id !== original.id).length : 0;
   const varietyScore = Math.round(clamp(100 - artistRepeats * 18 - albumRepeats * 12));
   const metadataConfidenceScore = metrics.metadataConfidence;
+  const identityResult = scorePlaylistIdentityTrack(candidate, identity);
+  const identityMatchScore = identityResult.matchScore;
+  const identityAdjustment = identityResult.adjustment;
   const components = {
     playlistFitScore: Math.round(playlistFitScore),
     previousTransitionScore,
@@ -95,8 +103,14 @@ function scoreCandidateComponents(context: CandidateContext): Omit<ReplacementCa
     discoveryScore,
     varietyScore,
     metadataConfidenceScore,
+    identityMatchScore,
+    identityAdjustment,
   };
   const weights = weightsForMode(request.mode);
+  weights.identityMatchScore = identity ? ({ FLEXIBLE: 0.08, BALANCED: 0.16, STRONG: 0.25, STRICT: 0.35 }[identity.mode]) : 0;
+  weights.identityAdjustment = 0;
+  const weightSum = Object.values(weights).reduce((sum, value) => sum + value, 0);
+  for (const key of Object.keys(weights) as Array<keyof Weights>) weights[key] /= weightSum;
   const totalScore = Math.round(Object.entries(components).reduce((total, [key, value]) => total + value * weights[key as keyof Weights], 0));
   const reasons: string[] = [];
   if (previousTransitionScore >= 80 && nextTransitionScore >= 80) reasons.push("Improves transitions on both sides");
@@ -107,6 +121,7 @@ function scoreCandidateComponents(context: CandidateContext): Omit<ReplacementCa
   if (request.mode === "increase_discovery" && discoveryScore >= 80) reasons.push("Adds discovery without disrupting flow");
   if (varietyScore >= 90) reasons.push("Maintains artist and album variety");
   if (metadataConfidenceScore < 60) reasons.push("Selected with limited metadata confidence");
+  reasons.push(...identityResult.reasons);
   return { candidateTrackId: candidate.id, totalScore, ...components, reasons };
 }
 
@@ -132,6 +147,10 @@ export function rankReplacementCandidates(context: Omit<CandidateContext, "candi
   return context.candidates
     .filter((candidate) => candidate.id !== context.original.id && !existingIds.has(candidate.id) && !existingKeys.has(duplicateTrackKey(candidate)))
     .filter((candidate) => !candidate.blocked && !candidate.regenerationExcluded)
+    .filter((candidate) => {
+      const memory = context.identity?.trackMemory[candidate.id];
+      return !memory?.permanentRejection && memory?.rejectionState !== "NEVER_USE";
+    })
     .map((candidate) => ({ candidate, score: scoreReplacementCandidate({ ...context, candidate }) }))
     .sort((left, right) => right.score.totalScore - left.score.totalScore);
 }

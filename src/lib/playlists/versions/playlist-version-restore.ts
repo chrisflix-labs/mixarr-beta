@@ -7,6 +7,7 @@ import { diffPlaylistVersions } from "./playlist-version-diff";
 import { capturePlaylistSnapshot } from "./playlist-version-snapshot";
 import { createPlaylistVersionInTransaction, describePlaylistVersion, getPlaylistVersion } from "./playlist-version-service";
 import { recordTrackInteractionInBackground } from "../../personalization";
+import { recordPlaylistIdentityEvent, trainPlaylistIdentity } from "../../playlistIdentity";
 
 export type MissingTrackStrategy = "cancel" | "restore_available";
 
@@ -45,6 +46,7 @@ export async function restorePlaylistVersion(input: {
   missingTrackStrategy: MissingTrackStrategy;
   restoreSettings: boolean;
   restorePlaylistMetadata: boolean;
+  restoreIdentitySnapshot?: boolean;
 }) {
   const { playlist, target } = await loadRestoreContext(input.userId, input.generatedPlaylistId, input.versionId);
   if (playlist.updatedAt.toISOString() !== input.expectedPlaylistUpdatedAt) {
@@ -138,6 +140,23 @@ export async function restorePlaylistVersion(input: {
       generationId: result.restored.id,
       idempotencyKey: `restore:${result.restored.id}:${snapshotTrack.trackId}`,
     });
+    recordPlaylistIdentityEvent({
+      userId: input.userId,
+      playlistId: input.generatedPlaylistId,
+      trackId: snapshotTrack.trackId,
+      eventType: "TRACK_RESTORED",
+      eventSource: "VERSION_RESTORE",
+      eventKey: `restore:${result.restored.id}:${snapshotTrack.trackId}`,
+      newPosition: snapshotTrack.position,
+      playlistVersionId: target.version.id,
+      generationRunId: result.restored.id,
+    }).catch(() => undefined);
+  }
+  if (input.restoreIdentitySnapshot) {
+    const snapshot = await prisma.playlistIdentitySnapshot.findFirst({ where: { playlistVersionId: target.version.id, playlistIdentity: { playlistId: input.generatedPlaylistId, userId: input.userId } } });
+    if (snapshot) await prisma.playlistIdentity.updateMany({ where: { playlistId: input.generatedPlaylistId, userId: input.userId }, data: { effectiveProfileJson: snapshot.profileJson as Prisma.InputJsonValue, learnedProfileJson: snapshot.profileJson as Prisma.InputJsonValue, lastTrainedAt: new Date() } });
+  } else {
+    trainPlaylistIdentity({ userId: input.userId, playlistId: input.generatedPlaylistId, source: "VERSION_RESTORE" }).catch(() => undefined);
   }
   console.info("[PlaylistVersions] restore completed", { playlistId: input.generatedPlaylistId, sourceVersionId: target.version.id, targetVersionId: result.restored.id, revisionNumber: result.restored.revisionNumber, missingTrackCount: missing.length, syncStatus });
   return {

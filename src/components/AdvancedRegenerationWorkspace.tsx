@@ -278,6 +278,7 @@ export default function AdvancedRegenerationWorkspace({ playlistId, playlistName
             <div><span>Duration</span><strong>{duration(preview.originalDurationMs)} → {duration(preview.proposedDurationMs)}</strong></div>
             <div><span>Changes</span><strong>{accepted.size} of {preview.changes.length} accepted</strong></div>
           </div>
+          {preview.identityImpact && <div className={styles.warningPanel} aria-label={`Identity impact ${preview.identityImpact.level}`}><p><strong>Identity impact: {preview.identityImpact.level}</strong></p>{preview.identityImpact.summary.map((item: string) => <p key={item}><Check size={13} /> {item}</p>)}</div>}
           {preview.warnings.length > 0 && <div className={styles.warningPanel}>{preview.warnings.map((warning: string) => <p key={warning}><AlertTriangle size={14} /> {warning}</p>)}</div>}
           {preview.changes.length === 0 ? <div className={styles.statePanel}>No replacements available. Mixarr kept the original tracks.</div> : (
             <div className={styles.changeList}>
