@@ -17,6 +17,7 @@ import {
 } from "./metrics";
 import { safeTrackBatchIterator, type EnrichmentRunSummary } from "./safeTrackBatch";
 import { sanitizeRequiredMetadataString } from "./metadataSanitizer";
+import { logDebug } from "./logging";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -96,11 +97,12 @@ async function resolvePopularity(
 // One batch of popularity enrichment. The scheduler uses attempted=0
 // to know when the queue is drained.
 export const runPopularityEngine = async (options: SyncEngineOptions = {}): Promise<EnrichmentRunSummary> => {
-  console.log("[PopularityEngine] Starting background popularity sync...");
+  logDebug("[PopularityEngine] Starting popularity batch.");
 
   let summary: EnrichmentRunSummary = { attempted: 0, processed: 0, skipped: 0, failed: 0 };
 
   try {
+    const providerTotals: Record<string, number> = {};
     const batchSize = resolveLimit(options.popularityBatchSize, "POPULARITY_BATCH_SIZE");
     const providerDelayMs = resolveDelayMs(options.providerDelayMs, 250);
     const rateLimitBackoffEnabled = resolveRateLimitBackoff(options.rateLimitBackoffEnabled);
@@ -121,7 +123,7 @@ export const runPopularityEngine = async (options: SyncEngineOptions = {}): Prom
       ],
     };
     const candidateCount = await prisma.track.count({ where });
-    console.log(`[PopularityEngine] Found ${candidateCount} tracks needing popularity data.`);
+    console.info(`[PopularityEngine] Eligible tracks=${candidateCount}`);
     engineBatchSize.observe({ engine: ENGINE }, Math.min(candidateCount, batchSize || candidateCount));
 
     summary = await safeTrackBatchIterator<any>({
@@ -187,8 +189,8 @@ export const runPopularityEngine = async (options: SyncEngineOptions = {}): Prom
             },
             select: { id: true },
           });
-          
-          console.log(`[PopularityEngine] Track "${track.title}" -> ${score} (${provider})`);
+          providerTotals[provider] = (providerTotals[provider] || 0) + 1;
+          logDebug(`[PopularityEngine] Track "${track.title}" -> ${score} (${provider})`);
         } else if (popularity.rateLimited) {
           outcome = "rate_limited";
           await prisma.track.update({
@@ -282,7 +284,8 @@ export const runPopularityEngine = async (options: SyncEngineOptions = {}): Prom
       },
     });
 
-    console.log(`[PopularityEngine] Popularity sync batch completed! (${summary.attempted} attempted, ${summary.skipped} skipped, ${summary.failed} failed)`);
+    const providers = Object.entries(providerTotals).map(([key, value]) => `${key}:${value}`).join(",");
+    console.info(`[PopularityEngine] Completed attempted=${summary.attempted} processed=${summary.processed} skipped=${summary.skipped} failed=${summary.failed} providers={${providers}}`);
 
   } catch (error) {
     console.error("[PopularityEngine] Sync failed", error);

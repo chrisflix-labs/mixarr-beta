@@ -311,7 +311,7 @@ async function requeueSafeJob(job: StaleJobRow) {
   if (engine === "plex" && !libraryId) return { started: false as const, reason: "Missing library id for Plex sync retry." };
 
   const { startSyncJobInBackground } = await import("./syncJobRunner");
-  const { getUserSyncSettings, resolveMetadataProviderSettings } = await import("./syncSettings");
+  const { getUserSyncSettings } = await import("./syncSettings");
   const syncSettings = await getUserSyncSettings(job.userId);
 
   if (engine === "plex") {
@@ -362,19 +362,9 @@ async function requeueSafeJob(job: StaleJobRow) {
       source: "startup",
       trackedEngine: "audio",
       task: async () => {
-        const audio = await import("./audioFeatureEngine");
-        const apiSummary = await audio.runAudioFeatureEngine(syncSettings);
-        const metadataSettings = resolveMetadataProviderSettings(syncSettings);
-        if (!metadataSettings.audioFeatures.local) return apiSummary;
-        const local = await import("./localAudioFeatureEngine");
-        const localSummary = await local.runLocalAudioFeatureEngine(syncSettings);
-        return {
-          attempted: apiSummary.attempted + localSummary.attempted,
-          processed: apiSummary.processed + localSummary.processed,
-          skipped: apiSummary.skipped + localSummary.skipped,
-          failed: apiSummary.failed + localSummary.failed,
-          metadata: { api: apiSummary, local: localSummary, recoveredFromJobId: job.id },
-        };
+        const { runAudioFeatures } = await import("./audioFeatureOrchestrator");
+        const result = await runAudioFeatures({ source: "startup", userId: job.userId! });
+        return { ...result, metadata: { ...result.metadata, recoveredFromJobId: job.id } };
       },
     });
   }

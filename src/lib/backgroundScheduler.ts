@@ -1,5 +1,6 @@
 import type { ScheduledTask } from "node-cron";
 import { getResolvedSchedulerSettings, isValidSchedulerCron, type ResolvedSchedulerSettings } from "./schedulerSettings";
+import { logDebug } from "./logging";
 
 type SchedulerRuntime = {
   task: ScheduledTask | null;
@@ -110,7 +111,7 @@ export async function runScheduledBackgroundSync(activeCron: string) {
 
   runtime.pipelineRunning = true;
   const endTimer = pipelineDurationSeconds.startTimer();
-  let pipelineResult: "success" | "failed" | "timeout" = "success";
+  let pipelineResult: "success" | "partial" | "failed" | "timeout" = "success";
   const history = await safeStartJobHistory({
     type: "other",
     name: "nightly sync pipeline",
@@ -125,65 +126,99 @@ export async function runScheduledBackgroundSync(activeCron: string) {
   const maxPipelineMs = Number(process.env.SYNC_MAX_PIPELINE_MS || 6 * 60 * 60 * 1000);
   const deadline = pipelineStart + maxPipelineMs;
   const remaining = () => deadline - Date.now() > 0;
+  const stages: any[] = [];
 
-  console.log(`[Scheduler] Scheduled background sync started using cron ${activeCron}.`);
+  console.log(`[Scheduler] Nightly sync started cron=${JSON.stringify(activeCron)}`);
 
   try {
     const prisma = (await import("./prisma")).default;
 
-    setJobPhase(lock.job, "Step 1/5: Pulling latest tracks from Plex");
-    console.log("[Scheduler] Step 1/5: Pulling latest tracks from Plex...");
-    const libraries = await prisma.library.findMany();
+    setJobPhase(lock.job, "Step 1/5: plex_sync");
+    let stageStartedAt = Date.now();
+    console.log("[Scheduler] Step 1/5 started name=plex_sync");
+    const libraries = await prisma.library.findMany({ include: { server: { select: { userId: true } } } });
+    const plexCounts = { scanned: 0, created: 0, missing: 0, failed: 0 };
     if (libraries.length > 0) {
       const { runSyncEngine } = await import("./syncEngine");
       for (const lib of libraries) {
         if (!remaining()) {
           console.warn(`[Scheduler] Pipeline deadline reached before syncing ${lib.name}; aborting.`);
           pipelineResult = "timeout";
-          return;
+          break;
         }
-        console.log(`[Scheduler] Syncing library: ${lib.name} (${lib.id})`);
-        await runSyncEngine(lib.id);
+        logDebug(`[Scheduler] Syncing library name=${JSON.stringify(lib.name)} id=${lib.id}`);
+        const result = await runSyncEngine(lib.id);
+        plexCounts.scanned += result?.scanned || 0;
+        plexCounts.created += result?.newTracks || 0;
+        plexCounts.missing += result?.markedMissing || 0;
+        plexCounts.failed += result?.failed || 0;
       }
-    } else {
-      console.log("[Scheduler] No libraries found. Skipping Plex sync.");
     }
+    let durationMs = Date.now() - stageStartedAt;
+    stages.push({ name: "plex_sync", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, ...plexCounts });
+    console.log(`[Scheduler] Step 1/5 completed name=plex_sync duration=${Math.round(durationMs / 1000)}s scanned=${plexCounts.scanned} created=${plexCounts.created} missing=${plexCounts.missing} failed=${plexCounts.failed}`);
 
-    setJobPhase(lock.job, "Step 2/5: Enriching audio features");
-    console.log("[Scheduler] Step 2/5: Enriching Audio Features...");
-    const { runAudioFeatureEngine } = await import("./audioFeatureEngine");
-    const audioDrained = await loopEngine("AudioFeatureEngine", runAudioFeatureEngine, remaining);
-    if (!audioDrained) pipelineResult = "timeout";
-
-    setJobPhase(lock.job, "Step 3/5: Fetching popularity scores");
-    console.log("[Scheduler] Step 3/5: Fetching Popularity Scores...");
+    setJobPhase(lock.job, "Step 2/5: popularity");
+    stageStartedAt = Date.now();
+    console.log("[Scheduler] Step 2/5 started name=popularity");
     const { runPopularityEngine } = await import("./popularityEngine");
-    const popDrained = await loopEngine("PopularityEngine", runPopularityEngine, remaining);
-    if (!popDrained) pipelineResult = "timeout";
+    const popularity = await loopEngine("PopularityEngine", runPopularityEngine, remaining);
+    if (!popularity.drained) pipelineResult = "timeout";
+    durationMs = Date.now() - stageStartedAt;
+    stages.push({ name: "popularity", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, ...popularity });
+    console.log(`[Scheduler] Step 2/5 completed name=popularity duration=${Math.round(durationMs / 1000)}s processed=${popularity.processed} skipped=${popularity.skipped} failed=${popularity.failed}`);
 
-    setJobPhase(lock.job, "Step 4/5: Fetching track-level genres");
-    console.log("[Scheduler] Step 4/5: Fetching Track-Level Genres...");
+    setJobPhase(lock.job, "Step 3/5: track_tags");
+    stageStartedAt = Date.now();
+    console.log("[Scheduler] Step 3/5 started name=track_tags");
     const { runTrackTagEngine } = await import("./trackTagEngine");
-    const tagsDrained = await loopEngine("TrackTagEngine", runTrackTagEngine, remaining);
-    if (!tagsDrained) pipelineResult = "timeout";
+    const tags = await loopEngine("TrackTagEngine", runTrackTagEngine, remaining);
+    if (!tags.drained) pipelineResult = "timeout";
+    durationMs = Date.now() - stageStartedAt;
+    stages.push({ name: "track_tags", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, ...tags });
+    console.log(`[Scheduler] Step 3/5 completed name=track_tags duration=${Math.round(durationMs / 1000)}s processed=${tags.processed} skipped=${tags.skipped} failed=${tags.failed}`);
 
     if (remaining()) {
-      setJobPhase(lock.job, "Step 5/5: Refreshing saved smart playlists");
-      console.log("[Scheduler] Step 5/5: Refreshing saved smart playlists...");
+      setJobPhase(lock.job, "Step 4/5: saved_playlist_refresh");
+      stageStartedAt = Date.now();
+      console.log("[Scheduler] Step 4/5 started name=saved_playlist_refresh");
       const { refreshAutoPlaylists } = await import("./playlistService");
       const refreshedCount = await refreshAutoPlaylists();
-      console.log(`[Scheduler] Refreshed ${refreshedCount} saved smart playlists.`);
+      durationMs = Date.now() - stageStartedAt;
+      stages.push({ name: "saved_playlist_refresh", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, refreshed: refreshedCount });
+      console.log(`[Scheduler] Step 4/5 completed name=saved_playlist_refresh duration=${Math.round(durationMs / 1000)}s refreshed=${refreshedCount}`);
     } else {
-      console.warn("[Scheduler] Pipeline deadline reached before Step 5/5; skipping playlist refresh.");
+      console.warn("[Scheduler] Pipeline deadline reached before Step 4/5; skipping playlist refresh and Audio Features.");
       pipelineResult = "timeout";
     }
 
-    const minutes = Math.round((Date.now() - pipelineStart) / 60000);
-    if (pipelineResult === "success") {
-      console.log(`[Scheduler] Scheduled background sync completed successfully. (${minutes} min)`);
-    } else {
-      console.warn(`[Scheduler] Pipeline exited with status=${pipelineResult} after ${minutes} min`);
+    if (remaining()) {
+      setJobPhase(lock.job, "Step 5/5: audio_features");
+      stageStartedAt = Date.now();
+      console.log("[Scheduler] Step 5/5 started name=audio_features");
+      const { runAudioFeatures } = await import("./audioFeatureOrchestrator");
+      const userIds = Array.from(new Set(libraries.map((library) => library.server.userId)));
+      const audioTotals = { attempted: 0, processed: 0, skipped: 0, failed: 0, eligible: 0 };
+      const audioResults = [];
+      for (const userId of userIds) {
+        const audio = await runAudioFeatures({ source: "nightly", userId, shouldContinue: remaining });
+        audioResults.push({ userId, ...audio });
+        audioTotals.attempted += audio.attempted;
+        audioTotals.processed += audio.processed;
+        audioTotals.skipped += audio.skipped;
+        audioTotals.failed += audio.failed;
+        audioTotals.eligible += audio.tracksDiscovered;
+        if (audio.status === "failed") pipelineResult = "failed";
+        else if (audio.status === "warning" && pipelineResult === "success") pipelineResult = "partial";
+      }
+      durationMs = Date.now() - stageStartedAt;
+      stages.push({ name: "audio_features", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, ...audioTotals, results: audioResults });
+      console.log(`[Scheduler] Step 5/5 completed name=audio_features duration=${Math.round(durationMs / 1000)}s eligible=${audioTotals.eligible} processed=${audioTotals.processed} skipped=${audioTotals.skipped} failed=${audioTotals.failed}`);
     }
+
+    const durationSeconds = Math.round((Date.now() - pipelineStart) / 1000);
+    const log = pipelineResult === "success" ? console.log : console.warn;
+    log(`[Scheduler] Nightly sync completed status=${pipelineResult} duration=${durationSeconds}s`);
   } catch (error) {
     console.error("[Scheduler] Scheduled background sync failed:", error);
     pipelineResult = "failed";
@@ -191,9 +226,9 @@ export async function runScheduledBackgroundSync(activeCron: string) {
     endTimer();
     await safeFinishJobHistory({
       job: history,
-      status: pipelineResult === "success" ? "completed" : pipelineResult === "timeout" ? "completed_with_warnings" : "failed",
+      status: pipelineResult === "success" ? "completed" : pipelineResult === "failed" ? "failed" : "completed_with_warnings",
       summary: `Scheduled background sync started using cron ${activeCron} and finished with status=${pipelineResult}.`,
-      metadata: { cron: activeCron },
+      metadata: { cron: activeCron, stages },
     });
     pipelineRunsTotal.inc({ result: pipelineResult });
     runtime.pipelineRunning = false;
@@ -205,7 +240,7 @@ async function loopEngine(
   label: string,
   run: () => Promise<number | { attempted: number; processed: number; skipped: number; failed: number }>,
   remaining: () => boolean,
-): Promise<boolean> {
+): Promise<{ drained: boolean; attempted: number; processed: number; skipped: number; failed: number; batches: number }> {
   let totalAttempted = 0;
   let totalProcessed = 0;
   let totalSkipped = 0;
@@ -223,11 +258,11 @@ async function loopEngine(
       totalFailed += result.failed;
     }
     if (attempted === 0) {
-      console.log(`[Scheduler] ${label} drained after ${batchNum} batch(es); attempted=${totalAttempted}, processed=${totalProcessed}, skipped=${totalSkipped}, failed=${totalFailed}.`);
-      return true;
+      logDebug(`[Scheduler] ${label} drained after ${batchNum} batch(es); attempted=${totalAttempted}, processed=${totalProcessed}, skipped=${totalSkipped}, failed=${totalFailed}.`);
+      return { drained: true, attempted: totalAttempted, processed: totalProcessed, skipped: totalSkipped, failed: totalFailed, batches: batchNum };
     }
   }
 
   console.warn(`[Scheduler] ${label} hit pipeline deadline after ${batchNum} batch(es); attempted=${totalAttempted}, processed=${totalProcessed}, skipped=${totalSkipped}, failed=${totalFailed}; more remain.`);
-  return false;
+  return { drained: false, attempted: totalAttempted, processed: totalProcessed, skipped: totalSkipped, failed: totalFailed, batches: batchNum };
 }

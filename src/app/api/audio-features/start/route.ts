@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { invalidateLibraryHealthCache } from "@/lib/libraryHealth";
-import { getUserSyncSettings } from "@/lib/syncSettings";
 import { alreadyRunningPayload, startSyncJobInBackground } from "@/lib/syncJobRunner";
 
 export async function POST(request: Request) {
@@ -17,9 +15,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const providerMode = typeof body?.providerMode === "string" ? body.providerMode : typeof body?.mode === "string" ? body.mode : "configured";
     const force = body?.force === true || providerMode === "force_local" || providerMode === "force_local_reprocess";
-    const baseSettings = await getUserSyncSettings(userId);
-    const syncSettings = {
-      ...baseSettings,
+    const settingsOverrides = {
       ...(providerMode === "api_only" ? { enableApiAudioFeatures: true, enableLocalAudioFeatures: false } : {}),
       ...(providerMode === "local_only" || force ? {
         enableApiAudioFeatures: false,
@@ -35,27 +31,17 @@ export async function POST(request: Request) {
       trackedEngine: "audio",
       source: providerMode === "configured" ? "manual" : "retry",
       task: async () => {
-        const audio = await import("@/lib/audioFeatureEngine");
-        const apiSummary = await audio.runAudioFeatureEngine(syncSettings);
-        const local = await import("@/lib/localAudioFeatureEngine");
-        const localSummary = await local.runLocalAudioFeatureEngine(syncSettings);
-        await invalidateLibraryHealthCache(userId, { reason: "audio_feature_sync_completed" });
+        const { runAudioFeatures } = await import("@/lib/audioFeatureOrchestrator");
+        const result = await runAudioFeatures({
+          source: providerMode === "configured" ? "manual" : "retry",
+          userId,
+          settingsOverrides,
+        });
         revalidatePath("/");
         revalidatePath("/data-enrichment");
         revalidatePath("/library-health");
         revalidatePath("/settings/library-health");
-        return {
-          attempted: apiSummary.attempted + localSummary.attempted,
-          processed: apiSummary.processed + localSummary.processed,
-          skipped: apiSummary.skipped + localSummary.skipped,
-          failed: apiSummary.failed + localSummary.failed,
-          metadata: {
-            providerMode,
-            force,
-            api: apiSummary,
-            local: localSummary,
-          },
-        };
+        return { ...result, metadata: { ...result.metadata, providerMode, force } };
       },
     });
 

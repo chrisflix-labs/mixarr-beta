@@ -115,11 +115,21 @@ export function startSyncJobInBackground({
       const resultMetadata = result && typeof result === "object" && "metadata" in result
         ? (result as any).metadata
         : undefined;
+      const explicitStatus = result && typeof result === "object" && "status" in result
+        ? String((result as any).status)
+        : null;
+      const historyStatus = explicitStatus === "failed"
+        ? "failed"
+        : explicitStatus === "warning"
+          ? "completed_with_warnings"
+          : explicitStatus === "skipped"
+            ? "skipped"
+            : statusFromCounts(counts);
       await safeFinishJobHistory({
         job: history,
         result,
         counts,
-        status: statusFromCounts(counts),
+        status: historyStatus,
         summary: summaryFromResult(name, result, counts),
         metadata: resultMetadata,
       });

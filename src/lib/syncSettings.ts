@@ -29,6 +29,8 @@ export type SyncEngineOptions = {
   localAudioFeaturesScope?: string | null;
   includeEstimatedAudioFeaturesInFilters?: boolean | null;
   audioFeatureMinimumConfidence?: number | null;
+  audioFeatureUserId?: string | null;
+  audioFeatureLibraryId?: string | null;
   providerDelayMs?: number | null;
   rateLimitBackoffEnabled?: boolean | null;
   automaticallyShareDuplicateEnrichment?: boolean | null;

@@ -13,7 +13,8 @@ import {
 describe("release notes", () => {
   it("sorts release notes from oldest to newest", () => {
     const ordered = getReleaseNotesOldestFirst();
-    ordered.pop(); // v2.1.1, v2.1.0, and v2.0.10 through v2.0.5 are asserted separately below.
+    ordered.pop(); // v2.1.1-hotfix, v2.1.1, v2.1.0, and v2.0.10 through v2.0.5 are asserted separately below.
+    ordered.pop();
     ordered.pop();
     ordered.pop();
     ordered.pop();
@@ -27,7 +28,8 @@ describe("release notes", () => {
 
   it("sorts release notes from newest to oldest", () => {
     const ordered = getReleaseNotesNewestFirst();
-    ordered.shift(); // v2.1.1, v2.1.0, and v2.0.10 through v2.0.5 are asserted separately below.
+    ordered.shift(); // v2.1.1-hotfix, v2.1.1, v2.1.0, and v2.0.10 through v2.0.5 are asserted separately below.
+    ordered.shift();
     ordered.shift();
     ordered.shift();
     ordered.shift();
@@ -335,12 +337,12 @@ describe("release notes", () => {
     assert.deepEqual(ordered.map((note) => note.version), ["v2.0.0", "v1.3.10", "v1.3.9.2", "v1.3.9.1", "v1.3.9", "v1.3.8"]);
   });
 
-  it("adds the v2.1.1 release note at the top", () => {
+  it("adds the v2.1.1 hotfix release note at the top", () => {
     const [latest] = getReleaseNotesNewestFirst();
 
-    assert.equal(latest.version, "2.1.1");
-    assert.equal(latest.title, "Duplicate Preservation & Plex Conflict Inspector");
-    assert.ok(latest.badges.includes("Plex"));
+    assert.equal(latest.version, "2.1.1-hotfix");
+    assert.equal(latest.title, "Nightly Audio Features & Logging Cleanup");
+    assert.ok(latest.badges.includes("Audio Features"));
   });
 
   it("links the sidebar navigation to the release notes page", () => {

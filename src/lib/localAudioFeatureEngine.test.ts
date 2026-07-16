@@ -242,8 +242,10 @@ describe("LocalAudioFeatureEngine backfill predicates", () => {
     assert.equal(lock.acquired, true);
 
     try {
-      const summary = await runLocalAudioFeatureEngine();
-      assert.deepEqual(summary, { attempted: 0, processed: 0, skipped: 0, failed: 0 });
+      await assert.rejects(
+        () => runLocalAudioFeatureEngine(),
+        /already in use by test local audio feature job/,
+      );
     } finally {
       if (lock.acquired) lock.release();
       resetJobLocksForTests();

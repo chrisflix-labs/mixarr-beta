@@ -46,7 +46,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.1.1 keeps experimental Smart Mix behavior and personalization disabled by default. Personalization and behavior learning are separate opt-ins, and interaction data remains in the local Mixarr database. Confirmed duplicate recordings may share trusted enrichment by default, but every Plex library item remains a separate physical track record. Administrators configure the beta server ceiling with `MIXARR_BETA_PROGRAM_ENABLED`, `MIXARR_PRIVATE_BETA_ENABLED`, and `MIXARR_DEVELOPER_FEATURES_ENABLED`; users must then opt in and enable eligible flags individually. See [Beta features and advanced flags](docs/BETA_FEATURES.md).
+Mixarr v2.1.1-hotfix keeps experimental Smart Mix behavior and personalization disabled by default. Personalization and behavior learning are separate opt-ins, and interaction data remains in the local Mixarr database. Confirmed duplicate recordings may share trusted enrichment by default, but every Plex library item remains a separate physical track record. Administrators configure the beta server ceiling with `MIXARR_BETA_PROGRAM_ENABLED`, `MIXARR_PRIVATE_BETA_ENABLED`, and `MIXARR_DEVELOPER_FEATURES_ENABLED`; users must then opt in and enable eligible flags individually. See [Beta features and advanced flags](docs/BETA_FEATURES.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 
@@ -141,7 +141,7 @@ LOCAL_AUDIO_FEATURES_AUTO_BACKFILL=0
 
 `LOCAL_BPM_ANALYZER=auto` prefers Essentia when available and falls back to Aubio. The default `windows` scope samples multiple portions of a track. `whole_track` can be more thorough, but is slower.
 
-Automatic initial sync does not launch the larger local Essentia audio-feature backfill unless `LOCAL_AUDIO_FEATURES_AUTO_BACKFILL=1`, except when API audio features are disabled and local analysis is enabled.
+Automatic and manual Audio Features runs use the same saved provider settings. When local analysis is enabled, Essentia remains eligible as the preferred provider or as fallback when a preferred API cannot be used.
 
 ### Docker Media Path Mapping
 

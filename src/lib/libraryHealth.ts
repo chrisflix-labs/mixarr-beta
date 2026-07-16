@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import prisma from "./prisma";
+import { logDebug } from "./logging";
 import {
   getAudioFeatureHealthStatus,
   type EffectiveAudioFeatureSettings,
@@ -547,11 +548,11 @@ export async function getAudioFeatureHealthSummary(userId: string, libraryId?: s
     local: settings?.local ?? settings?.enableLocalAudioFeatures ?? true,
     preferLocal: settings?.preferLocal ?? settings?.preferLocalAudioFeatures ?? false,
   } as any);
-  console.log(`[LibraryHealth] audio gap audit active=${classification.audit.activeTracks} complete=${classification.audit.completeAudioFeatures} expectedIncomplete=${classification.audit.incompleteExpected} classifiedIncomplete=${classification.audit.classifiedIncomplete} unclassifiedGap=${classification.audit.unclassifiedGap} mode=${mode}`);
+  logDebug(`[LibraryHealth] audio gap audit active=${classification.audit.activeTracks} complete=${classification.audit.completeAudioFeatures} expectedIncomplete=${classification.audit.incompleteExpected} classifiedIncomplete=${classification.audit.classifiedIncomplete} unclassifiedGap=${classification.audit.unclassifiedGap} mode=${mode}`);
   if (classification.gapOnly > 0) {
-    console.log(`[LibraryHealth] audio gap split count=${classification.gapOnly} partial=${classification.partialGapTrackIds.length} missing=${classification.missingGapTrackIds.length}`);
+    logDebug(`[LibraryHealth] audio gap split count=${classification.gapOnly} partial=${classification.partialGapTrackIds.length} missing=${classification.missingGapTrackIds.length}`);
   }
-  console.log(`[LibraryHealth] audio feature counts active=${classification.activeTracks} complete=${classification.complete} incomplete=${Math.max(0, classification.activeTracks - classification.complete)} partial=${classification.partial} missing=${classification.missing} pending=${classification.pending} noData=${classification.noData} failed=${classification.failed} tooShort=${classification.tooShort} gap=${classification.gapOnly} mode=${mode}`);
+  logDebug(`[LibraryHealth] audio feature counts active=${classification.activeTracks} complete=${classification.complete} incomplete=${Math.max(0, classification.activeTracks - classification.complete)} partial=${classification.partial} missing=${classification.missing} pending=${classification.pending} noData=${classification.noData} failed=${classification.failed} tooShort=${classification.tooShort} gap=${classification.gapOnly} mode=${mode}`);
   return classification;
 }
 
@@ -1112,14 +1113,14 @@ async function calculateLibraryHealthSnapshot(library: LibraryForHealth, modes: 
     restoreVerificationFailureCount: lastReconciliation?.restoreVerificationFailureCount || 0,
   };
   const durationMs = Date.now() - started;
-  console.log(`[LibraryHealth] calculated library=${library.id} name=${JSON.stringify(library.name)} activeTracks=${base.activeTracks} durationMs=${durationMs} source=fresh`);
+  logDebug(`[LibraryHealth] calculated library=${library.id} name=${JSON.stringify(library.name)} activeTracks=${base.activeTracks} durationMs=${durationMs} source=fresh`);
   const mode = metadataProviderModeKey(modes.audioFeatureSettings as any);
-  console.log(`[LibraryHealth] mode audio=${mode} bpm=${modes.bpmProviderModeKey}`);
-  console.log(`[LibraryHealth] audio gap audit active=${audioFeatures.audit.activeTracks} complete=${audioFeatures.audit.completeAudioFeatures} expectedIncomplete=${audioFeatures.audit.incompleteExpected} classifiedIncomplete=${audioFeatures.audit.classifiedIncomplete} unclassifiedGap=${audioFeatures.audit.unclassifiedGap} mode=${mode}`);
+  logDebug(`[LibraryHealth] mode audio=${mode} bpm=${modes.bpmProviderModeKey}`);
+  logDebug(`[LibraryHealth] audio gap audit active=${audioFeatures.audit.activeTracks} complete=${audioFeatures.audit.completeAudioFeatures} expectedIncomplete=${audioFeatures.audit.incompleteExpected} classifiedIncomplete=${audioFeatures.audit.classifiedIncomplete} unclassifiedGap=${audioFeatures.audit.unclassifiedGap} mode=${mode}`);
   if (audioFeatures.gapOnly > 0) {
-    console.log(`[LibraryHealth] audio gap split count=${audioFeatures.gapOnly} partial=${audioFeatures.partialGapTrackIds.length} missing=${audioFeatures.missingGapTrackIds.length}`);
+    logDebug(`[LibraryHealth] audio gap split count=${audioFeatures.gapOnly} partial=${audioFeatures.partialGapTrackIds.length} missing=${audioFeatures.missingGapTrackIds.length}`);
   }
-  console.log(`[LibraryHealth] audio feature counts active=${audioFeatures.activeTracks} complete=${audioFeatures.complete} incomplete=${Math.max(0, audioFeatures.activeTracks - audioFeatures.complete)} partial=${audioFeatures.partial} missing=${audioFeatures.missing} pending=${audioFeatures.pending} noData=${audioFeatures.noData} failed=${audioFeatures.failed} tooShort=${audioFeatures.tooShort} gap=${audioFeatures.gapOnly} mode=${mode}`);
+  logDebug(`[LibraryHealth] audio feature counts active=${audioFeatures.activeTracks} complete=${audioFeatures.complete} incomplete=${Math.max(0, audioFeatures.activeTracks - audioFeatures.complete)} partial=${audioFeatures.partial} missing=${audioFeatures.missing} pending=${audioFeatures.pending} noData=${audioFeatures.noData} failed=${audioFeatures.failed} tooShort=${audioFeatures.tooShort} gap=${audioFeatures.gapOnly} mode=${mode}`);
   return result;
 }
 
@@ -1159,7 +1160,7 @@ export async function getCachedLibraryHealth(userId: string) {
     if (!payload) continue;
     snapshots.push(await refreshStaleAudioFeatureSnapshot(userId, library, payload, library.healthSnapshot!.updatedAt, metadataSettings.audioFeatures));
   }
-  console.log(`[LibraryHealth] homepage cache read libraries=${libraries.length} snapshots=${snapshots.length} durationMs=${Date.now() - started} source=cache`);
+  logDebug(`[LibraryHealth] homepage cache read libraries=${libraries.length} snapshots=${snapshots.length} durationMs=${Date.now() - started} source=cache`);
   return snapshots;
 }
 
@@ -1250,7 +1251,7 @@ export async function getLibraryHealth(userId: string) {
     results.push(result);
     await saveLibraryHealthSnapshot(library.id, result);
   }
-  console.log(`[LibraryHealth] calculated user=${userId} libraries=${libraries.length} durationMs=${Date.now() - started} source=fresh`);
+  logDebug(`[LibraryHealth] calculated user=${userId} libraries=${libraries.length} durationMs=${Date.now() - started} source=fresh`);
   return results;
 }
 

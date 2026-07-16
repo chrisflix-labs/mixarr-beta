@@ -6,7 +6,7 @@ import { isRateLimitError } from "./providers/rateLimit";
 import {
   resolveDelayMs,
   resolveLimit,
-  logMetadataProviderSettings,
+  resolveMetadataProviderSettings,
   resolveRateLimitBackoff,
   type SyncEngineOptions,
 } from "./syncSettings";
@@ -19,6 +19,7 @@ import {
 import { safeTrackBatchIterator, type EnrichmentRunSummary } from "./safeTrackBatch";
 import { sanitizeRequiredMetadataString } from "./metadataSanitizer";
 import { completeAudioFeatureWhere, getEffectiveAudioFeatures, noAudioFeatureRecordTrackWhere } from "./audioFeatures";
+import { logDebug } from "./logging";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -86,50 +87,59 @@ function effectiveAudioFeatureData(existing: any, api: {
 
 // One batch of audio-feature enrichment. The scheduler uses attempted=0
 // to know when the queue is drained.
-export const runAudioFeatureEngine = async (options: SyncEngineOptions = {}): Promise<EnrichmentRunSummary> => {
-  console.log("[AudioFeatureEngine] Starting background audio features sync...");
+export const runAudioFeatureEngine = async (options: SyncEngineOptions = {}): Promise<EnrichmentRunSummary & Record<string, any>> => {
+  logDebug("[AudioFeatureEngine] Starting API audio features batch.");
 
-  let summary: EnrichmentRunSummary = { attempted: 0, processed: 0, skipped: 0, failed: 0 };
+  let summary: EnrichmentRunSummary & Record<string, any> = { attempted: 0, processed: 0, skipped: 0, failed: 0 };
 
   try {
-    const metadataSettings = logMetadataProviderSettings(options).audioFeatures;
-    if (!metadataSettings.api) {
-      console.log("[AudioFeatureEngine] API audio features disabled; using local Essentia.");
-      return summary;
+    const resolvedSettings = resolveMetadataProviderSettings(options);
+    const metadataSettings = resolvedSettings.audioFeatures;
+    if (!metadataSettings.api && !resolvedSettings.bpm.api) {
+      return { ...summary, eligible: 0, remainingEligible: 0 };
     }
     const batchSize = resolveLimit(options.audioFeatureBatchSize, "AUDIO_FEATURE_BATCH_SIZE");
     const providerDelayMs = resolveDelayMs(options.providerDelayMs, 250);
     const rateLimitBackoffEnabled = resolveRateLimitBackoff(options.rateLimitBackoffEnabled);
     const [audioFeatureProviders, bpmProviders] = await Promise.all([
-      getEnabledExternalApiProviders("audioFeatures"),
-      getEnabledExternalApiProviders("bpm"),
+      metadataSettings.api ? getEnabledExternalApiProviders("audioFeatures") : Promise.resolve([]),
+      resolvedSettings.bpm.api ? getEnabledExternalApiProviders("bpm") : Promise.resolve([]),
     ]);
     const spotifyEnabled = audioFeatureProviders.includes("spotify");
     const audioDbEnabled = audioFeatureProviders.includes("audiodb");
     const deezerBpmEnabled = bpmProviders.includes("deezer_popularity");
     if (!spotifyEnabled && !audioDbEnabled && !deezerBpmEnabled) {
-      console.log("[AudioFeatureEngine] No external audio feature or BPM providers are enabled.");
-      return summary;
+      throw new Error("API processing is enabled but no usable audio feature or BPM API provider is configured.");
     }
     const retryThreshold = new Date(Date.now() - RETRY_MS);
+    const scope = options.audioFeatureLibraryId
+      ? { libraryId: options.audioFeatureLibraryId }
+      : options.audioFeatureUserId
+        ? { library: { server: { userId: options.audioFeatureUserId } } }
+        : {};
     const where = {
-      syncStatus: "active",
-      OR: [
-        noAudioFeatureRecordTrackWhere(),
+      AND: [
+        { syncStatus: "active" },
+        scope,
         {
-          audioFeature: {
-            is: {
-              AND: [
-                { NOT: completeAudioFeatureWhere() },
-                { lastUpdated: { lt: retryThreshold } },
-              ],
+          OR: [
+            noAudioFeatureRecordTrackWhere(),
+            {
+              audioFeature: {
+                is: {
+                  AND: [
+                    { NOT: completeAudioFeatureWhere() },
+                    { lastUpdated: { lt: retryThreshold } },
+                  ],
+                },
+              },
             },
-          },
+          ],
         },
       ],
     };
     const candidateCount = await prisma.track.count({ where });
-    console.log(`[AudioFeatureEngine] Found ${candidateCount} tracks missing final audio features and eligible for remote/API lookup.`);
+    logDebug(`[AudioFeatureEngine] API batch eligible=${candidateCount}.`);
     engineBatchSize.observe({ engine: ENGINE }, Math.min(candidateCount, batchSize || candidateCount));
 
     summary = await safeTrackBatchIterator<any>({
@@ -259,7 +269,7 @@ export const runAudioFeatureEngine = async (options: SyncEngineOptions = {}): Pr
             update: data,
             create: { trackId: track.id, ...data },
           });
-          console.log(`[AudioFeatureEngine] Track "${track.title}" -> Energy: ${finalEnergy}, Mood: ${finalValence}, BPM: ${finalTempo}`);
+          logDebug(`[AudioFeatureEngine] Track "${track.title}" -> Energy: ${finalEnergy}, Mood: ${finalValence}, BPM: ${finalTempo}`);
         } else if (rateLimited) {
           outcome = "rate_limited";
           console.warn(`[AudioFeatureEngine] Rate-limited providers had no fallback result for "${track.artist.title} - ${track.title}"; leaving it queued.`);
@@ -278,6 +288,31 @@ export const runAudioFeatureEngine = async (options: SyncEngineOptions = {}): Pr
         } else {
           console.error(`[AudioFeatureEngine] Unexpected error on track ${track.title}:`, e.message);
           outcome = "error";
+          const failureReason = String(e?.message || e || "API audio feature lookup failed").slice(0, 1_000);
+          await prisma.audioFeature.upsert({
+            where: { trackId: track.id },
+            update: {
+              source: "api_error",
+              audioFeatureSource: "api",
+              audioFeatureStatus: "analyzer_failed",
+              audioFeatureAnalyzedAt: new Date(),
+              audioFeatureFailureReason: failureReason,
+              lastUpdated: new Date(),
+            },
+            create: {
+              trackId: track.id,
+              source: "api_error",
+              confidence: 0,
+              tempoSource: "api_error",
+              tempoConfidence: 0,
+              audioFeatureSource: "api",
+              audioFeatureStatus: "analyzer_failed",
+              audioFeatureConfidence: 0,
+              audioFeatureAnalyzedAt: new Date(),
+              audioFeatureFailureReason: failureReason,
+              lastUpdated: new Date(),
+            },
+          });
         }
       } finally {
         endTimer();
@@ -289,9 +324,17 @@ export const runAudioFeatureEngine = async (options: SyncEngineOptions = {}): Pr
       },
     });
 
-    console.log(`[AudioFeatureEngine] Audio features sync batch completed! (${summary.attempted} attempted, ${summary.skipped} skipped, ${summary.failed} failed)`);
+    const remainingEligible = await prisma.track.count({ where });
+    summary = {
+      ...summary,
+      eligible: candidateCount,
+      remainingEligible,
+      providers: { audioFeatures: audioFeatureProviders, bpm: bpmProviders },
+    };
+    logDebug(`[AudioFeatureEngine] API batch completed attempted=${summary.attempted} processed=${summary.processed} skipped=${summary.skipped} failed=${summary.failed} remaining=${remainingEligible}.`);
   } catch (error) {
     console.error("[AudioFeatureEngine] Sync failed", error);
+    throw error;
   }
 
   return summary;

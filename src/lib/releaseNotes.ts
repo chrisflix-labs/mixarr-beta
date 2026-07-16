@@ -72,6 +72,20 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.1.1-hotfix",
+    title: "Nightly Audio Features & Logging Cleanup",
+    releaseDate: "July 15, 2026",
+    badges: ["Hotfix", "Audio Features", "BPM", "Essentia", "Scheduler", "Job History", "Reliability", "Performance"],
+    changes: [
+      "Fixed Audio Features not running for pending tracks during nightly synchronization and moved the awaited analysis to the final processing stage.",
+      "Unified manual, recovered, and scheduled Audio Features execution around fresh saved settings and one provider-resolution path.",
+      "Added proper local Essentia fallback when the preferred API is unavailable; API preference no longer disables eligible local analysis.",
+      "Prevented enabled-but-unusable provider configurations from reporting a successful zero-work result while preserving valid disabled and no-eligible-track outcomes.",
+      "Added clearer nightly stage summaries, Job History details, guarded batch draining, and bounded progress logs for long-running local analysis.",
+      "Reduced repetitive sync and enrichment logging while retaining detailed per-item diagnostics at debug level.",
+    ],
+  },
+  {
     version: "2.1.1",
     title: "Duplicate Preservation & Plex Conflict Inspector",
     releaseDate: "July 14, 2026",

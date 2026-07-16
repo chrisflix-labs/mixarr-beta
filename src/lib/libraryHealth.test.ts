@@ -404,18 +404,17 @@ describe("library health", () => {
   });
 
   it("invalidates Library Health cache after audio feature retry and sync completion", async () => {
-    const syncStartRoute = await readFile(path.join(process.cwd(), "src/app/api/sync/start/route.ts"), "utf8");
     const syncEngine = await readFile(path.join(process.cwd(), "src/lib/syncEngine.ts"), "utf8");
-    const audioStartRoute = await readFile(path.join(process.cwd(), "src/app/api/audio-features/start/route.ts"), "utf8");
+    const audioOrchestrator = await readFile(path.join(process.cwd(), "src/lib/audioFeatureOrchestrator.ts"), "utf8");
     const settingsRetryRoute = await readFile(path.join(process.cwd(), "src/app/api/settings/library-health/audio-feature-retry/route.ts"), "utf8");
     const detailRetryRoute = await readFile(path.join(process.cwd(), "src/app/api/library-health/retry/route.ts"), "utf8");
     const audioRetryHelper = await readFile(path.join(process.cwd(), "src/lib/audioFeatureRetry.ts"), "utf8");
     const syncProgress = await readFile(path.join(process.cwd(), "src/components/SyncProgress.tsx"), "utf8");
 
-    assert.match(syncStartRoute, /invalidateLibraryHealthCache\(userId, \{ libraryId, reason: "audio_feature_sync_completed" \}\)/);
+    assert.match(audioOrchestrator, /invalidateLibraryHealthCache\(context\.userId/);
+    assert.match(audioOrchestrator, /reason: "audio_feature_orchestration_completed"/);
     assert.match(syncEngine, /reason: "plex_sync_committed"/);
     assert.match(syncEngine, /const activeDashboardCount = await prisma\.track\.count/);
-    assert.match(audioStartRoute, /invalidateLibraryHealthCache\(userId, \{ reason: "audio_feature_sync_completed" \}\)/);
     assert.match(settingsRetryRoute, /runAudioFeatureRetry/);
     assert.match(detailRetryRoute, /runAudioFeatureRetry/);
     assert.match(audioRetryHelper, /invalidateLibraryHealthCache\(userId, \{ libraryId: request\.libraryId, reason: "audio_feature_retry_queued" \}\)/);

@@ -1,8 +1,41 @@
+import { logDebug } from "./logging";
+
 type SanitizeContext = {
   entity?: string;
   entityId?: string | number | null;
   field?: string;
 };
+
+export type MetadataSanitizerStats = {
+  total: number;
+  entities: Record<string, number>;
+  fields: Record<string, number>;
+};
+
+const sanitizerStats: MetadataSanitizerStats = { total: 0, entities: {}, fields: {} };
+
+export function getMetadataSanitizerStats(): MetadataSanitizerStats {
+  return {
+    total: sanitizerStats.total,
+    entities: { ...sanitizerStats.entities },
+    fields: { ...sanitizerStats.fields },
+  };
+}
+
+export function logMetadataSanitizerSummarySince(before: MetadataSanitizerStats) {
+  const entities = Object.fromEntries(Object.entries(sanitizerStats.entities)
+    .map(([key, value]) => [key, value - (before.entities[key] || 0)])
+    .filter(([, value]) => Number(value) > 0));
+  const fields = Object.fromEntries(Object.entries(sanitizerStats.fields)
+    .map(([key, value]) => [key, value - (before.fields[key] || 0)])
+    .filter(([, value]) => Number(value) > 0));
+  const total = sanitizerStats.total - before.total;
+  if (total > 0) {
+    const entityCounts = Object.entries(entities).map(([key, value]) => `${key}=${value}`).join(" ");
+    const fieldCounts = Object.entries(fields).map(([key, value]) => `${key}:${value}`).join(",");
+    console.info(`[MetadataSanitizer] Sanitized metadata ${entityCounts || `items=${total}`} fields={${fieldCounts}}`);
+  }
+}
 
 function replaceMalformedSurrogates(value: string) {
   let result = "";
@@ -39,12 +72,17 @@ export function sanitizeOptionalMetadataString(
   const original = String(value);
   const sanitized = sanitizeMetadataString(original);
   if (sanitized !== original) {
+    const entityKey = String(context.entity || "item").trim().toLowerCase() + "s";
+    const fieldKey = String(context.field || "unknown").trim();
+    sanitizerStats.total += 1;
+    sanitizerStats.entities[entityKey] = (sanitizerStats.entities[entityKey] || 0) + 1;
+    sanitizerStats.fields[fieldKey] = (sanitizerStats.fields[fieldKey] || 0) + 1;
     const location = [
       context.entity,
       context.entityId != null ? `id=${sanitizeMetadataString(String(context.entityId))}` : null,
       context.field ? `field=${context.field}` : null,
     ].filter(Boolean).join(" ");
-    console.warn(`[MetadataSanitizer] Removed or replaced unsafe characters${location ? ` (${location})` : ""}.`);
+    logDebug(`[MetadataSanitizer] Removed or replaced unsafe characters${location ? ` (${location})` : ""}.`);
   }
   return sanitized;
 }

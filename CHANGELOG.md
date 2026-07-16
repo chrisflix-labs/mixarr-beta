@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.1.1-hotfix - Nightly Audio Features & Logging Cleanup
+
+- Fixed newly discovered tracks not receiving Audio Features during the same nightly synchronization run.
+- Moved Audio Features and BPM processing to the final nightly stage and kept the parent job active until analysis finishes.
+- Unified manual, recovered, and scheduled Audio Features execution around fresh settings and shared provider resolution.
+- Added local Essentia fallback when a preferred API is unavailable, without treating API preference as disabling local analysis.
+- Distinguished disabled, no-eligible-track, provider-misconfiguration, processing-failure, and successful processing outcomes.
+- Added guarded batch draining, stage-level Job History metadata, and concise progress reporting for long local analysis runs.
+- Reduced repetitive sanitizer, Plex duplicate/conflict, popularity, track-tag, Library Health, and routine worker-lock logging while retaining per-item debug diagnostics.
+
 ## v2.1.1 - Duplicate Preservation & Plex Conflict Inspector
 
 - Made Plex server, library, and rating key the authoritative physical track-instance identity; Plex GUIDs, file paths, and metadata now provide duplicate evidence without claiming or suppressing another item.

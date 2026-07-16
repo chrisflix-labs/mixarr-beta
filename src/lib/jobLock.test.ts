@@ -47,4 +47,19 @@ describe("sync job locking", () => {
 
     manual.release();
   });
+
+  it("lets the nightly parent run its local child without weakening the global lock", () => {
+    resetJobLocksForTests();
+    const nightly = acquireJobLock({ name: "nightly sync pipeline", keys: [GLOBAL_SYNC_JOB_KEY, "scheduler"], source: "scheduler" });
+    assert.equal(nightly.acquired, true);
+    if (!nightly.acquired) throw new Error("expected nightly lock");
+
+    const child = acquireJobLock({ name: "local Essentia audio feature backfill", keys: ["audio_feature:local"], source: "local-audio-feature-engine" });
+    assert.equal(child.acquired, true);
+    const manual = acquireJobLock({ name: "audio features sync", keys: [GLOBAL_SYNC_JOB_KEY, "audio"], source: "manual" });
+    assert.equal(manual.acquired, false);
+
+    if (child.acquired) child.release();
+    nightly.release();
+  });
 });

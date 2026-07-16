@@ -15,6 +15,7 @@ import {
   type TrackSyncChangeType,
 } from "./trackSync";
 import { addDuplicateCandidate, assignConfirmedDuplicateGroup, createDuplicateCandidateIndex, findBestDuplicateCandidateFromIndex } from "./duplicateRecordings";
+import { logDebug } from "./logging";
 
 type PlexItem = Record<string, any> & {
   Genre?: Array<{ tag: string }>;
@@ -370,6 +371,8 @@ export const runSyncEngine = async (
   const endTimer = syncDurationSeconds.startTimer();
   let result: "success" | "failed" = "success";
   let summary: ReconciliationSummary | undefined;
+  const { getMetadataSanitizerStats, logMetadataSanitizerSummarySince } = await import("./metadataSanitizer");
+  const sanitizerStatsBefore = getMetadataSanitizerStats();
 
   const syncLog = await prisma.syncLog.create({
     data: { libraryId, status: "in_progress" },
@@ -530,6 +533,8 @@ export const runSyncEngine = async (
     const duplicateEvents: any[] = [];
     const restoreCandidates: RestoreCandidate[] = [];
     let duplicatesGrouped = 0;
+    let duplicatesPreserved = 0;
+    let unresolvedItemsCreated = 0;
     let duplicateDataInherited = 0;
     let persistenceFailures = 0;
     const automaticallyShareDuplicateEnrichment = options.automaticallyShareDuplicateEnrichment !== false;
@@ -656,6 +661,7 @@ export const runSyncEngine = async (
         const evidence = duplicateRelationship.assessment.evidence;
         addEvent(duplicateEvents, { trackId: persisted.id, plexRatingKey: normalizedTrack.ratingKey, candidateTrackId: candidateId, confidence: duplicateRelationship.assessment.confidence, evidence });
         if (duplicateRelationship.assessment.shouldAutoGroup) {
+          duplicatesPreserved += 1;
           const stableGroup = persisted.canonicalRecordingId && persisted.canonicalRecordingId === duplicateRelationship.candidate.canonicalRecordingId;
           if (!stableGroup) {
             const grouped = await assignConfirmedDuplicateGroup({
@@ -674,8 +680,9 @@ export const runSyncEngine = async (
             where: { libraryId, plexRatingKey: normalizedTrack.ratingKey, resolutionStatus: "unresolved" },
             data: { resolutionStatus: "resolved_grouped", resolvedAt: new Date(), trackId: persisted.id, lastSyncBatchId: syncRunId },
           });
-          console.info(`[PlexSync] Preserved duplicate Plex item plexRatingKey=${normalizedTrack.ratingKey} trackId=${persisted.id} duplicateGroupId=${persisted.canonicalRecordingId || "existing"} confidence=high action=created_separate_instance`);
+          logDebug(`[PlexSync] Preserved duplicate Plex item plexRatingKey=${normalizedTrack.ratingKey} trackId=${persisted.id} duplicateGroupId=${persisted.canonicalRecordingId || "existing"} confidence=high action=created_separate_instance`);
         } else {
+          unresolvedItemsCreated += 1;
           incrementChangeCounts(changeCounts, ["match_conflict"]);
           await prisma.track.update({
             where: { id: persisted.id },
@@ -716,7 +723,7 @@ export const runSyncEngine = async (
             },
           });
           addEvent(conflictEvents, { trackId: persisted.id, plexRatingKey: normalizedTrack.ratingKey, reason: "ambiguous_duplicate_relationship", candidates: [candidateId], confidence: duplicateRelationship.assessment.confidence });
-          console.info(`[PlexSync] Saved unresolved Plex item for review plexRatingKey=${normalizedTrack.ratingKey} trackId=${persisted.id} reason=ambiguous_duplicate_relationship action=created_separate_instance`);
+          logDebug(`[PlexSync] Saved unresolved Plex item for review plexRatingKey=${normalizedTrack.ratingKey} trackId=${persisted.id} reason=ambiguous_duplicate_relationship action=created_separate_instance`);
         }
       } else {
         await prisma.plexSyncConflict.updateMany({
@@ -967,6 +974,8 @@ export const runSyncEngine = async (
     console.log(`[SyncEngine] Active database records after commit: ${summary.activeDashboardCount}`);
     console.log(`[SyncEngine] Restore verification failures: ${summary.restoreVerificationFailures}`);
     console.log(`[PlexSync] Completed plexScanned=${summary.scanned} trackInstancesActive=${summary.activeDashboardCount} existingMatched=${summary.matched} newInstancesCreated=${summary.newTracks} duplicatesGrouped=${summary.duplicatesGrouped} duplicateDataInherited=${summary.duplicateDataInherited} needsReview=${summary.matchConflicts} persistenceFailures=${summary.persistenceFailures} missing=${summary.markedMissing} restoreVerificationFailures=${summary.restoreVerificationFailures} duration=${Math.round(summary.durationMs / 1000)}s`);
+    console.info(`[PlexSync] Duplicate handling preserved=${duplicatesPreserved} grouped=${duplicatesGrouped} metadataInherited=${duplicateDataInherited}`);
+    console.info(`[PlexSync] Unresolved items created=${unresolvedItemsCreated} reasons={ambiguous_duplicate_relationship:${unresolvedItemsCreated}}`);
     if (summary.hardDeleted > 0) console.log(`[SyncEngine] Hard-deleted after grace period: ${summary.hardDeleted}`);
 
   } catch (error: any) {
@@ -977,6 +986,7 @@ export const runSyncEngine = async (
       data: { status: "failed", endedAt: new Date(), error: error.message },
     });
   } finally {
+    logMetadataSanitizerSummarySince(sanitizerStatsBefore);
     endTimer();
     syncRunsTotal.inc({ result });
   }

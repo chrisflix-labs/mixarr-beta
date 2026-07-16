@@ -1,4 +1,5 @@
 import prisma from "./prisma";
+import { logDebug } from "./logging";
 
 export type EnrichmentRunSummary = {
   attempted: number;
@@ -168,7 +169,7 @@ export async function safeTrackBatchIterator<T>({
     }
   }
 
-  console.log(
+  logDebug(
     `[${engineName}] Batch summary: attempted=${summary.attempted}, processed=${summary.processed}, skipped=${summary.skipped}, failed=${summary.failed}.`,
   );
   return summary;

@@ -27,7 +27,7 @@ import { classifyMoodEnergyTracks } from "./moodEnergy";
 import {
   resolveDelayMs,
   resolveLimit,
-  logMetadataProviderSettings,
+  resolveMetadataProviderSettings,
   metadataProviderModeKey,
   type SyncEngineOptions,
 } from "./syncSettings";
@@ -1224,7 +1224,7 @@ const localAudioFeatureTrackSelect = {
   audioFeature: true,
 } as const;
 
-async function countMoodEnergyHealth(settings: ReturnType<typeof logMetadataProviderSettings>["audioFeatures"]) {
+async function countMoodEnergyHealth(settings: ReturnType<typeof resolveMetadataProviderSettings>["audioFeatures"]) {
   const tracks: any[] = [];
   await safeTrackBatchIterator<any>({
     engineName: "LocalAudioFeatureEngineMoodEnergySummary",
@@ -1245,12 +1245,12 @@ async function countMoodEnergyHealth(settings: ReturnType<typeof logMetadataProv
 }
 
 export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}): Promise<EnrichmentRunSummary> => {
-  console.log("[LocalAudioFeatureEngine] Starting local audio feature backfill.");
+  debugLog("[LocalAudioFeatureEngine] Starting local audio feature batch.");
   let summary: EnrichmentRunSummary & Record<string, any> = { attempted: 0, processed: 0, skipped: 0, failed: 0 };
 
-  const metadataSettings = logMetadataProviderSettings(options).audioFeatures;
-  if (!metadataSettings.local) {
-    console.log("[LocalAudioFeatureEngine] Local audio feature analysis is disabled.");
+  const resolvedSettings = resolveMetadataProviderSettings(options);
+  const metadataSettings = resolvedSettings.audioFeatures;
+  if (!metadataSettings.local && !resolvedSettings.bpm.local) {
     return {
       ...summary,
       analyzer: "Essentia",
@@ -1269,10 +1269,7 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
     source: "local-audio-feature-engine",
   });
   if (!lock.acquired) {
-    console.warn(
-      `[LocalAudioFeatureEngine] Duplicate local audio feature backfill ignored; ${lock.activeJob.name} started at ${lock.activeJob.startedAt}.`,
-    );
-    return summary;
+    throw new Error(`Local Essentia provider is already in use by ${lock.activeJob.name} (started ${lock.activeJob.startedAt}).`);
   }
 
   try {
@@ -1288,7 +1285,13 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
     if (analysisScope === "whole_track") {
       console.log(`[LocalAudioFeatureEngine] Whole-track mode uses concurrency=${localAudioFeatureConcurrency}.`);
     }
-    const where = localAudioFeatureWhere(reprocessLocal, metadataSettings.reprocessApiWithLocal, analysisScope);
+    const baseWhere = localAudioFeatureWhere(reprocessLocal, metadataSettings.reprocessApiWithLocal, analysisScope);
+    const scope = options.audioFeatureLibraryId
+      ? { libraryId: options.audioFeatureLibraryId }
+      : options.audioFeatureUserId
+        ? { library: { server: { userId: options.audioFeatureUserId } } }
+        : {};
+    const where = { AND: [baseWhere, scope] };
     const [candidateCount, partialBefore] = await runWithConcurrency([
       () => prisma.track.count({ where }),
       () => prisma.track.count({ where: { AND: [{ syncStatus: "active" }, partialAudioFeatureTrackWhere(metadataSettings)] } }),
@@ -1324,9 +1327,11 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
     let progressProcessed = 0;
     let progressFailed = 0;
     let shutdownLogged = false;
+    let lastProgressCompleted = 0;
+    let lastProgressPercent = 0;
+    let lastProgressAt = startedAt;
     const skipReasons: Record<string, number> = {};
-    console.log(`[LocalAudioFeatureEngine] Candidate preflight matched=${candidateCount} eligible=${candidateCount} skipped=0`);
-    console.log(`[LocalAudioFeatureEngine] Mood/Energy preflight matched=${candidateCount} eligible=${candidateCount} skipped=0`);
+    debugLog(`[LocalAudioFeatureEngine] Candidate preflight matched=${candidateCount} eligible=${candidateCount} skipped=0`);
     engineBatchSize.observe({ engine: ENGINE }, Math.min(candidateCount, batchSize || candidateCount));
     markEnrichmentJobProgress("audio", {
       phase: "local_audio_analysis",
@@ -1345,7 +1350,18 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
 
     const logProgress = (force = false) => {
       const completed = progressProcessed + alreadyAnalyzed + progressFailed;
-      if (!force && completed > 0 && completed % 25 !== 0) return;
+      const percent = candidateCount > 0 ? Math.floor((completed / candidateCount) * 100) : 100;
+      const now = Date.now();
+      if (!force) {
+        const trackThresholdReached = completed - lastProgressCompleted >= 25;
+        const percentThresholdReached = percent - lastProgressPercent >= 5;
+        const timeThresholdReached = now - lastProgressAt >= 60_000;
+        if (completed === 0 || (!trackThresholdReached && !percentThresholdReached && !timeThresholdReached)) return;
+      }
+      if (!force && completed === lastProgressCompleted && percent === lastProgressPercent) return;
+      lastProgressCompleted = completed;
+      lastProgressPercent = percent;
+      lastProgressAt = now;
       const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
       const remaining = Math.max(0, candidateCount - completed);
       markEnrichmentJobProgress("audio", {
@@ -1363,7 +1379,7 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
         elapsedSeconds,
       });
       console.log(
-        `[LocalAudioFeatureEngine] Progress processed=${progressProcessed} failed=${progressFailed} skipped=${alreadyAnalyzed} remaining=${remaining} elapsed=${elapsedSeconds}s`,
+        `[AudioFeatureEngine] Progress provider=local processed=${progressProcessed}/${candidateCount} failed=${progressFailed} skipped=${alreadyAnalyzed} elapsed=${elapsedSeconds}s`,
       );
     };
 
@@ -1517,17 +1533,11 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
       partialMoodEnergyAfter: moodEnergyAfter.partialMoodEnergy,
       message: `Mood/Energy sync completed. Matched ${candidateCount} tracks, processed ${summary.processed}, failed ${summary.failed}. Missing mood changed ${moodEnergyBefore.missingMood} -> ${moodEnergyAfter.missingMood}. Missing energy changed ${moodEnergyBefore.missingEnergy} -> ${moodEnergyAfter.missingEnergy}. Partial Audio Features changed from ${partialBefore} to ${partialAfter}.${moodEnergyAfter.partialMoodEnergy > 0 ? ` Processed ${summary.processed} tracks, but ${moodEnergyAfter.partialMoodEnergy} still have incomplete mood/energy values.` : ""}`,
     };
+    summary.remainingEligible = await prisma.track.count({ where });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[LocalAudioFeatureEngine] Sync failed: ${message}`);
-    summary = {
-      ...summary,
-      analyzer: "Essentia",
-      providerMode: metadataProviderModeKey(metadataSettings as any),
-      analysisScope: metadataSettings.scope,
-      skipReasons: { essentia_unavailable: summary.attempted || 0 },
-      message: `Local audio analysis did not run because Essentia is unavailable: ${message}`,
-    };
+    throw error;
   } finally {
     lock.release();
   }

@@ -13,6 +13,7 @@ import {
 } from "./metrics";
 import { safeTrackBatchIterator, type EnrichmentRunSummary } from "./safeTrackBatch";
 import { sanitizeRequiredMetadataString } from "./metadataSanitizer";
+import { logDebug } from "./logging";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -27,11 +28,12 @@ const RETRY_MS = RETRY_AFTER_DAYS * 24 * 60 * 60 * 1000;
 // One batch of track-tag enrichment. The scheduler uses attempted=0
 // to know when the queue is drained.
 export const runTrackTagEngine = async (options: SyncEngineOptions = {}): Promise<EnrichmentRunSummary> => {
-  console.log("[TrackTagEngine] Starting background track tag sync...");
+  logDebug("[TrackTagEngine] Starting track tag batch.");
 
   let summary: EnrichmentRunSummary = { attempted: 0, processed: 0, skipped: 0, failed: 0 };
 
   try {
+    const providerTotals: Record<string, number> = {};
     const batchSize = resolveLimit(options.tagBatchSize, "TRACK_TAG_BATCH_SIZE");
     const providerDelayMs = resolveDelayMs(options.providerDelayMs, 250);
     const rateLimitBackoffEnabled = resolveRateLimitBackoff(options.rateLimitBackoffEnabled);
@@ -49,7 +51,7 @@ export const runTrackTagEngine = async (options: SyncEngineOptions = {}): Promis
       ],
     };
     const candidateCount = await prisma.track.count({ where });
-    console.log(`[TrackTagEngine] Found ${candidateCount} tracks needing tags.`);
+    console.info(`[TrackTagEngine] Eligible tracks=${candidateCount}`);
     engineBatchSize.observe({ engine: ENGINE }, Math.min(candidateCount, batchSize || candidateCount));
 
     summary = await safeTrackBatchIterator<any>({
@@ -102,7 +104,9 @@ export const runTrackTagEngine = async (options: SyncEngineOptions = {}): Promis
             connectedTags += 1;
           }
           if (connectedTags > 0) {
-            console.log(`[TrackTagEngine] Track "${track.title}" -> Tags: ${tags.join(", ")} (${tagResolution.provider})`);
+            const provider = tagResolution.provider || "unknown";
+            providerTotals[provider] = (providerTotals[provider] || 0) + 1;
+            logDebug(`[TrackTagEngine] Track "${track.title}" -> Tags: ${tags.join(", ")} (${provider})`);
           } else {
             outcome = "not_found";
           }
@@ -168,7 +172,8 @@ export const runTrackTagEngine = async (options: SyncEngineOptions = {}): Promis
       },
     });
 
-    console.log(`[TrackTagEngine] Track tag sync batch completed! (${summary.attempted} attempted, ${summary.skipped} skipped, ${summary.failed} failed)`);
+    const providers = Object.entries(providerTotals).map(([key, value]) => `${key}:${value}`).join(",");
+    console.info(`[TrackTagEngine] Completed attempted=${summary.attempted} processed=${summary.processed} skipped=${summary.skipped} failed=${summary.failed} providers={${providers}}`);
 
   } catch (error) {
     console.error("[TrackTagEngine] Sync failed", error);

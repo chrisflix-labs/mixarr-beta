@@ -1,4 +1,5 @@
 import { getWorkerIdentity, markJobLeaseHeartbeat } from "./workerHealth";
+import { logDebug } from "./logging";
 
 export const GLOBAL_SYNC_JOB_KEY = "global:sync";
 
@@ -95,7 +96,7 @@ export function acquireJobLock({
     leaseExpiresAt: new Date(now.getTime() + 10 * 60_000).toISOString(),
   };
   for (const key of normalizedKeys) jobLocks.activeByKey[key] = job;
-  console.log(`[Worker] Acquired job id=${job.id} type=${name} lockKey=${job.lockKey}`);
+  logDebug(`[Worker] Acquired job id=${job.id} type=${name} lockKey=${job.lockKey}`);
   if (heartbeatEnabled()) {
     void markJobLeaseHeartbeat({
       jobId: null,
@@ -117,7 +118,7 @@ export function releaseJobLock(job: ActiveJob) {
       delete jobLocks.activeByKey[key];
     }
   }
-  console.log(`[Worker] Released job id=${job.id} type=${job.name} lockKey=${job.lockKey}`);
+  logDebug(`[Worker] Released job id=${job.id} type=${job.name} lockKey=${job.lockKey}`);
   if (heartbeatEnabled()) void markJobLeaseHeartbeat({ jobId: null });
 }
 
