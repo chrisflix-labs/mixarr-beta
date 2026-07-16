@@ -145,6 +145,10 @@ export function scoreSmartMixTrack<TTrack extends Record<string, any>>(
   if (personalizationScore) {
     scoreBreakdown.playlistPreference = personalizationScore.playlistContextScore;
     scoreBreakdown.personalization = personalizationScore.personalizationAdjustment;
+    scoreBreakdown.trackFeedback = personalizationScore.components?.trackFeedbackAdjustment || 0;
+    scoreBreakdown.artistFeedback = personalizationScore.components?.artistFeedbackAdjustment || 0;
+    scoreBreakdown.playlistFitFeedback = personalizationScore.components?.playlistFitAdjustment || 0;
+    scoreBreakdown.learnedProfile = personalizationScore.components?.learnedProfileAdjustment || 0;
   }
 
   return {
@@ -155,6 +159,7 @@ export function scoreSmartMixTrack<TTrack extends Record<string, any>>(
     metadataStatus: fallback.metadataStatus,
     fallbacksApplied,
     ...(personalizationScore ? { personalizationScore } : {}),
+    ...(personalizationScore?.excluded ? { exclusionReason: personalizationScore.exclusionReason } : {}),
     ...(moodBlendScore ? { moodBlend: moodBlendScore.data } : {}),
   };
 }

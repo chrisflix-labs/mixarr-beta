@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.1.2 - Likes, Dislikes & Track Feedback
+
+- Added user-specific liked, disliked, and never-recommend track states plus preferred and recommend-less artist states.
+- Added playlist/profile-scoped fit feedback and pairwise poor-transition reports with optional stable reason enums and contextual metadata.
+- Added append-only feedback events, indexed effective-state tables, authenticated mutation/read/bulk APIs, chunked large selections, and partial-failure reporting.
+- Integrated explicit feedback as explainable Smart Mix v2 scoring components while preserving global scoring, hard rules, variety limits, and the personalization toggle.
+- Applied never-recommend as a hard exclusion in generation, regeneration, and Recently Added recommendation paths without modifying existing playlists.
+- Added compact feedback menus to playlist previews, regeneration previews, and the library, plus optional removal reasons, undo, bulk actions, and feedback management.
+- Expanded user-specific reset and privacy controls to cover all explicit feedback data.
+- Added the non-destructive `20260715090000_track_feedback_v212` PostgreSQL migration with indexed user/track, user/artist, playlist/profile, pairwise transition, and event-history lookups.
+
 ## v2.1.1-hotfix - Nightly Audio Features & Logging Cleanup
 
 - Fixed newly discovered tracks not receiving Audio Features during the same nightly synchronization run.

@@ -14,7 +14,7 @@ import { filterManualTrackExclusions, getManualTrackExclusionIds } from "./track
 import { scorePlaylist, type PlaylistScoreSummary } from "./playlistScoring";
 import { resolveScoringModel, STABLE_SCORING_MODEL_ID } from "./scoringModels";
 import { getBetaStatus, getFeatureState, recordBetaUsage } from "./featureFlagService";
-import { loadPersonalizationScoringContext, recordTrackInteractionInBackground } from "./personalization";
+import { loadExplicitFeedbackScoringContext, loadPersonalizationScoringContext, recordTrackInteractionInBackground } from "./personalization";
 import {
   runSmartMixEngineV2,
   smartMixEngineLabel,
@@ -715,11 +715,16 @@ async function resolvePlaylistGenerationInputs(userId: string, config: PlaylistC
     select: { trackId: true },
   });
   const manualExcludedTrackIds = await getManualTrackExclusionIds(userId);
-  const manualExcludedTrackIdSet = new Set(manualExcludedTrackIds);
-  const eligiblePinnedTracks = pinnedTracks.filter((track) => !manualExcludedTrackIdSet.has(track.id));
+  const personalizationProfile = await prisma.userRecommendationProfile.findUnique({ where: { userId }, select: { enabled: true } });
+  const feedbackExcludedTrackIds = personalizationProfile?.enabled
+    ? (await prisma.userTrackPreference.findMany({ where: { userId, state: "NEVER_RECOMMEND" }, select: { trackId: true } })).map((row) => row.trackId)
+    : [];
+  const hardExcludedTrackIdSet = new Set([...manualExcludedTrackIds, ...feedbackExcludedTrackIds]);
+  const eligiblePinnedTracks = pinnedTracks.filter((track) => !hardExcludedTrackIdSet.has(track.id));
   const omittedIds = config.excludedTrackIds
     .concat(blockedTracks.map((track) => track.trackId))
     .concat(manualExcludedTrackIds)
+    .concat(feedbackExcludedTrackIds)
     .concat(eligiblePinnedTracks.map((track) => track.id));
   const syncSettings = await getUserSyncSettings(userId);
   const audioFeatureFilterOptions = {
@@ -731,6 +736,7 @@ async function resolvePlaylistGenerationInputs(userId: string, config: PlaylistC
     pinnedTracks: eligiblePinnedTracks,
     blockedTrackIds: blockedTracks.map((track) => track.trackId),
     manualExcludedTrackIds,
+    feedbackExcludedTrackIds,
     omittedIds,
     audioFeatureFilterOptions,
   };
@@ -845,11 +851,11 @@ export async function generatePlaylistTracksWithStats({
     const personalization = useSmartMixV2
       ? await loadPersonalizationScoringContext(userId, personalizationPlaylistId)
       : undefined;
-    const runConfig = useSmartMixV2
+    let runConfig = useSmartMixV2
       ? { ...config, scoringModel: scoringResolution.model.id, tuningConfig, ...(moodFeatureState && !moodFeatureState.enabled ? { moodBlendMode: "off" as const, selectedMoodPath: [], allowedMoods: [] } : {}), recentlyUsedTrackIds, recentPlaylistUsage, ...(personalization ? { personalization } : {}) }
       : config;
-    const remainingLimit = Math.max(0, config.limit - pinnedTracks.length);
-    const safetyCandidateLimit = safetyRulesAreEnabled(config)
+    let remainingLimit = Math.max(0, config.limit - pinnedTracks.length);
+    let safetyCandidateLimit = safetyRulesAreEnabled(config)
       ? Math.min(maxPlaylistSize, Math.max(remainingLimit * 5, remainingLimit + 25))
       : remainingLimit;
     const take = Math.min(
@@ -860,9 +866,26 @@ export async function generatePlaylistTracksWithStats({
         ? safetyCandidateLimit
         : Math.max(safetyCandidateLimit * 5, safetyCandidateLimit + 25),
     );
-    const candidates = remainingLimit > 0
+    let candidates = remainingLimit > 0
       ? await queryCandidateTracks(userId, config, omittedIds, take, audioFeatureFilterOptions, useSmartMixV2)
       : [];
+    let effectivePinnedTracks = pinnedTracks;
+    if (useSmartMixV2 && personalization) {
+      const feedback = await loadExplicitFeedbackScoringContext(
+        userId,
+        [...pinnedTracks, ...candidates].map((track) => track.id),
+        [...pinnedTracks, ...candidates].map((track) => track.artistId).filter(Boolean),
+        personalizationPlaylistId,
+      );
+      const excluded = new Set(feedback.hardExcludedTrackIds);
+      candidates = candidates.filter((track) => !excluded.has(track.id));
+      effectivePinnedTracks = pinnedTracks.filter((track) => !excluded.has(track.id));
+      remainingLimit = Math.max(0, config.limit - effectivePinnedTracks.length);
+      safetyCandidateLimit = safetyRulesAreEnabled(config)
+        ? Math.min(maxPlaylistSize, Math.max(remainingLimit * 5, remainingLimit + 25))
+        : remainingLimit;
+      runConfig = { ...runConfig, personalization: { ...personalization, explicitFeedback: feedback } };
+    }
     const reasons = collectRuleReasons(config.ruleTree, config.rules);
 
     const baseOmittedIds = config.excludedTrackIds
@@ -880,7 +903,7 @@ export async function generatePlaylistTracksWithStats({
     if (useSmartMixV2) {
       const engineResult = runSmartMixEngineV2({
         config: runConfig,
-        pinnedTracks,
+        pinnedTracks: effectivePinnedTracks,
         candidates,
         safetyCandidateLimit,
         applyDuplicatePolicy: (tracks, runConfig, limit) => applyDuplicatePolicy(tracks, runConfig as PlaylistConfigInput, limit),
@@ -1567,6 +1590,12 @@ export async function recordGeneratedPlaylist({
     discoveryResult = summarizeDiscovery(discoveryScoring.tracks, discoveryScoring.tracks, tuningConfig.discovery, discoveryScoring.executionTimeMs);
   }
   const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks, tuningConfig, discoveryResult || undefined) : null;
+  const feedbackProfile = config.engineVersion === SMART_MIX_ENGINE_V2 ? await prisma.userRecommendationProfile.findUnique({ where: { userId }, select: { enabled: true } }) : null;
+  const [appliedTrackFeedback, appliedArtistFeedback] = feedbackProfile?.enabled ? await Promise.all([
+    prisma.userTrackPreference.findMany({ where: { userId, trackId: { in: tracks.map((track) => track.id) } }, select: { state: true } }),
+    prisma.userArtistPreference.findMany({ where: { userId, artistId: { in: Array.from(new Set(tracks.map((track) => track.artistId))) } }, select: { state: true } }),
+  ]) : [[], []];
+  const feedbackTypesApplied = Array.from(new Set([...appliedTrackFeedback.map((row) => row.state), ...appliedArtistFeedback.map((row) => row.state)]));
   const data = {
     userId,
     serverId: serverId || tracks[0]?.library?.server?.id || null,
@@ -1588,7 +1617,7 @@ export async function recordGeneratedPlaylist({
     engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
     scoringModel: scoringResolution.model.id,
     scoringModelVersion: scoringResolution.model.version,
-    betaMetadataJson: betaFeatures.length || stableFallbackUsed ? {
+    betaMetadataJson: config.engineVersion === SMART_MIX_ENGINE_V2 || betaFeatures.length || stableFallbackUsed ? {
       accessLevel: betaStatus.accessLevel,
       enabledFeatureFlags: betaFeatures,
       scoringModel: scoringResolution.model.id,
@@ -1598,6 +1627,9 @@ export async function recordGeneratedPlaylist({
       stableFallbackUsed,
       fallbackReason,
       generationSettings: config,
+      personalizationScoringVersion: "2.1.2-feedback-1",
+      feedbackTypesApplied,
+      feedbackInfluencedGeneration: feedbackTypesApplied.length > 0,
     } as any : undefined,
     filtersJson: config as any,
     safetyRulesJson: config.safetyRules as any,
@@ -2395,9 +2427,16 @@ export async function previewAdvancedPlaylistRegeneration({ userId, generatedPla
       ...tracks.map((track) => track.id),
     ]),
   });
-  const candidatesResult = request.candidateTrackIds?.length
+  let candidatesResult = request.candidateTrackIds?.length
     ? { tracks: await fetchOwnedTracksInOrder(userId, uniqueTrackIds(request.candidateTrackIds)) }
     : await generatePlaylistTracksWithStats({ userId, config: candidateConfig, personalizationPlaylistId: generatedPlaylistId });
+  if (request.candidateTrackIds?.length) {
+    const profile = await prisma.userRecommendationProfile.findUnique({ where: { userId }, select: { enabled: true } });
+    if (profile?.enabled) {
+      const excluded = new Set((await prisma.userTrackPreference.findMany({ where: { userId, state: "NEVER_RECOMMEND", trackId: { in: candidatesResult.tracks.map((track) => track.id) } }, select: { trackId: true } })).map((row) => row.trackId));
+      candidatesResult = { tracks: candidatesResult.tracks.filter((track) => !excluded.has(track.id)) };
+    }
+  }
   (request as any).bpmFlow = tuning.bpmFlow;
   const preview = regeneratePlaylist({
     playlistId: generatedPlaylistId,

@@ -106,6 +106,12 @@ export async function POST(req: Request) {
         trackIds: result.exportedTrackIds || trackIds,
         discoveryResult,
       });
+      if (generatedPlaylist && previewId) {
+        await prisma.playlistFitFeedback.updateMany({
+          where: { userId, generationId: previewId, scopeKey: `generation:${previewId}` },
+          data: { playlistId: generatedPlaylist.id, scopeKey: `playlist:${generatedPlaylist.id}`, engineVersion: parsedOptions?.engineVersion || "v1" },
+        });
+      }
     }
     const creationSummary = smartPresetName
       ? `Created playlist "${trimmedName}"${smartPresetSummary}${presetSummary}${trackCountSummary}.${exclusionSummary}${safetySummary}`

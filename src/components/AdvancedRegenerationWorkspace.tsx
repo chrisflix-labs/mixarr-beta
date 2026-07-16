@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { Activity, AlertTriangle, Check, ChevronDown, History, Lock, LockOpen, RefreshCw, Sparkles, Undo2, Wand2, X } from "lucide-react";
 import styles from "@/app/generated-playlists/generated-playlists.module.css";
+import TrackFeedbackMenu from "./TrackFeedbackMenu";
 
 type Mode = "replace_weak_tracks" | "replace_low_scoring" | "improve_bpm_flow" | "increase_energy" | "increase_discovery" | "smooth_mood_transitions" | "regenerate_section" | "manual_selection";
 
@@ -291,6 +292,7 @@ export default function AdvancedRegenerationWorkspace({ playlistId, playlistName
                   <div className={styles.changeActions}>
                     <label><input type="checkbox" checked={lockProposed.has(change.position)} onChange={() => setLockProposed((current) => { const next = new Set(current); if (next.has(change.position)) next.delete(change.position); else next.add(change.position); return next; })} /> Lock proposed track after applying</label>
                     {original && <button type="button" className={styles.secondaryButton} onClick={() => updateLock(original)}><Lock size={14} /> Keep and lock original</button>}
+                    {proposed && <TrackFeedbackMenu trackId={proposed.id} artistId={proposed.artistId || proposed.artist?.id} trackTitle={proposed.title} playlistId={playlistId} generationId={preview.id || undefined} sourceSurface="REGENERATION_PREVIEW" />}
                   </div>
                 </article>;
               })}

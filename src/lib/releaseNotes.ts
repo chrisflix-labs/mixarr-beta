@@ -72,6 +72,21 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.1.2",
+    title: "Likes, Dislikes & Track Feedback",
+    releaseDate: "July 15, 2026",
+    badges: ["Personalization", "Feedback", "Playlists", "Preview", "Regeneration", "Database", "Performance", "Mobile", "UI"],
+    changes: [
+      "Added reversible likes, dislikes, never-recommend exclusions, preferred artists, and recommend-less artist preferences with user-scoped effective state and append-only event history.",
+      "Added playlist/profile-scoped good-fit and poor-fit signals plus transition-aware reports with stable optional reasons, notes, BPM, mood, energy, score, generation, and engine context.",
+      "Integrated conservative explicit-feedback components and hard exclusions into Smart Mix Engine v2 without overwriting global scores or bypassing playlist safety and variety rules.",
+      "Added compact accessible feedback controls to playlist previews, regeneration previews, and library track actions, with confirmation for strong exclusions and immediate local state updates.",
+      "Added optional post-removal reasons and undo in Smart Builder previews; removals without a reason create no lasting personalization signal.",
+      "Added server-side bulk feedback, artist deduplication, bounded chunks, partial-failure results, feedback search/management, and reset/privacy integration.",
+      "Excluded never-recommend tracks from Smart Mix, regeneration candidates, and Recently Added recommendations while personalization is enabled.",
+    ],
+  },
+  {
     version: "2.1.1-hotfix",
     title: "Nightly Audio Features & Logging Cleanup",
     releaseDate: "July 15, 2026",

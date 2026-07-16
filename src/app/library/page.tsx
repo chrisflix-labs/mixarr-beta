@@ -6,6 +6,7 @@ import { Disc3, Filter, Mic2, Music, Search, SlidersHorizontal, Star, Tag, Wand2
 import prisma from "@/lib/prisma";
 import BlockTrackButton from "@/components/BlockTrackButton";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
+import TrackFeedbackMenu from "@/components/TrackFeedbackMenu";
 import MetadataCorrectionsButton from "@/components/MetadataCorrectionsButton";
 import BulkMetadataCorrections, { SelectAllTracksCheckbox, TrackSelectionCheckbox } from "@/components/BulkMetadataCorrections";
 import { resolveEffectiveTrackMetadata } from "@/lib/metadataCorrections";
@@ -137,7 +138,7 @@ export default async function LibraryPage({
     prisma.track.findMany({
       where: whereClause,
       include: {
-        artist: true,
+        artist: { include: { userPreferences: { where: { userId: sessionId }, take: 1 } } },
         album: true,
         popularity: true,
         audioFeature: true,
@@ -151,6 +152,7 @@ export default async function LibraryPage({
           where: { userId: sessionId },
           select: { id: true },
         },
+        userPreferences: { where: { userId: sessionId }, take: 1 },
       },
       orderBy,
       skip,
@@ -426,6 +428,7 @@ export default async function LibraryPage({
                       <td>
                         <div className={styles.trackActions}>
                           <TrackPreviewButton trackId={track.id} />
+                          <TrackFeedbackMenu trackId={track.id} artistId={track.artistId} trackTitle={track.title} sourceSurface="TRACK_TABLE" initialTrackState={track.userPreferences[0]?.state} initialArtistState={track.artist.userPreferences[0]?.state} />
                           <MetadataCorrectionsButton trackId={track.id} corrected={effectiveMetadata.hasCorrection} verified={effectiveMetadata.hasVerification} conflict={effectiveMetadata.hasConflict} />
                           <BlockTrackButton trackId={track.id} initialBlocked={track.blockedBy.length > 0} />
                         </div>

@@ -133,6 +133,11 @@ export type SmartMixScoreBreakdown = {
   diversity?: number;
   playlistPreference?: number;
   personalization?: number;
+  trackFeedback?: number;
+  artistFeedback?: number;
+  playlistFitFeedback?: number;
+  learnedProfile?: number;
+  transitionFeedback?: number;
 };
 
 export type SmartMixScoredTrack<TTrack = any> = TTrack & {
@@ -144,6 +149,7 @@ export type SmartMixScoredTrack<TTrack = any> = TTrack & {
   moodBlend?: SmartMixMoodBlendTrackData;
   discoveryMetrics?: import("./discovery").TrackDiscoveryMetrics;
   personalizationScore?: PersonalizationScoreResult;
+  exclusionReason?: string | null;
 };
 
 export type SmartMixEngineV2StageKey =

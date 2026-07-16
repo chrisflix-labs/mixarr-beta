@@ -1,0 +1,9 @@
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+import { clearTrackFeedback, getFeedbackState, setTrackFeedback } from "@/lib/personalization";
+
+function userId() { return cookies().get("mixarr_session")?.value; }
+function failure(error: any) { const validation = Boolean(error?.issues); const message = error?.issues?.[0]?.message || error?.message || "Track feedback failed"; return NextResponse.json({ error: { code: validation ? "INVALID_FEEDBACK" : message.includes("not found") ? "NOT_FOUND" : "FEEDBACK_FAILED", message } }, { status: validation ? 400 : message.includes("not found") ? 404 : 500 }); }
+export async function GET(request: Request) { const user = userId(); if (!user) return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, { status: 401 }); const url = new URL(request.url); const ids = (url.searchParams.get("trackIds") || "").split(",").filter(Boolean); if (!ids.length) return NextResponse.json({ trackPreferences: {}, artistPreferences: {}, playlistFits: {}, poorTransitions: [] }); try { return NextResponse.json(await getFeedbackState(user, ids, url.searchParams.get("playlistId"))); } catch (error) { return failure(error); } }
+export async function POST(request: Request) { const user = userId(); if (!user) return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, { status: 401 }); try { return NextResponse.json(await setTrackFeedback(user, await request.json())); } catch (error) { return failure(error); } }
+export async function DELETE(request: Request) { const user = userId(); if (!user) return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, { status: 401 }); try { const body = await request.json(); return NextResponse.json(await clearTrackFeedback(user, String(body.trackId || ""), body.sourceSurface)); } catch (error) { return failure(error); } }

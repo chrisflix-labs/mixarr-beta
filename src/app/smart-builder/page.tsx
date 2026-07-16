@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, Ban, BookMarked, CheckCircle2, ListChecks, Play, RefreshCw, Save, Sparkles, Upload } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Ban, BookMarked, CheckCircle2, ListChecks, Play, RefreshCw, Save, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
 import BpmPresetPicker from "@/components/BpmPresetPicker";
 import MoodPresetPicker from "@/components/MoodPresetPicker";
 import MoodBlendingBetaPanel, {
@@ -13,6 +13,7 @@ import MoodBlendingBetaPanel, {
 import { moodBlendValidationMessage } from "@/lib/moodBlendingUi";
 import { BPM_PRESET_VERSION, bpmPresetLabel, bpmPresetRangeLabel, getBpmPreset, type BpmPreset } from "@/lib/bpmPresets";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
+import TrackFeedbackMenu from "@/components/TrackFeedbackMenu";
 import { getMoodPreset, moodPresetLabel, MOOD_PRESET_VERSION, type MoodPreset } from "@/lib/moodPresets";
 import { buildSmartPresetConfig, SMART_PRESET_VERSION, smartPlaylistPresets, type SmartPlaylistPreset } from "@/lib/smartPlaylistPresets";
 import styles from "./smart-builder.module.css";
@@ -247,6 +248,7 @@ export default function SmartBuilderPage() {
   const [libraryId, setLibraryId] = useState("");
   const [servers, setServers] = useState<ServerOption[]>([]);
   const [tracks, setTracks] = useState<any[]>([]);
+  const [removedTrack, setRemovedTrack] = useState<{ track: any; index: number; previous: any | null; feedback?: { type: string; id?: string } } | null>(null);
   const [playlistPreview, setPlaylistPreview] = useState<PlaylistPreviewState | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [notice, setNotice] = useState("");
@@ -503,6 +505,33 @@ export default function SmartBuilderPage() {
       setLoading(false);
     }
   };
+
+  function removePreviewTrack(track: any, index: number) {
+    setTracks((current) => current.filter((item) => item.id !== track.id));
+    setPlaylistPreview((current) => current ? { ...current, trackIds: current.trackIds.filter((id) => id !== track.id), summary: { ...current.summary, finalTrackCount: Math.max(0, current.summary.finalTrackCount - 1) } } : current);
+    setRemovedTrack({ track, index, previous: index > 0 ? tracks[index - 1] : null });
+  }
+
+  async function giveRemovalReason(reason: string) {
+    if (!removedTrack || !playlistPreview) return;
+    const common = { trackId: removedTrack.track.id, generationId: playlistPreview.previewId, reason, sourceSurface: "PLAYLIST_PREVIEW" };
+    try {
+      let result: any; let type = "";
+      if (reason === "DISLIKED_TRACK") { result = await fetch("/api/feedback/tracks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...common, state: "DISLIKED" }) }).then((response) => response.json()); type = "track"; }
+      else if (reason === "BAD_BPM_TRANSITION" && removedTrack.previous) { result = await fetch("/api/feedback/transitions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...common, previousTrackId: removedTrack.previous.id, currentTrackId: removedTrack.track.id }) }).then((response) => response.json()); type = "transitions"; }
+      else { result = await fetch("/api/feedback/playlist-fit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...common, state: "POOR_FIT" }) }).then((response) => response.json()); type = "fits"; }
+      setRemovedTrack((current) => current ? { ...current, feedback: result.unchanged ? undefined : { type, id: result.feedback?.id } } : null);
+    } catch { setNotice("Track removed. Optional feedback could not be saved."); }
+  }
+
+  async function undoRemoval() {
+    if (!removedTrack) return;
+    setTracks((current) => { const next = [...current]; next.splice(Math.min(removedTrack.index, next.length), 0, removedTrack.track); return next; });
+    setPlaylistPreview((current) => { if (!current) return current; const ids = [...current.trackIds]; ids.splice(Math.min(removedTrack.index, ids.length), 0, removedTrack.track.id); return { ...current, trackIds: ids, summary: { ...current.summary, finalTrackCount: current.summary.finalTrackCount + 1 } }; });
+    if (removedTrack.feedback?.type === "track") await fetch("/api/feedback/tracks", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trackId: removedTrack.track.id, sourceSurface: "PLAYLIST_PREVIEW" }) });
+    else if (removedTrack.feedback?.id) await fetch("/api/feedback/management", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: removedTrack.feedback.type, id: removedTrack.feedback.id }) });
+    setRemovedTrack(null);
+  }
 
   const saveRecipe = async () => {
     const payload = playlistPayload();
@@ -842,6 +871,7 @@ export default function SmartBuilderPage() {
                   <h4 id="smart-previewed-tracks">Previewed Tracks</h4>
                   {playlistPreview && tracks.length > 0 && <span>Create Playlist will use these {tracks.length} previewed tracks in this order.</span>}
                 </div>
+                {removedTrack && <div className={styles.warningNotice} role="status"><div><strong>Removed {removedTrack.track.title}.</strong> Why? <button type="button" onClick={() => void giveRemovalReason("WRONG_MOOD")}>Wrong mood</button> <button type="button" onClick={() => void giveRemovalReason("TOO_REPETITIVE")}>Too repetitive</button> <button type="button" onClick={() => void giveRemovalReason("BAD_BPM_TRANSITION")}>Bad BPM transition</button> <button type="button" onClick={() => void giveRemovalReason("ARTIST_OVERREPRESENTED")}>Artist too often</button> <button type="button" onClick={() => void giveRemovalReason("DISLIKED_TRACK")}>I dislike it</button> <button type="button" onClick={() => void giveRemovalReason("POOR_PLAYLIST_FIT")}>Poor fit</button> <button type="button" onClick={() => setRemovedTrack(null)}>Skip</button></div><button type="button" onClick={() => void undoRemoval()}><Undo2 size={14} /> Undo</button></div>}
                 {loading ? (
                   <div className={styles.emptyPreview}>Generating playlist preview...</div>
                 ) : previewError ? (
@@ -866,6 +896,16 @@ export default function SmartBuilderPage() {
                         </div>
                         <div className={styles.trackActions}>
                           <TrackPreviewButton trackId={track.id} />
+                          <TrackFeedbackMenu
+                            trackId={track.id} artistId={track.artistId || track.artist?.id} trackTitle={track.title}
+                            generationId={playlistPreview?.previewId} sourceSurface="PLAYLIST_PREVIEW"
+                            initialTrackState={track.personalizationScore?.components?.trackFeedbackAdjustment > 0 ? "LIKED" : track.personalizationScore?.components?.trackFeedbackAdjustment < 0 ? "DISLIKED" : null}
+                            initialArtistState={track.personalizationScore?.components?.artistFeedbackAdjustment > 0 ? "PREFER" : track.personalizationScore?.components?.artistFeedbackAdjustment < 0 ? "RECOMMEND_LESS" : null}
+                            initialFitState={track.personalizationScore?.components?.playlistFitAdjustment > 0 ? "GOOD_FIT" : track.personalizationScore?.components?.playlistFitAdjustment < 0 ? "POOR_FIT" : null}
+                            previousTrack={index > 0 ? { id: tracks[index - 1].id, title: tracks[index - 1].title, bpm: tracks[index - 1].bpm, effectiveBpm: tracks[index - 1].effectiveBpm, mood: tracks[index - 1].audioFeature?.effectiveMood ?? tracks[index - 1].audioFeature?.valence, energy: tracks[index - 1].audioFeature?.effectiveEnergy ?? tracks[index - 1].audioFeature?.energy } : null}
+                            currentTrack={{ bpm: track.bpm, effectiveBpm: track.effectiveBpm, mood: track.audioFeature?.effectiveMood ?? track.audioFeature?.valence, energy: track.audioFeature?.effectiveEnergy ?? track.audioFeature?.energy }}
+                          />
+                          <button type="button" onClick={() => removePreviewTrack(track, index)} aria-label={`Remove ${track.title} from preview`}><Trash2 size={15} /></button>
                           <span title="Manual exclusions still apply in Smart Builder"><Ban size={14} /></span>
                         </div>
                       </article>

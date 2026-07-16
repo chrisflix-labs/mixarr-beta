@@ -70,10 +70,21 @@ export const roadmapReleases: RoadmapRelease[] = [
     version: "2.1.1-hotfix",
     title: "Nightly Audio Features & Logging Cleanup",
     cycle: "2.1.x",
-    status: "current",
+    status: "completed",
     description: "Reliability hotfix that runs pending Audio Features as the final awaited nightly stage, unifies provider resolution with manual execution, preserves local Essentia fallback, and replaces repetitive production logs with useful summaries.",
     featureLabels: ["Nightly Audio Features reliability", "Shared provider resolution", "Local Essentia fallback", "Accurate zero-work states", "Stage summaries", "Logging cleanup"],
     releaseOrder: 102,
+    route: "/release-notes",
+  },
+  {
+    version: "2.1.2",
+    title: "Likes, Dislikes & Track Feedback",
+    cycle: "2.1.x",
+    status: "completed",
+    description: "Turns playlist editing into user-specific recommendation feedback through track and artist preferences, playlist-fit signals, transition reports, bulk tools, and explainable Smart Mix v2 adjustments.",
+    featureLabels: ["Like and dislike tracks", "Never-recommend exclusions", "Artist preference controls", "Playlist-fit feedback", "Poor-transition reporting", "Preview feedback controls", "Bulk feedback tools", "Optional feedback reasons", "Feedback history and management", "User-specific scoring adjustments"],
+    releaseOrder: 103,
+    completionDate: "2026-07-15",
     route: "/release-notes",
   },
 ];
@@ -97,5 +108,7 @@ export const roadmapCycles: RoadmapCycle[] = [
 ];
 
 export function currentRoadmapRelease() {
-  return roadmapReleases.find((release) => release.status === "current") || null;
+  return roadmapReleases.find((release) => release.status === "current")
+    || [...roadmapReleases].filter((release) => release.status === "completed").sort((left, right) => right.releaseOrder - left.releaseOrder)[0]
+    || null;
 }

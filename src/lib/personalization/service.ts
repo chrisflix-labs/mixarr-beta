@@ -177,7 +177,7 @@ export async function getPersonalizationProfileSummary(userId: string) {
     playlistProfiles: playlistProfiles.map((item) => item.preferenceProfile
       ? { ...playlistSnapshot(item.preferenceProfile), id: item.preferenceProfile.id, playlistId: item.id, name: item.preferenceProfile.name || item.plexPlaylistTitle, updatedAt: item.preferenceProfile.updatedAt }
       : { id: null, playlistId: item.id, name: item.plexPlaylistTitle, enabled: true, mode: "GENERAL_PROFILE", source: "DEFAULT_USER", isLearned: false, confidence: 0, evidenceCount: 0, updatedAt: item.updatedAt }),
-    privacy: "Mixarr stores personalization behavior only in your local Mixarr database. No personalization data is sent to an external service.",
+    privacy: "Mixarr stores likes, dislikes, never-recommend choices, artist preferences, playlist-fit feedback, and transition feedback only in your local Mixarr database. You can disable personalization without deleting it, or reset it at any time. No personalization data is sent to an external service.",
   };
 }
 
@@ -399,6 +399,11 @@ export async function resetPersonalizationData(userId: string, mode: "learned" |
     const events = await tx.trackInteractionEvent.deleteMany({ where: { userId } });
     const adjustments = await tx.personalScoringAdjustment.deleteMany({ where: { userId } });
     const playlistProfiles = await tx.playlistPreferenceProfile.deleteMany({ where: { userId, ...(mode === "learned" ? { isLearned: true } : {}) } });
+    const trackPreferences = mode === "all" ? await tx.userTrackPreference.deleteMany({ where: { userId } }) : { count: 0 };
+    const artistPreferences = mode === "all" ? await tx.userArtistPreference.deleteMany({ where: { userId } }) : { count: 0 };
+    const playlistFits = mode === "all" ? await tx.playlistFitFeedback.deleteMany({ where: { userId } }) : { count: 0 };
+    const transitionFeedback = mode === "all" ? await tx.transitionFeedback.deleteMany({ where: { userId } }) : { count: 0 };
+    const feedbackEvents = mode === "all" ? await tx.feedbackEvent.deleteMany({ where: { userId } }) : { count: 0 };
     if (mode === "all") {
       await tx.userRecommendationProfile.deleteMany({ where: { userId } });
       await tx.userRecommendationProfile.create({ data: { userId } });
@@ -417,7 +422,7 @@ export async function resetPersonalizationData(userId: string, mode: "learned" |
         },
       });
     }
-    return { events: events.count, adjustments: adjustments.count, playlistProfiles: playlistProfiles.count };
+    return { events: events.count, adjustments: adjustments.count, playlistProfiles: playlistProfiles.count, trackPreferences: trackPreferences.count, artistPreferences: artistPreferences.count, playlistFits: playlistFits.count, transitionFeedback: transitionFeedback.count, feedbackEvents: feedbackEvents.count };
   });
   await safeRecordJobHistory({ userId, type: "personalization", name: "Personalization data reset", status: "completed", trigger: "manual", startedAt, summary: `Removed ${result.events} interaction events and ${result.adjustments} derived adjustments.`, counts: { attempted: result.events + result.adjustments, processed: result.events + result.adjustments } });
   return { mode, ...result };

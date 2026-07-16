@@ -5,6 +5,7 @@ import type {
   PlaylistPreferenceSnapshot,
   RecommendationProfileSnapshot,
 } from "./types";
+import { resolveExplicitFeedback } from "./feedbackRules";
 
 export const DEFAULT_MAX_PERSONALIZATION_ADJUSTMENT = 8;
 const MAX_USER_ADJUSTMENT = 5;
@@ -161,6 +162,9 @@ export function scorePersonalizationAdjustment(
     personalizationReasons: message ? [{ layer: "user", feature: "status", adjustment: 0, message }] : [],
     boundedBy: maxAdjustment,
     applied: false,
+    components: { learnedProfileAdjustment: 0, trackFeedbackAdjustment: 0, artistFeedbackAdjustment: 0, playlistFitAdjustment: 0 },
+    excluded: false,
+    exclusionReason: null,
   });
   if (!context?.profile.enabled) return empty();
   if (context.playlistProfile?.mode === "GLOBAL_ONLY") return empty("No personal adjustment: this playlist uses global scoring only");
@@ -168,6 +172,24 @@ export function scorePersonalizationAdjustment(
   const recentTracks = new Set(context.recentlyUsedTrackIds || []);
   const recentArtists = new Set(context.recentlyUsedArtistIds || []);
   const reasons: PersonalizationScoreReason[] = [];
+  const trackId = String(track.id || "");
+  const artistId = String(track.artistId || track.artist?.id || "");
+  const explicitContext = context.explicitFeedback;
+  const trackPreference = explicitContext?.trackPreferences[trackId];
+  const artistPreference = explicitContext?.artistPreferences[artistId];
+  const playlistFit = explicitContext?.playlistFits[trackId];
+  const explicit = resolveExplicitFeedback({ trackState: trackPreference?.state, artistState: artistPreference?.state, fitState: playlistFit?.state });
+  if (explicit.excluded) {
+    return {
+      globalScore, playlistContextScore: 0, personalizationAdjustment: explicit.track,
+      finalScore: round(globalScore + explicit.track), personalizationReasons: [{ layer: "user", feature: "never_recommend", adjustment: explicit.track, message: "Excluded because you selected Never recommend for this track" }],
+      boundedBy: maxAdjustment, applied: true, excluded: true, exclusionReason: "NEVER_RECOMMEND",
+      components: { learnedProfileAdjustment: 0, trackFeedbackAdjustment: explicit.track, artistFeedbackAdjustment: 0, playlistFitAdjustment: 0 },
+    };
+  }
+  if (explicit.track) addReason(reasons, "user", "track_feedback", explicit.track, trackPreference?.state === "LIKED" ? "You liked this track" : "You disliked this track");
+  if (explicit.artist) addReason(reasons, "user", "artist_feedback", explicit.artist, artistPreference?.state === "PREFER" ? "You prefer this artist" : "You asked for less from this artist");
+  if (explicit.fit) addReason(reasons, "playlist", "playlist_fit_feedback", explicit.fit, playlistFit?.state === "GOOD_FIT" ? "You marked this track as a good fit for this playlist" : "You marked this track as a poor fit for this playlist");
   let playlistScore = 0;
   const playlist = context.playlistProfile;
   const usePlaylist = Boolean(playlist?.enabled && playlist.mode === "PLAYLIST_SPECIFIC");
@@ -198,14 +220,17 @@ export function scorePersonalizationAdjustment(
   const profile: RecommendationProfileSnapshot = context.profile;
   const evidenceReady = profile.interactionCount >= profile.minimumEventsRequired && profile.confidence >= 0.15;
   if (!evidenceReady) {
+    const directTotal = explicit.track + explicit.artist + explicit.fit;
     return {
       globalScore,
       playlistContextScore: round(playlistScore),
-      personalizationAdjustment: 0,
-      finalScore: round(globalScore + playlistScore),
+      personalizationAdjustment: round(directTotal),
+      finalScore: round(globalScore + playlistScore + directTotal),
       personalizationReasons: [...reasons, { layer: "user", feature: "status", adjustment: 0, message: "No personal adjustment: profile is still learning" }],
       boundedBy: maxAdjustment,
-      applied: playlistScore !== 0,
+      applied: playlistScore !== 0 || directTotal !== 0,
+      components: { learnedProfileAdjustment: 0, trackFeedbackAdjustment: explicit.track, artistFeedbackAdjustment: explicit.artist, playlistFitAdjustment: explicit.fit },
+      excluded: false, exclusionReason: null,
     };
   }
 
@@ -228,18 +253,20 @@ export function scorePersonalizationAdjustment(
     reasons,
   });
   userScore = clamp(userScore, -MAX_USER_ADJUSTMENT, MAX_USER_ADJUSTMENT);
-  const boundedTotal = clamp(playlistScore + userScore, -maxAdjustment, maxAdjustment);
+  const learnedTotal = playlistScore + userScore;
+  const boundedTotal = clamp(learnedTotal, -maxAdjustment, maxAdjustment);
   if (boundedTotal !== playlistScore + userScore) {
     userScore = boundedTotal - playlistScore;
   }
   return {
     globalScore,
     playlistContextScore: round(playlistScore),
-    personalizationAdjustment: round(userScore),
-    finalScore: round(globalScore + playlistScore + userScore),
+    personalizationAdjustment: round(userScore + explicit.track + explicit.artist + explicit.fit),
+    finalScore: round(globalScore + playlistScore + userScore + explicit.track + explicit.artist + explicit.fit),
     personalizationReasons: reasons,
     boundedBy: maxAdjustment,
-    applied: playlistScore !== 0 || userScore !== 0,
+    applied: playlistScore !== 0 || userScore !== 0 || explicit.total !== 0,
+    components: { learnedProfileAdjustment: round(userScore), trackFeedbackAdjustment: explicit.track, artistFeedbackAdjustment: explicit.artist, playlistFitAdjustment: explicit.fit },
+    excluded: false, exclusionReason: null,
   };
 }
-

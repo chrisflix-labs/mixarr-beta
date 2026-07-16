@@ -25,6 +25,7 @@ function recommendedSection(track: any) {
 
 export async function findRecentlyAddedPlaylistMatches({ userId, batchId }: { userId: string; batchId?: string | null }) {
   const settings = await getRecentlyAddedSettings(userId);
+  const profile = await prisma.userRecommendationProfile.findUnique({ where: { userId }, select: { enabled: true } });
   const [states, playlists] = await Promise.all([
     prisma.recentlyAddedTrackState.findMany({
       where: {
@@ -32,7 +33,7 @@ export async function findRecentlyAddedPlaylistMatches({ userId, batchId }: { us
         status: { in: ["ready_for_matching", "low_confidence", "suggested"] },
         ignored: false,
         doNotSuggest: false,
-        track: { library: { server: { userId } }, syncStatus: "active" },
+        track: { library: { server: { userId } }, syncStatus: "active", ...(profile?.enabled ? { userPreferences: { none: { userId, state: "NEVER_RECOMMEND" } } } : {}) },
       },
       take: settings.maxTracksPerRun,
       include: { track: { include: { artist: true, album: true, tags: true, audioFeature: true, popularity: true, recentlyAddedMatches: { select: { generatedPlaylistId: true, status: true } }, ...metadataCorrectionRelations } } },

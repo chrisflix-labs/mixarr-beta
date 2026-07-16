@@ -5,6 +5,7 @@ import axios from "axios";
 import Link from "next/link";
 import { Activity, AlertTriangle, Ban, CheckCircle2, History, ListRestart, RefreshCw, Repeat2, ShieldCheck, Sparkles, Trash2, Wand2 } from "lucide-react";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
+import TrackFeedbackMenu from "@/components/TrackFeedbackMenu";
 import AdvancedRegenerationWorkspace from "@/components/AdvancedRegenerationWorkspace";
 import { orderTracksByBpmFlow, summarizeBpmFlow, type BpmFlowMode } from "@/lib/smartMixEngine/v2/bpmFlow";
 import { normalizeSmartMixTuningConfig } from "@/lib/smartMixEngine/v2/tuning";
@@ -744,6 +745,15 @@ export default function GeneratedPlaylistsPage() {
                 </div>
                 <div className={styles.trackActions}>
                   <TrackPreviewButton trackId={track.id} />
+                  <TrackFeedbackMenu
+                    trackId={track.id} artistId={track.artistId || track.artist?.id} trackTitle={track.title}
+                    playlistId={selectedPlaylist.id} generationId={preview.previewId} sourceSurface="REGENERATION_PREVIEW"
+                    initialTrackState={track.personalizationScore?.exclusionReason === "NEVER_RECOMMEND" ? "NEVER_RECOMMEND" : track.personalizationScore?.components?.trackFeedbackAdjustment > 0 ? "LIKED" : track.personalizationScore?.components?.trackFeedbackAdjustment < 0 ? "DISLIKED" : null}
+                    initialArtistState={track.personalizationScore?.components?.artistFeedbackAdjustment > 0 ? "PREFER" : track.personalizationScore?.components?.artistFeedbackAdjustment < 0 ? "RECOMMEND_LESS" : null}
+                    initialFitState={track.personalizationScore?.components?.playlistFitAdjustment > 0 ? "GOOD_FIT" : track.personalizationScore?.components?.playlistFitAdjustment < 0 ? "POOR_FIT" : null}
+                    previousTrack={index > 0 ? { id: preview.tracks[index - 1].id, title: preview.tracks[index - 1].title, bpm: preview.tracks[index - 1].bpm, effectiveBpm: preview.tracks[index - 1].effectiveBpm, mood: preview.tracks[index - 1].audioFeature?.effectiveMood ?? preview.tracks[index - 1].audioFeature?.valence, energy: preview.tracks[index - 1].audioFeature?.effectiveEnergy ?? preview.tracks[index - 1].audioFeature?.energy } : null}
+                    currentTrack={{ bpm: track.bpm, effectiveBpm: track.effectiveBpm, mood: track.audioFeature?.effectiveMood ?? track.audioFeature?.valence, energy: track.audioFeature?.effectiveEnergy ?? track.audioFeature?.energy }}
+                  />
                   <span title="Manual exclusions apply during regeneration"><Ban size={14} /></span>
                 </div>
               </article>

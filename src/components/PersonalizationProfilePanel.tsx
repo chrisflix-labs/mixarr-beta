@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Brain, Database, RefreshCw, ShieldCheck, SlidersHorizontal, Trash2 } from "lucide-react";
 import styles from "./PersonalizationProfilePanel.module.css";
+import FeedbackManagement from "./FeedbackManagement";
 
 type Props = {
   initialData: any;
@@ -143,7 +144,7 @@ export default function PersonalizationProfilePanel({ initialData, detailed = fa
 
       <div className={styles.privacy}>
         <ShieldCheck size={20} />
-        <p><strong>Local and private.</strong> Mixarr can learn from tracks you select, reject, lock, remove, and replace. This behavior stays in your local Mixarr database and is used only for small recommendation adjustments. No personalization data is sent to an external service.</p>
+        <p><strong>Local and private.</strong> Likes, dislikes, never-recommend choices, artist preferences, playlist-fit feedback, transition feedback, and learned behavior stay in your local Mixarr database. Disable personalization to stop these signals affecting generation without deleting them, or reset them at any time. No personalization data is sent to an external service.</p>
       </div>
 
       {detailed ? (
@@ -158,6 +159,7 @@ export default function PersonalizationProfilePanel({ initialData, detailed = fa
             <section><h3>Recent learning signals</h3>{data.recentSignals.length ? <div className={styles.signalList}>{data.recentSignals.map((signal: any) => <div key={signal.id}><span>{eventLabel(signal.eventType)}</span><strong>{signal.track.title}</strong><small>{signal.track.artist.title} · {formatDate(signal.occurredAt)}</small></div>)}</div> : <p className={styles.empty}>No interaction signals have been recorded.</p>}</section>
             <section><h3>Playlist-specific profiles</h3>{data.playlistProfiles.length ? <div className={styles.signalList}>{data.playlistProfiles.map((item: any) => <div key={item.playlistId} className={styles.playlistPreference}><strong>{item.name}</strong><small>{item.id ? (item.isLearned ? "Learned profile" : "Manually configured") : "Uses default"}</small><select aria-label={`Personalization mode for ${item.name}`} value={item.mode} disabled={busy !== null} onChange={(event) => savePlaylistMode(item.playlistId, event.target.value)}><option value="GENERAL_PROFILE">Use my general profile</option><option value="PLAYLIST_SPECIFIC">Use playlist-specific preferences</option><option value="GLOBAL_ONLY">Global scoring only</option></select>{item.mode === "PLAYLIST_SPECIFIC" && <div className={styles.playlistOverrides}><label><input type="checkbox" checked={(item.energyMin ?? 0) >= .6} disabled={busy !== null} onChange={(event) => updatePlaylistPreferences(item, { energyMin: event.target.checked ? .6 : null, energyMax: event.target.checked ? 1 : null })} /> High energy</label><label><input type="checkbox" checked={(item.deepCutPreference ?? 0) >= .55} disabled={busy !== null} onChange={(event) => updatePlaylistPreferences(item, { deepCutPreference: event.target.checked ? .8 : null, discoveryPreference: event.target.checked ? .8 : null })} /> More deep cuts</label><label><input type="checkbox" checked={item.avoidLiveRecordings === true} disabled={busy !== null} onChange={(event) => updatePlaylistPreferences(item, { avoidLiveRecordings: event.target.checked })} /> Avoid live recordings</label><label><input type="checkbox" checked={item.avoidLowConfidenceMetadata === true} disabled={busy !== null} onChange={(event) => updatePlaylistPreferences(item, { avoidLowConfidenceMetadata: event.target.checked })} /> Avoid low-confidence metadata</label></div>}{item.isLearned && <button type="button" disabled={busy !== null} onClick={() => resetLearnedPlaylist(item.playlistId)}>Reset learned profile</button>}</div>)}</div> : <p className={styles.empty}>Playlists use your general profile unless you add an override.</p>}</section>
           </div>
+          <FeedbackManagement />
         </>
       ) : (
         <div className={styles.actions}><Link href="/personalization">View profile details</Link><button type="button" onClick={recalculate} disabled={busy !== null}><RefreshCw size={15} /> Rebuild</button></div>
@@ -169,7 +171,7 @@ export default function PersonalizationProfilePanel({ initialData, detailed = fa
         <div className={styles.modalLayer} role="presentation">
           <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="reset-title">
             <h3 id="reset-title">Reset Personalization Data?</h3>
-            <p>This deletes interaction events, derived preferences, scoring adjustments, learned playlist profiles, confidence, and counters. It does not delete Plex metadata, playlists, versions, manual metadata corrections, or global Smart Mix settings.</p>
+            <p>This deletes interaction events, explicit likes and dislikes, never-recommend choices, artist preferences, playlist-fit and transition feedback, derived preferences, scoring adjustments, learned playlist profiles, confidence, and counters. It does not delete Plex metadata, playlists, versions, manual metadata corrections, or global Smart Mix settings.</p>
             <label><span>Reset mode</span><select value={resetMode} onChange={(event) => setResetMode(event.target.value as "learned" | "all")}><option value="learned">Learned behavior only</option><option value="all">All personalization, including manual profiles</option></select></label>
             <label><span>Type RESET PERSONALIZATION to confirm</span><input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" /></label>
             <div className={styles.modalActions}><button type="button" onClick={() => { setResetOpen(false); setConfirmation(""); }}>Cancel</button><button type="button" className={styles.destructive} disabled={confirmation !== "RESET PERSONALIZATION" || busy !== null} onClick={reset}>{busy === "reset" ? "Resetting…" : "Reset data"}</button></div>

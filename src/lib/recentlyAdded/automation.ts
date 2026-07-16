@@ -271,6 +271,8 @@ export async function applyRecentlyAddedChanges({
     orderBy: { createdAt: "asc" },
     include: { track: { include: { artist: true, album: true } }, match: true },
   });
+  const profile = await prisma.userRecommendationProfile.findUnique({ where: { userId }, select: { enabled: true } });
+  const excludedTrackIds = new Set(profile?.enabled ? (await prisma.userTrackPreference.findMany({ where: { userId, state: "NEVER_RECOMMEND", trackId: { in: changes.map((change) => change.trackId) } }, select: { trackId: true } })).map((row) => row.trackId) : []);
   const groups = new Map<string, typeof changes>();
   for (const change of changes) groups.set(change.generatedPlaylistId, [...(groups.get(change.generatedPlaylistId) || []), change]);
   let applied = 0;
@@ -283,6 +285,11 @@ export async function applyRecentlyAddedChanges({
     const accepted = [] as typeof group;
     const alreadyPresent = [] as typeof group;
     for (const change of group.slice(0, automatic ? settings.maxAddsPerPlaylist : group.length)) {
+      if (excludedTrackIds.has(change.trackId)) {
+        await prisma.recentlyAddedAutomationChange.update({ where: { id: change.id }, data: { status: "failed", error: "never_recommend" } });
+        failed += 1;
+        continue;
+      }
       if (playlist.tracks.some((item) => item.trackId === change.trackId) || accepted.some((item) => item.trackId === change.trackId)) {
         alreadyPresent.push(change);
         continue;

@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. This adds new required identity columns as nullable, backfills existing rows, verifies the result, and only then enforces the v2.1.1 schema. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. The v2.1.2 migration adds only user-scoped feedback tables, indexes, and foreign keys; existing playlists, tracks, interactions, and personalization profiles are preserved. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -46,7 +46,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.1.1-hotfix keeps experimental Smart Mix behavior and personalization disabled by default. Personalization and behavior learning are separate opt-ins, and interaction data remains in the local Mixarr database. Confirmed duplicate recordings may share trusted enrichment by default, but every Plex library item remains a separate physical track record. Administrators configure the beta server ceiling with `MIXARR_BETA_PROGRAM_ENABLED`, `MIXARR_PRIVATE_BETA_ENABLED`, and `MIXARR_DEVELOPER_FEATURES_ENABLED`; users must then opt in and enable eligible flags individually. See [Beta features and advanced flags](docs/BETA_FEATURES.md).
+Mixarr v2.1.2 keeps experimental Smart Mix behavior and personalization disabled by default. Personalization and behavior learning are separate opt-ins; likes, dislikes, never-recommend choices, artist preferences, playlist-fit feedback, transition feedback, and interaction data remain in the local Mixarr database. Confirmed duplicate recordings may share trusted enrichment by default, but every Plex library item remains a separate physical track record. Administrators configure the beta server ceiling with `MIXARR_BETA_PROGRAM_ENABLED`, `MIXARR_PRIVATE_BETA_ENABLED`, and `MIXARR_DEVELOPER_FEATURES_ENABLED`; users must then opt in and enable eligible flags individually. See [Beta features and advanced flags](docs/BETA_FEATURES.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 

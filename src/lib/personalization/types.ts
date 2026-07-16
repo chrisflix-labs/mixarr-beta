@@ -77,6 +77,21 @@ export type PersonalizationScoringContext = {
   recentlyUsedTrackIds?: string[];
   recentlyUsedArtistIds?: string[];
   maxAdjustment?: number;
+  explicitFeedback?: ExplicitFeedbackScoringContext;
+};
+
+export type TrackFeedbackState = "NEUTRAL" | "LIKED" | "DISLIKED" | "NEVER_RECOMMEND";
+export type ArtistFeedbackState = "NEUTRAL" | "PREFER" | "RECOMMEND_LESS";
+export type PlaylistFitState = "GOOD_FIT" | "POOR_FIT";
+
+export type ExplicitFeedbackScoringContext = {
+  trackPreferences: Record<string, { state: TrackFeedbackState; adjustment: number }>;
+  artistPreferences: Record<string, { state: ArtistFeedbackState; adjustment: number }>;
+  playlistFits: Record<string, { state: PlaylistFitState; adjustment: number; reason?: string | null }>;
+  transitionPenalties: Record<string, { adjustment: number; reason?: string | null; context?: Record<string, unknown> | null }>;
+  hardExcludedTrackIds: string[];
+  playlistId?: string | null;
+  playlistProfileId?: string | null;
 };
 
 export type PersonalizationScoreReason = {
@@ -94,6 +109,14 @@ export type PersonalizationScoreResult = {
   personalizationReasons: PersonalizationScoreReason[];
   boundedBy: number;
   applied: boolean;
+  components?: {
+    learnedProfileAdjustment: number;
+    trackFeedbackAdjustment: number;
+    artistFeedbackAdjustment: number;
+    playlistFitAdjustment: number;
+  };
+  excluded?: boolean;
+  exclusionReason?: string | null;
 };
 
 export type TrackInteractionContext = {
@@ -106,4 +129,3 @@ export type TrackInteractionContext = {
   isLive?: boolean;
   artistId?: string;
 };
-

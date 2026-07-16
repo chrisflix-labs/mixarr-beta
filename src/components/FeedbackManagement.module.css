@@ -1,0 +1,26 @@
+.section {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+.heading { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-end; }
+.heading h3, .heading p { margin: .15rem 0; }
+.heading form label { display: flex; align-items: center; gap: .35rem; padding: .45rem .6rem; border: 1px solid var(--border); border-radius: 8px; }
+.heading input { border: 0; background: transparent; color: inherit; outline: 0; }
+.tabs { display: flex; gap: .4rem; overflow: auto; margin: 1rem 0; }
+.tabs button, .pager button, .list button { min-height: 36px; padding: .4rem .65rem; border: 1px solid var(--border); border-radius: 7px; background: transparent; color: inherit; }
+.tabs button[aria-selected="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.list { display: grid; gap: .5rem; }
+.list article { display: flex; justify-content: space-between; gap: 1rem; align-items: center; padding: .7rem; border: 1px solid var(--border); border-radius: 9px; }
+.list article div { display: grid; gap: .2rem; }
+.list small { opacity: .72; }
+.list button { display: flex; gap: .35rem; align-items: center; }
+.pager { display: flex; justify-content: flex-end; align-items: center; gap: .6rem; margin-top: .8rem; font-size: .8rem; }
+.error { color: var(--danger, #f87171); }
+@media (max-width: 640px) {
+  .heading { display: grid; align-items: stretch; }
+  .heading form, .heading form label { width: 100%; }
+  .heading input { width: 100%; }
+  .list article { align-items: flex-start; }
+  .pager { justify-content: space-between; flex-wrap: wrap; }
+}

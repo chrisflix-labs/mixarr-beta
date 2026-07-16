@@ -1,5 +1,6 @@
 import { SMART_MIX_ENGINE_V2_PIPELINE } from "./pipeline";
 import { scoreSmartMixTrack } from "./scoring";
+import { FEEDBACK_SCORING, transitionPairKey } from "../../personalization/feedbackRules";
 import { normalizeMoodBlendConfig, scoreMoodBlendForTrack, summarizeMoodBlend } from "./moodBlending";
 import { orderTracksByBpmFlow, summarizeBpmFlow } from "./bpmFlow";
 import {
@@ -10,6 +11,7 @@ import {
 } from "./tuning";
 import { SMART_MIX_ENGINE_V2, type SmartMixEngineV2Config, type SmartMixScoredTrack } from "./types";
 import { discoverySelectionAdjustment, scoreDiscoveryCandidatePool, summarizeDiscovery } from "./discovery";
+import { getTrackBpm, getTrackMood } from "./metadataFallbacks";
 
 export * from "./metadataFallbacks";
 export * from "./bpmFlow";
@@ -90,6 +92,24 @@ function removeInternalSortIndex<TTrack extends Record<string, any>>(
   return publicTrack as SmartMixScoredTrack<TTrack>;
 }
 
+function similarTransitionPenalty(previousTrack: any, candidate: any, config: SmartMixEngineV2Config) {
+  const rules = Object.values(config.personalization?.explicitFeedback?.transitionPenalties || {});
+  const bpmGap = Math.abs((getTrackBpm(previousTrack) ?? 0) - (getTrackBpm(candidate) ?? 0));
+  const moodGap = Math.abs((getTrackMood(previousTrack) ?? 0) - (getTrackMood(candidate) ?? 0));
+  for (const rule of rules) {
+    const context = rule.context || {};
+    if (rule.reason === "BAD_BPM_TRANSITION") {
+      const knownGap = Math.abs(Number(context.previousEffectiveBpm ?? context.previousBpm) - Number(context.currentEffectiveBpm ?? context.currentBpm));
+      if (Number.isFinite(knownGap) && Math.abs(knownGap - bpmGap) <= 3) return FEEDBACK_SCORING.transition.similar;
+    }
+    if (rule.reason === "WRONG_MOOD") {
+      const knownGap = Math.abs(Number(context.previousMood) - Number(context.currentMood));
+      if (Number.isFinite(knownGap) && Math.abs(knownGap - moodGap) <= 0.15) return -2;
+    }
+  }
+  return 0;
+}
+
 function selectTunedCandidates<TTrack extends Record<string, any>>(
   sortedCandidates: Array<SmartMixScoredTrack<TTrack> & { smartMixV2OriginalIndex: number }>,
   config: SmartMixEngineV2Config,
@@ -117,25 +137,33 @@ function selectTunedCandidates<TTrack extends Record<string, any>>(
       const transitionScore = previousTrack
         ? applyTuningToTransitionScore({ leftTrack: previousTrack, rightTrack: candidate, tuningConfig: tuning })
         : 0;
+      const pairFeedback = previousTrack
+        ? config.personalization?.explicitFeedback?.transitionPenalties[transitionPairKey(String(previousTrack.id), String(candidate.id))]
+        : undefined;
+      const reverseFeedback = previousTrack && !pairFeedback
+        ? config.personalization?.explicitFeedback?.transitionPenalties[transitionPairKey(String(candidate.id), String(previousTrack.id))]
+        : undefined;
+      const feedbackTransitionPenalty = pairFeedback?.adjustment ?? (reverseFeedback ? FEEDBACK_SCORING.transition.reversePair : previousTrack ? similarTransitionPenalty(previousTrack, candidate, config) : 0);
       const varietyPenalty = tuningVarietyPenalty({ track: candidate, selectedTracks: selected, tuningConfig: tuning });
       const existingMoodBlend = candidate.scoreBreakdown.moodBlend || 0;
       const positionMoodBlend = moodBlendScore?.score || existingMoodBlend;
-      const candidateScore = candidate.score - existingMoodBlend + positionMoodBlend + transitionScore - varietyPenalty;
+      const candidateScore = candidate.score - existingMoodBlend + positionMoodBlend + transitionScore + feedbackTransitionPenalty - varietyPenalty;
       const discoveryQuotaAdjustment = discoverySelectionAdjustment(candidate, selected, limit, tuning.discovery);
       const adjustedCandidateScore = candidateScore + discoveryQuotaAdjustment;
       if (
         adjustedCandidateScore > bestScore
         || (adjustedCandidateScore === bestScore && candidate.smartMixV2OriginalIndex < bestTrack.smartMixV2OriginalIndex)
       ) {
-        bestTrack = moodBlendScore
+        bestTrack = (moodBlendScore || feedbackTransitionPenalty)
           ? {
               ...candidate,
               score: Math.round((candidate.score - existingMoodBlend + positionMoodBlend) * 1000) / 1000,
               scoreBreakdown: {
                 ...candidate.scoreBreakdown,
-                moodBlend: moodBlendScore.score,
+                moodBlend: moodBlendScore?.score ?? existingMoodBlend,
+                transitionFeedback: feedbackTransitionPenalty,
               },
-              moodBlend: moodBlendScore.data,
+              ...(moodBlendScore ? { moodBlend: moodBlendScore.data } : {}),
             }
           : candidate;
         bestScore = adjustedCandidateScore;

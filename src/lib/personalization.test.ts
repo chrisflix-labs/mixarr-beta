@@ -101,7 +101,7 @@ describe("personalization roadmap", () => {
   it("marks v2.0.x completed and v2.1.x current", () => {
     assert.equal(roadmapCycles.find((cycle) => cycle.id === "2.0.x")?.status, "completed");
     assert.equal(roadmapCycles.find((cycle) => cycle.id === "2.1.x")?.status, "current");
-    assert.equal(currentRoadmapRelease()?.version, "2.1.1-hotfix");
+    assert.equal(currentRoadmapRelease()?.version, "2.1.2");
   });
 });
 

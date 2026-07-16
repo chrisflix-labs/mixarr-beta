@@ -48,6 +48,11 @@ model User {
   playlistPreferenceProfiles PlaylistPreferenceProfile[]
   trackInteractionEvents     TrackInteractionEvent[]
   personalScoringAdjustments PersonalScoringAdjustment[]
+  trackPreferences           UserTrackPreference[]
+  artistPreferences          UserArtistPreference[]
+  playlistFitFeedback        PlaylistFitFeedback[]
+  transitionFeedback         TransitionFeedback[]
+  feedbackEvents             FeedbackEvent[]
 }
 
 model SyncSettings {
@@ -140,26 +145,27 @@ model LibraryHealthSnapshot {
 }
 
 model Artist {
-  id             String    @id @default(uuid())
-  plexId         String
-  libraryId      String
-  title          String
-  summary        String?
-  thumb          String?
-  addedAt        DateTime?
-  updatedAt      DateTime?
-  viewCount      Int       @default(0)
-  lastViewedAt   DateTime?
-  plexLibraryId  String?
-  syncStatus     String    @default("active")
-  lastSeenAt     DateTime?
-  lastSeenSyncId String?
-  missingSince   DateTime?
-  deletedAt      DateTime?
-  library        Library   @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  albums         Album[]
-  tracks         Track[]
-  tags           Tag[]     @relation("ArtistTags")
+  id              String                 @id @default(uuid())
+  plexId          String
+  libraryId       String
+  title           String
+  summary         String?
+  thumb           String?
+  addedAt         DateTime?
+  updatedAt       DateTime?
+  viewCount       Int                    @default(0)
+  lastViewedAt    DateTime?
+  plexLibraryId   String?
+  syncStatus      String                 @default("active")
+  lastSeenAt      DateTime?
+  lastSeenSyncId  String?
+  missingSince    DateTime?
+  deletedAt       DateTime?
+  library         Library                @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  albums          Album[]
+  tracks          Track[]
+  tags            Tag[]                  @relation("ArtistTags")
+  userPreferences UserArtistPreference[]
 
   @@unique([libraryId, plexId])
   @@index([libraryId, syncStatus])
@@ -283,6 +289,11 @@ model Track {
   recentlyAddedMatches       RecentlyAddedPlaylistMatch[]
   recentlyAddedChanges       RecentlyAddedAutomationChange[]
   interactionEvents          TrackInteractionEvent[]
+  userPreferences            UserTrackPreference[]
+  playlistFitFeedback        PlaylistFitFeedback[]
+  transitionPreviousFeedback TransitionFeedback[]             @relation("TransitionPreviousTrack")
+  transitionCurrentFeedback  TransitionFeedback[]             @relation("TransitionCurrentTrack")
+  transitionNextFeedback     TransitionFeedback[]             @relation("TransitionNextTrack")
   canonicalRecording         CanonicalRecording?              @relation("CanonicalRecordingTracks", fields: [canonicalRecordingId], references: [id], onDelete: SetNull)
   preferredForRecordings     CanonicalRecording[]             @relation("PreferredEnrichmentTrack")
   plexSyncConflicts          PlexSyncConflict[]
@@ -621,6 +632,8 @@ model GeneratedPlaylist {
   recentlyAddedChanges  RecentlyAddedAutomationChange[]
   preferenceProfile     PlaylistPreferenceProfile?
   interactionEvents     TrackInteractionEvent[]
+  playlistFitFeedback   PlaylistFitFeedback[]
+  transitionFeedback    TransitionFeedback[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -973,14 +986,14 @@ model UserRecommendationProfile {
 }
 
 model PlaylistPreferenceProfile {
-  id                         String            @id @default(uuid())
-  playlistId                 String            @unique
+  id                         String                @id @default(uuid())
+  playlistId                 String                @unique
   userId                     String
   name                       String?
-  enabled                    Boolean           @default(true)
-  mode                       String            @default("GENERAL_PROFILE")
-  source                     String            @default("MANUAL")
-  isLearned                  Boolean           @default(false)
+  enabled                    Boolean               @default(true)
+  mode                       String                @default("GENERAL_PROFILE")
+  source                     String                @default("MANUAL")
+  isLearned                  Boolean               @default(false)
   energyMin                  Float?
   energyMax                  Float?
   bpmMin                     Float?
@@ -993,12 +1006,14 @@ model PlaylistPreferenceProfile {
   avoidLiveRecordings        Boolean?
   avoidLowConfidenceMetadata Boolean?
   avoidRecentlyPlayedTracks  Boolean?
-  confidence                 Float             @default(0)
-  evidenceCount              Int               @default(0)
-  createdAt                  DateTime          @default(now())
-  updatedAt                  DateTime          @updatedAt
-  playlist                   GeneratedPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
-  user                       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  confidence                 Float                 @default(0)
+  evidenceCount              Int                   @default(0)
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+  playlist                   GeneratedPlaylist     @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  user                       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlistFitFeedback        PlaylistFitFeedback[]
+  transitionFeedback         TransitionFeedback[]
 
   @@index([userId, updatedAt])
   @@index([userId, source])
@@ -1046,6 +1061,122 @@ model PersonalScoringAdjustment {
   @@unique([userId, featureType, featureKey])
   @@index([userId, calculatedAt])
   @@index([expiresAt])
+}
+
+model UserTrackPreference {
+  id                  String   @id @default(uuid())
+  userId              String
+  trackId             String
+  state               String   @default("NEUTRAL")
+  scoreAdjustment     Float    @default(0)
+  lastFeedbackEventId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track               Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trackId])
+  @@index([userId, state, updatedAt])
+  @@index([trackId])
+}
+
+model UserArtistPreference {
+  id                  String   @id @default(uuid())
+  userId              String
+  artistId            String
+  state               String   @default("NEUTRAL")
+  scoreAdjustment     Float    @default(0)
+  lastFeedbackEventId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  artist              Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, artistId])
+  @@index([userId, state, updatedAt])
+  @@index([artistId])
+}
+
+model PlaylistFitFeedback {
+  id                  String                     @id @default(uuid())
+  userId              String
+  trackId             String
+  playlistId          String?
+  playlistProfileId   String?
+  scopeKey            String
+  state               String
+  reason              String?
+  note                String?
+  generationId        String?
+  engineVersion       String?
+  lastFeedbackEventId String?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  user                User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track               Track                      @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  playlist            GeneratedPlaylist?         @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  playlistProfile     PlaylistPreferenceProfile? @relation(fields: [playlistProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trackId, scopeKey])
+  @@index([userId, playlistId, updatedAt])
+  @@index([userId, playlistProfileId, updatedAt])
+  @@index([trackId])
+}
+
+model TransitionFeedback {
+  id                 String                     @id @default(uuid())
+  userId             String
+  playlistId         String?
+  playlistProfileId  String?
+  previousTrackId    String
+  currentTrackId     String
+  nextTrackId        String?
+  state              String                     @default("POOR_TRANSITION")
+  reason             String?
+  note               String?
+  transitionPosition Int?
+  generationId       String?
+  engineVersion      String?
+  contextJson        Json?
+  feedbackEventId    String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlist           GeneratedPlaylist?         @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  playlistProfile    PlaylistPreferenceProfile? @relation(fields: [playlistProfileId], references: [id], onDelete: Cascade)
+  previousTrack      Track                      @relation("TransitionPreviousTrack", fields: [previousTrackId], references: [id], onDelete: Cascade)
+  currentTrack       Track                      @relation("TransitionCurrentTrack", fields: [currentTrackId], references: [id], onDelete: Cascade)
+  nextTrack          Track?                     @relation("TransitionNextTrack", fields: [nextTrackId], references: [id], onDelete: SetNull)
+
+  @@index([userId, previousTrackId, currentTrackId])
+  @@index([userId, playlistId, createdAt])
+  @@index([userId, playlistProfileId, createdAt])
+}
+
+model FeedbackEvent {
+  id                String   @id @default(uuid())
+  userId            String
+  feedbackType      String
+  targetType        String
+  targetIdsJson     Json
+  previousState     String?
+  newState          String?
+  reason            String?
+  note              String?
+  sourceSurface     String
+  playlistId        String?
+  playlistProfileId String?
+  generationId      String?
+  engineVersion     String?
+  contextJson       Json?
+  idempotencyKey    String?  @unique
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, feedbackType, createdAt])
+  @@index([userId, targetType, createdAt])
+  @@index([playlistId, createdAt])
+  @@index([playlistProfileId, createdAt])
 }
 
 model BetaFeatureUsage {
