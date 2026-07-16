@@ -56,7 +56,7 @@ describe("playlist identity effective values", () => {
 describe("playlist identity scoring", () => {
   const profile = calculatePlaylistIdentityProfile(Array.from({ length: 12 }, (_, index) => sample(String(index), { position: index + 1 })));
   const context = (mode: PlaylistIdentityScoringContext["mode"] = "BALANCED"): PlaylistIdentityScoringContext => ({
-    identityId: "identity", enabled: true, mode, strength: 1, profile,
+    identityId: "identity", enabled: true, mode, strength: 1, confidence: 0.9, profile,
     artistScores: { "artist-a": 8 }, genreScores: { electronic: 8 }, trackMemory: {},
   });
 

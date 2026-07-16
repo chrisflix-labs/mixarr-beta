@@ -11,6 +11,7 @@ import { applyTuningToCandidateScore, normalizeSmartMixTuningConfig, tuningWeigh
 import { SMART_MIX_ENGINE_V2, type SmartMixEngineV2Config, type SmartMixRuleLike, type SmartMixRuleTree, type SmartMixScoredTrack, type SmartMixScoreBreakdown } from "./types";
 import { scorePersonalizationAdjustment } from "../../personalization/scoring";
 import { scorePlaylistIdentityTrack } from "../../playlistIdentity/scoring";
+import { scoreAdaptiveSmartMixTrack } from "../../adaptiveScoring/scoring";
 
 const metadataRuleFields = new Set(["tempo", "valence", "energy", "popularity"]);
 
@@ -78,6 +79,63 @@ export function hasSmartMixMetadataRule(config: SmartMixEngineV2Config) {
   return collectRules(config.ruleTree, config.rules || []).some((rule) => metadataRuleFields.has(rule.field));
 }
 
+export function applyAdaptiveScoringToTrack<TTrack extends Record<string, any>>(
+  track: SmartMixScoredTrack<TTrack>,
+  config: SmartMixEngineV2Config,
+): SmartMixScoredTrack<TTrack> {
+  const baseScore = roundScore(track.score);
+  const scoreBreakdown = { ...track.scoreBreakdown };
+  const personalizationScore = config.personalization?.profile.enabled
+    ? scorePersonalizationAdjustment(baseScore, track, config.personalization)
+    : null;
+  const identityScore = scorePlaylistIdentityTrack(track, config.playlistIdentity);
+  const adaptiveScore = config.adaptiveScoring
+    ? scoreAdaptiveSmartMixTrack(baseScore, track, config.adaptiveScoring)
+    : null;
+  if (adaptiveScore) {
+    const byKey = Object.fromEntries(adaptiveScore.components.map((item) => [item.key, item.appliedAdjustment]));
+    scoreBreakdown.personalPreference = byKey.personalPreference || 0;
+    scoreBreakdown.playlistIdentity = byKey.playlistIdentity || 0;
+    scoreBreakdown.historicalAcceptance = byKey.historicalAcceptance || 0;
+    scoreBreakdown.historicalRejection = byKey.historicalRejection || 0;
+    scoreBreakdown.artistPreference = byKey.artistPreference || 0;
+    scoreBreakdown.moodPreference = byKey.moodPreference || 0;
+    scoreBreakdown.discoveryTolerance = byKey.discoveryTolerance || 0;
+    scoreBreakdown.repeatTolerance = byKey.repeatTolerance || 0;
+    scoreBreakdown.personalization = adaptiveScore.cappedAdjustment;
+    scoreBreakdown.trackFeedback = personalizationScore?.components?.trackFeedbackAdjustment || 0;
+    scoreBreakdown.artistFeedback = personalizationScore?.components?.artistFeedbackAdjustment || 0;
+    scoreBreakdown.playlistFitFeedback = personalizationScore?.components?.playlistFitAdjustment || 0;
+  } else {
+    if (personalizationScore) {
+      scoreBreakdown.playlistPreference = personalizationScore.playlistContextScore;
+      scoreBreakdown.personalization = personalizationScore.personalizationAdjustment;
+      scoreBreakdown.trackFeedback = personalizationScore.components?.trackFeedbackAdjustment || 0;
+      scoreBreakdown.artistFeedback = personalizationScore.components?.artistFeedbackAdjustment || 0;
+      scoreBreakdown.playlistFitFeedback = personalizationScore.components?.playlistFitAdjustment || 0;
+      scoreBreakdown.learnedProfile = personalizationScore.components?.learnedProfileAdjustment || 0;
+    }
+    if (identityScore.applied) scoreBreakdown.playlistIdentity = identityScore.adjustment;
+  }
+  const legacyScoreBeforeIdentity = personalizationScore?.finalScore ?? baseScore;
+  const finalScore = adaptiveScore
+    ? adaptiveScore.personalizedScore
+    : identityScore.excluded ? legacyScoreBeforeIdentity : roundScore(legacyScoreBeforeIdentity + identityScore.adjustment);
+  return {
+    ...track,
+    score: finalScore,
+    baseScore,
+    personalizedScore: finalScore,
+    scoreBreakdown,
+    ...(personalizationScore ? { personalizationScore } : {}),
+    ...(identityScore.applied ? { playlistIdentityScore: identityScore } : {}),
+    ...(adaptiveScore ? { adaptiveScore } : {}),
+    ...(adaptiveScore?.excluded || personalizationScore?.excluded || identityScore.excluded
+      ? { exclusionReason: adaptiveScore?.exclusionReason || personalizationScore?.exclusionReason || identityScore.exclusionReason }
+      : {}),
+  };
+}
+
 export function scoreSmartMixTrack<TTrack extends Record<string, any>>(
   track: TTrack,
   config: SmartMixEngineV2Config,
@@ -140,32 +198,16 @@ export function scoreSmartMixTrack<TTrack extends Record<string, any>>(
     ...(recentlyUsedPenalty < 0 ? ["recently used: softened ranking"] : []),
   ];
 
-  const personalizationScore = config.personalization?.profile.enabled
-    ? scorePersonalizationAdjustment(tunedScore, track, config.personalization)
-    : null;
-  if (personalizationScore) {
-    scoreBreakdown.playlistPreference = personalizationScore.playlistContextScore;
-    scoreBreakdown.personalization = personalizationScore.personalizationAdjustment;
-    scoreBreakdown.trackFeedback = personalizationScore.components?.trackFeedbackAdjustment || 0;
-    scoreBreakdown.artistFeedback = personalizationScore.components?.artistFeedbackAdjustment || 0;
-    scoreBreakdown.playlistFitFeedback = personalizationScore.components?.playlistFitAdjustment || 0;
-    scoreBreakdown.learnedProfile = personalizationScore.components?.learnedProfileAdjustment || 0;
-  }
-  const identityScore = scorePlaylistIdentityTrack(track, config.playlistIdentity);
-  if (identityScore.applied) scoreBreakdown.playlistIdentity = identityScore.adjustment;
-  const scoreBeforeIdentity = personalizationScore?.finalScore ?? roundScore(tunedScore);
-  const finalScore = identityScore.excluded ? scoreBeforeIdentity : roundScore(scoreBeforeIdentity + identityScore.adjustment);
-
-  return {
+  const baseTrack = {
     ...track,
     engineVersion: SMART_MIX_ENGINE_V2,
-    score: finalScore,
+    score: roundScore(tunedScore),
+    baseScore: roundScore(tunedScore),
+    personalizedScore: roundScore(tunedScore),
     scoreBreakdown,
     metadataStatus: fallback.metadataStatus,
     fallbacksApplied,
-    ...(personalizationScore ? { personalizationScore } : {}),
-    ...(identityScore.applied ? { playlistIdentityScore: identityScore } : {}),
-    ...(personalizationScore?.excluded || identityScore.excluded ? { exclusionReason: personalizationScore?.exclusionReason || identityScore.exclusionReason } : {}),
     ...(moodBlendScore ? { moodBlend: moodBlendScore.data } : {}),
-  };
+  } as SmartMixScoredTrack<TTrack>;
+  return applyAdaptiveScoringToTrack(baseTrack, config);
 }

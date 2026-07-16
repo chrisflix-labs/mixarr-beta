@@ -13,6 +13,7 @@ import {
   type TrackInteractionSource,
   type TrackInteractionType,
 } from "./types";
+import { getAdaptiveScoringSettings, markAdaptiveScoringDirty, resetAdaptiveScoring } from "../adaptiveScoring";
 
 const MAX_CONTEXT_BYTES = 2_000;
 const PROFILE_BATCH_SIZE = 250;
@@ -151,7 +152,7 @@ function preferenceSummary(profile: any) {
 
 export async function getPersonalizationProfileSummary(userId: string) {
   const profile = await ensureRecommendationProfile(userId);
-  const [interactionCount, recentSignals, playlistProfiles] = await Promise.all([
+  const [interactionCount, recentSignals, playlistProfiles, adaptiveScoring] = await Promise.all([
     prisma.trackInteractionEvent.count({ where: { userId } }),
     prisma.trackInteractionEvent.findMany({
       where: { userId },
@@ -163,8 +164,9 @@ export async function getPersonalizationProfileSummary(userId: string) {
       where: { userId },
       orderBy: { updatedAt: "desc" },
       take: 50,
-      select: { id: true, plexPlaylistTitle: true, updatedAt: true, preferenceProfile: true },
+      select: { id: true, plexPlaylistTitle: true, updatedAt: true, preferenceProfile: true, adaptiveScoringSetting: true },
     }),
+    getAdaptiveScoringSettings(userId),
   ]);
   const summary = preferenceSummary(profile);
   return {
@@ -175,9 +177,10 @@ export async function getPersonalizationProfileSummary(userId: string) {
     summary,
     recentSignals,
     playlistProfiles: playlistProfiles.map((item) => item.preferenceProfile
-      ? { ...playlistSnapshot(item.preferenceProfile), id: item.preferenceProfile.id, playlistId: item.id, name: item.preferenceProfile.name || item.plexPlaylistTitle, updatedAt: item.preferenceProfile.updatedAt }
-      : { id: null, playlistId: item.id, name: item.plexPlaylistTitle, enabled: true, mode: "GENERAL_PROFILE", source: "DEFAULT_USER", isLearned: false, confidence: 0, evidenceCount: 0, updatedAt: item.updatedAt }),
-    privacy: "Mixarr stores likes, dislikes, never-recommend choices, artist preferences, playlist-fit feedback, and transition feedback only in your local Mixarr database. You can disable personalization without deleting it, or reset it at any time. No personalization data is sent to an external service.",
+      ? { ...playlistSnapshot(item.preferenceProfile), id: item.preferenceProfile.id, playlistId: item.id, name: item.preferenceProfile.name || item.plexPlaylistTitle, updatedAt: item.preferenceProfile.updatedAt, adaptiveInfluenceOverride: item.adaptiveScoringSetting?.maximumInfluenceOverride ?? null }
+      : { id: null, playlistId: item.id, name: item.plexPlaylistTitle, enabled: true, mode: "GENERAL_PROFILE", source: "DEFAULT_USER", isLearned: false, confidence: 0, evidenceCount: 0, updatedAt: item.updatedAt, adaptiveInfluenceOverride: item.adaptiveScoringSetting?.maximumInfluenceOverride ?? null }),
+    adaptiveScoring,
+    privacy: "Adaptive Smart Mix scoring uses locally stored likes, dislikes, playlist history, artist preferences, and playlist identities to adjust track rankings. Your original Smart Mix score remains available, and you control how much personalization may influence the final result. No personalization data is sent to an external service.",
   };
 }
 
@@ -257,6 +260,7 @@ export async function recordTrackInteraction(input: {
       await tx.personalScoringAdjustment.updateMany({ where: { userId: input.userId, invalidatedAt: null }, data: { invalidatedAt: new Date() } });
       return created;
     });
+    await markAdaptiveScoringDirty(input.userId);
     return { recorded: true, eventId: event.id };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002" && input.idempotencyKey) return { recorded: false, reason: "duplicate" as const };
@@ -424,6 +428,7 @@ export async function resetPersonalizationData(userId: string, mode: "learned" |
     }
     return { events: events.count, adjustments: adjustments.count, playlistProfiles: playlistProfiles.count, trackPreferences: trackPreferences.count, artistPreferences: artistPreferences.count, playlistFits: playlistFits.count, transitionFeedback: transitionFeedback.count, feedbackEvents: feedbackEvents.count };
   });
+  await resetAdaptiveScoring(userId, mode === "all" ? "all" : "inferred");
   await safeRecordJobHistory({ userId, type: "personalization", name: "Personalization data reset", status: "completed", trigger: "manual", startedAt, summary: `Removed ${result.events} interaction events and ${result.adjustments} derived adjustments.`, counts: { attempted: result.events + result.adjustments, processed: result.events + result.adjustments } });
   return { mode, ...result };
 }
@@ -445,7 +450,8 @@ export async function updatePlaylistPreferenceProfile(userId: string, playlistId
 
 export async function resetPlaylistLearnedProfile(userId: string, playlistId: string) {
   const result = await prisma.playlistPreferenceProfile.deleteMany({ where: { playlistId, userId, isLearned: true } });
-  return { reset: result.count > 0 };
+  const adaptive = await resetAdaptiveScoring(userId, "inferred", playlistId);
+  return { reset: result.count > 0 || adaptive.statisticsRemoved > 0, adaptive };
 }
 
 export async function loadPersonalizationScoringContext(userId: string, playlistId?: string | null): Promise<PersonalizationScoringContext | undefined> {

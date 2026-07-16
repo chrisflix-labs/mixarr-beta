@@ -1,6 +1,7 @@
 import type { SmartMixTuningConfig } from "./tuning";
 import type { PersonalizationScoreResult, PersonalizationScoringContext } from "../../personalization/types";
 import type { PlaylistIdentityScoringContext } from "../../playlistIdentity/types";
+import type { AdaptiveScoreResult, AdaptiveScoringContext } from "../../adaptiveScoring/types";
 
 export const SMART_MIX_ENGINE_V1 = "v1";
 export const SMART_MIX_ENGINE_V2 = "v2";
@@ -42,6 +43,7 @@ export type SmartMixEngineV2Config = {
   recentPlaylistUsage?: Record<string, number>;
   personalization?: PersonalizationScoringContext;
   playlistIdentity?: PlaylistIdentityScoringContext;
+  adaptiveScoring?: AdaptiveScoringContext;
   moodBlendMode?: SmartMixMoodBlendMode;
   selectedMoodPath?: string[];
   allowedMoods?: string[];
@@ -141,6 +143,13 @@ export type SmartMixScoreBreakdown = {
   learnedProfile?: number;
   transitionFeedback?: number;
   playlistIdentity?: number;
+  personalPreference?: number;
+  historicalAcceptance?: number;
+  historicalRejection?: number;
+  artistPreference?: number;
+  moodPreference?: number;
+  discoveryTolerance?: number;
+  repeatTolerance?: number;
 };
 
 export type SmartMixScoredTrack<TTrack = any> = TTrack & {
@@ -153,6 +162,9 @@ export type SmartMixScoredTrack<TTrack = any> = TTrack & {
   discoveryMetrics?: import("./discovery").TrackDiscoveryMetrics;
   personalizationScore?: PersonalizationScoreResult;
   playlistIdentityScore?: import("../../playlistIdentity/types").PlaylistIdentityScoreResult;
+  adaptiveScore?: AdaptiveScoreResult;
+  baseScore?: number;
+  personalizedScore?: number;
   exclusionReason?: string | null;
 };
 

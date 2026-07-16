@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CalendarCheck, CheckCircle2, FlaskConical, HeartHandshake, MessageCircle, Rocket, Sparkles } from "lucide-react";
 import { MIXARR_BETA_DISCORD_URL } from "@/lib/releaseNotes";
-import { roadmapCycles, type RoadmapStatus } from "@/lib/roadmap";
+import { currentRoadmapRelease, roadmapCycles, type RoadmapStatus } from "@/lib/roadmap";
 import styles from "./roadmap.module.css";
 
 export const metadata = { title: "Roadmap | Mixarr", description: "Mixarr product roadmap and current release cycle." };
@@ -9,6 +9,7 @@ export const metadata = { title: "Roadmap | Mixarr", description: "Mixarr produc
 const statusLabels: Record<RoadmapStatus, string> = { completed: "Completed", current: "Current cycle", upcoming: "Upcoming" };
 
 export default function RoadmapPage() {
+  const current = currentRoadmapRelease();
   return (
     <main className={styles.page}>
       <header className={styles.header}><div><span className={styles.kicker}><Rocket size={14} /> Product roadmap</span><h2>Mixarr Product Roadmap</h2><p>Completed work, the active release, and future themes—kept in one versioned roadmap source.</p></div></header>
@@ -34,7 +35,7 @@ export default function RoadmapPage() {
         </section>
       ))}
 
-      <section className={styles.releasePanel} aria-labelledby="current-release"><div className={styles.panelIcon}><CalendarCheck size={20} /></div><div><span className={styles.badge}>Current release</span><h3 id="current-release">v2.1.1 — Duplicate Preservation & Plex Conflict Inspector</h3><p>Every Plex item is preserved as a physical instance while confirmed recordings can share trusted enrichment non-destructively.</p></div></section>
+      {current && <section className={styles.releasePanel} aria-labelledby="current-release"><div className={styles.panelIcon}><CalendarCheck size={20} /></div><div><span className={styles.badge}>Current release</span><h3 id="current-release">v{current.version} — {current.title}</h3><p>{current.description}</p><Link href={current.route || "/release-notes"}>Open adaptive scoring settings</Link></div></section>}
 
       <section className={styles.communityGrid} aria-label="Community and beta access">
         <article className={styles.callout}><div className={styles.calloutIcon}><MessageCircle size={18} /></div><div><h3>Community feedback</h3><p>Follow development, report bugs, and suggest roadmap ideas.</p>{MIXARR_BETA_DISCORD_URL ? <a href={MIXARR_BETA_DISCORD_URL} target="_blank" rel="noopener noreferrer">Open Discord</a> : <Link href="/support">Open Beta Support</Link>}</div></article>

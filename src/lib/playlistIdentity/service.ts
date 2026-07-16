@@ -309,13 +309,13 @@ export async function loadPlaylistIdentityScoringContext(userId: string, playlis
       include: {
         artistPreferences: { select: { artistId: true, score: true } },
         genrePreferences: { select: { genreKey: true, score: true } },
-        trackMemories: { where: { OR: [{ rejectionState: { not: "NONE" } }, { importance: { not: "NORMAL" } }, { acceptanceScore: { not: 0 } }] }, select: { trackId: true, importance: true, rejectionState: true, permanentRejection: true, acceptanceScore: true, rejectionCount: true } },
+        trackMemories: { where: { OR: [{ rejectionState: { not: "NONE" } }, { importance: { not: "NORMAL" } }, { acceptanceScore: { not: 0 } }] }, select: { trackId: true, importance: true, rejectionState: true, permanentRejection: true, acceptanceScore: true, rejectionCount: true, inferenceConfidence: true } },
       },
     });
     if (!identity?.effectiveProfileJson) return undefined;
     return {
       identityId: identity.id, enabled: identity.enabled, mode: identity.preservationMode as PlaylistIdentityMode,
-      strength: identity.strength, profile: identity.effectiveProfileJson as unknown as PlaylistIdentityProfile,
+      strength: identity.strength, confidence: identity.confidence, profile: identity.effectiveProfileJson as unknown as PlaylistIdentityProfile,
       artistScores: Object.fromEntries(identity.artistPreferences.map((item) => [item.artistId, item.score])),
       genreScores: Object.fromEntries(identity.genrePreferences.map((item) => [item.genreKey, item.score])),
       trackMemory: Object.fromEntries(identity.trackMemories.map((item) => [item.trackId, item])),

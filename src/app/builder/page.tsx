@@ -5,6 +5,7 @@ import axios from "axios";
 import { Plus, Trash2, Play, Upload, Star, Music, Shuffle, Activity, Save, RefreshCw, Pin, X, GripVertical, AlertTriangle, Clock, ListChecks, Ban, ShieldCheck, Sparkles, Info, SlidersHorizontal } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
+import AdaptiveScoreBreakdown from "@/components/AdaptiveScoreBreakdown";
 import MoodBlendingBetaPanel, {
   DEFAULT_MOOD_BLEND_BETA_SETTINGS,
   type MoodBlendBetaSettings,
@@ -2397,6 +2398,7 @@ export default function BuilderPage() {
                             </div>
                           )}
                           {track.discoveryMetrics?.reasons?.length > 0 && <div className={styles.badgeRow}>{track.discoveryMetrics.reasons.slice(0, 2).map((reason: string) => <span key={reason} className={styles.discoveryReason} title={`Discovery: ${reason}`}>{reason}</span>)}</div>}
+                          <AdaptiveScoreBreakdown score={track.adaptiveScore} />
                         </td>
                         <td className={styles.trackArtist}>{track.artist?.title || "—"}</td>
                         <td className={styles.trackAlbum}>{track.album?.title || "—"}</td>

@@ -73,6 +73,22 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.1.4",
+    title: "Adaptive Smart Mix Scoring",
+    releaseDate: "July 16, 2026",
+    badges: ["Personalization", "Playlists", "Feedback", "Identity", "History", "Database", "Performance", "Settings", "Mobile", "UI"],
+    changes: [
+      "Added a dedicated adaptive scoring service on top of the unchanged Smart Mix Engine v2 base score, preserving both scores for comparison.",
+      "Added separate personal preference, playlist identity, historical acceptance, historical rejection, artist, mood, discovery, and repeat components with source, scope, confidence, and plain-language reasons.",
+      "Added evidence-based confidence multipliers, minimum-confidence controls, explicit-feedback priority, old-evidence decay, directional limits, and a 0–100% maximum personalization influence cap.",
+      "Added Off, Light, Balanced, Strong, and Maximum presets, advanced component controls, per-playlist override storage, and recommended-default restoration.",
+      "Added expandable base-versus-personalized scoring explanations to Smart Mix previews and regeneration previews, including visible cap messages and low-data states.",
+      "Added aggregated user and playlist statistics, bounded batched recalculation with Job History, dirty-state tracking after feedback, reset previews, and scoped reset/retraining APIs.",
+      "Stored adaptive scoring version and settings snapshots on managed playlists, with optional per-track explanation snapshots for historical explanations.",
+      "Added the non-destructive PostgreSQL migration, user-isolated APIs, performance limits, tests, privacy documentation, release notes, and Roadmap updates.",
+    ],
+  },
+  {
     version: "2.1.3",
     title: "Playlist Identity & Memory",
     releaseDate: "July 16, 2026",

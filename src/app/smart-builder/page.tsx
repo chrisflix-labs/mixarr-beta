@@ -14,6 +14,7 @@ import { moodBlendValidationMessage } from "@/lib/moodBlendingUi";
 import { BPM_PRESET_VERSION, bpmPresetLabel, bpmPresetRangeLabel, getBpmPreset, type BpmPreset } from "@/lib/bpmPresets";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import TrackFeedbackMenu from "@/components/TrackFeedbackMenu";
+import AdaptiveScoreBreakdown from "@/components/AdaptiveScoreBreakdown";
 import { getMoodPreset, moodPresetLabel, MOOD_PRESET_VERSION, type MoodPreset } from "@/lib/moodPresets";
 import { buildSmartPresetConfig, SMART_PRESET_VERSION, smartPlaylistPresets, type SmartPlaylistPreset } from "@/lib/smartPlaylistPresets";
 import styles from "./smart-builder.module.css";
@@ -893,6 +894,7 @@ export default function SmartBuilderPage() {
                             <span>Mood {(track.audioFeature?.effectiveMood ?? track.audioFeature?.valence)?.toFixed(2) || "-"}{track.audioFeature?.moodSource ? ` | ${track.audioFeature.moodSource}` : ""}{track.audioFeature?.moodConfidence ? ` | ${track.audioFeature.moodConfidence}` : ""}</span>
                             <span>Popularity {track.popularity?.score?.toFixed(0) || "-"}</span>
                           </div>
+                          <AdaptiveScoreBreakdown score={track.adaptiveScore} />
                         </div>
                         <div className={styles.trackActions}>
                           <TrackPreviewButton trackId={track.id} />

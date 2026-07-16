@@ -16,6 +16,7 @@ import { resolveScoringModel, STABLE_SCORING_MODEL_ID } from "./scoringModels";
 import { getBetaStatus, getFeatureState, recordBetaUsage } from "./featureFlagService";
 import { loadExplicitFeedbackScoringContext, loadPersonalizationScoringContext, recordTrackInteractionInBackground } from "./personalization";
 import { ensurePlaylistIdentity, loadPlaylistIdentityScoringContext, recordPlaylistIdentityEvent, rememberPlaylistRejection, trainPlaylistIdentity, updatePlaylistTrackMemory } from "./playlistIdentity";
+import { loadAdaptiveScoringContext } from "./adaptiveScoring";
 import {
   runSmartMixEngineV2,
   smartMixEngineLabel,
@@ -36,6 +37,7 @@ import {
   REGENERATION_ENGINE_VERSION,
   type PlaylistRegenerationRequest,
   type PlaylistTrackState,
+  scoreSmartMixTrack,
 } from "./smartMixEngine/v2";
 import {
   playlistExportDurationSeconds,
@@ -688,6 +690,11 @@ function publicPreviewTrack(track: any) {
     moodBlend: track.moodBlend || undefined,
     bpmTransitionFromPrevious: track.bpmTransitionFromPrevious || null,
     discoveryMetrics: track.discoveryMetrics || undefined,
+    personalizationScore: track.personalizationScore || undefined,
+    playlistIdentityScore: track.playlistIdentityScore || undefined,
+    adaptiveScore: track.adaptiveScore || undefined,
+    baseScore: typeof track.baseScore === "number" ? track.baseScore : undefined,
+    personalizedScore: typeof track.personalizedScore === "number" ? track.personalizedScore : undefined,
   };
 }
 
@@ -855,8 +862,11 @@ export async function generatePlaylistTracksWithStats({
     const playlistIdentity = useSmartMixV2
       ? await loadPlaylistIdentityScoringContext(userId, personalizationPlaylistId)
       : undefined;
+    const adaptiveScoring = useSmartMixV2
+      ? await loadAdaptiveScoringContext({ userId, playlistId: personalizationPlaylistId, personalization, playlistIdentity })
+      : undefined;
     let runConfig = useSmartMixV2
-      ? { ...config, scoringModel: scoringResolution.model.id, tuningConfig, ...(moodFeatureState && !moodFeatureState.enabled ? { moodBlendMode: "off" as const, selectedMoodPath: [], allowedMoods: [] } : {}), recentlyUsedTrackIds, recentPlaylistUsage, ...(personalization ? { personalization } : {}), ...(playlistIdentity ? { playlistIdentity } : {}) }
+      ? { ...config, scoringModel: scoringResolution.model.id, tuningConfig, ...(moodFeatureState && !moodFeatureState.enabled ? { moodBlendMode: "off" as const, selectedMoodPath: [], allowedMoods: [] } : {}), recentlyUsedTrackIds, recentPlaylistUsage, ...(personalization ? { personalization } : {}), ...(playlistIdentity ? { playlistIdentity } : {}), ...(adaptiveScoring ? { adaptiveScoring } : {}) }
       : config;
     let remainingLimit = Math.max(0, config.limit - pinnedTracks.length);
     let safetyCandidateLimit = safetyRulesAreEnabled(config)
@@ -894,7 +904,12 @@ export async function generatePlaylistTracksWithStats({
       safetyCandidateLimit = safetyRulesAreEnabled(config)
         ? Math.min(maxPlaylistSize, Math.max(remainingLimit * 5, remainingLimit + 25))
         : remainingLimit;
-      runConfig = { ...runConfig, personalization: { ...personalization, explicitFeedback: feedback } };
+      const personalizationWithFeedback = { ...personalization, explicitFeedback: feedback };
+      runConfig = {
+        ...runConfig,
+        personalization: personalizationWithFeedback,
+        ...(adaptiveScoring ? { adaptiveScoring: { ...adaptiveScoring, personalization: personalizationWithFeedback } } : {}),
+      };
     }
     const reasons = collectRuleReasons(config.ruleTree, config.rules);
 
@@ -1545,6 +1560,7 @@ async function replaceGeneratedPlaylistSnapshot(generatedPlaylistId: string, tra
           locked: Boolean(previous?.locked),
           liked: Boolean(previous?.liked || Number(track.rating) >= 8),
           regenerationExcluded: Boolean(previous?.regenerationExcluded),
+          adaptiveScoreJson: track.adaptiveScore || undefined,
         };
       }),
     });
@@ -1599,7 +1615,33 @@ export async function recordGeneratedPlaylist({
     });
     discoveryResult = summarizeDiscovery(discoveryScoring.tracks, discoveryScoring.tracks, tuningConfig.discovery, discoveryScoring.executionTimeMs);
   }
-  const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks, tuningConfig, discoveryResult || undefined) : null;
+  const existing = plexPlaylistRatingKey
+    ? await prisma.generatedPlaylist.findFirst({ where: { userId, plexPlaylistRatingKey } })
+    : null;
+  let scoredTracks = tracks;
+  let adaptiveSettingsSnapshot: unknown = null;
+  if (config.engineVersion === SMART_MIX_ENGINE_V2 && tracks.length) {
+    const personalization = await loadPersonalizationScoringContext(userId, existing?.id);
+    const playlistIdentity = await loadPlaylistIdentityScoringContext(userId, existing?.id);
+    if (personalization) {
+      personalization.explicitFeedback = await loadExplicitFeedbackScoringContext(
+        userId,
+        tracks.map((track) => track.id),
+        tracks.map((track) => track.artistId).filter(Boolean),
+        existing?.id,
+      );
+    }
+    const adaptiveScoring = await loadAdaptiveScoringContext({ userId, playlistId: existing?.id, personalization, playlistIdentity });
+    adaptiveSettingsSnapshot = adaptiveScoring?.settings || null;
+    scoredTracks = tracks.map((track) => scoreSmartMixTrack(track, {
+      ...config,
+      tuningConfig,
+      ...(personalization ? { personalization } : {}),
+      ...(playlistIdentity ? { playlistIdentity } : {}),
+      ...(adaptiveScoring ? { adaptiveScoring } : {}),
+    }));
+  }
+  const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(scoredTracks, tuningConfig, discoveryResult || undefined) : null;
   const feedbackProfile = config.engineVersion === SMART_MIX_ENGINE_V2 ? await prisma.userRecommendationProfile.findUnique({ where: { userId }, select: { enabled: true } }) : null;
   const [appliedTrackFeedback, appliedArtistFeedback] = feedbackProfile?.enabled ? await Promise.all([
     prisma.userTrackPreference.findMany({ where: { userId, trackId: { in: tracks.map((track) => track.id) } }, select: { state: true } }),
@@ -1641,6 +1683,8 @@ export async function recordGeneratedPlaylist({
       feedbackTypesApplied,
       feedbackInfluencedGeneration: feedbackTypesApplied.length > 0,
     } as any : undefined,
+    adaptiveScoringVersion: config.engineVersion === SMART_MIX_ENGINE_V2 ? "1" : null,
+    adaptiveSettingsJson: adaptiveSettingsSnapshot as any,
     filtersJson: config as any,
     safetyRulesJson: config.safetyRules as any,
     qualityScoreJson: qualityScore as any,
@@ -1648,15 +1692,12 @@ export async function recordGeneratedPlaylist({
     lastGeneratedAt: new Date(),
   };
 
-  const existing = plexPlaylistRatingKey
-    ? await prisma.generatedPlaylist.findFirst({ where: { userId, plexPlaylistRatingKey } })
-    : null;
   const { createPlaylistVersionInTransaction } = await import("./playlists/versions/playlist-version-service");
   const generatedPlaylist = await prisma.$transaction(async (tx) => {
     const saved = existing
       ? await tx.generatedPlaylist.update({ where: { id: existing.id }, data })
       : await tx.generatedPlaylist.create({ data });
-    await replaceGeneratedPlaylistSnapshot(saved.id, tracks, tx);
+    await replaceGeneratedPlaylistSnapshot(saved.id, scoredTracks, tx);
     await createPlaylistVersionInTransaction(tx, {
       generatedPlaylistId: saved.id,
       reason: existing ? "full_regeneration" : "initial_generation",

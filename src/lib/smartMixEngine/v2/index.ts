@@ -1,5 +1,5 @@
 import { SMART_MIX_ENGINE_V2_PIPELINE } from "./pipeline";
-import { scoreSmartMixTrack } from "./scoring";
+import { applyAdaptiveScoringToTrack, scoreSmartMixTrack } from "./scoring";
 import { FEEDBACK_SCORING, transitionPairKey } from "../../personalization/feedbackRules";
 import { normalizeMoodBlendConfig, scoreMoodBlendForTrack, summarizeMoodBlend } from "./moodBlending";
 import { orderTracksByBpmFlow, summarizeBpmFlow } from "./bpmFlow";
@@ -198,9 +198,12 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
   applyPlaylistSafetyRules,
 }: SmartMixEngineV2RunInput<TTrack>): SmartMixEngineV2RunResult<TTrack> {
   const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
-  const initiallyScoredPinnedTracks = pinnedTracks.map((track) => scoreSmartMixTrack(track, config));
+  const baseConfig = config.adaptiveScoring
+    ? { ...config, personalization: undefined, playlistIdentity: undefined, adaptiveScoring: undefined }
+    : config;
+  const initiallyScoredPinnedTracks = pinnedTracks.map((track) => scoreSmartMixTrack(track, baseConfig));
   const initiallyScoredCandidates = candidates.map((track, index) => ({
-    ...scoreSmartMixTrack(track, config),
+    ...scoreSmartMixTrack(track, baseConfig),
     smartMixV2OriginalIndex: index,
   }));
   const discoveryScoring = scoreDiscoveryCandidatePool({
@@ -208,8 +211,11 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
     config: tuning.discovery,
     recentUsage: config.recentPlaylistUsage,
   });
-  const scoredPinnedTracks = discoveryScoring.tracks.slice(0, initiallyScoredPinnedTracks.length) as SmartMixScoredTrack<TTrack>[];
-  const scoredCandidates = discoveryScoring.tracks.slice(initiallyScoredPinnedTracks.length) as Array<SmartMixScoredTrack<TTrack> & { smartMixV2OriginalIndex: number }>;
+  const fullyScoredTracks = config.adaptiveScoring
+    ? discoveryScoring.tracks.map((track) => applyAdaptiveScoringToTrack(track as SmartMixScoredTrack<TTrack>, config))
+    : discoveryScoring.tracks;
+  const scoredPinnedTracks = fullyScoredTracks.slice(0, initiallyScoredPinnedTracks.length) as SmartMixScoredTrack<TTrack>[];
+  const scoredCandidates = fullyScoredTracks.slice(initiallyScoredPinnedTracks.length) as Array<SmartMixScoredTrack<TTrack> & { smartMixV2OriginalIndex: number }>;
 
   const sortedCandidates = [...scoredCandidates].sort((left, right) => {
     if (right.score !== left.score) return right.score - left.score;

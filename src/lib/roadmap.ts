@@ -91,11 +91,22 @@ export const roadmapReleases: RoadmapRelease[] = [
     version: "2.1.3",
     title: "Playlist Identity & Memory",
     cycle: "2.1.x",
-    status: "current",
+    status: "completed",
     description: "Gives every managed playlist a stable, explainable identity with learned mood, energy, BPM, artist, genre, discovery, importance, rejection, and historical membership memory that survives regeneration and Plex changes.",
     featureLabels: ["Stable playlist identity", "Learned and manual effective values", "Per-field locks", "Playlist rejection memory", "Important and anchor tracks", "Historical membership events", "Identity-aware regeneration", "Personality summaries", "Confidence explanations", "Clone, retrain, and reset workflows", "Identity snapshots", "Lazy legacy initialization"],
     releaseOrder: 104,
     route: "/release-notes",
+  },
+  {
+    version: "2.1.4",
+    title: "Adaptive Smart Mix Scoring",
+    cycle: "2.1.x",
+    status: "current",
+    description: "Builds on the v2.1.0 personalization profile, v2.1.2 feedback, and v2.1.3 playlist identity to adjust Smart Mix rankings through a separate, confidence-limited, reversible, explainable scoring layer.",
+    featureLabels: ["Unchanged base Smart Mix score", "Personalized score comparison", "Eight adaptive scoring components", "Confidence multipliers", "Maximum influence slider", "Presets and advanced controls", "Playlist-specific overrides", "Source and scope labels", "Track-level explanations", "Aggregated history statistics", "Recalculation jobs", "Scoped reset and retraining", "Scoring version snapshots", "Large-library batching"],
+    releaseOrder: 105,
+    completionDate: "2026-07-16",
+    route: "/personalization",
   },
 ];
 

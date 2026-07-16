@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.1.4 - Adaptive Smart Mix Scoring
+
+- Added a dedicated adaptive scoring service layered on top of the unchanged Smart Mix Engine v2 base score.
+- Added separate personal preference, playlist identity, historical acceptance, historical rejection, artist, mood, discovery, and repeat components with plain-language reasons and source/scope labels.
+- Added evidence-based confidence bands and multipliers so one inferred interaction remains low influence while repeated consistent or explicit feedback receives greater trust.
+- Added Off, Light, Balanced, Strong, and Maximum presets plus a 0–100% maximum-influence control, per-playlist override storage, component toggles, confidence thresholds, and directional limits.
+- Added visible base-versus-personalized score comparisons and expandable scoring explanations in playlist previews and regeneration previews.
+- Added aggregated user/playlist preference statistics, bounded 20,000-event recalculation, 500-row database batches, dirty-state tracking, Job History summaries, reset previews, and scoped reset APIs.
+- Added adaptive scoring version and settings snapshots on managed playlists plus optional per-track explanation snapshots.
+- Added authenticated settings, statistics, explanation, recalculation, and reset APIs with user isolation.
+- Added the additive `20260716020000_adaptive_smart_mix_scoring` migration without changing existing personalization, feedback, playlist identity, history, or version records.
+
 ## v2.1.3 - Playlist Identity & Memory
 
 - Added stable playlist identities independent of playlist names, with durable Mixarr and Plex linkage.

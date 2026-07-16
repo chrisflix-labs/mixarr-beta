@@ -66,6 +66,7 @@ export type PlaylistIdentityScoringContext = {
   enabled: boolean;
   mode: PlaylistIdentityMode;
   strength: number;
+  confidence: number;
   profile: PlaylistIdentityProfile;
   artistScores: Record<string, number>;
   genreScores: Record<string, number>;
@@ -75,6 +76,7 @@ export type PlaylistIdentityScoringContext = {
     permanentRejection: boolean;
     acceptanceScore: number;
     rejectionCount: number;
+    inferenceConfidence?: number;
   }>;
 };
 

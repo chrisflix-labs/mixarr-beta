@@ -54,6 +54,9 @@ model User {
   transitionFeedback         TransitionFeedback[]
   feedbackEvents             FeedbackEvent[]
   playlistIdentities         PlaylistIdentity[]
+  adaptiveScoringProfile     AdaptiveScoringProfile?
+  adaptivePlaylistSettings   AdaptivePlaylistScoringSetting[]
+  adaptivePreferenceStats    AdaptivePreferenceStatistic[]
 }
 
 model SyncSettings {
@@ -598,50 +601,53 @@ model PlaylistHistory {
 }
 
 model GeneratedPlaylist {
-  id                    String                          @id @default(uuid())
-  userId                String
-  serverId              String?
-  plexPlaylistRatingKey String?
-  plexPlaylistTitle     String
-  sourceType            String                          @default("unknown")
-  engineVersion         String                          @default("v1")
-  recipeId              String?
-  recipeName            String?
-  smartPresetId         String?
-  smartPresetName       String?
-  moodPresetId          String?
-  moodPresetName        String?
-  bpmPresetId           String?
-  bpmPresetName         String?
-  tuningPresetName      String?
-  tuningConfigJson      Json?
-  discoveryConfigJson   Json?
-  discoveryResultJson   Json?
-  filtersJson           Json
-  safetyRulesJson       Json?
-  qualityScoreJson      Json?
-  scoringModel          String                          @default("stable-v2")
-  scoringModelVersion   String                          @default("2")
-  betaMetadataJson      Json?
-  trackCount            Int                             @default(0)
-  lastGeneratedAt       DateTime                        @default(now())
-  lastRegeneratedAt     DateTime?
-  createdAt             DateTime                        @default(now())
-  updatedAt             DateTime                        @updatedAt
-  revisionCounter       Int                             @default(0)
-  user                  User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tracks                GeneratedPlaylistTrack[]
-  historyEntries        PlaylistHistoryEntry[]
-  regenerations         PlaylistRegeneration[]
-  revisions             PlaylistRevision[]
-  automationSettings    PlaylistAutomationSettings?
-  recentlyAddedMatches  RecentlyAddedPlaylistMatch[]
-  recentlyAddedChanges  RecentlyAddedAutomationChange[]
-  preferenceProfile     PlaylistPreferenceProfile?
-  interactionEvents     TrackInteractionEvent[]
-  playlistFitFeedback   PlaylistFitFeedback[]
-  transitionFeedback    TransitionFeedback[]
-  identity              PlaylistIdentity?
+  id                     String                          @id @default(uuid())
+  userId                 String
+  serverId               String?
+  plexPlaylistRatingKey  String?
+  plexPlaylistTitle      String
+  sourceType             String                          @default("unknown")
+  engineVersion          String                          @default("v1")
+  recipeId               String?
+  recipeName             String?
+  smartPresetId          String?
+  smartPresetName        String?
+  moodPresetId           String?
+  moodPresetName         String?
+  bpmPresetId            String?
+  bpmPresetName          String?
+  tuningPresetName       String?
+  tuningConfigJson       Json?
+  discoveryConfigJson    Json?
+  discoveryResultJson    Json?
+  filtersJson            Json
+  safetyRulesJson        Json?
+  qualityScoreJson       Json?
+  scoringModel           String                          @default("stable-v2")
+  scoringModelVersion    String                          @default("2")
+  betaMetadataJson       Json?
+  adaptiveScoringVersion String?
+  adaptiveSettingsJson   Json?
+  trackCount             Int                             @default(0)
+  lastGeneratedAt        DateTime                        @default(now())
+  lastRegeneratedAt      DateTime?
+  createdAt              DateTime                        @default(now())
+  updatedAt              DateTime                        @updatedAt
+  revisionCounter        Int                             @default(0)
+  user                   User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracks                 GeneratedPlaylistTrack[]
+  historyEntries         PlaylistHistoryEntry[]
+  regenerations          PlaylistRegeneration[]
+  revisions              PlaylistRevision[]
+  automationSettings     PlaylistAutomationSettings?
+  recentlyAddedMatches   RecentlyAddedPlaylistMatch[]
+  recentlyAddedChanges   RecentlyAddedAutomationChange[]
+  preferenceProfile      PlaylistPreferenceProfile?
+  interactionEvents      TrackInteractionEvent[]
+  playlistFitFeedback    PlaylistFitFeedback[]
+  transitionFeedback     TransitionFeedback[]
+  identity               PlaylistIdentity?
+  adaptiveScoringSetting AdaptivePlaylistScoringSetting?
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -674,6 +680,7 @@ model GeneratedPlaylistTrack {
   locked               Boolean           @default(false)
   liked                Boolean           @default(false)
   regenerationExcluded Boolean           @default(false)
+  adaptiveScoreJson    Json?
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
   generatedPlaylist    GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
@@ -1285,6 +1292,75 @@ model PersonalScoringAdjustment {
   @@unique([userId, featureType, featureKey])
   @@index([userId, calculatedAt])
   @@index([expiresAt])
+}
+
+model AdaptiveScoringProfile {
+  id                        String    @id @default(uuid())
+  userId                    String    @unique
+  enabled                   Boolean   @default(true)
+  preset                    String    @default("balanced")
+  maximumInfluence          Float     @default(0.5)
+  showExplanationsByDefault Boolean   @default(false)
+  includeInferredBehavior   Boolean   @default(true)
+  includePlaylistHistory    Boolean   @default(true)
+  includePlaylistIdentity   Boolean   @default(true)
+  includeArtistPreferences  Boolean   @default(true)
+  includeMoodPreferences    Boolean   @default(true)
+  includeDiscoveryTolerance Boolean   @default(true)
+  includeRepeatTolerance    Boolean   @default(true)
+  minimumConfidence         String    @default("low")
+  preferExplicitFeedback    Boolean   @default(true)
+  reduceOldFeedback         Boolean   @default(true)
+  positiveAdjustmentLimit   Float     @default(10)
+  negativeAdjustmentLimit   Float     @default(10)
+  componentWeightsJson      Json
+  scoringVersion            String    @default("1")
+  needsRecalculation        Boolean   @default(false)
+  observationCount          Int       @default(0)
+  statisticCount            Int       @default(0)
+  lastRecalculatedAt        DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  user                      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([enabled, needsRecalculation])
+  @@index([lastRecalculatedAt])
+}
+
+model AdaptivePlaylistScoringSetting {
+  id                       String            @id @default(uuid())
+  userId                   String
+  playlistId               String            @unique
+  enabledOverride          Boolean?
+  maximumInfluenceOverride Float?
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+  user                     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlist                 GeneratedPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+}
+
+model AdaptivePreferenceStatistic {
+  id                String    @id @default(uuid())
+  userId            String
+  playlistId        String?
+  scopeKey          String
+  dimension         String
+  featureKey        String
+  positiveWeight    Float     @default(0)
+  negativeWeight    Float     @default(0)
+  observationCount  Int       @default(0)
+  explicitCount     Int       @default(0)
+  confidence        Float     @default(0)
+  lastObservedAt    DateTime?
+  sourceSummaryJson Json?
+  calculatedAt      DateTime  @default(now())
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scopeKey, dimension, featureKey])
+  @@index([userId, playlistId, dimension])
+  @@index([userId, confidence])
 }
 
 model UserTrackPreference {

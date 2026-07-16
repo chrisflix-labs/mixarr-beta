@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "../prisma";
 import { artistFeedbackAdjustment, playlistFitAdjustment, trackFeedbackAdjustment, transitionPairKey } from "./feedbackRules";
 import type { ArtistFeedbackState, ExplicitFeedbackScoringContext, PlaylistFitState, TrackFeedbackState } from "./types";
+import { markAdaptiveScoringDirty } from "../adaptiveScoring";
 
 export const FEEDBACK_REASONS = ["WRONG_MOOD", "TOO_REPETITIVE", "BAD_BPM_TRANSITION", "ARTIST_OVERREPRESENTED", "DISLIKED_TRACK", "POOR_PLAYLIST_FIT", "OTHER"] as const;
 export const FEEDBACK_SOURCES = ["PLAYLIST_PREVIEW", "GENERATED_PLAYLIST_DETAILS", "TRACK_TABLE", "LIBRARY_SEARCH", "REGENERATION_PREVIEW", "BULK_ACTION", "RECENTLY_ADDED_DISCOVERY", "API"] as const;
@@ -66,6 +67,7 @@ export async function setTrackFeedback(userId: string, raw: unknown) {
     const event = await tx.feedbackEvent.create({ data: eventData(userId, { feedbackType: "TRACK_PREFERENCE", targetType: "TRACK", targetIds: { trackId: input.trackId }, previousState: existing?.state, newState: input.state, ...input, ...scope, engineVersion: input.engineVersion || scope.engineVersion }) });
     return tx.userTrackPreference.upsert({ where: { userId_trackId: { userId, trackId: input.trackId } }, create: { userId, trackId: input.trackId, state: input.state, scoreAdjustment: trackFeedbackAdjustment(input.state), lastFeedbackEventId: event.id }, update: { state: input.state, scoreAdjustment: trackFeedbackAdjustment(input.state), lastFeedbackEventId: event.id } });
   });
+  await markAdaptiveScoringDirty(userId);
   return { preference, unchanged: false };
 }
 
@@ -77,6 +79,7 @@ export async function clearTrackFeedback(userId: string, trackId: string, source
     await tx.feedbackEvent.create({ data: eventData(userId, { feedbackType: "TRACK_PREFERENCE_CLEARED", targetType: "TRACK", targetIds: { trackId }, previousState: existing.state, newState: "NEUTRAL", sourceSurface }) });
     await tx.userTrackPreference.delete({ where: { userId_trackId: { userId, trackId } } });
   });
+  await markAdaptiveScoringDirty(userId);
   return { state: "NEUTRAL", unchanged: false };
 }
 
@@ -90,6 +93,7 @@ export async function setArtistFeedback(userId: string, raw: unknown) {
     const event = await tx.feedbackEvent.create({ data: eventData(userId, { feedbackType: "ARTIST_PREFERENCE", targetType: "ARTIST", targetIds: { artistId: input.artistId }, previousState: existing?.state, newState: input.state, ...input, ...scope }) });
     return tx.userArtistPreference.upsert({ where: { userId_artistId: { userId, artistId: input.artistId } }, create: { userId, artistId: input.artistId, state: input.state, scoreAdjustment: artistFeedbackAdjustment(input.state), lastFeedbackEventId: event.id }, update: { state: input.state, scoreAdjustment: artistFeedbackAdjustment(input.state), lastFeedbackEventId: event.id } });
   });
+  await markAdaptiveScoringDirty(userId);
   return { preference, unchanged: false };
 }
 
@@ -101,6 +105,7 @@ export async function clearArtistFeedback(userId: string, artistId: string, sour
     await tx.feedbackEvent.create({ data: eventData(userId, { feedbackType: "ARTIST_PREFERENCE_CLEARED", targetType: "ARTIST", targetIds: { artistId }, previousState: existing.state, newState: "NEUTRAL", sourceSurface }) });
     await tx.userArtistPreference.delete({ where: { userId_artistId: { userId, artistId } } });
   });
+  await markAdaptiveScoringDirty(userId);
   return { state: "NEUTRAL", unchanged: false };
 }
 
@@ -125,6 +130,7 @@ export async function setPlaylistFitFeedback(userId: string, raw: unknown) {
       await identity.recordPlaylistIdentityEvent({ userId, playlistId: scope.playlistId, trackId: input.trackId, eventType: "GOOD_PLAYLIST_FIT", eventSource: input.sourceSurface, eventKey: `feedback:${feedback.lastFeedbackEventId}`, feedbackReason: input.reason });
     }
   }
+  await markAdaptiveScoringDirty(userId);
   return { feedback, unchanged: false };
 }
 
@@ -135,6 +141,7 @@ export async function clearPlaylistFitFeedback(userId: string, feedbackId: strin
     await tx.feedbackEvent.create({ data: eventData(userId, { feedbackType: "PLAYLIST_FIT_CLEARED", targetType: "TRACK_PLAYLIST_SCOPE", targetIds: { trackId: existing.trackId, playlistId: existing.playlistId, playlistProfileId: existing.playlistProfileId }, previousState: existing.state, newState: "NEUTRAL", sourceSurface, playlistId: existing.playlistId, playlistProfileId: existing.playlistProfileId }) });
     await tx.playlistFitFeedback.delete({ where: { id: existing.id } });
   });
+  await markAdaptiveScoringDirty(userId);
   return { cleared: true };
 }
 
@@ -153,6 +160,7 @@ export async function recordPoorTransition(userId: string, raw: unknown) {
     const feedback = await tx.transitionFeedback.create({ data: { userId, playlistId: scope.playlistId, playlistProfileId: scope.playlistProfileId, previousTrackId: input.previousTrackId, currentTrackId: input.currentTrackId, nextTrackId: input.nextTrackId || null, reason: input.reason || null, note: input.note || null, transitionPosition: input.transitionPosition || null, generationId: input.generationId || null, engineVersion: input.engineVersion || scope.engineVersion || null, contextJson: input.context ? input.context as Prisma.InputJsonValue : undefined, feedbackEventId: event.id } });
     return { feedback, event };
   });
+  await markAdaptiveScoringDirty(userId);
   return { ...result, unchanged: false };
 }
 
@@ -163,6 +171,7 @@ export async function clearTransitionFeedback(userId: string, feedbackId: string
     await tx.feedbackEvent.create({ data: eventData(userId, { feedbackType: "POOR_TRANSITION_CLEARED", targetType: "TRACK_PAIR", targetIds: { previousTrackId: existing.previousTrackId, currentTrackId: existing.currentTrackId }, previousState: existing.state, newState: "NEUTRAL", sourceSurface, playlistId: existing.playlistId, playlistProfileId: existing.playlistProfileId }) });
     await tx.transitionFeedback.delete({ where: { id: existing.id } });
   });
+  await markAdaptiveScoringDirty(userId);
   return { cleared: true };
 }
 
@@ -220,6 +229,7 @@ export async function applyBulkFeedback(userId: string, raw: unknown) {
     }
   }
   console.info("[PersonalizationFeedback:Bulk]", { userId, action: input.action, requested: ids.length, affectedTracks, affectedArtists, failures: failures.length });
+  await markAdaptiveScoringDirty(userId);
   return { requested: ids.length, affectedTracks, affectedArtists, failures, partialFailure: failures.length > 0 };
 }
 

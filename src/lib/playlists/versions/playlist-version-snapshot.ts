@@ -60,10 +60,19 @@ export async function capturePlaylistSnapshot(db: DbClient, generatedPlaylistId:
       bpmSnapshot: effective?.bpm.value ?? null,
       moodSnapshot: effective?.mood.value ?? [],
       energySnapshot: effective?.energy.value ?? null,
+      adaptiveScoreSnapshot: track.adaptiveScoreJson && typeof track.adaptiveScoreJson === "object"
+        ? track.adaptiveScoreJson as Record<string, unknown>
+        : null,
     };
   });
   const durationMs = tracks.reduce((sum, track) => sum + (track.durationMsSnapshot || 0), 0);
-  const settings = redactVersionSettings(playlist.filtersJson) as Record<string, unknown>;
+  const settings = redactVersionSettings({
+    ...(playlist.filtersJson && typeof playlist.filtersJson === "object" ? playlist.filtersJson as Record<string, unknown> : {}),
+    adaptiveScoring: {
+      version: playlist.adaptiveScoringVersion,
+      settings: playlist.adaptiveSettingsJson,
+    },
+  }) as Record<string, unknown>;
   const snapshot: PlaylistVersionSnapshot = {
     playlist: {
       name: playlist.plexPlaylistTitle,
@@ -85,6 +94,7 @@ const trackSchema = z.object({
   locked: z.boolean(), liked: z.boolean(), regenerationExcluded: z.boolean(), titleSnapshot: z.string(),
   artistSnapshot: z.string().nullable(), albumSnapshot: z.string().nullable(), durationMsSnapshot: z.number().nullable(),
   bpmSnapshot: z.number().nullable(), moodSnapshot: z.array(z.string()), energySnapshot: z.number().nullable(),
+  adaptiveScoreSnapshot: z.record(z.unknown()).nullable().optional(),
 });
 const storedSchema = z.object({
   schemaVersion: z.literal(PLAYLIST_SNAPSHOT_SCHEMA_VERSION),
