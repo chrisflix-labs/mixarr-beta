@@ -76,6 +76,8 @@ model User {
   managedPlaylists               ManagedPlaylist[]
   orchestrationJobs              PlaylistOrchestrationJob[]
   orchestrationAuditEvents       PlaylistOrchestrationAuditEvent[]
+  playlistGroups                 PlaylistGroup[]
+  playlistGroupActivities        PlaylistGroupActivity[]
 }
 
 model SyncSettings {
@@ -695,10 +697,90 @@ model GeneratedPlaylist {
   automationProposals    AutomationProposal[]
   automationActivities   AutomationActivity[]
   managedPlaylist        ManagedPlaylist?
+  groupMemberships       PlaylistGroupMembership[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
   @@index([userId, sourceType])
+}
+
+model PlaylistGroup {
+  id                     String                    @id @default(uuid())
+  userId                 String
+  name                   String
+  description            String                    @default("")
+  artworkUrl             String?
+  artworkSource          String?
+  sortOrder              Int                       @default(0)
+  isPaused               Boolean                   @default(false)
+  settingsSchemaVersion  Int                       @default(1)
+  settingsJson           Json                      @default("{}")
+  scheduleJson           Json?
+  lastRegeneratedAt      DateTime?
+  lastHealthCalculatedAt DateTime?
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  user                   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberships            PlaylistGroupMembership[]
+  exclusionRules         PlaylistGroupExclusionRule[]
+  activities             PlaylistGroupActivity[]
+
+  @@index([userId, sortOrder])
+  @@index([userId, isPaused])
+  @@index([userId, updatedAt])
+  @@index([userId, lastRegeneratedAt])
+}
+
+model PlaylistGroupMembership {
+  id                     String            @id @default(uuid())
+  playlistGroupId        String
+  playlistId             String
+  sortOrder              Int               @default(0)
+  inheritsSettings       Boolean           @default(false)
+  isPrimarySettingsGroup Boolean           @default(false)
+  inheritanceJson        Json?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  playlistGroup          PlaylistGroup     @relation(fields: [playlistGroupId], references: [id], onDelete: Cascade)
+  playlist               GeneratedPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistGroupId, playlistId])
+  @@index([playlistGroupId, sortOrder])
+  @@index([playlistId, isPrimarySettingsGroup])
+  @@index([playlistId, createdAt])
+}
+
+model PlaylistGroupExclusionRule {
+  id                String        @id @default(uuid())
+  playlistGroupId   String
+  ruleType          String
+  ruleValue         String
+  isEnabled         Boolean       @default(true)
+  reason            String?
+  source            String        @default("user")
+  allowOverride     Boolean       @default(false)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  playlistGroup     PlaylistGroup @relation(fields: [playlistGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistGroupId, ruleType, ruleValue])
+  @@index([playlistGroupId, isEnabled])
+  @@index([ruleType, ruleValue])
+}
+
+model PlaylistGroupActivity {
+  id              String        @id @default(uuid())
+  userId          String
+  playlistGroupId String
+  action          String
+  summary         String
+  metadataJson    Json?
+  createdAt       DateTime      @default(now())
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlistGroup   PlaylistGroup @relation(fields: [playlistGroupId], references: [id], onDelete: Cascade)
+
+  @@index([playlistGroupId, createdAt])
+  @@index([userId, createdAt])
 }
 
 model PlaylistRelationship {

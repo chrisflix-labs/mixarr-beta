@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.2.0 adds an additive playlist-orchestration migration with conservative disabled defaults. Existing settings, tracks, playlists, feedback, identities, playback profiles, explanations, automation, versions, and legacy scheduled jobs are preserved. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.2.1 adds an additive playlist-groups migration; existing playlists remain ungrouped and all existing settings, feedback, identities, playback profiles, explanations, automation, versions, and schedules are preserved. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -36,6 +36,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 | Playback awareness | Optionally imports per-user Plex listening history and applies confidence-limited recent-play, completion, replay, skip, forgotten-favorite, and discovery adjustments. |
 | Contextual Mixes | Turns time, day, season, and activity contexts into visible, editable Smart Mix v2 energy, discovery, mood, BPM, and variety settings. |
 | Playlist Coordination | Relates Smart Mix playlists, measures canonical overlap, limits accidental reuse, supports shared cores and progression chains, and balances tracks and artists across a group. |
+| Playlist Collections | Organizes playlists into reusable groups with multiple memberships, shared defaults and exclusions, primary-group inheritance, explainable health, ordering, pause/resume, cloning, and bounded group regeneration. |
 | Smart Mix explanations | Shows why v2 tracks were selected or rejected, separates score from confidence, compares candidates, explains transitions and fallbacks, and summarizes generation-wide decisions. |
 | Advanced playlist regeneration | Analyzes Smart Mix v2 playlists, locks keeper tracks, previews targeted replacements, preserves curves, and supports server-side undo. |
 | Playlist version history | Saves generated playlist states, compares tracks/settings/scores, pins restore points, and safely restores earlier versions without deleting later history. |
@@ -50,7 +51,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.2.0 adds the opt-in managed playlist registry, dependencies, shared persistent queue, database-backed conflict/concurrency leases, dry runs, recovery, auditing, APIs, settings, and orchestration workspace. Existing playlist behavior remains compatible and orchestration starts disabled. See [Playlist Orchestration Foundation](docs/PLAYLIST_ORCHESTRATION_V220.md).
+Mixarr v2.2.1 adds Playlist Groups & Collections on top of the v2.2.0 orchestration foundation. Existing playlist behavior remains compatible: membership alone does not enable inherited settings or trigger regeneration. See [Playlist Groups & Collections](docs/PLAYLIST_GROUPS_V221.md) and [Playlist Orchestration Foundation](docs/PLAYLIST_ORCHESTRATION_V220.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 
@@ -178,6 +179,7 @@ Mixarr keeps Prisma traffic conservative by default:
 
 ```env
 MIXARR_DB_JOB_CONCURRENCY=4
+MIXARR_GROUP_REGENERATION_CONCURRENCY=2
 MIXARR_STATUS_CACHE_SECONDS=5
 MIXARR_STATUS_POLL_SECONDS=10
 MIXARR_STATUS_IDLE_POLL_SECONDS=30
@@ -218,7 +220,7 @@ Please avoid posting secrets such as Plex tokens, API keys, database passwords, 
 
 The v2.0.x Smart Mix Engine v2 cycle is complete. It delivered visible scoring, tuning, mood blending, BPM flow, discovery controls, advanced regeneration, playlist versions, manual metadata corrections, Recently Added automation, and advanced beta flags.
 
-The v2.1.x Adaptive Personalization cycle is complete and v2.2.0 begins Playlist Orchestration with deterministic, database-backed safety. Optional AI-assisted ideas remain separate long-term exploration for later v2.x or the path toward v3.0; core Mixarr generation, scoring, playback awareness, personalization, and orchestration remain independent of any AI provider. See the in-app Product Roadmap for completed, current, proposed, and exploratory work.
+The v2.1.x Adaptive Personalization cycle is complete; v2.2.0 established deterministic Playlist Orchestration and v2.2.1 adds Playlist Groups & Collections. Optional AI-assisted ideas remain separate long-term exploration for later v2.x or the path toward v3.0; core Mixarr generation, scoring, playback awareness, personalization, and orchestration remain independent of any AI provider. See the in-app Product Roadmap for completed, current, proposed, and exploratory work.
 
 ## Previews
 

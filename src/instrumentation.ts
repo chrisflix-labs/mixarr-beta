@@ -48,6 +48,13 @@ export async function register() {
     } catch (error) {
       console.error("[OrchestrationWorker] Startup initialization failed", sanitizeErrorText(error));
     }
+
+    try {
+      const { initializePlaylistGroupScheduler } = await import("./lib/playlistGroups/scheduler");
+      await initializePlaylistGroupScheduler();
+    } catch (error) {
+      console.error("[PlaylistGroupScheduler] Startup initialization failed", sanitizeErrorText(error));
+    }
   }
 
   try {

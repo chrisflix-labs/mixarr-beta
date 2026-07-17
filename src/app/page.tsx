@@ -85,7 +85,7 @@ function ActivityAutomationCard({ jobs, automation, nextRun }: { jobs: JobSummar
   </article>;
 }
 
-function PlaylistManagementCard({ historyCount, generatedCount, versionCount, recipeCount, lastEvent }: { historyCount: number; generatedCount: number; versionCount: number; recipeCount: number; lastEvent: { playlistName: string; eventType: string; createdAt: Date } | null }) {
+function PlaylistManagementCard({ historyCount, generatedCount, versionCount, recipeCount, groupSummary, lastEvent }: { historyCount: number; generatedCount: number; versionCount: number; recipeCount: number; groupSummary: { groups: number; groupedPlaylists: number; attention: number; paused: number }; lastEvent: { playlistName: string; eventType: string; createdAt: Date } | null }) {
   return <article className={styles.managementCard}>
     <div className={styles.cardTitle}><History size={20} /><div><h3>Playlist Management</h3><p>History and saved assets, without repeating creation actions.</p></div></div>
     <div className={styles.managementMetrics}>
@@ -94,6 +94,7 @@ function PlaylistManagementCard({ historyCount, generatedCount, versionCount, re
       <Link href="/generated-playlists"><b>{versionCount.toLocaleString()}</b><span>Playlist versions</span></Link>
       <Link href="/recipes"><b>{recipeCount.toLocaleString()}</b><span>Saved recipes</span></Link>
     </div>
+    <div className={styles.managementFooter}><span><b>Playlist Collections:</b> {groupSummary.groups} collections · {groupSummary.groupedPlaylists} grouped playlists · {groupSummary.attention} need attention · {groupSummary.paused} paused</span><Link href="/playlist-groups" className={styles.secondaryAction}>Manage Collections</Link></div>
     <div className={styles.managementFooter}><span>{lastEvent ? `Latest: ${lastEvent.playlistName} · ${lastEvent.createdAt.toLocaleString()}` : "No playlists generated yet."}</span><Link href="/playlist-history" className={styles.secondaryAction}>View Playlist History</Link></div>
   </article>;
 }
@@ -152,6 +153,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
   let lastHistoryEvent: { playlistName: string; eventType: string; createdAt: Date } | null = null;
   let showExperimental = false;
   let orchestration = { managed: 0, running: 0, queued: 0, blocked: 0, enabled: false };
+  let groupSummary = { groups: 0, groupedPlaylists: 0, attention: 0, paused: 0 };
 
   if (user && !developmentPreview) {
     const results = await Promise.all([
@@ -174,12 +176,19 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
         prisma.playlistOrchestrationJob.count({ where: { userId: user.id, status: { in: ["WAITING", "BLOCKED"] } } }),
         getOrchestrationSettings(),
       ]).then(([managed, running, queued, blocked, settings]) => ({ managed, running, queued, blocked, enabled: settings.enabled })).catch(() => ({ managed: 0, running: 0, queued: 0, blocked: 0, enabled: false })),
+      Promise.all([
+        prisma.playlistGroup.count({ where: { userId: user.id } }),
+        prisma.playlistGroupMembership.findMany({ where: { playlistGroup: { userId: user.id } }, distinct: ["playlistId"], select: { playlistId: true } }).then((rows) => rows.length),
+        prisma.playlistGroup.count({ where: { userId: user.id, isPaused: true } }),
+        prisma.playlistGroup.count({ where: { userId: user.id, memberships: { some: { playlist: { OR: [{ trackCount: 0 }, { engineVersion: { not: "v2" } }] } } } } }),
+      ]).then(([groups, groupedPlaylists, paused, attention]) => ({ groups, groupedPlaylists, paused, attention })).catch(() => ({ groups: 0, groupedPlaylists: 0, attention: 0, paused: 0 })),
     ]);
     [dashboardSummary, jobs, automation, recentlyAdded, recipeCount, generatedCount, versionCount] = results;
     historyCount = results[7].count;
     lastHistoryEvent = results[7].lastEvent;
     showExperimental = results[8];
     orchestration = results[9];
+    groupSummary = results[10];
   }
 
   const quickWidgets = dashboardWidgetsForSection("quick-actions");
@@ -217,7 +226,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
 
       <section className={styles.dashboardSection} aria-labelledby="playlist-management-heading">
         <SectionHeading id="playlist-management-heading" title="Playlist Management" description="A compact view of generated playlists, versions, history, and recipes." />
-        {dashboardWidgetsForSection("playlist-management").map((widget) => <PlaylistManagementCard key={widget.id} historyCount={historyCount} generatedCount={generatedCount} versionCount={versionCount} recipeCount={recipeCount} lastEvent={lastHistoryEvent} />)}
+        {dashboardWidgetsForSection("playlist-management").map((widget) => <PlaylistManagementCard key={widget.id} historyCount={historyCount} generatedCount={generatedCount} versionCount={versionCount} recipeCount={recipeCount} groupSummary={groupSummary} lastEvent={lastHistoryEvent} />)}
         <OrchestrationSummaryCard summary={orchestration} />
       </section>
 

@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { updatePlaylistGroup } from "@/lib/playlistGroups/service"; import { playlistGroupApiError, playlistGroupSession, playlistGroupUnauthorized } from "@/lib/playlistGroups/api";
+export async function POST(_: Request, { params }: { params: { id: string } }) { const userId = playlistGroupSession(); if (!userId) return playlistGroupUnauthorized(); try { return NextResponse.json({ group: await updatePlaylistGroup(userId, params.id, { isPaused: false }) }); } catch (error) { return playlistGroupApiError(error); } }

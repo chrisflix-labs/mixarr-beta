@@ -13,7 +13,8 @@ import {
 describe("release notes", () => {
   it("sorts release notes from oldest to newest", () => {
     const ordered = getReleaseNotesOldestFirst();
-    ordered.pop(); // v2.2.0 through v2.0.5 are asserted separately below.
+    ordered.pop(); // v2.2.1 through v2.0.5 are asserted separately below.
+    ordered.pop();
     ordered.pop();
     ordered.pop();
     ordered.pop();
@@ -39,7 +40,8 @@ describe("release notes", () => {
 
   it("sorts release notes from newest to oldest", () => {
     const ordered = getReleaseNotesNewestFirst();
-    ordered.shift(); // v2.2.0 through v2.0.5 are asserted separately below.
+    ordered.shift(); // v2.2.1 through v2.0.5 are asserted separately below.
+    ordered.shift();
     ordered.shift();
     ordered.shift();
     ordered.shift();
@@ -359,11 +361,11 @@ describe("release notes", () => {
     assert.deepEqual(ordered.map((note) => note.version), ["v2.0.0", "v1.3.10", "v1.3.9.2", "v1.3.9.1", "v1.3.9", "v1.3.8"]);
   });
 
-  it("adds the v2.2.0 release note at the top", () => {
+  it("adds the v2.2.1 release note at the top", () => {
     const [latest] = getReleaseNotesNewestFirst();
 
-    assert.equal(latest.version, "2.2.0");
-    assert.equal(latest.title, "Playlist Orchestration Foundation");
+    assert.equal(latest.version, "2.2.1");
+    assert.equal(latest.title, "Playlist Groups & Collections");
     assert.ok(latest.badges.includes("Automation"));
   });
 

@@ -24,6 +24,7 @@ export type ReleaseNoteBadge =
   | "Essentia"
   | "Hotfix"
   | "History"
+  | "Health"
   | "Identity"
   | "Import"
   | "Export"
@@ -73,6 +74,21 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "2.2.1",
+    title: "Playlist Groups & Collections",
+    releaseDate: "July 17, 2026",
+    badges: ["Playlists", "Regeneration", "Automation", "Database", "Settings", "Health", "Mobile", "Accessibility", "Navigation", "Dashboard", "Performance", "Reliability"],
+    changes: [
+      "Added user-owned playlist collections with artwork, descriptions, pause and resume, cloning, deletion that preserves playlists, multiple memberships, independent ordering, and playlist-side collection management.",
+      "Added versioned group defaults, explicit inheritance, playlist override precedence, one primary settings group, per-setting source metadata, conflict warnings, and reset-ready inheritance states without changing existing playlist settings.",
+      "Integrated inherited discovery, deep-cut, artist and album safety, recent-play, live-track, recommendation, and personalization controls into the actual regeneration preview pipeline.",
+      "Added indexed shared exclusion rules, collection regeneration previews, bounded parent and child jobs, isolated failures, cancellation, progress aggregation, existing version snapshots, and concise group activity history.",
+      "Added explainable collection health with generation, metadata, automation, configuration, and Plex synchronization components plus affected-playlist drilldowns.",
+      "Added responsive grid and compact browser views, search, sorting, filtering, desktop drag ordering, touch-friendly move controls, keyboard controls, accessible progress, confirmations, empty states, navigation, playlist access, and one concise dashboard summary.",
+      "Added the additive 20260717180000 migration, ownership validation, duplicate membership and primary-group constraints, API documentation, unit coverage, upgrade notes, and backward-compatible defaults.",
+    ],
+  },
   {
     version: "2.2.0",
     title: "Playlist Orchestration Foundation",

@@ -1694,6 +1694,32 @@ function normalizeGeneratedPlaylistConfig(filters: unknown, engineVersion?: stri
   });
 }
 
+function applyPlaylistGroupSettings(config: PlaylistConfigInput, value: unknown): PlaylistConfigInput {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return config;
+  const settings = value as Record<string, any>;
+  const tuning = { ...config.tuningConfig } as Record<string, any>;
+  const discovery = { ...(tuning.discovery || {}) } as Record<string, any>;
+  const safetyRules = { ...config.safetyRules };
+  const negativeFilters = { ...config.negativeFilters };
+  if (["low", "balanced", "high"].includes(settings.discoveryLevel)) discovery.level = settings.discoveryLevel === "balanced" ? "medium" : settings.discoveryLevel;
+  if (typeof settings.deepCutPercentage === "number") discovery.deepCutTarget = settings.deepCutPercentage;
+  if (typeof settings.recommendationStrength === "number") tuning.recommendationStrength = settings.recommendationStrength;
+  if (typeof settings.preferArtistVariety === "boolean") tuning.artistVariety = settings.preferArtistVariety ? Math.max(Number(tuning.artistVariety || 0), 70) : tuning.artistVariety;
+  if (typeof settings.recentlyUsedPlaylistExclusionDays === "number") tuning.avoidRecentlyUsedTracks = settings.recentlyUsedPlaylistExclusionDays > 0;
+  if (typeof settings.maximumTracksPerArtist === "number" && settings.maximumTracksPerArtist > 0) {
+    safetyRules.limitTracksPerArtist = true;
+    safetyRules.maxTracksPerArtist = settings.maximumTracksPerArtist;
+  }
+  if (typeof settings.albumLimit === "number" && settings.albumLimit > 0) {
+    safetyRules.limitTracksPerAlbum = true;
+    safetyRules.maxTracksPerAlbum = settings.albumLimit;
+  }
+  if (typeof settings.recentlyPlayedExclusionDays === "number" && settings.recentlyPlayedExclusionDays > 0) negativeFilters.excludePlayedWithinDays = settings.recentlyPlayedExclusionDays;
+  if (settings.liveTrackHandling === "exclude") negativeFilters.excludeLive = true;
+  tuning.discovery = discovery;
+  return playlistConfigSchema.parse({ ...config, tuningConfig: tuning, safetyRules, negativeFilters });
+}
+
 export async function syncGeneratedPlaylistToPlex(userId: string, generatedPlaylistId: string) {
   const playlist = await prisma.generatedPlaylist.findFirst({
     where: { id: generatedPlaylistId, userId },
@@ -2240,12 +2266,16 @@ export async function previewGeneratedPlaylistRegeneration({
   mode = "replace_all",
   keepPercent = 25,
   preferDifferentTracks = false,
+  effectiveGroupSettings,
+  groupContext,
 }: {
   userId: string;
   generatedPlaylistId: string;
   mode?: string;
   keepPercent?: number;
   preferDifferentTracks?: boolean;
+  effectiveGroupSettings?: Record<string, unknown>;
+  groupContext?: { id: string; name: string } | null;
 }) {
   const regenerationMode = validateRegenerationMode(mode);
   const normalizedKeepPercent = regenerationMode === "keep_some" ? validateKeepPercent(keepPercent) : 25;
@@ -2258,7 +2288,7 @@ export async function previewGeneratedPlaylistRegeneration({
     throw new Error("Generated playlist not found");
   }
 
-  const savedConfig = normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson, generatedPlaylist.engineVersion);
+  const savedConfig = applyPlaylistGroupSettings(normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson, generatedPlaylist.engineVersion), effectiveGroupSettings);
   const snapshotTrackIds = generatedPlaylist.tracks.map((track) => track.trackId).filter((trackId): trackId is string => Boolean(trackId));
   const previousIds = new Set(snapshotTrackIds);
   const server = await resolveGeneratedPlaylistServer({ userId, generatedPlaylist, config: savedConfig });
@@ -2277,6 +2307,7 @@ export async function previewGeneratedPlaylistRegeneration({
     ...(preferDifferentTracks && snapshotTrackIds.length === 0 ? ["Previous track snapshot is not available yet. Mixarr will save one after this regeneration."] : []),
     ...(generatedPlaylist.recipeId && !recipe ? ["Original recipe no longer exists. Using saved playlist settings from the last generation."] : []),
     ...(generatedPlaylist.recipeId && recipe ? ["This regeneration uses the settings saved when the playlist was created."] : []),
+    ...(groupContext ? [`Group settings inherited from ${groupContext.name}.`] : []),
   ].filter((warning, index, list) => list.indexOf(warning) === index);
 
   if (regenerationMode === "replace_all") {

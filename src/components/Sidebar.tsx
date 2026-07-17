@@ -2,7 +2,7 @@
 
 import styles from "./Sidebar.module.css";
 import { useEffect, useMemo, useState } from "react";
-import { AudioWaveform, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, HeartPulse, History, LayoutDashboard, LifeBuoy, ListMusic, ListRestart, Map, MoreHorizontal, Network, ScrollText, Settings, ShieldCheck, Sparkles, Tags, Wand2, X } from "lucide-react";
+import { AudioWaveform, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, Grid2X2, HeartPulse, History, LayoutDashboard, LifeBuoy, ListMusic, ListRestart, Map, MoreHorizontal, Network, ScrollText, Settings, ShieldCheck, Sparkles, Tags, Wand2, X } from "lucide-react";
 import PlexLoginButton from "./PlexLoginButton";
 import LogoutButton from "./LogoutButton";
 import Link from "next/link";
@@ -14,6 +14,7 @@ const playlistLinks = [
   { href: "/smart-builder", label: "Smart Builder", shortLabel: "Smart", icon: Sparkles, isActive: (pathname: string) => pathname === "/smart-builder" },
   { href: "/recipes", label: "Recipes", shortLabel: "Recipes", icon: BookMarked, isActive: (pathname: string) => pathname.startsWith("/recipes") },
   { href: "/generated-playlists", label: "Generated Playlists", icon: ListRestart, isActive: (pathname: string) => pathname.startsWith("/generated-playlists") },
+  { href: "/playlist-groups", label: "Collections", icon: Grid2X2, isActive: (pathname: string) => pathname.startsWith("/playlist-groups") },
   { href: "/playlist-coordination", label: "Playlist Coordination", icon: Network, isActive: (pathname: string) => pathname.startsWith("/playlist-coordination") },
   { href: "/orchestration", label: "Playlist Orchestration", icon: Network, isActive: (pathname: string) => pathname.startsWith("/orchestration") },
   { href: "/recently-added", label: "Recently Added", icon: Sparkles, isActive: (pathname: string) => pathname.startsWith("/recently-added") },

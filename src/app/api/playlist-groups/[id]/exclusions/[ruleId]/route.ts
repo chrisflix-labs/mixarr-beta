@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { deleteGroupExclusionRule } from "@/lib/playlistGroups/service"; import { playlistGroupApiError, playlistGroupSession, playlistGroupUnauthorized } from "@/lib/playlistGroups/api";
+export async function DELETE(_: Request, { params }: { params: { id: string; ruleId: string } }) { const userId = playlistGroupSession(); if (!userId) return playlistGroupUnauthorized(); try { return NextResponse.json(await deleteGroupExclusionRule(userId, params.id, params.ruleId)); } catch (error) { return playlistGroupApiError(error); } }

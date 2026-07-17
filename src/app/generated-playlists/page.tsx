@@ -12,6 +12,7 @@ import SmartMixGenerationInsights from "@/components/SmartMixGenerationInsights"
 import AdvancedRegenerationWorkspace from "@/components/AdvancedRegenerationWorkspace";
 import PlaylistIdentityPanel from "@/components/PlaylistIdentityPanel";
 import PlaylistCoordinationPanel from "@/components/PlaylistCoordinationPanel";
+import PlaylistCollectionsButton from "@/components/PlaylistCollectionsButton";
 import { orderTracksByBpmFlow, summarizeBpmFlow, type BpmFlowMode } from "@/lib/smartMixEngine/v2/bpmFlow";
 import { normalizeSmartMixTuningConfig } from "@/lib/smartMixEngine/v2/tuning";
 import styles from "./generated-playlists.module.css";
@@ -527,7 +528,7 @@ export default function GeneratedPlaylistsPage() {
             ].filter(Boolean);
 
             return (
-              <article key={playlist.id} className={`${styles.playlistCard} ${isSelected ? styles.selectedCard : ""}`}>
+              <article id={`playlist-${playlist.id}`} key={playlist.id} className={`${styles.playlistCard} ${isSelected ? styles.selectedCard : ""}`}>
                 <div className={styles.cardTop}>
                   <div>
                     <h3>{playlist.plexPlaylistTitle}</h3>
@@ -565,6 +566,7 @@ export default function GeneratedPlaylistsPage() {
                 <PlaylistQualityCard score={qualityScoreForDisplay(playlist.qualityScoreJson)} />
                 <PlaylistIdentityPanel playlistId={playlist.id} playlistName={playlist.plexPlaylistTitle} onClone={fetchPlaylists} />
                 <PlaylistCoordinationPanel playlist={playlist} />
+                <PlaylistCollectionsButton playlistId={playlist.id} />
                 {playlist.discoveryResultJson?.explanations?.length > 0 && (
                   <div className={styles.discoverySummary} aria-label="Discovery explanation labels">
                     {playlist.discoveryResultJson.explanations.map((item: any) => <span key={item.label} title={item.explanation}>{item.label}</span>)}

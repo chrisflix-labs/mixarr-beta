@@ -1,0 +1,3 @@
+import { NextResponse } from "next/server"; import { z } from "zod"; import { importPlaylistGroups } from "@/lib/playlistGroups/importExport"; import { playlistGroupApiError, playlistGroupSession, playlistGroupUnauthorized } from "@/lib/playlistGroups/api";
+const requestSchema = z.object({ data: z.unknown(), dryRun: z.boolean().default(true) });
+export async function POST(request: Request) { const userId = playlistGroupSession(); if (!userId) return playlistGroupUnauthorized(); try { const input = requestSchema.parse(await request.json()); return NextResponse.json({ report: await importPlaylistGroups(userId, input.data, input.dryRun) }, { status: input.dryRun ? 200 : 201 }); } catch (error) { return playlistGroupApiError(error); } }

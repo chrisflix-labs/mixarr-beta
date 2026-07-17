@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.2.1 - Playlist Groups & Collections
+
+- Added user-owned collections with artwork, descriptions, multiple playlist memberships, group-local ordering, pause/resume, cloning, and safe deletion that never deletes playlists.
+- Added versioned group defaults, explicit inheritance, playlist override precedence, a single primary settings group, source metadata, and conflict warnings while preserving every existing playlist setting.
+- Integrated group discovery, deep-cut, artist and album limits, recency, live-track, recommendation, personalization, and exclusion controls into regeneration previews.
+- Added bounded parent/child group regeneration jobs with progress, cancellation, failure isolation, existing playlist version snapshots, and activity history.
+- Added explainable group health, responsive browser/detail management, search, filters, sorting, accessible ordering controls, navigation, per-playlist collection access, and a concise dashboard summary.
+- Added authenticated user-isolated APIs, indexed additive schema, safe migration, tests, documentation, release metadata, and backwards-compatible empty defaults.
+
 ## v2.2.0 - Playlist Orchestration Foundation
 
 - Added an opt-in managed playlist registry that distinguishes existing Plex playlists, generated playlists, managed playlists, automation configuration, runtime state, availability, and historical unregister state.
