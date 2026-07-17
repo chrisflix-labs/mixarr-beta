@@ -19,6 +19,8 @@ services:
     build: .
     container_name: mixarr_app
     restart: always
+    env_file:
+      - .env
     ports:
       - "3030:3000"
       # Uncomment to expose the Prometheus metrics endpoint to the host.
