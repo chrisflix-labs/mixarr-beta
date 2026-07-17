@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. The v2.1.10 migration adds personalization onboarding state, transactional import backups, reset/import audit summaries, and dashboard indexes; existing settings, tracks, playlists, feedback, identities, playback profiles, explanations, automation, and versions are preserved. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.1.11 is a dashboard-only release and adds no database migration; the v2.1.10 personalization migration remains the latest schema change. Existing settings, tracks, playlists, feedback, identities, playback profiles, explanations, automation, and versions are preserved. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -29,7 +29,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 | Plex library connection | Connects to Plex, imports music libraries, and stores artists, albums, tracks, tags, and library state locally. |
 | Smart playlist generation | Builds playlists from rules such as genre, artist, album, year, popularity, BPM, energy, mood, danceability, and more. |
 | Push to Plex | Exports generated playlists back to Plex and supports saved playlist refresh flows. |
-| Dashboard cards and stats | Shows library counts, metadata coverage, health summaries, background sync status, and app version context. |
+| Dashboard operations | Prioritizes library readiness, active work, Recently Added discovery, common playlist actions, automation, and compact Plex server status while keeping product previews secondary. |
 | Library browsing | Provides searchable library and genre views for synced Plex music. |
 | Track genre tools | Syncs, filters, inspects, and retries track-level genre metadata from supported providers. |
 | Playlist-use tracking | Tracks playlist generation/export history and saved playlist refresh activity. |
@@ -50,7 +50,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.1.10 completes the adaptive personalization series with a visible, explainable, controllable, private, exportable, and reversible dashboard. It combines feedback, learned preferences, playlist identity, playback awareness, recommendation decisions, score influence, onboarding, readiness, cleanup, and data portability without adding an AI dependency. See [Personalization Dashboard & Release Polish](docs/PERSONALIZATION_DASHBOARD_V2110.md), [Adaptive Automation Policies](docs/ADAPTIVE_AUTOMATION_POLICIES_V219.md), and [Smart Mix Explanations & Insights](docs/SMART_MIX_EXPLANATIONS_V218.md).
+Mixarr v2.1.11 reorganizes the main dashboard around library readiness, active work, and common playlist actions. It removes the duplicate Recently Added Discovery card and request, consolidates operational summaries, and moves roadmap and experimental information into a compact secondary panel. See [Dashboard UI Cleanup](docs/DASHBOARD_UI_CLEANUP_V2111.md) and [Personalization Dashboard & Release Polish](docs/PERSONALIZATION_DASHBOARD_V2110.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 

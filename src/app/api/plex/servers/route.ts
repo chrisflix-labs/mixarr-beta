@@ -15,7 +15,14 @@ export async function GET() {
       where: { userId },
       include: {
         libraries: {
-          include: { _count: { select: { tracks: { where: { syncStatus: "active" } } } } },
+          include: {
+            _count: { select: { tracks: { where: { syncStatus: "active" } } } },
+            syncLogs: {
+              orderBy: { startedAt: "desc" },
+              take: 1,
+              select: { status: true, startedAt: true, endedAt: true },
+            },
+          },
         },
       },
     });

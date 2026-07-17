@@ -174,6 +174,17 @@ export const roadmapReleases: RoadmapRelease[] = [
     completionDate: "2026-07-17",
     route: "/personalization",
   },
+  {
+    version: "2.1.11",
+    title: "Dashboard UI Cleanup",
+    cycle: "2.1.x",
+    status: "completed",
+    description: "Reorganizes the main dashboard around library readiness, active work, and common playlist actions while removing duplicate widget rendering and moving product previews into a compact secondary area.",
+    featureLabels: ["Canonical widget registry", "Recently Added deduplication", "Library readiness summary", "Quick Actions", "Activity and automation grouping", "Compact playlist management", "Collapsed product preview", "Compact Plex servers", "Responsive layout", "Isolated widget states", "Accessibility", "Duplicate request removal"],
+    releaseOrder: 112,
+    completionDate: "2026-07-17",
+    route: "/release-notes",
+  },
 ];
 
 export const roadmapCycles: RoadmapCycle[] = [

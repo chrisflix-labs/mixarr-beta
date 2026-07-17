@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.1.11 - Dashboard UI Cleanup
+
+- Reorganized the dashboard around Library Readiness, Quick Actions, Activity & Automation, Playlist Management, Product & Preview, and Plex Servers.
+- Removed the duplicate Recently Added Discovery registration and its duplicate summary request by using one canonical, stable widget definition.
+- Combined Plex sync and enrichment coverage into one compact readiness panel with explicit states, progress indicators, preserved diagnostics, and on-demand detailed controls.
+- Consolidated recent jobs and automation status, prioritized active work, and reduced repeated playlist-launch actions while retaining every existing destination.
+- Moved version, roadmap, release, support, experimental, and preview information into one collapsed low-priority panel; the full Roadmap remains available on its dedicated page.
+- Added resilient per-widget empty and error states, compact Plex server summaries, responsive single/two/four-column layouts, accessibility improvements, registry validation, and dashboard regression tests.
+
 ## v2.1.10 - Personalization Dashboard & Release Polish
 
 - Added the dedicated `/personalization` control center with real user-scoped aggregates, learned-preference evidence, influential feedback, paginated suggestion decisions, playlist identities, behavioral trends, playback status, score influence, readiness checks, and accessible responsive states.

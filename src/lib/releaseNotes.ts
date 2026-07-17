@@ -3,6 +3,7 @@ import { validDiscordSupportUrl } from "./appInfo";
 export const MIXARR_BETA_DISCORD_URL = validDiscordSupportUrl(process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL) || "";
 
 export type ReleaseNoteBadge =
+  | "Accessibility"
   | "Audio Features"
   | "Automation"
   | "Backup"
@@ -72,6 +73,21 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "2.1.11",
+    title: "Dashboard UI Cleanup",
+    releaseDate: "July 17, 2026",
+    badges: ["Dashboard", "UI", "Mobile", "Readiness", "Library Sync", "Data Enrichment", "Jobs", "Automation", "Playlists", "Recipes", "Roadmap", "Preview", "Performance", "Accessibility"],
+    changes: [
+      "Reorganized the main dashboard around Library Readiness, Quick Actions, Activity & Automation, Playlist Management, Product & Preview, and Plex Servers.",
+      "Removed the duplicate Recently Added Discovery render and duplicate summary request by introducing a canonical widget registry with stable unique IDs and development-time duplicate validation.",
+      "Combined Plex sync status, active tracks, last sync, and BPM, audio-feature, genre, and popularity coverage into one compact readiness panel with clear operational states.",
+      "Consolidated recent job and automation summaries, gave active jobs higher visual priority, and preserved live worker and sync behavior without adding page refreshes.",
+      "Kept Smart Builder, Recently Added, recipes, and regeneration prominent while reducing repeated playlist actions and moving historical counts into a compact management section.",
+      "Moved version, release notes, roadmap, beta support, experimental announcements, and preview information into one collapsed low-priority panel while preserving the complete Roadmap page.",
+      "Added isolated loading, empty, disabled, permission, and failure states plus responsive and accessibility checks for representative mobile, tablet, desktop, and wide-desktop widths.",
+    ],
+  },
   {
     version: "2.1.10",
     title: "Personalization Dashboard & Release Polish",

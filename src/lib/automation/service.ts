@@ -237,13 +237,16 @@ export async function recordAutomationActivity(input: {
 
 export async function getAutomationOverview(userId: string) {
   const policy = await getAutomationPolicy(userId);
-  const [usage, protectedPlaylists, pendingApprovals, lastActivity] = await Promise.all([
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const [usage, protectedPlaylists, pendingApprovals, lastActivity, completedToday] = await Promise.all([
     getAutomationUsage(userId, policy),
     prisma.playlistAutomationSettings.count({ where: { userId, protected: true } }),
     prisma.automationProposal.count({ where: { userId, status: "PENDING" } }),
     prisma.automationActivity.findFirst({ where: { userId }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, summary: true, createdAt: true, generatedPlaylistId: true } }),
+    prisma.automationActivity.count({ where: { userId, status: "APPLIED", completedAt: { gte: startOfToday } } }),
   ]);
-  return { policy, policySummary: plainLanguagePolicySummary(policy), usage, protectedPlaylists, pendingApprovals, lastActivity };
+  return { policy, policySummary: plainLanguagePolicySummary(policy), usage, protectedPlaylists, pendingApprovals, lastActivity, completedToday };
 }
 
 export async function listAutomationProposals(userId: string, input?: { status?: string; playlistId?: string; limit?: number }) {

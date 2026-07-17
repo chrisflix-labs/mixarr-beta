@@ -1,430 +1,213 @@
-import styles from "./page.module.css";
 import Link from "next/link";
-import { AudioWaveform, BookMarked, BrainCircuit, Fingerprint, FlaskConical, Gauge, History, LifeBuoy, ListMusic, ListRestart, Map, Radio, Repeat2, ScrollText, ShieldAlert, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
+import { cookies } from "next/headers";
+import {
+  Activity, BookMarked, ChevronDown, Clock3, FlaskConical, History,
+  LifeBuoy, ListMusic, ListRestart, Map, ScrollText, ShieldAlert,
+  Sparkles, Wand2,
+} from "lucide-react";
+import styles from "./page.module.css";
+import DashboardSummaryCards from "@/components/DashboardSummaryCards";
 import LibrarySelector from "@/components/LibrarySelector";
+import PlexLoginButton from "@/components/PlexLoginButton";
+import RecentlyAddedDiscoveryCard from "@/components/RecentlyAddedDiscoveryCard";
 import SyncProgress from "@/components/SyncProgress";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
-import PlexLoginButton from "@/components/PlexLoginButton";
-import DashboardSummaryCards from "@/components/DashboardSummaryCards";
-import { cookies } from "next/headers";
-import prisma from "@/lib/prisma";
+import { getAutomationOverview } from "@/lib/automation";
 import { APP_VERSION } from "@/lib/appVersion";
+import { getDashboardSummary, type DashboardSummary } from "@/lib/dashboardSummary";
+import { dashboardWidgetsForSection } from "@/lib/dashboardWidgets";
+import { isFeatureEnabled as isResolvedBetaFeatureEnabled } from "@/lib/featureFlagService";
 import { getRecentJobSummary } from "@/lib/jobHistory";
 import { getPlaylistHistoryDashboardSummary } from "@/lib/playlistHistory";
-import { getDashboardSummary, type DashboardSummary } from "@/lib/dashboardSummary";
-import { isFeatureEnabled as isResolvedBetaFeatureEnabled } from "@/lib/featureFlagService";
-import RecentlyAddedDiscoveryCard from "@/components/RecentlyAddedDiscoveryCard";
-import { getAutomationOverview } from "@/lib/automation";
+import prisma from "@/lib/prisma";
+import { getRecentlyAddedSummary } from "@/lib/recentlyAdded";
 
-const previewFeatures = [
-  {
-    title: "Smart Playlist Builder",
-    description: "Start with guided presets, tune mood and BPM, then export, import, and review recipe-backed playlists.",
-    examples: ["Workout", "Mood Presets", "Recipe Import"],
-    icon: SlidersHorizontal,
-    badge: "v1.2.9.1",
-  },
-  {
-    title: "AI DJ Flow",
-    description: "Create playlists with smooth pacing, energy curves, artist spacing, and better track-to-track flow.",
-    examples: ["Warm-up to peak", "BPM-aware order", "Mood transitions"],
-    icon: BrainCircuit,
-    badge: "v2.0.0",
-  },
-  {
-    title: "Infinite Radio Stations",
-    description: "Generate living stations that keep refreshing based on your library, filters, and listening preferences.",
-    examples: ["My Rock Radio", "Chill Night Station", "Discovery Radio"],
-    icon: Radio,
-    badge: "Concept",
-  },
-  {
-    title: "Playlist Intelligence Score",
-    description: "Preview playlist quality before saving with scoring for variety, flow, energy balance, and repeat risk.",
-    examples: ["Flow score", "Genre spread", "Artist variety"],
-    icon: Gauge,
-    badge: "Preview",
-  },
-  {
-    title: "Music DNA",
-    description: "Visualize your library by energy, mood, BPM, genre, popularity, and audio feature coverage.",
-    examples: ["Mood map", "BPM distribution", "Genre heatmap"],
-    icon: Fingerprint,
-    badge: "Planned",
-  },
-  {
-    title: "Anti-Repeat Engine",
-    description: "Prevent the same songs, artists, or albums from appearing too often.",
-    examples: ["Track cooldown", "Artist cooldown", "Discovery boost"],
-    icon: Repeat2,
-    badge: "Concept",
-  },
-];
+type JobSummary = Awaited<ReturnType<typeof getRecentJobSummary>>;
+type AutomationOverview = Awaited<ReturnType<typeof getAutomationOverview>>;
+type RecentlyAddedSummary = Awaited<ReturnType<typeof getRecentlyAddedSummary>>;
 
-function MixarrVersionCard() {
-  return (
-    <article className={`${styles.card} ${styles.versionCard}`}>
-      <ScrollText size={22} className={styles.cardIcon} />
-      <h3>Mixarr Version</h3>
-      <p>You are running Mixarr {APP_VERSION}.</p>
-      <p>Check release notes and roadmap updates as Mixarr moves toward v2.0.0.</p>
-      <div className={styles.versionCardActions}>
-        <Link href="/release-notes" className={styles.cardAction}>Release Notes</Link>
-        <Link href="/roadmap" className={`${styles.cardAction} ${styles.secondaryCardAction}`}>Roadmap</Link>
-        <Link href="/support" className={`${styles.cardAction} ${styles.secondaryCardAction}`}><LifeBuoy size={14} /> Beta Support</Link>
-      </div>
-    </article>
-  );
-}
-
-function RecentJobsCard({ summary }: { summary: Awaited<ReturnType<typeof getRecentJobSummary>> | null }) {
-  const lastJob = summary?.lastJob;
-  return (
-    <Link href="/job-history" className={`${styles.card} ${styles.recentJobsCard}`}>
-      <History size={22} className={styles.cardIcon} />
-      <h3>Recent Jobs</h3>
-      <p>View recent syncs, retries, playlist runs, and analysis jobs.</p>
-      {lastJob ? (
-        <div className={styles.jobSummary}>
-          <span>{lastJob.name}</span>
-          <b data-status={lastJob.status}>{lastJob.status}</b>
-          <small>{lastJob.finishedAt ? lastJob.finishedAt.toLocaleString() : "Still running"}</small>
-        </div>
-      ) : (
-        <div className={styles.jobSummary}>
-          <span>No jobs recorded yet</span>
-          <small>Run a sync, retry, or playlist job.</small>
-        </div>
-      )}
-      {summary && summary.recentFailures > 0 && (
-        <p className={styles.failureText}>{summary.recentFailures} failure{summary.recentFailures === 1 ? "" : "s"} in the last 7 days</p>
-      )}
-      <span className={styles.cardAction}>View Job History</span>
-    </Link>
-  );
-}
-
-function AutomationPolicyCard({ overview }: { overview: Awaited<ReturnType<typeof getAutomationOverview>> | null }) {
-  return <Link href="/automation" className={styles.card}>
-    <ShieldAlert size={22} className={styles.cardIcon} />
-    <h3>Automation Policy</h3>
-    {overview ? <>
-      <p>Mode: {overview.policy.preset.toLowerCase().replace(/^./, (letter) => letter.toUpperCase())}{overview.policy.isCustom ? " · Custom" : ""}</p>
-      <p>{overview.protectedPlaylists} protected · {overview.pendingApprovals} awaiting approval</p>
-      <p>Today: {overview.usage.totals.today} / {overview.usage.limits.day} · This week: {overview.usage.totals.week} / {overview.usage.limits.week}</p>
-      {overview.policy.paused && <p className={styles.failureText}>Automation is paused.</p>}
-    </> : <p>Configure guarded playlist automation, approvals, protection, and rollback.</p>}
-    <span className={styles.cardAction}>Manage Automation</span>
-  </Link>;
-}
-
-function GuestDataEnrichmentDashboardCard() {
-  return (
-    <Link href="/data-enrichment" className={styles.card}>
-      <AudioWaveform size={22} className={styles.cardIcon} />
-      <h3>Data Enrichment</h3>
-      <p>Sign in with Plex to load BPM, audio features, genres, and popularity metadata summaries.</p>
-      <span className={styles.cardAction}>Manage Enrichment</span>
-    </Link>
-  );
-}
-
-function PlaylistRecipesCard({ count }: { count: number }) {
-  return (
-    <article className={styles.card}>
-      <BookMarked size={22} className={styles.cardIcon} />
-      <h3>Playlist Recipes</h3>
-      <p>Save, reuse, export, and import playlist recipes.</p>
-      <div className={styles.recipeCardActions}>
-        <span>{count.toLocaleString()} saved recipe{count === 1 ? "" : "s"}</span>
-        <div>
-          <Link href="/recipes" className={styles.cardAction}>View Recipes</Link>
-          <Link href="/builder" className={`${styles.cardAction} ${styles.secondaryCardAction}`}>Build Playlist</Link>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function PlaylistRegenerationCard({ count }: { count: number }) {
-  return (
-    <article className={styles.card}>
-      <ListRestart size={22} className={styles.cardIcon} />
-      <h3>Playlist Regeneration</h3>
-      <p>Refresh existing Mixarr playlists using saved filters, recipes, presets, and safety rules.</p>
-      <div className={styles.recipeCardActions}>
-        <span>{count.toLocaleString()} generated playlist{count === 1 ? "" : "s"} tracked</span>
-        <div>
-          <Link href="/generated-playlists" className={styles.cardAction}>View Generated Playlists</Link>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function PlaylistHistoryCard({
-  count,
-  lastEvent,
-}: {
-  count: number;
-  lastEvent?: { playlistName: string; eventType: string; createdAt: Date } | null;
-}) {
-  const eventLabel = lastEvent?.eventType === "regenerated"
-    ? "Regenerated"
-    : lastEvent?.eventType === "removed_tracking"
-    ? "Removed Tracking"
-    : lastEvent?.eventType === "created_copy"
-    ? "Created Copy"
-    : lastEvent
-    ? "Created"
-    : "No events yet";
-
-  return (
-    <article className={styles.card}>
-      <History size={22} className={styles.cardIcon} />
-      <h3>Playlist History</h3>
-      <p>Review recently created and regenerated playlists, including filters, presets, and track snapshots.</p>
-      <div className={styles.recipeCardActions}>
-        <span>{count.toLocaleString()} playlist histor{count === 1 ? "y entry" : "y entries"}</span>
-        {lastEvent && (
-          <small className={styles.cardDetailLine}>
-            Last: {eventLabel} {lastEvent.playlistName} on {lastEvent.createdAt.toLocaleString()}
-          </small>
-        )}
-        <div>
-          <Link href="/playlist-history" className={styles.cardAction}>View Playlist History</Link>
-        </div>
-      </div>
-    </article>
-  );
+function SectionHeading({ id, title, description }: { id: string; title: string; description: string }) {
+  return <div className={styles.sectionHeading}><div><h2 id={id}>{title}</h2><p>{description}</p></div></div>;
 }
 
 function SmartBuilderCard() {
-  return (
-    <article className={styles.card}>
-      <Sparkles size={22} className={styles.cardIcon} />
-      <h3>Smart Playlist Builder</h3>
-      <p>Choose a goal like Workout, Chill, Party, Focus, or Discovery, then tune the vibe with Mood and BPM Presets.</p>
-      <div className={styles.versionCardActions}>
-        <Link href="/smart-builder" className={styles.cardAction}>Open Smart Builder</Link>
-        <Link href="/recipes" className={`${styles.cardAction} ${styles.secondaryCardAction}`}>View Recipes</Link>
+  return <article className={styles.actionCard}>
+    <span className={styles.actionIcon}><Sparkles size={19} /></span>
+    <h3>Smart Playlist Builder</h3>
+    <p>Build a guided mix, then tune mood, tempo, discovery, and flow.</p>
+    <div className={styles.cardActions}><Link href="/smart-builder" className={styles.primaryAction}>Open Smart Builder</Link><Link href="/builder" className={styles.secondaryAction}>Advanced Builder</Link></div>
+  </article>;
+}
+
+function PlaylistRecipesCard({ count }: { count: number }) {
+  return <article className={styles.actionCard}>
+    <span className={styles.actionIcon}><BookMarked size={19} /></span>
+    <h3>Playlist Recipes</h3>
+    <p>Reuse, import, and share saved playlist configurations.</p>
+    <span className={styles.cardMeta}>{count.toLocaleString()} saved recipe{count === 1 ? "" : "s"}</span>
+    <div className={styles.cardActions}><Link href="/recipes" className={styles.primaryAction}>View Recipes</Link></div>
+  </article>;
+}
+
+function PlaylistRegenerationCard({ count }: { count: number }) {
+  return <article className={styles.actionCard}>
+    <span className={styles.actionIcon}><ListRestart size={19} /></span>
+    <h3>Playlist Regeneration</h3>
+    <p>Refresh an existing Mixarr playlist with previews and safety rules.</p>
+    <span className={styles.cardMeta}>{count.toLocaleString()} generated playlist{count === 1 ? "" : "s"}</span>
+    <div className={styles.cardActions}><Link href="/generated-playlists" className={styles.primaryAction}>Manage Playlists</Link></div>
+  </article>;
+}
+
+function ActivityAutomationCard({ jobs, automation, nextRun }: { jobs: JobSummary | null; automation: AutomationOverview | null; nextRun: Date | string | null | undefined }) {
+  const job = jobs?.lastJob;
+  const active = job && ["queued", "retrying", "running", "processing", "pending", "active", "in_progress"].includes(job.status.toLowerCase());
+  return <article className={`${styles.activityCard} ${active ? styles.activeJob : ""}`}>
+    <div className={styles.cardTopline}><div className={styles.cardTitle}><Activity size={20} /><h3>Activity & Automation</h3></div>{active && <span className={styles.statusBadge} data-status="running">Active job</span>}</div>
+    <div className={styles.activityColumns}>
+      <div>
+        <span className={styles.eyebrow}>Latest job</span>
+        {job ? <div className={styles.latestJob}><b>{job.name}</b><span className={styles.statusBadge} data-status={active ? "running" : job.status.toLowerCase()}>{job.status.replaceAll("_", " ")}</span><small>{job.finishedAt ? job.finishedAt.toLocaleString() : "In progress"}</small></div> : <p className={styles.emptyText}>No jobs recorded yet.</p>}
+        <p className={jobs?.recentFailures ? styles.warningText : styles.mutedLine}>{jobs?.recentFailures || 0} recent failure{jobs?.recentFailures === 1 ? "" : "s"}</p>
       </div>
-    </article>
-  );
+      <div>
+        <span className={styles.eyebrow}>Automation</span>
+        {automation ? <div className={styles.automationSummary}>
+          <b>{automation.policy.preset.toLowerCase().replace(/^./, (letter) => letter.toUpperCase())}{automation.policy.isCustom ? " · Custom" : ""}</b>
+          <span>{automation.completedToday} completed today · {automation.pendingApprovals} awaiting approval</span>
+          <span><Clock3 size={12} /> {nextRun ? `Next ${new Date(nextRun).toLocaleString()}` : "No scheduled automation"}</span>
+          {automation.policy.paused && <strong>Automation is paused</strong>}
+        </div> : <p className={styles.emptyText}>Automation status is unavailable.</p>}
+      </div>
+    </div>
+    <div className={styles.cardActions}><Link href="/job-history" className={styles.primaryAction}>View Job History</Link><Link href="/automation" className={styles.secondaryAction}>Manage Automation</Link></div>
+  </article>;
 }
 
-function BetaDashboardPreviewCards() {
-  return (
-    <>
-      <article className={`${styles.card} ${styles.betaOnlyCard}`}>
-        <div className={styles.betaCardTop}>
-          <FlaskConical size={22} className={styles.cardIcon} />
-          <span className={styles.betaBadge}>Experimental</span>
-        </div>
-        <h3>Experimental Playlist Intelligence</h3>
-        <p>This is an early preview of upcoming Mixarr 2.0.0 playlist intelligence features. Functionality may change before release.</p>
-        <p className={styles.betaCardNote}>Preview only. No playlist behavior is changed by this card.</p>
-      </article>
-
-      <article className={`${styles.card} ${styles.betaOnlyCard}`}>
-        <div className={styles.betaCardTop}>
-          <ShieldAlert size={22} className={styles.cardIcon} />
-          <span className={styles.betaBadge}>Preview</span>
-        </div>
-        <h3>Analysis Dashboard Preview</h3>
-        <p>Future analysis views may bring library health, enrichment coverage, and automation readiness into one testing dashboard.</p>
-        <p className={styles.betaCardNote}>Private beta messaging only. No sponsor or payment checks are enforced.</p>
-      </article>
-    </>
-  );
+function PlaylistManagementCard({ historyCount, generatedCount, versionCount, recipeCount, lastEvent }: { historyCount: number; generatedCount: number; versionCount: number; recipeCount: number; lastEvent: { playlistName: string; eventType: string; createdAt: Date } | null }) {
+  return <article className={styles.managementCard}>
+    <div className={styles.cardTitle}><History size={20} /><div><h3>Playlist Management</h3><p>History and saved assets, without repeating creation actions.</p></div></div>
+    <div className={styles.managementMetrics}>
+      <Link href="/playlist-history"><b>{historyCount.toLocaleString()}</b><span>History entries</span></Link>
+      <Link href="/generated-playlists"><b>{generatedCount.toLocaleString()}</b><span>Generated playlists</span></Link>
+      <Link href="/generated-playlists"><b>{versionCount.toLocaleString()}</b><span>Playlist versions</span></Link>
+      <Link href="/recipes"><b>{recipeCount.toLocaleString()}</b><span>Saved recipes</span></Link>
+    </div>
+    <div className={styles.managementFooter}><span>{lastEvent ? `Latest: ${lastEvent.playlistName} · ${lastEvent.createdAt.toLocaleString()}` : "No playlists generated yet."}</span><Link href="/playlist-history" className={styles.secondaryAction}>View Playlist History</Link></div>
+  </article>;
 }
 
-export default async function Home() {
-  const cookieStore = cookies();
-  const sessionId = cookieStore.get("mixarr_session")?.value;
-  const showExperimentalPreviewCards = sessionId ? (await Promise.all([
-    isResolvedBetaFeatureEnabled("showBetaCards", { userId: sessionId }),
-    isResolvedBetaFeatureEnabled("enableV2PreviewCards", { userId: sessionId }),
-  ])).every(Boolean) : false;
+function ProductPreviewPanel({ showExperimental }: { showExperimental: boolean }) {
+  return <details className={styles.productPanel}>
+    <summary>
+      <span className={styles.cardTitle}><ScrollText size={19} /><span><b>Product & Preview</b><small>{APP_VERSION} · Release information and what’s next</small></span></span>
+      <span className={styles.productSummaryMeta}>{showExperimental ? "2 experimental · 1 preview" : "Preview details"}<ChevronDown size={17} /></span>
+    </summary>
+    <div className={styles.productContent}>
+      <div className={styles.productLinks}>
+        <Link href="/release-notes"><ScrollText size={17} /><span><b>Release Notes</b><small>What changed in {APP_VERSION}</small></span></Link>
+        <Link href="/roadmap"><Map size={17} /><span><b>Full Roadmap</b><small>Completed v2.1.x and the proposed v2.2.x direction</small></span></Link>
+        <Link href="/support"><LifeBuoy size={17} /><span><b>Beta Support</b><small>Diagnostics and support resources</small></span></Link>
+      </div>
+      <div className={styles.whatsNext}><span className={styles.eyebrow}>What’s Next</span><p>Lifecycle-aware playlist maintenance, safer scheduled regeneration, and stronger automation observability.</p><Link href="/roadmap" className={styles.secondaryAction}>View Full Roadmap</Link></div>
+      {showExperimental && <div className={styles.experimentalList}>
+        <div><FlaskConical size={17} /><span><b>Experimental Playlist Intelligence</b><small>Early preview only; existing playlist behavior is unchanged.</small></span><em>Experimental</em></div>
+        <div><ShieldAlert size={17} /><span><b>Analysis Dashboard Preview</b><small>Private beta preview with no new sponsor or payment checks.</small></span><em>Preview</em></div>
+      </div>}
+    </div>
+  </details>;
+}
 
-  let user = null;
+export default async function Home({ searchParams }: { searchParams?: { dashboardPreview?: string } }) {
+  const sessionId = cookies().get("mixarr_session")?.value;
+  const developmentPreview = process.env.NODE_ENV === "development" && searchParams?.dashboardPreview === "1";
+  const user = developmentPreview
+    ? { id: "dashboard-preview" }
+    : sessionId
+      ? await prisma.user.findUnique({ where: { id: sessionId } })
+      : null;
+
   let dashboardSummary: DashboardSummary | null = null;
-  let jobSummary: Awaited<ReturnType<typeof getRecentJobSummary>> | null = null;
+  let jobs: JobSummary | null = null;
+  let automation: AutomationOverview | null = null;
+  let recentlyAdded: RecentlyAddedSummary | null = null;
   let recipeCount = 0;
-  let generatedPlaylistCount = 0;
-  let playlistHistoryCount = 0;
-  let lastPlaylistHistoryEvent: { playlistName: string; eventType: string; createdAt: Date } | null = null;
-  let automationOverview: Awaited<ReturnType<typeof getAutomationOverview>> | null = null;
-  if (sessionId) {
-    user = await prisma.user.findUnique({
-      where: { id: sessionId },
-    });
-    if (user) {
-      const [dashboardResult, jobsResult, recipesResult, generatedPlaylistsResult, playlistHistorySummary, automationResult] = await Promise.all([
-        getDashboardSummary(user.id).catch((error) => {
-          console.error("[Dashboard] Initial summary failed", error);
-          return null;
-        }),
-        getRecentJobSummary(user.id),
-        prisma.playlistRecipe.count({ where: { userId: user.id, isArchived: false } }),
-        prisma.generatedPlaylist.count({ where: { userId: user.id } }),
-        getPlaylistHistoryDashboardSummary(user.id),
-        getAutomationOverview(user.id).catch((error) => { console.error("[AutomationPolicy] dashboard summary failed", error); return null; }),
-      ]);
-      dashboardSummary = dashboardResult;
-      jobSummary = jobsResult;
-      recipeCount = recipesResult;
-      generatedPlaylistCount = generatedPlaylistsResult;
-      playlistHistoryCount = playlistHistorySummary.count;
-      lastPlaylistHistoryEvent = playlistHistorySummary.lastEvent;
-      automationOverview = automationResult;
-    }
+  let generatedCount = 0;
+  let versionCount = 0;
+  let historyCount = 0;
+  let lastHistoryEvent: { playlistName: string; eventType: string; createdAt: Date } | null = null;
+  let showExperimental = false;
+
+  if (user && !developmentPreview) {
+    const results = await Promise.all([
+      getDashboardSummary(user.id).catch((error) => { console.error("[Dashboard] readiness failed", error); return null; }),
+      getRecentJobSummary(user.id).catch((error) => { console.error("[Dashboard] jobs failed", error); return null; }),
+      getAutomationOverview(user.id).catch((error) => { console.error("[Dashboard] automation failed", error); return null; }),
+      getRecentlyAddedSummary(user.id).catch((error) => { console.error("[Dashboard] Recently Added failed", error); return null; }),
+      prisma.playlistRecipe.count({ where: { userId: user.id, isArchived: false } }).catch(() => 0),
+      prisma.generatedPlaylist.count({ where: { userId: user.id } }).catch(() => 0),
+      prisma.playlistRevision.count({ where: { generatedPlaylist: { userId: user.id } } }).catch(() => 0),
+      getPlaylistHistoryDashboardSummary(user.id).catch(() => ({ count: 0, lastEvent: null })),
+      Promise.all([
+        isResolvedBetaFeatureEnabled("showBetaCards", { userId: user.id }),
+        isResolvedBetaFeatureEnabled("enableV2PreviewCards", { userId: user.id }),
+      ]).then((flags) => flags.every(Boolean)).catch(() => false),
+    ]);
+    [dashboardSummary, jobs, automation, recentlyAdded, recipeCount, generatedCount, versionCount] = results;
+    historyCount = results[7].count;
+    lastHistoryEvent = results[7].lastEvent;
+    showExperimental = results[8];
   }
 
-  return (
-    <>
-      <header className={styles.header}>
-        <h2>Dashboard</h2>
-        <p>Library overview</p>
-      </header>
+  const quickWidgets = dashboardWidgetsForSection("quick-actions");
+  const activityWidgets = dashboardWidgetsForSection("activity-automation");
 
-      {user ? (
-        <div style={{ marginBottom: "3rem" }}>
-          <SyncProgress />
-          <WorkerHealthCard />
-          <DashboardSummaryCards initialSummary={dashboardSummary} />
-          <div className={styles.compactCardsGrid}>
-            <RecentlyAddedDiscoveryCard />
-            <RecentJobsCard summary={jobSummary} />
-            <AutomationPolicyCard overview={automationOverview} />
-            <SmartBuilderCard />
+  return <main className={styles.dashboard}>
+    <header className={styles.dashboardHeader}>
+      <div><span className={styles.eyebrow}>Library operations</span><h1>Dashboard</h1><p>See what is ready, what is running, and where to build your next mix.</p></div>
+      <div className={styles.headerActions}><span className={styles.versionBadge}>{APP_VERSION}</span>{dashboardSummary && <small>Updated {new Date(dashboardSummary.loadedAt).toLocaleTimeString()}</small>}<Link href="/builder" className={styles.primaryAction}><Wand2 size={16} /> Build Playlist</Link></div>
+    </header>
 
-            <RecentlyAddedDiscoveryCard />
-            <PlaylistRecipesCard count={recipeCount} />
-            <PlaylistRegenerationCard count={generatedPlaylistCount} />
-            <PlaylistHistoryCard count={playlistHistoryCount} lastEvent={lastPlaylistHistoryEvent} />
-            <MixarrVersionCard />
-            {showExperimentalPreviewCards && <BetaDashboardPreviewCards />}
-            <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
-              <Map size={22} className={styles.cardIcon} />
-              <h3>Mixarr Product Roadmap</h3>
-              <p>See the completed Smart Mix v2 cycle and the current v2.1.x personalization cycle.</p>
-              <span className={styles.cardAction}>View Roadmap</span>
-            </Link>
-          </div>
-          <section className={styles.comingSoonSection} aria-labelledby="coming-soon-v2">
-            <div className={styles.comingSoonHeader}>
-              <div>
-                <span className={styles.kicker}>Preview</span>
-                <h3 id="coming-soon-v2">Current v2.1.x Cycle</h3>
-                <p>Optional, local personalization now builds on Smart Mix Engine v2.</p>
-              </div>
-              <span className={styles.versionPill}>v2.1.x</span>
-            </div>
-            <p className={styles.enrichmentNote}>
-              Data enrichment controls now live in a dedicated section for BPM, audio features, genres, popularity, local analysis, preflight checks, and Library Health links.
-            </p>
-            <div className={styles.previewGrid}>
-              {previewFeatures.map((feature) => {
-                const Icon = feature.icon;
-                return (
-                  <article key={feature.title} className={styles.previewCard}>
-                    <div className={styles.previewCardTop}>
-                      <span className={styles.previewIcon}><Icon size={18} /></span>
-                      <span className={styles.previewBadge}>{feature.badge}</span>
-                    </div>
-                    <h4>{feature.title}</h4>
-                    <p>{feature.description}</p>
-                    <div className={styles.previewExamples}>
-                      {feature.examples.map((example) => (
-                        <span key={example}>{example}</span>
-                      ))}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-          <div className={styles.sectionHeader}>
-            <h3>Your Plex Servers</h3>
-          </div>
-          <LibrarySelector />
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2rem", marginBottom: "3rem" }}>
-          <div className="glass-panel" style={{ padding: "2rem", textAlign: "center", borderRadius: "var(--radius-lg)", width: "100%", maxWidth: "600px" }}>
-            <h3 style={{ margin: "0 0 1rem 0", fontSize: "1.5rem" }}>Mixarr</h3>
-            <p style={{ color: "var(--text-secondary)", marginBottom: "2rem" }}>
-              Sign in with Plex to import your library and start building curated playlists.
-            </p>
-            {/* @ts-ignore - The component is client-side but we render it here */}
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <PlexLoginButton />
-            </div>
-          </div>
+    {user ? <>
+      <section className={styles.dashboardSection} aria-labelledby="library-readiness-heading">
+        <SectionHeading id="library-readiness-heading" title="Library Readiness" description="Plex sync and enrichment coverage in one operational summary." />
+        {dashboardWidgetsForSection("library-readiness").map((widget) => <DashboardSummaryCards key={widget.id} initialSummary={dashboardSummary} />)}
+        <details className={styles.syncControls}><summary><span><ListMusic size={17} /> Sync & enrichment controls</span><ChevronDown size={17} /></summary><div><SyncProgress /></div></details>
+      </section>
 
-          <div className={styles.cardsGrid} style={{ width: "100%" }}>
-            <div className={styles.card}>
-              <Wand2 size={24} className={styles.cardIcon} />
-              <h3>Build Playlist</h3>
-              <p>Create a playlist with rules</p>
-            </div>
+      <section className={styles.dashboardSection} aria-labelledby="quick-actions-heading">
+        <SectionHeading id="quick-actions-heading" title="Quick Actions" description="Common playlist workflows, kept close at hand." />
+        <div className={styles.quickActionsGrid}>{quickWidgets.map((widget) => {
+          if (widget.component === "SmartBuilder") return <SmartBuilderCard key={widget.id} />;
+          if (widget.component === "RecentlyAddedDiscovery") return <RecentlyAddedDiscoveryCard key={widget.id} summary={recentlyAdded} />;
+          if (widget.component === "PlaylistRecipes") return <PlaylistRecipesCard key={widget.id} count={recipeCount} />;
+          return <PlaylistRegenerationCard key={widget.id} count={generatedCount} />;
+        })}</div>
+      </section>
 
-            <div className={styles.card}>
-              <ListMusic size={24} className={styles.cardIcon} />
-              <h3>Browse Library</h3>
-              <p>Explore your collection</p>
-            </div>
+      <section className={styles.dashboardSection} aria-labelledby="activity-heading">
+        <SectionHeading id="activity-heading" title="Activity & Automation" description="Current work, recent warnings, and automation status." />
+        <div className={styles.activityGrid}>{activityWidgets.map((widget) => widget.component === "ActivityAutomation"
+          ? <ActivityAutomationCard key={widget.id} jobs={jobs} automation={automation} nextRun={recentlyAdded?.nextScheduledRunAt} />
+          : <div key={widget.id} className={styles.workerSlot}><WorkerHealthCard compact /></div>)}</div>
+      </section>
 
-            <div className={styles.card}>
-              <ListMusic size={24} className={styles.cardIcon} />
-              <h3>My Playlists</h3>
-              <p>0 playlists created</p>
-            </div>
+      <section className={styles.dashboardSection} aria-labelledby="playlist-management-heading">
+        <SectionHeading id="playlist-management-heading" title="Playlist Management" description="A compact view of generated playlists, versions, history, and recipes." />
+        {dashboardWidgetsForSection("playlist-management").map((widget) => <PlaylistManagementCard key={widget.id} historyCount={historyCount} generatedCount={generatedCount} versionCount={versionCount} recipeCount={recipeCount} lastEvent={lastHistoryEvent} />)}
+      </section>
 
-            <MixarrVersionCard />
+      <section className={`${styles.dashboardSection} ${styles.lowPrioritySection}`} aria-label="Product and preview information">
+        {dashboardWidgetsForSection("product-preview").map((widget) => <ProductPreviewPanel key={widget.id} showExperimental={showExperimental} />)}
+      </section>
 
-            <RecentJobsCard summary={null} />
-
-            <GuestDataEnrichmentDashboardCard />
-
-            <PlaylistRecipesCard count={0} />
-
-            <PlaylistRegenerationCard count={0} />
-
-            <PlaylistHistoryCard count={0} lastEvent={null} />
-
-            <SmartBuilderCard />
-
-            {showExperimentalPreviewCards && <BetaDashboardPreviewCards />}
-
-            <Link href="/roadmap" className={`${styles.card} ${styles.roadmapCard}`}>
-              <Map size={24} className={styles.cardIcon} />
-              <h3>Mixarr Product Roadmap</h3>
-              <p>See completed releases and the current personalization cycle.</p>
-              <span className={styles.cardAction}>View Roadmap</span>
-            </Link>
-          </div>
-        </div>
-      )}
-
-      <div className={styles.recentSection}>
-        <div className={styles.sectionHeader}>
-          <h3>Recent Playlists</h3>
-          <Link href="/generated-playlists" className={styles.viewAll}>View All &rarr;</Link>
-        </div>
-        <div className={styles.recentGrid}>
-          <div className={styles.recentCard}>
-            <div className={styles.recentIcon}>
-              <ListMusic size={20} />
-            </div>
-            <div>
-              <h4>Create your first mix</h4>
-              <p>Open the builder to get started</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
+      <section id="plex-servers" className={styles.dashboardSection} aria-labelledby="plex-servers-heading">
+        <SectionHeading id="plex-servers-heading" title="Plex Servers" description="Connected servers and music libraries. Detailed management remains in settings and Library Health." />
+        {dashboardWidgetsForSection("plex-servers").map((widget) => <LibrarySelector key={widget.id} compact />)}
+      </section>
+    </> : <section className={styles.signInPanel}>
+      <ListMusic size={28} /><h2>Connect your Plex library</h2><p>Sign in to sync music, review library readiness, and build curated playlists.</p><PlexLoginButton />
+      <div className={styles.guestLinks}><Link href="/release-notes">Release Notes</Link><Link href="/roadmap">Roadmap</Link><Link href="/support">Beta Support</Link></div>
+    </section>}
+  </main>;
 }

@@ -265,8 +265,9 @@ describe("library health", () => {
     const dashboard = await readFile(path.join(process.cwd(), "src/components/DashboardSummaryCards.tsx"), "utf8");
     const syncProgress = await readFile(path.join(process.cwd(), "src/components/SyncProgress.tsx"), "utf8");
 
-    assert.match(dashboard, /audioPercent\.toFixed\(1\)/);
-    assert.match(dashboard, /incomplete/);
+    assert.match(dashboard, /rawPercent\.toFixed\(1\)/);
+    assert.match(dashboard, /complete < total/);
+    assert.match(dashboard, /Math\.min\(99\.9/);
     assert.doesNotMatch(dashboard, /pending or incomplete/);
     assert.match(syncProgress, /formatProgressPercent/);
     assert.match(syncProgress, /incomplete/);
@@ -389,7 +390,7 @@ describe("library health", () => {
     assert.doesNotMatch(page, /getLibraryHealth\(user\.id\)/);
     assert.doesNotMatch(page, /getCachedLibraryHealth/);
     assert.doesNotMatch(page, /Library Health is refreshing/);
-    assert.match(dashboardCards, /health\.message/);
+    assert.match(dashboardCards, /libraryHealth\.message/);
     assert.match(dashboardSummary, /Library Health refresh running/);
   });
 
