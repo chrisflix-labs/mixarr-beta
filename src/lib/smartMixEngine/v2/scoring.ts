@@ -14,6 +14,7 @@ import { scorePlaylistIdentityTrack } from "../../playlistIdentity/scoring";
 import { scoreAdaptiveSmartMixTrack } from "../../adaptiveScoring/scoring";
 import { scorePlaybackAwareTrack } from "../../playbackAwareness/scoring";
 import { scoreContextMatch } from "../../contextualMixes";
+import { scoreCrossPlaylistCandidate } from "../../playlistCoordination/scoring";
 
 const metadataRuleFields = new Set(["tempo", "valence", "energy", "popularity"]);
 
@@ -139,18 +140,24 @@ export function applyAdaptiveScoringToTrack<TTrack extends Record<string, any>>(
     }
   }
   const scoreAfterPlayback = playbackScore?.finalScore ?? finalScore;
+  const coordinationScore = scoreCrossPlaylistCandidate(track as any, config.coordination);
+  if (config.coordination) scoreBreakdown.coordination = coordinationScore.totalAdjustment;
+  const scoreAfterCoordination = coordinationScore.hardOverlapRejected
+    ? scoreAfterPlayback
+    : roundScore(scoreAfterPlayback + coordinationScore.totalAdjustment);
   return {
     ...track,
-    score: scoreAfterPlayback,
+    score: scoreAfterCoordination,
     baseScore,
-    personalizedScore: scoreAfterPlayback,
+    personalizedScore: scoreAfterCoordination,
     scoreBreakdown,
     ...(personalizationScore ? { personalizationScore } : {}),
     ...(identityScore.applied ? { playlistIdentityScore: identityScore } : {}),
     ...(adaptiveScore ? { adaptiveScore } : {}),
     ...(playbackScore ? { playbackScore } : {}),
-    ...(alreadyExcluded || playbackScore?.excluded
-      ? { exclusionReason: adaptiveScore?.exclusionReason || personalizationScore?.exclusionReason || identityScore.exclusionReason || playbackScore?.exclusionReason }
+    ...(config.coordination ? { coordinationScore } : {}),
+    ...(alreadyExcluded || playbackScore?.excluded || coordinationScore.hardOverlapRejected
+      ? { exclusionReason: adaptiveScore?.exclusionReason || personalizationScore?.exclusionReason || identityScore.exclusionReason || playbackScore?.exclusionReason || (coordinationScore.hardOverlapRejected ? "COORDINATION_HARD_MAXIMUM" : null) }
       : {}),
   };
 }

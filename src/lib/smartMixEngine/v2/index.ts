@@ -12,6 +12,8 @@ import {
 import { SMART_MIX_ENGINE_V2, type SmartMixEngineV2Config, type SmartMixScoredTrack } from "./types";
 import { discoverySelectionAdjustment, scoreDiscoveryCandidatePool, summarizeDiscovery } from "./discovery";
 import { getTrackBpm, getTrackMood } from "./metadataFallbacks";
+import { canonicalTrackKey } from "../../playlistCoordination/overlap";
+import { scoreCrossPlaylistCandidate } from "../../playlistCoordination/scoring";
 
 export * from "./metadataFallbacks";
 export * from "./bpmFlow";
@@ -41,6 +43,13 @@ export type SmartMixEngineV2RunResult<TTrack extends Record<string, any>> = {
   engineVersion: typeof SMART_MIX_ENGINE_V2;
   tracks: SmartMixScoredTrack<TTrack>[];
   safety: SafetyResult<SmartMixScoredTrack<TTrack>>;
+  decisionTrace: {
+    evaluatedCandidateCount: number;
+    eligibleCandidateCount: number;
+    hardRejectedCount: number;
+    hardRejectionSummary: Record<string, number>;
+    rejectedCandidates: Array<{ track: SmartMixScoredTrack<TTrack>; rejectionCode: string; rank: number }>;
+  };
   diagnostics: {
     pipeline: typeof SMART_MIX_ENGINE_V2_PIPELINE;
     candidateCount: number;
@@ -126,10 +135,21 @@ function selectTunedCandidates<TTrack extends Record<string, any>>(
       : Math.min(remaining.length, Math.max(12, limit * 3));
     const pool = remaining.slice(0, poolSize);
     const previousTrack = selected[selected.length - 1];
-    let bestTrack = pool[0];
+    let bestTrack: (typeof pool)[number] | null = null;
     let bestScore = Number.NEGATIVE_INFINITY;
+    let bestTrace: NonNullable<SmartMixScoredTrack["smartMixSelectionTrace"]> | null = null;
+    const evaluatedScores: Array<{ id: string; title: string | null; score: number }> = [];
+    const hardRejectedIndexes: number[] = [];
 
     for (const candidate of pool) {
+      const selectedRelatedTrackCount = config.coordination
+        ? selected.filter((item) => (config.coordination?.relatedTrackUsage[canonicalTrackKey(item as any)] || 0) > 0 && !config.coordination?.sharedCoreTrackKeys.includes(canonicalTrackKey(item as any))).length
+        : 0;
+      const coordinationScore = scoreCrossPlaylistCandidate(candidate as any, config.coordination, selectedRelatedTrackCount, selected.length);
+      if (coordinationScore.hardOverlapRejected) {
+        hardRejectedIndexes.push(candidate.smartMixV2OriginalIndex);
+        continue;
+      }
       const position = selected.length;
       const moodBlendScore = moodBlend.enabled
         ? scoreMoodBlendForTrack({ track: candidate, config, position, limit })
@@ -147,28 +167,66 @@ function selectTunedCandidates<TTrack extends Record<string, any>>(
       const varietyPenalty = tuningVarietyPenalty({ track: candidate, selectedTracks: selected, tuningConfig: tuning });
       const existingMoodBlend = candidate.scoreBreakdown.moodBlend || 0;
       const positionMoodBlend = moodBlendScore?.score || existingMoodBlend;
-      const candidateScore = candidate.score - existingMoodBlend + positionMoodBlend + transitionScore + feedbackTransitionPenalty - varietyPenalty;
+      const existingCoordination = candidate.scoreBreakdown.coordination || 0;
+      const candidateScore = candidate.score - existingMoodBlend - existingCoordination + positionMoodBlend + coordinationScore.totalAdjustment + transitionScore + feedbackTransitionPenalty - varietyPenalty;
       const discoveryQuotaAdjustment = discoverySelectionAdjustment(candidate, selected, limit, tuning.discovery);
       const adjustedCandidateScore = candidateScore + discoveryQuotaAdjustment;
+      evaluatedScores.push({ id: String(candidate.id), title: candidate.title || null, score: adjustedCandidateScore });
       if (
         adjustedCandidateScore > bestScore
-        || (adjustedCandidateScore === bestScore && candidate.smartMixV2OriginalIndex < bestTrack.smartMixV2OriginalIndex)
+        || (adjustedCandidateScore === bestScore && (!bestTrack || candidate.smartMixV2OriginalIndex < bestTrack.smartMixV2OriginalIndex))
       ) {
-        bestTrack = (moodBlendScore || feedbackTransitionPenalty)
+        bestTrack = (moodBlendScore || feedbackTransitionPenalty || config.coordination)
           ? {
               ...candidate,
-              score: Math.round((candidate.score - existingMoodBlend + positionMoodBlend) * 1000) / 1000,
+              score: Math.round((candidate.score - existingMoodBlend - existingCoordination + positionMoodBlend + coordinationScore.totalAdjustment) * 1000) / 1000,
               scoreBreakdown: {
                 ...candidate.scoreBreakdown,
                 moodBlend: moodBlendScore?.score ?? existingMoodBlend,
                 transitionFeedback: feedbackTransitionPenalty,
+                coordination: coordinationScore.totalAdjustment,
               },
+              coordinationScore,
               ...(moodBlendScore ? { moodBlend: moodBlendScore.data } : {}),
             }
           : candidate;
         bestScore = adjustedCandidateScore;
+        bestTrace = {
+          position: selected.length + 1,
+          selectionScore: Math.round(adjustedCandidateScore * 1000) / 1000,
+          transitionAdjustment: transitionScore,
+          transitionFeedbackAdjustment: feedbackTransitionPenalty,
+          varietyPenalty,
+          discoveryAdjustment: discoveryQuotaAdjustment,
+          moodAdjustment: positionMoodBlend - existingMoodBlend,
+          coordinationAdjustment: coordinationScore.totalAdjustment - existingCoordination,
+          previousTrackId: previousTrack?.id ? String(previousTrack.id) : null,
+          previousTrackTitle: previousTrack?.title || null,
+        };
       }
     }
+
+    if (!bestTrack) {
+      const rejected = new Set(hardRejectedIndexes);
+      const nextRemaining = remaining.filter((candidate) => !rejected.has(candidate.smartMixV2OriginalIndex));
+      if (nextRemaining.length === remaining.length) break;
+      remaining.splice(0, remaining.length, ...nextRemaining);
+      continue;
+    }
+
+    const chosenTrack = bestTrack;
+    const runnerUp = evaluatedScores
+      .filter((item) => item.id !== String(chosenTrack.id))
+      .sort((left, right) => right.score - left.score)[0];
+    bestTrack = {
+      ...chosenTrack,
+      smartMixSelectionTrace: {
+        ...(bestTrace as NonNullable<SmartMixScoredTrack["smartMixSelectionTrace"]>),
+        comparisonCandidateId: runnerUp?.id || null,
+        comparisonCandidateTitle: runnerUp?.title || null,
+        scoreMargin: runnerUp ? Math.round((bestScore - runnerUp.score) * 1000) / 1000 : null,
+      },
+    };
 
     selected.push(bestTrack);
     const removeIndex = remaining.findIndex((candidate) => candidate.smartMixV2OriginalIndex === bestTrack.smartMixV2OriginalIndex);
@@ -198,8 +256,8 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
   applyPlaylistSafetyRules,
 }: SmartMixEngineV2RunInput<TTrack>): SmartMixEngineV2RunResult<TTrack> {
   const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
-  const baseConfig = config.adaptiveScoring || config.playbackScoring
-    ? { ...config, personalization: undefined, playlistIdentity: undefined, adaptiveScoring: undefined, playbackScoring: undefined }
+  const baseConfig = config.adaptiveScoring || config.playbackScoring || config.coordination
+    ? { ...config, personalization: undefined, playlistIdentity: undefined, adaptiveScoring: undefined, playbackScoring: undefined, coordination: undefined }
     : config;
   const initiallyScoredPinnedTracks = pinnedTracks.map((track) => scoreSmartMixTrack(track, baseConfig));
   const initiallyScoredCandidates = candidates.map((track, index) => ({
@@ -211,13 +269,16 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
     config: tuning.discovery,
     recentUsage: config.recentPlaylistUsage,
   });
-  const fullyScoredTracks = config.adaptiveScoring || config.playbackScoring
+  const fullyScoredTracks = config.adaptiveScoring || config.playbackScoring || config.coordination
     ? discoveryScoring.tracks.map((track) => applyAdaptiveScoringToTrack(track as SmartMixScoredTrack<TTrack>, config))
     : discoveryScoring.tracks;
   const scoredPinnedTracks = fullyScoredTracks.slice(0, initiallyScoredPinnedTracks.length) as SmartMixScoredTrack<TTrack>[];
   const scoredCandidates = fullyScoredTracks
     .slice(initiallyScoredPinnedTracks.length)
-    .filter((track) => track.exclusionReason !== "PLAYBACK_RECENT") as Array<SmartMixScoredTrack<TTrack> & { smartMixV2OriginalIndex: number }>;
+    .filter((track) => !["PLAYBACK_RECENT", "COORDINATION_HARD_MAXIMUM"].includes(String(track.exclusionReason || ""))) as Array<SmartMixScoredTrack<TTrack> & { smartMixV2OriginalIndex: number }>;
+  const hardRejectedCandidates = fullyScoredTracks
+    .slice(initiallyScoredPinnedTracks.length)
+    .filter((track) => ["PLAYBACK_RECENT", "COORDINATION_HARD_MAXIMUM"].includes(String(track.exclusionReason || ""))) as Array<SmartMixScoredTrack<TTrack> & { smartMixV2OriginalIndex: number }>;
 
   const sortedCandidates = [...scoredCandidates].sort((left, right) => {
     if (right.score !== left.score) return right.score - left.score;
@@ -233,8 +294,26 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
   const safety = applyPlaylistSafetyRules(scoredPinnedTracks.concat(selectedCandidates), config);
   const bpmFlow = summarizeBpmFlow(safety.tracks, tuning.bpmFlow);
   const tracks = attachBpmTransitionMetadata(safety.tracks.map(removeInternalSortIndex), bpmFlow);
+  const selectedIds = new Set(tracks.map((track) => String(track.id)));
+  const rejectedCandidates = [...hardRejectedCandidates, ...scoredCandidates.filter((track) => !selectedIds.has(String(track.id)))]
+    .sort((left, right) => right.score - left.score)
+    .map((track, index) => ({ track: removeInternalSortIndex(track), rejectionCode: String(track.exclusionReason || "RANKED_BELOW_CUTOFF"), rank: index + 1 }));
+  const hardRejectionSummary = hardRejectedCandidates.reduce<Record<string, number>>((summary, track) => {
+    const code = String(track.exclusionReason || "HARD_FILTER");
+    summary[code] = (summary[code] || 0) + 1;
+    return summary;
+  }, {});
   const discovery = summarizeDiscovery(scoredCandidates, tracks, tuning.discovery, discoveryScoring.executionTimeMs);
-  const tuningWarnings = buildTuningWarnings({ tracks, tuningConfig: tuning });
+  const coordinationSharedCount = config.coordination
+    ? tracks.filter((track) => (config.coordination?.relatedTrackUsage[canonicalTrackKey(track as any)] || 0) > 0 && !config.coordination?.sharedCoreTrackKeys.includes(canonicalTrackKey(track as any))).length
+    : 0;
+  const coordinationProjectedPercentage = config.coordination
+    ? Math.round((coordinationSharedCount / Math.max(1, Math.min(config.coordination.targetPlaylistSize, config.coordination.maximumRelatedPlaylistSize))) * 10_000) / 100
+    : 0;
+  const coordinationWarnings = config.coordination && coordinationProjectedPercentage > config.coordination.settings.maximumSharedTrackPercentage
+    ? [`Projected related-playlist overlap is ${coordinationProjectedPercentage}%, above the configured ${config.coordination.settings.maximumSharedTrackPercentage}% ${config.coordination.settings.overlapEnforcement === "HARD_MAXIMUM" ? "hard maximum; protected pinned tracks prevent satisfying it" : "target"}.`]
+    : [];
+  const tuningWarnings = [...buildTuningWarnings({ tracks, tuningConfig: tuning }), ...coordinationWarnings];
   const moodBlendSummary = summarizeMoodBlend({
     tracks,
     candidates: scoredCandidates as any[],
@@ -274,6 +353,13 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
     safety: {
       ...safety,
       tracks,
+    },
+    decisionTrace: {
+      evaluatedCandidateCount: initiallyScoredCandidates.length,
+      eligibleCandidateCount: scoredCandidates.length,
+      hardRejectedCount: hardRejectedCandidates.length,
+      hardRejectionSummary,
+      rejectedCandidates,
     },
     diagnostics: {
       pipeline: SMART_MIX_ENGINE_V2_PIPELINE,

@@ -7,8 +7,11 @@ import { Activity, AlertTriangle, Ban, CheckCircle2, History, ListRestart, Refre
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import TrackFeedbackMenu from "@/components/TrackFeedbackMenu";
 import AdaptiveScoreBreakdown from "@/components/AdaptiveScoreBreakdown";
+import SmartMixExplanation from "@/components/SmartMixExplanation";
+import SmartMixGenerationInsights from "@/components/SmartMixGenerationInsights";
 import AdvancedRegenerationWorkspace from "@/components/AdvancedRegenerationWorkspace";
 import PlaylistIdentityPanel from "@/components/PlaylistIdentityPanel";
+import PlaylistCoordinationPanel from "@/components/PlaylistCoordinationPanel";
 import { orderTracksByBpmFlow, summarizeBpmFlow, type BpmFlowMode } from "@/lib/smartMixEngine/v2/bpmFlow";
 import { normalizeSmartMixTuningConfig } from "@/lib/smartMixEngine/v2/tuning";
 import styles from "./generated-playlists.module.css";
@@ -54,6 +57,8 @@ type PreviewState = {
   trackIds: string[];
   tracks: any[];
   warnings: string[];
+  generationInsights?: any;
+  rejectedCandidates?: any[];
   qualityScore?: PlaylistQualityScore | null;
   summary: {
     targetTrackCount: number;
@@ -559,6 +564,7 @@ export default function GeneratedPlaylistsPage() {
                 {playlist.contextProfileName && <p className={styles.contextSummary}>Generated with {playlist.contextProfileName} · {(playlist.contextInfluence || "BALANCED").toLowerCase()} influence · {playlist.contextOverridesJson?.length || 0} manual override{playlist.contextOverridesJson?.length === 1 ? "" : "s"}</p>}
                 <PlaylistQualityCard score={qualityScoreForDisplay(playlist.qualityScoreJson)} />
                 <PlaylistIdentityPanel playlistId={playlist.id} playlistName={playlist.plexPlaylistTitle} onClone={fetchPlaylists} />
+                <PlaylistCoordinationPanel playlist={playlist} />
                 {playlist.discoveryResultJson?.explanations?.length > 0 && (
                   <div className={styles.discoverySummary} aria-label="Discovery explanation labels">
                     {playlist.discoveryResultJson.explanations.map((item: any) => <span key={item.label} title={item.explanation}>{item.label}</span>)}
@@ -729,6 +735,8 @@ export default function GeneratedPlaylistsPage() {
             </div>
           )}
 
+          <SmartMixGenerationInsights insights={preview.generationInsights} generationId={preview.previewId} rejectedCandidates={preview.rejectedCandidates} />
+
           <div className={styles.trackList}>
             {preview.tracks.length === 0 ? (
               <div className={styles.statePanel}>No tracks matched this regeneration preview.</div>
@@ -750,10 +758,11 @@ export default function GeneratedPlaylistsPage() {
                     <span>Mood {(track.audioFeature?.effectiveMood ?? track.audioFeature?.valence)?.toFixed(2) || "-"}</span>
                     <span>Popularity {track.popularity?.score?.toFixed(0) || "-"}</span>
                   </div>
-                  <AdaptiveScoreBreakdown score={track.adaptiveScore} playback={track.playbackScore} />
+                  <AdaptiveScoreBreakdown score={track.adaptiveScore} playback={track.playbackScore} coordination={track.coordinationScore} />
                 </div>
                 <div className={styles.trackActions}>
                   <TrackPreviewButton trackId={track.id} />
+                  <SmartMixExplanation compact trackId={track.id} generationId={preview.previewId} playlistId={selectedPlaylist.id} initialExplanation={track.decisionExplanation} />
                   <TrackFeedbackMenu
                     trackId={track.id} artistId={track.artistId || track.artist?.id} trackTitle={track.title}
                     playlistId={selectedPlaylist.id} generationId={preview.previewId} sourceSurface="REGENERATION_PREVIEW"

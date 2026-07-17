@@ -31,6 +31,7 @@ export interface PlaylistVersionTrack {
   moodSnapshot: string[];
   energySnapshot: number | null;
   adaptiveScoreSnapshot?: Record<string, unknown> | null;
+  explanationSnapshot?: Record<string, unknown> | null;
 }
 
 export interface PlaylistVersionSnapshot {

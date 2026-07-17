@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.1.8 - Smart Mix Explanations & Insights
+
+- Added immutable Smart Mix v2 decision traces sourced from actual scoring, filtering, fallback, transition, personalization, identity, and selection-margin values.
+- Added selected and rejected explanations, deterministic recommendation confidence, score-layer separation, stable factor/reason codes, suggested fixes, and candidate comparisons.
+- Added responsive explanation drawers, generation insights and filters, historical version explanations, detail preferences, privacy controls, and safe JSON debug export.
+- Added authenticated paginated APIs, selected-track permanence, configurable rejected-trace caps and expiry, aggregate retention, indexed storage, cleanup controls, and trace-time instrumentation.
+- Added the non-destructive `20260716120000_smart_mix_explanations` migration, tests, documentation, release notes, and completed Roadmap entry.
+
+## v2.1.7 - Playlist Relationships & Coordination
+
+- Added persisted playlist relationships, coordination settings, shared-core tracks, progression chains, and cached overlap summaries.
+- Added canonical duplicate-aware track, artist, album, Jaccard, and enforced smaller-playlist overlap calculations.
+- Added separate capped coordination scoring with hard/soft/warning modes, unused-track preference, selected-playlist exclusions, and group artist balancing.
+- Added the Playlist Coordination dashboard, Smart Builder coordination controls, authenticated APIs, previewed track moves, and rebalance previews.
+- Existing playlists remain unchanged and coordination-disabled until explicitly enabled.
+
 ## v2.1.6 - Contextual Mixes
 
 - Added seven built-in contexts for focus, energy, driving, discovery, acoustic listening, summer parties, and winter relaxation.

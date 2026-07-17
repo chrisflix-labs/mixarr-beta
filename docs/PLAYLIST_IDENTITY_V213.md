@@ -1,5 +1,7 @@
 # Playlist Identity & Memory (v2.1.3)
 
+> v2.1.8 integration: track explanations retain the identity adjustment, match/conflict reasons, confidence, and sanitized generation-time identity profile snapshot. Historical explanations do not change after retraining. See [Smart Mix Explanations & Insights](SMART_MIX_EXPLANATIONS_V218.md).
+
 Mixarr gives each managed playlist a stable internal identity based on `GeneratedPlaylist.id`. The display name and Plex playlist rating key may change without changing that identity. Legacy playlists are initialized lazily when their identity panel is opened or when they are regenerated; startup never performs an expensive full-history rebuild.
 
 ## Stored locally

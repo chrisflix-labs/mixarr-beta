@@ -15,6 +15,11 @@ export async function GET() {
     include: {
       _count: { select: { tracks: true } },
       automationSettings: true,
+      coordinationSettings: true,
+      relationshipSources: { include: { targetPlaylist: { select: { id: true, plexPlaylistTitle: true } } } },
+      relationshipTargets: { include: { sourcePlaylist: { select: { id: true, plexPlaylistTitle: true } } } },
+      overlapSummariesA: true,
+      overlapSummariesB: true,
     },
   });
 

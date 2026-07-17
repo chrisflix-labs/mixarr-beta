@@ -19,6 +19,9 @@ import { ensurePlaylistIdentity, loadPlaylistIdentityScoringContext, recordPlayl
 import { loadAdaptiveScoringContext } from "./adaptiveScoring";
 import { loadPlaybackScoringContext } from "./playbackAwareness";
 import { contextSelectionSchema } from "./contextualMixes";
+import { createPlaylistRelationship, loadCoordinationScoringContext, updateCoordinationSettings } from "./playlistCoordination";
+import { buildDecisionExplanation, buildGenerationInsights, type TraceableSmartMixTrack } from "./smartMixExplanations/collector";
+import { attachGenerationExplanationsToPlaylist, getExplanationPreference, persistGenerationExplanations } from "./smartMixExplanations/service";
 import {
   runSmartMixEngineV2,
   smartMixEngineLabel,
@@ -161,6 +164,18 @@ export const playlistConfigSchema = z.object({
   engineVersion: z.enum(smartMixEngineVersions).default(SMART_MIX_ENGINE_V1),
   scoringModel: z.string().trim().min(1).max(80).optional(),
   allowStableFallback: z.boolean().optional(),
+  coordinationSetup: z.object({
+    enabled: z.boolean().default(false),
+    relationshipType: z.enum(["SISTER", "RELATED", "DISTINCT_FROM"]).default("SISTER"),
+    relatedPlaylistIds: z.array(z.string().uuid()).max(20).default([]),
+    maximumSharedTrackPercentage: z.coerce.number().min(0).max(100).default(20),
+    overlapEnforcement: z.enum(["OFF", "WARNING_ONLY", "SOFT_TARGET", "HARD_MAXIMUM"]).default("SOFT_TARGET"),
+    allowSharedCoreTracks: z.boolean().default(false),
+    preferGloballyUnusedTracks: z.boolean().default(false),
+    unusedTrackPreferenceStrength: z.coerce.number().min(0).max(1).default(0.5),
+    crossPlaylistArtistBalancingEnabled: z.boolean().default(true),
+    keepDistinct: z.boolean().default(false),
+  }).optional(),
 }).merge(playlistOptionsSchema);
 
 export const savedPlaylistSchema = playlistConfigSchema.extend({
@@ -699,6 +714,8 @@ function publicPreviewTrack(track: any) {
     adaptiveScore: track.adaptiveScore || undefined,
     playbackScore: track.playbackScore || undefined,
     contextScore: track.contextScore || undefined,
+    coordinationScore: track.coordinationScore || undefined,
+    decisionExplanation: track.decisionExplanation || undefined,
     baseScore: typeof track.baseScore === "number" ? track.baseScore : undefined,
     personalizedScore: typeof track.personalizedScore === "number" ? track.personalizedScore : undefined,
   };
@@ -827,6 +844,12 @@ type PlaylistGenerationStats = {
     label: string;
     diagnostics: any;
   };
+  explanationContext: null | {
+    decisionTrace: ReturnType<typeof runSmartMixEngineV2>["decisionTrace"];
+    prefilteredHardCandidates: Array<{ track: TraceableSmartMixTrack; rejectionCode: string }>;
+    identitySnapshot: unknown;
+    personalizationSnapshot: unknown;
+  };
 };
 
 export async function generatePlaylistTracksWithStats({
@@ -841,7 +864,7 @@ export async function generatePlaylistTracksWithStats({
   const endTimer = playlistGenerationDurationSeconds.startTimer();
   let result: "success" | "failed" = "success";
   try {
-    const { pinnedTracks, omittedIds, blockedTrackIds, manualExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
+    const { pinnedTracks, omittedIds, blockedTrackIds, manualExcludedTrackIds, feedbackExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
     const engineVersion = config.engineVersion || SMART_MIX_ENGINE_V1;
     const useSmartMixV2 = engineVersion === SMART_MIX_ENGINE_V2;
     const scoringResolution = useSmartMixV2
@@ -931,6 +954,16 @@ export async function generatePlaylistTracksWithStats({
       });
       if (playbackScoring) runConfig = { ...runConfig, playbackScoring };
     }
+    if (useSmartMixV2) {
+      const coordination = await loadCoordinationScoringContext({
+        userId,
+        playlistId: personalizationPlaylistId,
+        candidateTrackIds: [...effectivePinnedTracks, ...candidates].map((track) => track.id),
+        targetPlaylistSize: config.limit,
+        draft: config.coordinationSetup,
+      });
+      if (coordination) runConfig = { ...runConfig, coordination };
+    }
     const reasons = collectRuleReasons(config.ruleTree, config.rules);
 
     const baseOmittedIds = config.excludedTrackIds
@@ -944,6 +977,47 @@ export async function generatePlaylistTracksWithStats({
       where: buildTrackWhereClause(userId, config, baseOmittedIds.concat(manualExcludedTrackIds), audioFeatureFilterOptions, { softMetadataFilters: useSmartMixV2 }),
     });
     const manualExclusionsApplied = Math.max(0, matchedBeforeManualExclusions - matchedAfterManualExclusions);
+    const hardCodeByTrackId = new Map<string, string>([
+      ...config.excludedTrackIds.map((trackId) => [trackId, "EXPLICIT_USER_RULE"] as const),
+      ...blockedTrackIds.map((trackId) => [trackId, "BLOCKED_TRACK"] as const),
+      ...manualExcludedTrackIds.map((trackId) => [trackId, "MANUAL_EXCLUSION"] as const),
+      ...feedbackExcludedTrackIds.map((trackId) => [trackId, "NEVER_RECOMMEND"] as const),
+    ]);
+    const hardTraceTracks = useSmartMixV2 && hardCodeByTrackId.size
+      ? await prisma.track.findMany({
+          where: { AND: [{ id: { in: Array.from(hardCodeByTrackId.keys()) } }, buildTrackWhereClause(userId, config, [], audioFeatureFilterOptions, { softMetadataFilters: true })] },
+          include: playlistTrackInclude,
+          take: 100,
+        })
+      : [];
+    const prefilteredHardCandidates = hardTraceTracks.map((track) => {
+      const metadata = resolveEffectiveTrackMetadata(track);
+      return {
+        rejectionCode: hardCodeByTrackId.get(track.id) || "HARD_FILTER",
+        track: {
+          ...track,
+          engineVersion: SMART_MIX_ENGINE_V2,
+          score: 0,
+          baseScore: 0,
+          personalizedScore: 0,
+          scoreBreakdown: { base: 0 },
+          metadataStatus: {
+            hasBpm: metadata.bpm.value != null,
+            hasMood: metadata.moodScore.value != null,
+            hasEnergy: metadata.energy.value != null,
+            hasPopularity: Boolean(track.popularity),
+            missingFields: [
+              ...(metadata.bpm.value == null ? ["bpm" as const] : []),
+              ...(metadata.moodScore.value == null ? ["mood" as const] : []),
+              ...(metadata.energy.value == null ? ["energy" as const] : []),
+              ...(!track.popularity ? ["popularity" as const] : []),
+            ],
+          },
+          fallbacksApplied: [],
+          exclusionReason: hardCodeByTrackId.get(track.id) || "HARD_FILTER",
+        } as TraceableSmartMixTrack,
+      };
+    });
 
     if (useSmartMixV2) {
       const engineResult = runSmartMixEngineV2({
@@ -983,6 +1057,12 @@ export async function generatePlaylistTracksWithStats({
           label: smartMixEngineLabel(SMART_MIX_ENGINE_V2),
           diagnostics: { ...engineResult.diagnostics, scoringModel: scoringResolution.model.id, scoringModelVersion: scoringResolution.model.version, requestedScoringModel: scoringResolution.requestedModel, betaFeatures, betaAccessLevel: betaStatus?.accessLevel || "STABLE", stableFallbackUsed, fallbackReason },
         },
+        explanationContext: {
+          decisionTrace: engineResult.decisionTrace,
+          prefilteredHardCandidates,
+          identitySnapshot: playlistIdentity ? { identityId: playlistIdentity.identityId, mode: playlistIdentity.mode, strength: playlistIdentity.strength, confidence: playlistIdentity.confidence, profile: playlistIdentity.profile } : null,
+          personalizationSnapshot: personalization ? { profile: personalization.profile, playlistProfile: personalization.playlistProfile || null, maxAdjustment: personalization.maxAdjustment ?? null } : null,
+        },
       };
     }
 
@@ -1008,6 +1088,7 @@ export async function generatePlaylistTracksWithStats({
         label: smartMixEngineLabel(SMART_MIX_ENGINE_V1),
         diagnostics: null,
       },
+      explanationContext: null,
     };
   } catch (error) {
     result = "failed";
@@ -1344,8 +1425,51 @@ export async function previewPlaylistTracks({
     .filter((message) => message.severity !== "info")
     .map((message) => message.message);
 
+  const previewId = Buffer.from(`${Date.now()}:${previewTracks.map((track) => track.id).join(",")}`).toString("base64url").slice(0, 48);
+  let generationInsights = null;
+  let rejectedCandidates: any[] = [];
+  if (useSmartMixV2 && generation.explanationContext) {
+    const traceStartedAt = Date.now();
+    const preference = await getExplanationPreference(userId);
+    const selectedExplanations = previewTracks.map((track, index) => buildDecisionExplanation({ track: track as TraceableSmartMixTrack, generationId: previewId, decision: "selected", rank: index + 1 }));
+    const selectedByScore = [...previewTracks].sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
+    const retainedRejected = [
+      ...generation.explanationContext.prefilteredHardCandidates.map((candidate, index) => ({ ...candidate, rank: index + 1 })),
+      ...generation.explanationContext.decisionTrace.rejectedCandidates,
+    ].slice(0, preference.rejectedCandidateLimit);
+    const rejectedExplanations = retainedRejected.map((candidate) => {
+      const winner = selectedByScore.find((track) => Number(track.score || 0) >= Number(candidate.track.score || 0)) || selectedByScore[0] || null;
+      return buildDecisionExplanation({ track: candidate.track as TraceableSmartMixTrack, generationId: previewId, decision: "rejected", rank: candidate.rank, rejectionCode: candidate.rejectionCode, winner: winner as TraceableSmartMixTrack | null });
+    });
+    const persisted = await persistGenerationExplanations({
+      userId,
+      generationId: previewId,
+      engineVersion: SMART_MIX_ENGINE_V2,
+      selected: selectedExplanations,
+      rejected: rejectedExplanations,
+      counts: {
+        evaluated: generation.explanationContext.decisionTrace.evaluatedCandidateCount + generation.manualExclusionsApplied + generation.explanationContext.prefilteredHardCandidates.filter((candidate) => candidate.rejectionCode === "NEVER_RECOMMEND").length,
+        eligible: generation.explanationContext.decisionTrace.eligibleCandidateCount,
+        hardRejected: generation.explanationContext.decisionTrace.hardRejectedCount + generation.manualExclusionsApplied + generation.explanationContext.prefilteredHardCandidates.filter((candidate) => candidate.rejectionCode === "NEVER_RECOMMEND").length,
+      },
+      rejectionCounts: {
+        ...generation.explanationContext.decisionTrace.hardRejectionSummary,
+        ...(generation.manualExclusionsApplied ? { MANUAL_EXCLUSION: generation.manualExclusionsApplied } : {}),
+        ...(generation.explanationContext.prefilteredHardCandidates.some((candidate) => candidate.rejectionCode === "NEVER_RECOMMEND") ? { NEVER_RECOMMEND: generation.explanationContext.prefilteredHardCandidates.filter((candidate) => candidate.rejectionCode === "NEVER_RECOMMEND").length } : {}),
+        RANKED_BELOW_CUTOFF: generation.explanationContext.decisionTrace.rejectedCandidates.filter((candidate) => candidate.rejectionCode === "RANKED_BELOW_CUTOFF").length,
+      },
+      settingsSnapshot: config,
+      identitySnapshot: generation.explanationContext.identitySnapshot,
+      personalizationSnapshot: generation.explanationContext.personalizationSnapshot,
+      traceDurationMs: Date.now() - traceStartedAt,
+    });
+    generationInsights = persisted?.insights || null;
+    rejectedCandidates = rejectedExplanations.map((explanation) => ({ trackId: explanation.trackId, title: explanation.trackTitle, artist: explanation.artistName, finalScore: explanation.scores.finalScore, confidence: explanation.confidence, rejectionStage: explanation.rejectionStage, rejectionCode: explanation.rejectionCode, summary: explanation.summary }));
+    for (let index = 0; index < previewTracks.length; index += 1) previewTracks[index].decisionExplanation = selectedExplanations[index];
+  }
+
   return {
-    previewId: Buffer.from(`${Date.now()}:${previewTracks.map((track) => track.id).join(",")}`).toString("base64url").slice(0, 48),
+    previewId,
     trackIds: previewTracks.map((track) => track.id),
     tracks: previewTracks.map(publicPreviewTrack),
     totalPreviewTrackCount: tracks.length,
@@ -1361,6 +1485,8 @@ export async function previewPlaylistTracks({
     engineVersion: generation.engineVersion,
     engine: generation.engine,
     qualityScore: generation.qualityScore,
+    generationInsights,
+    rejectedCandidates,
   };
 }
 
@@ -1590,6 +1716,8 @@ async function replaceGeneratedPlaylistSnapshot(generatedPlaylistId: string, tra
           regenerationExcluded: Boolean(previous?.regenerationExcluded),
           adaptiveScoreJson: track.adaptiveScore || undefined,
           playbackScoreJson: track.playbackScore || undefined,
+          coordinationScoreJson: track.coordinationScore || undefined,
+          explanationJson: track.decisionExplanation || undefined,
         };
       }),
     });
@@ -1606,6 +1734,7 @@ export async function recordGeneratedPlaylist({
   filters,
   trackIds,
   discoveryResult: suppliedDiscoveryResult,
+  previewId,
 }: {
   userId: string;
   serverId?: string | null;
@@ -1617,6 +1746,7 @@ export async function recordGeneratedPlaylist({
   filters: unknown;
   trackIds: string[];
   discoveryResult?: unknown;
+  previewId?: string | null;
 }) {
   const config = normalizeGeneratedPlaylistConfig(filters);
   const tracks = trackIds.length ? await fetchOwnedTracksInOrder(userId, trackIds) : [];
@@ -1746,6 +1876,12 @@ export async function recordGeneratedPlaylist({
     lastGeneratedAt: new Date(),
   };
 
+  if (previewId && config.engineVersion === SMART_MIX_ENGINE_V2) {
+    const previewTraces = await prisma.smartMixDecisionTrace.findMany({ where: { userId, generationId: previewId, decision: "selected" }, select: { trackId: true, explanationJson: true } });
+    const explanationByTrackId = new Map(previewTraces.map((trace) => [trace.trackId, trace.explanationJson]));
+    scoredTracks = scoredTracks.map((track) => ({ ...track, decisionExplanation: explanationByTrackId.get(track.id) || undefined }));
+  }
+
   const { createPlaylistVersionInTransaction } = await import("./playlists/versions/playlist-version-service");
   const generatedPlaylist = await prisma.$transaction(async (tx) => {
     const saved = existing
@@ -1759,12 +1895,55 @@ export async function recordGeneratedPlaylist({
     });
     return saved;
   });
+  if (config.engineVersion === SMART_MIX_ENGINE_V2) {
+    if (previewId) {
+      await attachGenerationExplanationsToPlaylist(userId, previewId, generatedPlaylist.id);
+    } else if (scoredTracks.length) {
+      const generationId = generatedPlaylist.id;
+      const selected = scoredTracks.map((track, index) => buildDecisionExplanation({ track: track as TraceableSmartMixTrack, generationId, playlistId: generatedPlaylist.id, decision: "selected", rank: index + 1 }));
+      await persistGenerationExplanations({ userId, generationId, engineVersion: SMART_MIX_ENGINE_V2, selected, rejected: [], counts: { evaluated: scoredTracks.length, eligible: scoredTracks.length, hardRejected: 0 }, settingsSnapshot: config });
+      await attachGenerationExplanationsToPlaylist(userId, generationId, generatedPlaylist.id);
+    }
+  }
   if (betaFeatures.length || stableFallbackUsed) {
     for (const featureKey of betaFeatures.length ? betaFeatures : [moodFeatureState?.key || "smartMix.experimentalScoring"]) {
       await recordBetaUsage({ userId, featureKey, playlistId: generatedPlaylist.id, action: existing ? "playlist_regeneration" : "playlist_generation", success: true, fallbackUsed: stableFallbackUsed, engineVersion: config.engineVersion, scoringModel: scoringResolution.model.id, errorCode: fallbackReason });
     }
   }
   await ensurePlaylistIdentity(userId, generatedPlaylist.id, existing ? "REGENERATION" : "GENERATED");
+  if (config.coordinationSetup?.enabled) {
+    const setup = config.coordinationSetup;
+    await updateCoordinationSettings(userId, generatedPlaylist.id, {
+      coordinationEnabled: true,
+      maximumSharedTrackPercentage: setup.maximumSharedTrackPercentage,
+      overlapEnforcement: setup.overlapEnforcement,
+      keepDistinct: setup.keepDistinct,
+      allowSharedCoreTracks: setup.allowSharedCoreTracks,
+      preferGloballyUnusedTracks: setup.preferGloballyUnusedTracks,
+      unusedTrackPreferenceStrength: setup.unusedTrackPreferenceStrength,
+      crossPlaylistArtistBalancingEnabled: setup.crossPlaylistArtistBalancingEnabled,
+      maximumCoordinationInfluence: 12,
+      maximumSharedArtistPercentage: 40,
+      maximumTracksPerArtistAcrossGroup: 6,
+      featuredArtistMatching: "PRIMARY_ONLY",
+      warnBeforeExceedingOverlap: true,
+      excludedPlaylistIds: setup.relationshipType === "DISTINCT_FROM" ? setup.relatedPlaylistIds : [],
+    });
+    for (const targetPlaylistId of setup.relatedPlaylistIds.filter((id) => id !== generatedPlaylist.id)) {
+      try {
+        await createPlaylistRelationship(userId, generatedPlaylist.id, {
+          targetPlaylistId,
+          relationshipType: setup.relationshipType,
+          coordinationEnabled: true,
+          sharedCoreAllowed: setup.allowSharedCoreTracks,
+          maximumSharedTrackPercentage: setup.maximumSharedTrackPercentage,
+          maximumSharedArtistPercentage: 40,
+        });
+      } catch (error: any) {
+        if (!String(error?.message || "").includes("already exists")) throw error;
+      }
+    }
+  }
   trainPlaylistIdentity({ userId, playlistId: generatedPlaylist.id, source: existing ? "REGENERATION" : "GENERATION" }).catch((error: unknown) => {
     console.warn("[PlaylistIdentity] automatic training failed; playlist remains available", { playlistId: generatedPlaylist.id, message: error instanceof Error ? error.message : "unknown error" });
   });
@@ -1941,6 +2120,11 @@ function buildRegenerationPreviewPayload({
   regeneration: any;
 }) {
   const previewTracks = tracks.slice(0, previewDisplayLimit);
+  const previewId = Buffer.from(`${Date.now()}:${previewTracks.map((track) => track.id).join(",")}`).toString("base64url").slice(0, 48);
+  const selectedExplanations = config.engineVersion === SMART_MIX_ENGINE_V2
+    ? previewTracks.map((track, index) => buildDecisionExplanation({ track: track as TraceableSmartMixTrack, generationId: previewId, decision: "selected", rank: index + 1 }))
+    : [];
+  for (let index = 0; index < selectedExplanations.length; index += 1) previewTracks[index].decisionExplanation = selectedExplanations[index];
   const tuningConfig = normalizeSmartMixTuningConfig(config.tuningConfig);
   const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(tracks, tuningConfig) : null;
   const moodBlend = normalizeMoodBlendConfig(config);
@@ -1951,7 +2135,7 @@ function buildRegenerationPreviewPayload({
   const estimatedDurationMs = previewTracks.reduce((sum, track) => sum + (track.duration || 0), 0);
   const bpmFlow = qualityScore?.bpmFlow || null;
   return {
-    previewId: Buffer.from(`${Date.now()}:${previewTracks.map((track) => track.id).join(",")}`).toString("base64url").slice(0, 48),
+    previewId,
     trackIds: previewTracks.map((track) => track.id),
     tracks: previewTracks.map(publicPreviewTrack),
     totalPreviewTrackCount: tracks.length,
@@ -2012,6 +2196,8 @@ function buildRegenerationPreviewPayload({
     engineVersion: config.engineVersion || SMART_MIX_ENGINE_V1,
     qualityScore,
     regeneration,
+    generationInsights: config.engineVersion === SMART_MIX_ENGINE_V2 ? buildGenerationInsights(previewId, selectedExplanations, { evaluated: matchingTrackCount, eligible: matchingTrackCount, hardRejected: 0 }) : null,
+    rejectedCandidates: [],
   };
 }
 

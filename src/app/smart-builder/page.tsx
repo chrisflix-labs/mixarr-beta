@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, Ban, BookMarked, CheckCircle2, ListChecks, Play, RefreshCw, Save, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Ban, BookMarked, CheckCircle2, ListChecks, Network, Play, RefreshCw, Save, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
 import BpmPresetPicker from "@/components/BpmPresetPicker";
 import MoodPresetPicker from "@/components/MoodPresetPicker";
 import MoodBlendingBetaPanel, {
@@ -15,6 +15,8 @@ import { BPM_PRESET_VERSION, bpmPresetLabel, bpmPresetRangeLabel, getBpmPreset, 
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import TrackFeedbackMenu from "@/components/TrackFeedbackMenu";
 import AdaptiveScoreBreakdown from "@/components/AdaptiveScoreBreakdown";
+import SmartMixExplanation from "@/components/SmartMixExplanation";
+import SmartMixGenerationInsights from "@/components/SmartMixGenerationInsights";
 import { getMoodPreset, moodPresetLabel, MOOD_PRESET_VERSION, type MoodPreset } from "@/lib/moodPresets";
 import { buildSmartPresetConfig, SMART_PRESET_VERSION, smartPlaylistPresets, type SmartPlaylistPreset } from "@/lib/smartPlaylistPresets";
 import styles from "./smart-builder.module.css";
@@ -107,6 +109,8 @@ type PlaylistPreviewState = {
   filterSummary: Array<{ label: string; value: string }>;
   warnings: string[];
   signature: string;
+  generationInsights?: any;
+  rejectedCandidates?: any[];
 };
 
 const emptyRanges: RangeState = {
@@ -256,6 +260,8 @@ export default function SmartBuilderPage() {
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [savingRecipe, setSavingRecipe] = useState(false);
+  const [generatedPlaylists, setGeneratedPlaylists] = useState<Array<{ id: string; plexPlaylistTitle: string; trackCount: number }>>([]);
+  const [coordination, setCoordination] = useState({ enabled: false, relationshipType: "SISTER", relatedPlaylistIds: [] as string[], maximumSharedTrackPercentage: 20, overlapEnforcement: "SOFT_TARGET", allowSharedCoreTracks: true, preferGloballyUnusedTracks: true, unusedTrackPreferenceStrength: 0.5, crossPlaylistArtistBalancingEnabled: true, keepDistinct: true });
 
   useEffect(() => {
     const loadDefaults = async () => {
@@ -270,6 +276,7 @@ export default function SmartBuilderPage() {
     };
 
     loadDefaults();
+    axios.get("/api/generated-playlists").then((response) => setGeneratedPlaylists(response.data.playlists || [])).catch(() => setGeneratedPlaylists([]));
   }, []);
 
   const clearPreview = () => {
@@ -454,6 +461,7 @@ export default function SmartBuilderPage() {
       ...(bpmPresetMetadata.bpmPresetId ? { bpmPresetModified } : {}),
       pinnedTrackIds: [],
       excludedTrackIds: [],
+      ...(coordination.enabled ? { coordinationSetup: coordination } : {}),
     };
   };
 
@@ -497,6 +505,8 @@ export default function SmartBuilderPage() {
         summary: res.data.summary,
         filterSummary: res.data.filterSummary || [],
         warnings: res.data.warnings || [],
+        generationInsights: res.data.generationInsights || null,
+        rejectedCandidates: res.data.rejectedCandidates || [],
         signature,
       });
     } catch (error) {
@@ -754,6 +764,28 @@ export default function SmartBuilderPage() {
             </div>
 
             <div className={styles.panel}>
+              <div className={styles.panelHeader}><div><h3><Network size={16} /> Playlist Coordination</h3><p>Coordinate this mix with existing Smart Mix playlists after it is created.</p></div></div>
+              <label className={styles.checkLabel}><input type="checkbox" checked={coordination.enabled} onChange={(event) => { setCoordination({ ...coordination, enabled: event.target.checked }); clearPreview(); }} /> Coordinate with other playlists</label>
+              {coordination.enabled && <>
+                <div className={styles.formGrid}>
+                  <label className={styles.fieldLabel}>Relationship<select className={styles.select} value={coordination.relationshipType} onChange={(event) => setCoordination({ ...coordination, relationshipType: event.target.value })}><option value="SISTER">Sister playlist</option><option value="RELATED">Related playlist</option><option value="DISTINCT_FROM">Keep distinct from selected</option></select></label>
+                  <label className={styles.fieldLabel}>Enforcement<select className={styles.select} value={coordination.overlapEnforcement} onChange={(event) => setCoordination({ ...coordination, overlapEnforcement: event.target.value })}><option value="WARNING_ONLY">Warning</option><option value="SOFT_TARGET">Soft target</option><option value="HARD_MAXIMUM">Hard maximum</option></select></label>
+                  <label className={styles.fieldLabel}>Maximum shared tracks: {coordination.maximumSharedTrackPercentage}%<input type="range" min="0" max="100" value={coordination.maximumSharedTrackPercentage} onChange={(event) => setCoordination({ ...coordination, maximumSharedTrackPercentage: Number(event.target.value) })} /></label>
+                  <label className={styles.fieldLabel}>Unused track preference: {Math.round(coordination.unusedTrackPreferenceStrength * 100)}%<input type="range" min="0" max="1" step="0.05" value={coordination.unusedTrackPreferenceStrength} onChange={(event) => setCoordination({ ...coordination, unusedTrackPreferenceStrength: Number(event.target.value) })} /></label>
+                </div>
+                <div className={styles.safetyGrid}>
+                  <label className={styles.checkLabel}><input type="checkbox" checked={coordination.allowSharedCoreTracks} onChange={(event) => setCoordination({ ...coordination, allowSharedCoreTracks: event.target.checked })} /> Allow shared core tracks</label>
+                  <label className={styles.checkLabel}><input type="checkbox" checked={coordination.preferGloballyUnusedTracks} onChange={(event) => setCoordination({ ...coordination, preferGloballyUnusedTracks: event.target.checked })} /> Prefer unused Smart Mix tracks</label>
+                  <label className={styles.checkLabel}><input type="checkbox" checked={coordination.crossPlaylistArtistBalancingEnabled} onChange={(event) => setCoordination({ ...coordination, crossPlaylistArtistBalancingEnabled: event.target.checked })} /> Balance artists across playlists</label>
+                  <label className={styles.checkLabel}><input type="checkbox" checked={coordination.keepDistinct} onChange={(event) => setCoordination({ ...coordination, keepDistinct: event.target.checked })} /> Keep identity patterns distinct</label>
+                </div>
+                <div className={styles.explanation}><strong>Related playlists ({coordination.relatedPlaylistIds.length})</strong><span>Select existing playlists; names are never entered manually.</span></div>
+                <div className={styles.safetyGrid}>{generatedPlaylists.map((playlist) => <label className={styles.checkLabel} key={playlist.id}><input type="checkbox" checked={coordination.relatedPlaylistIds.includes(playlist.id)} onChange={(event) => setCoordination({ ...coordination, relatedPlaylistIds: event.target.checked ? coordination.relatedPlaylistIds.concat(playlist.id) : coordination.relatedPlaylistIds.filter((id) => id !== playlist.id) })} /> {playlist.plexPlaylistTitle} ({playlist.trackCount})</label>)}</div>
+                <div className={styles.helperNotice}>Selected related playlists: {coordination.relatedPlaylistIds.length} · Configured maximum: {coordination.maximumSharedTrackPercentage}% · Status: evaluated during generation and before Plex writes.</div>
+              </>}
+            </div>
+
+            <div className={styles.panel}>
               <h3>Safety Rules</h3>
               <div className={styles.safetyGrid}>
                 <label className={styles.checkLabel}>
@@ -843,6 +875,7 @@ export default function SmartBuilderPage() {
                     <div><span>Manual exclusions</span><strong>{playlistPreview.summary.manualExclusionsRemoved || 0}</strong></div>
                   </div>
                   {playlistPreview.summary.safetyRuleSummary && <p className={styles.helperText}>{playlistPreview.summary.safetyRuleSummary}</p>}
+                  <SmartMixGenerationInsights insights={playlistPreview.generationInsights} generationId={playlistPreview.previewId} rejectedCandidates={playlistPreview.rejectedCandidates} />
                   {playlistPreview.summary.moodBlendMode && playlistPreview.summary.moodBlendMode !== "off" && (
                     <div className={styles.moodCurvePanel}>
                       <div className={styles.moodCurveHeader}>
@@ -894,10 +927,11 @@ export default function SmartBuilderPage() {
                             <span>Mood {(track.audioFeature?.effectiveMood ?? track.audioFeature?.valence)?.toFixed(2) || "-"}{track.audioFeature?.moodSource ? ` | ${track.audioFeature.moodSource}` : ""}{track.audioFeature?.moodConfidence ? ` | ${track.audioFeature.moodConfidence}` : ""}</span>
                             <span>Popularity {track.popularity?.score?.toFixed(0) || "-"}</span>
                           </div>
-                          <AdaptiveScoreBreakdown score={track.adaptiveScore} playback={track.playbackScore} />
+                          <AdaptiveScoreBreakdown score={track.adaptiveScore} playback={track.playbackScore} coordination={track.coordinationScore} />
                         </div>
                         <div className={styles.trackActions}>
                           <TrackPreviewButton trackId={track.id} />
+                          <SmartMixExplanation compact trackId={track.id} generationId={playlistPreview?.previewId} initialExplanation={track.decisionExplanation} />
                           <TrackFeedbackMenu
                             trackId={track.id} artistId={track.artistId || track.artist?.id} trackTitle={track.title}
                             generationId={playlistPreview?.previewId} sourceSurface="PLAYLIST_PREVIEW"

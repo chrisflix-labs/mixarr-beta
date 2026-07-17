@@ -62,6 +62,12 @@ model User {
   playbackProfiles           UserTrackPlaybackProfile[]
   contextProfiles            ContextProfile[]
   contextualMixSettings      ContextualMixSetting?
+  playlistRelationships      PlaylistRelationship[]
+  playlistProgressionChains  PlaylistProgressionChain[]
+  sharedCoreTracks           PlaylistSharedCoreTrack[]
+  smartMixExplanationPreference SmartMixExplanationPreference?
+  smartMixExplanationGenerations SmartMixExplanationGeneration[]
+  smartMixDecisionTraces     SmartMixDecisionTrace[]
 }
 
 model SyncSettings {
@@ -666,10 +672,143 @@ model GeneratedPlaylist {
   transitionFeedback     TransitionFeedback[]
   identity               PlaylistIdentity?
   adaptiveScoringSetting AdaptivePlaylistScoringSetting?
+  coordinationSettings   PlaylistCoordinationSetting?
+  relationshipSources    PlaylistRelationship[]          @relation("PlaylistRelationshipSource")
+  relationshipTargets    PlaylistRelationship[]          @relation("PlaylistRelationshipTarget")
+  sharedCoreTracks       PlaylistSharedCoreTrack[]
+  progressionMemberships PlaylistProgressionMember[]
+  overlapSummariesA      PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryA")
+  overlapSummariesB      PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryB")
+  explanationGenerations SmartMixExplanationGeneration[]
+  decisionTraces         SmartMixDecisionTrace[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
   @@index([userId, sourceType])
+}
+
+model PlaylistRelationship {
+  id                            String                    @id @default(uuid())
+  userId                        String
+  sourcePlaylistId              String
+  targetPlaylistId              String
+  relationshipType              String
+  coordinationEnabled           Boolean                   @default(true)
+  bidirectional                 Boolean                   @default(true)
+  sharedCoreAllowed             Boolean                   @default(false)
+  maximumSharedTrackPercentage  Float?
+  maximumSharedArtistPercentage Float?
+  preset                        String?
+  createdAt                     DateTime                  @default(now())
+  updatedAt                     DateTime                  @updatedAt
+  user                          User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourcePlaylist                GeneratedPlaylist         @relation("PlaylistRelationshipSource", fields: [sourcePlaylistId], references: [id], onDelete: Cascade)
+  targetPlaylist                GeneratedPlaylist         @relation("PlaylistRelationshipTarget", fields: [targetPlaylistId], references: [id], onDelete: Cascade)
+  sharedCoreTracks              PlaylistSharedCoreTrack[]
+
+  @@unique([userId, sourcePlaylistId, targetPlaylistId, relationshipType])
+  @@index([userId, sourcePlaylistId])
+  @@index([userId, targetPlaylistId])
+}
+
+model PlaylistCoordinationSetting {
+  id                                  String            @id @default(uuid())
+  playlistId                          String            @unique
+  coordinationEnabled                 Boolean           @default(false)
+  maximumSharedTrackPercentage        Float             @default(20)
+  overlapEnforcement                  String            @default("SOFT_TARGET")
+  keepDistinct                        Boolean           @default(false)
+  allowSharedCoreTracks               Boolean           @default(false)
+  maximumSharedCoreTracks             Int?
+  preferGloballyUnusedTracks          Boolean           @default(false)
+  unusedTrackPreferenceStrength       Float             @default(0.5)
+  maximumCoordinationInfluence        Float             @default(12)
+  crossPlaylistArtistBalancingEnabled Boolean           @default(true)
+  maximumSharedArtistPercentage       Float?            @default(40)
+  maximumTracksPerArtistAcrossGroup   Int?              @default(6)
+  featuredArtistMatching              String            @default("PRIMARY_ONLY")
+  warnBeforeExceedingOverlap          Boolean           @default(true)
+  excludedPlaylistIdsJson             Json?
+  createdAt                           DateTime          @default(now())
+  updatedAt                           DateTime          @updatedAt
+  playlist                            GeneratedPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+}
+
+model PlaylistSharedCoreTrack {
+  id             String                @id @default(uuid())
+  userId         String
+  playlistId     String
+  trackId        String
+  relationshipId String?
+  scopeKey       String                @default("GLOBAL")
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlist       GeneratedPlaylist     @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  relationship   PlaylistRelationship? @relation(fields: [relationshipId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, trackId, scopeKey])
+  @@index([userId, trackId])
+  @@index([relationshipId, trackId])
+}
+
+model PlaylistProgressionChain {
+  id                               String                      @id @default(uuid())
+  userId                           String
+  name                             String
+  maximumAdjacentOverlapPercentage Float?                      @default(15)
+  maximumChainOverlapPercentage    Float?                      @default(20)
+  createdAt                        DateTime                    @default(now())
+  updatedAt                        DateTime                    @updatedAt
+  user                             User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  members                          PlaylistProgressionMember[]
+
+  @@unique([userId, name])
+  @@index([userId, updatedAt])
+}
+
+model PlaylistProgressionMember {
+  id                  String                   @id @default(uuid())
+  chainId             String
+  playlistId          String
+  sequencePosition    Int
+  targetMood          String?
+  minimumEnergy       Float?
+  maximumEnergy       Float?
+  minimumBpm          Float?
+  maximumBpm          Float?
+  recommendedDuration Int?
+  handoffBehavior     String                   @default("SMOOTH")
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  chain               PlaylistProgressionChain @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  playlist            GeneratedPlaylist        @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  @@unique([chainId, playlistId])
+  @@unique([chainId, sequencePosition])
+  @@index([playlistId])
+}
+
+model PlaylistOverlapSummary {
+  id                     String            @id @default(uuid())
+  playlistAId            String
+  playlistBId            String
+  sharedTrackCount       Int               @default(0)
+  sharedTrackPercentage  Float             @default(0)
+  jaccardSimilarity      Float             @default(0)
+  sharedArtistCount      Int               @default(0)
+  sharedArtistPercentage Float             @default(0)
+  sharedAlbumCount       Int               @default(0)
+  sharedAlbumPercentage  Float             @default(0)
+  sharedCoreTrackCount   Int               @default(0)
+  similarityScore        Float             @default(0)
+  calculatedAt           DateTime          @default(now())
+  playlistA              GeneratedPlaylist @relation("PlaylistOverlapSummaryA", fields: [playlistAId], references: [id], onDelete: Cascade)
+  playlistB              GeneratedPlaylist @relation("PlaylistOverlapSummaryB", fields: [playlistBId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistAId, playlistBId])
+  @@index([calculatedAt])
+  @@index([sharedTrackPercentage])
 }
 
 model SmartMixTuningPreset {
@@ -687,22 +826,22 @@ model SmartMixTuningPreset {
 }
 
 model ContextProfile {
-  id                     String   @id @default(uuid())
-  userId                 String
-  name                   String
-  description            String?
-  icon                   String?
-  tagsJson               Json?
-  contextType            String   @default("CUSTOM")
-  isEnabled              Boolean  @default(true)
-  clonedFromBuiltInKey   String?
+  id                       String   @id @default(uuid())
+  userId                   String
+  name                     String
+  description              String?
+  icon                     String?
+  tagsJson                 Json?
+  contextType              String   @default("CUSTOM")
+  isEnabled                Boolean  @default(true)
+  clonedFromBuiltInKey     String?
   clonedFromBuiltInVersion String?
-  availabilityJson       Json
-  behaviorJson           Json
-  profileVersion         String   @default("1")
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  availabilityJson         Json
+  behaviorJson             Json
+  profileVersion           String   @default("1")
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
   @@index([userId, isEnabled, updatedAt])
@@ -710,42 +849,116 @@ model ContextProfile {
 }
 
 model ContextualMixSetting {
-  id                              String   @id @default(uuid())
-  userId                          String   @unique
-  enabled                         Boolean  @default(true)
-  showSuggestions                 Boolean  @default(true)
-  defaultInfluence                String   @default("BALANCED")
-  showBuiltInCards                Boolean  @default(true)
-  showCustomCards                 Boolean  @default(true)
-  autoSuggestTimeAndDay           Boolean  @default(true)
-  confirmBeforeReplacingManual    Boolean  @default(true)
-  timeZone                        String?
-  createdAt                       DateTime @default(now())
-  updatedAt                       DateTime @updatedAt
-  user                            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                           String   @id @default(uuid())
+  userId                       String   @unique
+  enabled                      Boolean  @default(true)
+  showSuggestions              Boolean  @default(true)
+  defaultInfluence             String   @default("BALANCED")
+  showBuiltInCards             Boolean  @default(true)
+  showCustomCards              Boolean  @default(true)
+  autoSuggestTimeAndDay        Boolean  @default(true)
+  confirmBeforeReplacingManual Boolean  @default(true)
+  timeZone                     String?
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+  user                         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model GeneratedPlaylistTrack {
-  id                   String            @id @default(uuid())
-  generatedPlaylistId  String
-  trackId              String?
-  plexTrackRatingKey   String?
-  position             Int
-  title                String
-  artist               String?
-  album                String?
-  locked               Boolean           @default(false)
-  liked                Boolean           @default(false)
-  regenerationExcluded Boolean           @default(false)
-  adaptiveScoreJson    Json?
-  playbackScoreJson    Json?
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
-  generatedPlaylist    GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  id                    String            @id @default(uuid())
+  generatedPlaylistId   String
+  trackId               String?
+  plexTrackRatingKey    String?
+  position              Int
+  title                 String
+  artist                String?
+  album                 String?
+  locked                Boolean           @default(false)
+  liked                 Boolean           @default(false)
+  regenerationExcluded  Boolean           @default(false)
+  adaptiveScoreJson     Json?
+  playbackScoreJson     Json?
+  coordinationScoreJson Json?
+  explanationJson       Json?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  generatedPlaylist     GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
 
   @@index([generatedPlaylistId, position])
   @@index([trackId])
   @@index([generatedPlaylistId, trackId])
+}
+
+model SmartMixExplanationPreference {
+  id                     String   @id @default(uuid())
+  userId                 String   @unique
+  enabled                Boolean  @default(true)
+  detailLevel            String   @default("SIMPLE")
+  rejectedCandidateLimit Int      @default(100)
+  rejectedRetentionDays  Int      @default(30)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SmartMixExplanationGeneration {
+  id                          String            @id @default(uuid())
+  generationId                String            @unique
+  userId                      String
+  generatedPlaylistId         String?
+  engineVersion               String
+  status                      String            @default("complete")
+  settingsSnapshotJson        Json?
+  identitySnapshotJson        Json?
+  personalizationSnapshotJson Json?
+  insightsJson                Json
+  rejectionSummaryJson        Json?
+  evaluatedCount              Int               @default(0)
+  eligibleCount               Int               @default(0)
+  selectedCount               Int               @default(0)
+  hardRejectedCount           Int               @default(0)
+  rankedRejectedCount         Int               @default(0)
+  traceDurationMs             Int               @default(0)
+  fullTraceExpiresAt          DateTime?
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
+  user                        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedPlaylist           GeneratedPlaylist? @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  traces                      SmartMixDecisionTrace[]
+
+  @@index([userId, createdAt])
+  @@index([generatedPlaylistId, createdAt])
+  @@index([fullTraceExpiresAt])
+}
+
+model SmartMixDecisionTrace {
+  id                    String                        @id @default(uuid())
+  generationRecordId    String
+  generationId          String
+  userId                String
+  generatedPlaylistId   String?
+  trackId               String?
+  trackTitle            String?
+  artistName            String?
+  decision              String
+  rank                  Int?
+  rejectionStage        String?
+  rejectionCode         String?
+  finalScore            Float?
+  confidenceScore       Int
+  confidenceLabel       String
+  explanationJson       Json
+  expiresAt             DateTime?
+  createdAt             DateTime                      @default(now())
+  generation            SmartMixExplanationGeneration @relation(fields: [generationRecordId], references: [id], onDelete: Cascade)
+  user                  User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedPlaylist     GeneratedPlaylist?             @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+
+  @@index([generationId, decision, rank])
+  @@index([userId, trackId, createdAt])
+  @@index([generatedPlaylistId, decision])
+  @@index([rejectionCode])
+  @@index([expiresAt])
 }
 
 model PlaylistRegeneration {

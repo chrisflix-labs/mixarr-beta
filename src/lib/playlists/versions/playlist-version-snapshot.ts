@@ -63,6 +63,9 @@ export async function capturePlaylistSnapshot(db: DbClient, generatedPlaylistId:
       adaptiveScoreSnapshot: track.adaptiveScoreJson && typeof track.adaptiveScoreJson === "object"
         ? track.adaptiveScoreJson as Record<string, unknown>
         : null,
+      explanationSnapshot: track.explanationJson && typeof track.explanationJson === "object"
+        ? track.explanationJson as Record<string, unknown>
+        : null,
     };
   });
   const durationMs = tracks.reduce((sum, track) => sum + (track.durationMsSnapshot || 0), 0);
@@ -95,6 +98,7 @@ const trackSchema = z.object({
   artistSnapshot: z.string().nullable(), albumSnapshot: z.string().nullable(), durationMsSnapshot: z.number().nullable(),
   bpmSnapshot: z.number().nullable(), moodSnapshot: z.array(z.string()), energySnapshot: z.number().nullable(),
   adaptiveScoreSnapshot: z.record(z.unknown()).nullable().optional(),
+  explanationSnapshot: z.record(z.unknown()).nullable().optional(),
 });
 const storedSchema = z.object({
   schemaVersion: z.literal(PLAYLIST_SNAPSHOT_SCHEMA_VERSION),

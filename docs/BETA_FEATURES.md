@@ -16,6 +16,8 @@ The first existing account becomes the initial administrator during migration. T
 
 ## Support and privacy
 
+Smart Mix explanation Developer detail is administrator-only and exposes stable factor codes, raw weights, confidence inputs, engine identifiers, and immutable trace data. Simple and Detailed views remain available to ordinary users. `SMART_MIX_EXPLANATION_DEBUG=true` enables bounded diagnostic summaries and should be used temporarily.
+
 Configure `BETA_FEEDBACK_URL`, `GITHUB_ISSUES_URL`, and `DISCORD_SUPPORT_URL` to expose support actions. Only validated HTTP(S) URLs are returned. Feedback reports remove secret-like fields, authentication values, cookies, and filesystem paths. Reports are stored locally; Mixarr does not add external telemetry.
 
 GitHub Sponsors messaging is shown only when `GITHUB_SPONSORS_URL` is valid. It is informational and does not claim verified sponsorship or gate stable functionality.

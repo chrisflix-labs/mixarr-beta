@@ -73,6 +73,37 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.1.8",
+    title: "Smart Mix Explanations & Insights",
+    releaseDate: "July 16, 2026",
+    badges: ["Smart Builder", "Playlists", "Personalization", "Identity", "History", "Database", "Debugging", "Diagnostics", "Performance", "Security", "Settings", "Mobile", "UI"],
+    changes: [
+      "Added immutable, typed Smart Mix v2 decision traces built from the engine's actual score components, selection margins, transition adjustments, hard exclusions, fallbacks, and generation-time metadata rather than reconstructed explanations.",
+      "Added Why selected, Why rejected, and historical explanation actions with simple, detailed, and admin-only developer views for positive and negative factors, score layers, personalization caps, playlist identity, transitions, metadata, fallbacks, confidence, and suggested fixes.",
+      "Added deterministic recommendation confidence that remains separate from score and accounts for metadata completeness, fallbacks, close decisions, conflicting signals, and limited identity or personalization evidence.",
+      "Added candidate comparison, generation-level insights, low-confidence and rejected-candidate filters, stable rejection/factor/fallback codes, responsive accessible drawer behavior, and sanitized privacy-warned JSON debug reports.",
+      "Added authenticated user-isolated explanation, insight, comparison, candidate, export, settings, and cleanup APIs with paginated reads and database indexes.",
+      "Always retains selected explanations with generated tracks and playlist version snapshots, caps rejected details at 100 by default, expires full candidate traces after 30 days, and preserves aggregate insights without unbounded per-factor rows.",
+      "Added the additive 20260716120000 migration, performance timing, concise structured generation logging, automated coverage, privacy and API documentation, and completed Roadmap entry.",
+    ],
+  },
+  {
+    version: "2.1.7",
+    title: "Playlist Relationships & Coordination",
+    releaseDate: "July 16, 2026",
+    badges: ["Playlists", "Personalization", "Identity", "Database", "Performance", "Preview", "Regeneration", "Plex", "Dashboard", "Mobile", "UI", "Security"],
+    changes: [
+      "Added user-scoped sister, related, distinct, parent/child, and progression relationship storage with normalized bidirectional pairs, ownership checks, self-link prevention, duplicate protection, circular parent-child checks, and incompatible-server validation.",
+      "Added duplicate-aware playlist comparison using canonical recording IDs and normalized metadata fallbacks, with shared-track percentage based on the smaller active playlist plus separately labeled Jaccard, artist, album, shared-core, and combined similarity metrics.",
+      "Added Off, Warning only, Soft target, and Hard maximum overlap controls, selected-playlist exclusions, shared-core limits, keep-distinct behavior, global unused-track preference, artist and album balancing, and a strict maximum coordination influence cap.",
+      "Integrated coordination as a separate explainable Smart Mix v2 score layer after existing quality, identity, personalization, and playback layers, with dynamic projected-overlap validation during final selection.",
+      "Added a responsive Playlist Coordination dashboard with summary cards, sortable comparison-ready data, relationship presets, playlist settings, warnings, and ordered progression-chain creation.",
+      "Added Smart Builder coordination controls with playlist selectors, live configuration summary, persisted post-creation settings, and no implicit changes to existing Plex playlists.",
+      "Added preview-before-apply track move/copy and rebalance APIs; confirmed moves validate hard exclusions and overlap, optionally preserve source length, synchronize Plex, and attempt snapshot compensation if synchronization fails.",
+      "Added shared-core bulk APIs, overlap-summary caching storage, batched candidate usage and membership queries, 90-day half-life historical usage decay, database indexes, deterministic unit tests, migration notes, and backward-compatible defaults.",
+    ],
+  },
+  {
     version: "2.1.6",
     title: "Contextual Mixes",
     releaseDate: "July 16, 2026",

@@ -1,5 +1,7 @@
 # Adaptive Smart Mix Scoring (v2.1.4)
 
+> v2.1.8 integration: Smart Mix decision traces preserve the actual adaptive base score, capped adjustment, maximum influence, confidence limit, component reasons, and final personalized score at generation time. See [Smart Mix Explanations & Insights](SMART_MIX_EXPLANATIONS_V218.md).
+
 Mixarr keeps the Smart Mix Engine v2 base score unchanged and applies personalization through a separate adaptive layer. Every scored candidate can expose the base score, personalized score, total adjustment, component adjustments, confidence, influence cap, source, scope, and adaptive model version.
 
 The adaptive components are personal preference, playlist identity, historical acceptance, historical rejection, artist preference, mood preference, discovery tolerance, and repeat tolerance. Hard exclusions remain hard exclusions; adaptive scoring only ranks otherwise-valid candidates and cannot bypass playlist length, required/excluded tracks, artist or album limits, metadata rules, BPM/mood/energy rules, locks, corrections, permissions, or other generation safety constraints.

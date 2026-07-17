@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Clock3, GitCompareArrows, History, Pin, PinOff, RotateCcw, Save, ShieldCheck, Trash2 } from "lucide-react";
 import styles from "./versions.module.css";
+import SmartMixExplanation from "@/components/SmartMixExplanation";
 
 type VersionSummary = {
   id: string; revisionNumber: number; reason: string; label?: string | null; description?: string | null;
@@ -184,7 +185,7 @@ export default function PlaylistVersionsPage({ params }: { params: { id: string 
             {comparison.diff.settingsChanges.length > 0 && <details><summary>Generation settings ({comparison.diff.settingsChanges.length})</summary>{comparison.diff.settingsChanges.map((item: any) => <p key={item.path}><strong>{item.group} · {item.label}</strong><br />{displayValue(item.from)} → {displayValue(item.to)}</p>)}</details>}
             {!comparison.diff.summary.addedCount && !comparison.diff.summary.removedCount && !comparison.diff.summary.movedCount && !comparison.diff.settingsChanges.length && <p>These versions are identical. No track, order, setting, or score differences were found.</p>}
           </section>}
-          <details className={styles.trackSection}><summary>Historical track list ({detail.snapshot?.data.tracks.length || 0})</summary>{detail.snapshot?.data.tracks.map((track: any) => <article key={`${track.position}-${track.trackId}`}><span>{track.position}</span><div><strong>{track.titleSnapshot}</strong><p>{track.artistSnapshot || "Unknown artist"} · {track.albumSnapshot || "Unknown album"}</p><small>{track.durationMsSnapshot ? duration(track.durationMsSnapshot) : "Duration unavailable"} · BPM {track.bpmSnapshot ?? "—"} · Energy {track.energySnapshot ?? "—"}{track.moodSnapshot?.length ? ` · ${track.moodSnapshot.join(", ")}` : ""}</small>{track.availability !== "available" && <em>Track unavailable — this library item no longer exists.</em>}</div></article>)}</details>
+          <details className={styles.trackSection}><summary>Historical track list ({detail.snapshot?.data.tracks.length || 0})</summary>{detail.snapshot?.data.tracks.map((track: any) => <article key={`${track.position}-${track.trackId}`}><span>{track.position}</span><div><strong>{track.titleSnapshot}</strong><p>{track.artistSnapshot || "Unknown artist"} · {track.albumSnapshot || "Unknown album"}</p><small>{track.durationMsSnapshot ? duration(track.durationMsSnapshot) : "Duration unavailable"} · BPM {track.bpmSnapshot ?? "—"} · Energy {track.energySnapshot ?? "—"}{track.moodSnapshot?.length ? ` · ${track.moodSnapshot.join(", ")}` : ""}</small>{track.explanationSnapshot && track.trackId && <SmartMixExplanation compact trackId={track.trackId} generationId={track.explanationSnapshot.generationId} playlistId={params.id} initialExplanation={track.explanationSnapshot} />}{track.availability !== "available" && <em>Track unavailable — this library item no longer exists.</em>}</div></article>)}</details>
           <div className={styles.footerActions}>{!selected.isCurrent && <button className={styles.deleteButton} onClick={removeVersion}><Trash2 size={15} /> Delete Version {selected.revisionNumber}</button>}</div>
         </>}
       </section>

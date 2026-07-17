@@ -106,6 +106,7 @@ export async function POST(req: Request) {
         filters: generationFilters,
         trackIds: result.exportedTrackIds || trackIds,
         discoveryResult,
+        previewId: previewId || null,
       });
       if (generatedPlaylist && previewId) {
         await prisma.playlistFitFeedback.updateMany({
