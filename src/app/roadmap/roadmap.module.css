@@ -237,6 +237,9 @@
   font-size: 0.9rem;
   line-height: 1.55;
 }
+.aiSafeguards { margin-top: 1rem; padding: .85rem; border: 1px solid rgba(94,229,138,.23); border-radius: var(--radius-md); background: rgba(94,229,138,.045); }
+.aiSafeguards h4 { display: flex; align-items: center; gap: .4rem; margin: 0 0 .55rem; color: #baf8c9; }
+.aiSafeguards ul { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .35rem 1.2rem; margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: .76rem; line-height: 1.45; }
 
 .ideaGrid {
   display: flex;
@@ -373,6 +376,7 @@
   .releaseList {
     grid-template-columns: 1fr;
   }
+  .aiSafeguards ul { grid-template-columns: 1fr; }
 
   .teaser {
     padding: 1rem;

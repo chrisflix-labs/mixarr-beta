@@ -73,6 +73,23 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.1.10",
+    title: "Personalization Dashboard & Release Polish",
+    releaseDate: "July 17, 2026",
+    badges: ["Personalization", "Dashboard", "Feedback", "Identity", "History", "Plex", "Import", "Export", "Database", "Performance", "Security", "Settings", "Roadmap", "Mobile", "UI", "Readiness"],
+    changes: [
+      "Added a responsive personalization dashboard with real user-scoped metrics, confidence-limited learned preferences, influential direct and inferred feedback, playlist identity browsing, behavioral acceptance trends, playback status, and score-adjustment distributions.",
+      "Added one bounded summary service with short-lived aggregate caching, paginated suggestion and identity drill-down, bounded trace samples, aggregate database queries, and indexes for decision, confidence, and timestamp filtering.",
+      "Added JSON personalization export with a versioned schema and preview counts; secrets, Plex tokens, API credentials, sessions, password hashes, and provider credentials are excluded.",
+      "Added validated merge, replace, identity-only, preference-only, and feedback-only imports. Replacement creates a 30-day database backup and runs transactionally, while missing local tracks or playlists are reported and skipped safely.",
+      "Added previewed category-specific resets, typed confirmation for complete reset, content-free reset/import/cleanup audit records, and preservation of Plex libraries, Plex playlists, metadata corrections, accounts, and unrelated settings.",
+      "Added a skippable and resumable six-step onboarding wizard covering learning sources, configured-environment privacy, influence limits, playback controls, and optional starting preferences.",
+      "Added stable-readiness checks, stale playback warnings, cleanup previews for expired traces, import backups, and old low-confidence inferred statistics while preserving direct feedback, never-recommend rules, identities, manual preferences, and audit history.",
+      "Completed the v2.1.x Adaptive Personalization roadmap, introduced a proposed deterministic v2.2.x automation and playlist-lifecycle direction, and separated optional long-term AI exploration with consent, local-provider, security, cost, failure-isolation, and explainability safeguards.",
+      "Added the additive 20260717010000 migration, onboarding persistence, import backups, audit entries, API routes, documentation, tests, and v2.1.10 release metadata.",
+    ],
+  },
+  {
     version: "2.1.9",
     title: "Adaptive Automation Policies",
     releaseDate: "July 16, 2026",

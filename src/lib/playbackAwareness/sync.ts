@@ -15,7 +15,7 @@ function plexHeaders(token: string) {
     "X-Plex-Token": token,
     "X-Plex-Client-Identifier": (process.env.PLEX_CLIENT_IDENTIFIER || "mixarr-default-client").trim(),
     "X-Plex-Product": (process.env.PLEX_PRODUCT_NAME || "Mixarr").trim(),
-    "X-Plex-Version": "2.1.9",
+    "X-Plex-Version": "2.1.10",
     Accept: "application/json",
   };
 }

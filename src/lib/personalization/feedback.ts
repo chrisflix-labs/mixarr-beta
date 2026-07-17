@@ -5,6 +5,10 @@ import { artistFeedbackAdjustment, playlistFitAdjustment, trackFeedbackAdjustmen
 import type { ArtistFeedbackState, ExplicitFeedbackScoringContext, PlaylistFitState, TrackFeedbackState } from "./types";
 import { markAdaptiveScoringDirty } from "../adaptiveScoring";
 
+function invalidateDashboard(userId: string) {
+  void import("./dashboard").then(({ invalidatePersonalizationDashboardCache }) => invalidatePersonalizationDashboardCache(userId)).catch(() => undefined);
+}
+
 export const FEEDBACK_REASONS = ["WRONG_MOOD", "TOO_REPETITIVE", "BAD_BPM_TRANSITION", "ARTIST_OVERREPRESENTED", "DISLIKED_TRACK", "POOR_PLAYLIST_FIT", "OTHER"] as const;
 export const FEEDBACK_SOURCES = ["PLAYLIST_PREVIEW", "GENERATED_PLAYLIST_DETAILS", "TRACK_TABLE", "LIBRARY_SEARCH", "REGENERATION_PREVIEW", "BULK_ACTION", "RECENTLY_ADDED_DISCOVERY", "API"] as const;
 export const trackFeedbackInputSchema = z.object({
@@ -68,6 +72,7 @@ export async function setTrackFeedback(userId: string, raw: unknown) {
     return tx.userTrackPreference.upsert({ where: { userId_trackId: { userId, trackId: input.trackId } }, create: { userId, trackId: input.trackId, state: input.state, scoreAdjustment: trackFeedbackAdjustment(input.state), lastFeedbackEventId: event.id }, update: { state: input.state, scoreAdjustment: trackFeedbackAdjustment(input.state), lastFeedbackEventId: event.id } });
   });
   await markAdaptiveScoringDirty(userId);
+  invalidateDashboard(userId);
   return { preference, unchanged: false };
 }
 
@@ -80,6 +85,7 @@ export async function clearTrackFeedback(userId: string, trackId: string, source
     await tx.userTrackPreference.delete({ where: { userId_trackId: { userId, trackId } } });
   });
   await markAdaptiveScoringDirty(userId);
+  invalidateDashboard(userId);
   return { state: "NEUTRAL", unchanged: false };
 }
 
@@ -94,6 +100,7 @@ export async function setArtistFeedback(userId: string, raw: unknown) {
     return tx.userArtistPreference.upsert({ where: { userId_artistId: { userId, artistId: input.artistId } }, create: { userId, artistId: input.artistId, state: input.state, scoreAdjustment: artistFeedbackAdjustment(input.state), lastFeedbackEventId: event.id }, update: { state: input.state, scoreAdjustment: artistFeedbackAdjustment(input.state), lastFeedbackEventId: event.id } });
   });
   await markAdaptiveScoringDirty(userId);
+  invalidateDashboard(userId);
   return { preference, unchanged: false };
 }
 
@@ -106,6 +113,7 @@ export async function clearArtistFeedback(userId: string, artistId: string, sour
     await tx.userArtistPreference.delete({ where: { userId_artistId: { userId, artistId } } });
   });
   await markAdaptiveScoringDirty(userId);
+  invalidateDashboard(userId);
   return { state: "NEUTRAL", unchanged: false };
 }
 
@@ -131,6 +139,7 @@ export async function setPlaylistFitFeedback(userId: string, raw: unknown) {
     }
   }
   await markAdaptiveScoringDirty(userId);
+  invalidateDashboard(userId);
   return { feedback, unchanged: false };
 }
 
@@ -142,6 +151,7 @@ export async function clearPlaylistFitFeedback(userId: string, feedbackId: strin
     await tx.playlistFitFeedback.delete({ where: { id: existing.id } });
   });
   await markAdaptiveScoringDirty(userId);
+  invalidateDashboard(userId);
   return { cleared: true };
 }
 
@@ -161,6 +171,7 @@ export async function recordPoorTransition(userId: string, raw: unknown) {
     return { feedback, event };
   });
   await markAdaptiveScoringDirty(userId);
+  invalidateDashboard(userId);
   return { ...result, unchanged: false };
 }
 
@@ -172,6 +183,7 @@ export async function clearTransitionFeedback(userId: string, feedbackId: string
     await tx.transitionFeedback.delete({ where: { id: existing.id } });
   });
   await markAdaptiveScoringDirty(userId);
+  invalidateDashboard(userId);
   return { cleared: true };
 }
 
@@ -230,6 +242,7 @@ export async function applyBulkFeedback(userId: string, raw: unknown) {
   }
   console.info("[PersonalizationFeedback:Bulk]", { userId, action: input.action, requested: ids.length, affectedTracks, affectedArtists, failures: failures.length });
   await markAdaptiveScoringDirty(userId);
+  invalidateDashboard(userId);
   return { requested: ids.length, affectedTracks, affectedArtists, failures, partialFailure: failures.length > 0 };
 }
 

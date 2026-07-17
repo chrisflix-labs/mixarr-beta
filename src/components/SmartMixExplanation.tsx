@@ -1,6 +1,7 @@
 "use client";
 
 import axios from "axios";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronRight, CircleHelp, Download, Minus, Plus, X, XCircle } from "lucide-react";
 import type { SmartMixDecisionExplanation, SmartMixExplanationDetailLevel } from "@/lib/smartMixExplanations/types";
@@ -88,6 +89,7 @@ export default function SmartMixExplanation({ trackId, generationId, playlistId,
             {(["SIMPLE", "DETAILED", ...(developerAvailable ? ["DEVELOPER"] : [])] as SmartMixExplanationDetailLevel[]).map((level) => <button key={level} className={detailLevel === level ? styles.activeChoice : ""} onClick={() => setDetailLevel(level)}>{level[0] + level.slice(1).toLowerCase()}</button>)}
           </div>
           {generationId && <a className={styles.export} href={`/api/smart-mix-explanations/generations/${generationId}/export`} title="Contains listening preferences; review before sharing"><Download size={15} /> Debug JSON</a>}
+          <Link className={styles.export} href="/personalization">Personalization dashboard</Link>
         </div>
         <nav className={styles.tabs} aria-label="Explanation sections">{tabs.map((item) => <button key={item} aria-current={tab === item ? "page" : undefined} className={tab === item ? styles.activeTab : ""} onClick={() => setTab(item)}>{item}</button>)}</nav>
         <div className={styles.body}>

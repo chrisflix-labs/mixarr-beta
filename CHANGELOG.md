@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.1.10 - Personalization Dashboard & Release Polish
+
+- Added the dedicated `/personalization` control center with real user-scoped aggregates, learned-preference evidence, influential feedback, paginated suggestion decisions, playlist identities, behavioral trends, playback status, score influence, readiness checks, and accessible responsive states.
+- Added a bounded dashboard service and authenticated APIs for summary, suggestions, identity browsing, health, cleanup, onboarding, versioned JSON export, validation, transactional import, and selective reset.
+- Added merge, replace, identities-only, preferences-only, and feedback-only imports. Replace imports create a 30-day backup before changing data; missing tracks and playlists are reported without crossing user boundaries.
+- Added reset previews, typed confirmation for full deletion, non-content audit entries, and low-value cleanup previews that preserve direct feedback, never-recommend rules, identities, manual preferences, Plex content, and unrelated settings.
+- Added first-use onboarding, clear configured-environment privacy language, export secret exclusions, playback freshness checks, aggregate cache controls, database indexes, tests, documentation, and the additive `20260717010000_personalization_dashboard_v2110` migration.
+- Marked v2.1.x Adaptive Personalization complete, introduced the proposed non-AI-dependent v2.2.x automation and playlist lifecycle direction, and documented later optional AI exploration with explicit consent and failure-isolation safeguards.
+
 ## v2.1.9 - Adaptive Automation Policies
 
 - Added centralized, fail-safe policy evaluation for all Recently Added and scheduled-regeneration Plex writes.

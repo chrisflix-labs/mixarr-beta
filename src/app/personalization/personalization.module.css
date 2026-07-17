@@ -1,5 +1,2 @@
-.wrapper { max-width: 1180px; margin: 0 auto; display: grid; gap: 1rem; }
-.wrapper header h2 { display: flex; align-items: center; gap: .55rem; margin: 0; }
-.wrapper header p { margin: .4rem 0 0; color: var(--muted); }
-.wrapper > section { min-width: 0; padding: 1rem; }
-@media (max-width: 760px) { .wrapper { max-width: 100%; } .wrapper > section { padding: .8rem; } }
+.wrapper { width: 100%; min-width: 0; }
+.wrapper > section { max-width: 900px; margin: 0 auto; padding: 1rem; }

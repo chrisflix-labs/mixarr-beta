@@ -20,6 +20,10 @@ const PROFILE_BATCH_SIZE = 250;
 const MAX_PROFILE_EVENTS = 10_000;
 const RECENCY_HALF_LIFE_DAYS = 90;
 
+function invalidateDashboard(userId: string) {
+  void import("./dashboard").then(({ invalidatePersonalizationDashboardCache }) => invalidatePersonalizationDashboardCache(userId)).catch(() => undefined);
+}
+
 export const personalizationSettingsSchema = z.object({
   enabled: z.boolean(),
   learningEnabled: z.boolean(),
@@ -123,11 +127,13 @@ export async function ensureRecommendationProfile(userId: string) {
 
 export async function updatePersonalizationSettings(userId: string, input: unknown) {
   const value = personalizationSettingsSchema.parse(input);
-  return prisma.userRecommendationProfile.upsert({
+  const profile = await prisma.userRecommendationProfile.upsert({
     where: { userId },
     create: { userId, enabled: value.enabled, learningEnabled: value.learningEnabled },
     update: { enabled: value.enabled, learningEnabled: value.learningEnabled },
   });
+  invalidateDashboard(userId);
+  return profile;
 }
 
 function confidenceLabel(state: string) {
@@ -261,6 +267,7 @@ export async function recordTrackInteraction(input: {
       return created;
     });
     await markAdaptiveScoringDirty(input.userId);
+    invalidateDashboard(input.userId);
     return { recorded: true, eventId: event.id };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002" && input.idempotencyKey) return { recorded: false, reason: "duplicate" as const };
@@ -373,6 +380,7 @@ export async function recalculatePersonalizationProfile(userId: string, trigger:
       return { row, adjustmentCount: adjustments.length };
     });
     await safeFinishJobHistory({ job, status: "completed", counts: { attempted: events.length, processed: events.length }, summary: `Processed ${events.length} interaction events and updated ${updated.adjustmentCount} learned preferences. Confidence is ${confidenceLabel(evidence.state)}.` });
+    invalidateDashboard(userId);
     return { profile: updated.row, processed: events.length, totalEvents: totalEventCount, preferenceCount: updated.adjustmentCount, truncated: totalEventCount > events.length };
   } catch (error) {
     await safeFinishJobHistory({ job, status: "failed", error, summary: "Personalization profile rebuild failed." });
@@ -430,6 +438,7 @@ export async function resetPersonalizationData(userId: string, mode: "learned" |
   });
   await resetAdaptiveScoring(userId, mode === "all" ? "all" : "inferred");
   await safeRecordJobHistory({ userId, type: "personalization", name: "Personalization data reset", status: "completed", trigger: "manual", startedAt, summary: `Removed ${result.events} interaction events and ${result.adjustments} derived adjustments.`, counts: { attempted: result.events + result.adjustments, processed: result.events + result.adjustments } });
+  invalidateDashboard(userId);
   return { mode, ...result };
 }
 

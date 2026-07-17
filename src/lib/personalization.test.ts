@@ -98,10 +98,11 @@ describe("personalization scoring", () => {
 });
 
 describe("personalization roadmap", () => {
-  it("marks v2.0.x completed and v2.1.x current", () => {
+  it("marks v2.1.x complete and introduces v2.2.x", () => {
     assert.equal(roadmapCycles.find((cycle) => cycle.id === "2.0.x")?.status, "completed");
-    assert.equal(roadmapCycles.find((cycle) => cycle.id === "2.1.x")?.status, "current");
-    assert.equal(currentRoadmapRelease()?.version, "2.1.9");
+    assert.equal(roadmapCycles.find((cycle) => cycle.id === "2.1.x")?.status, "completed");
+    assert.equal(roadmapCycles.find((cycle) => cycle.id === "2.2.x")?.status, "upcoming");
+    assert.equal(currentRoadmapRelease()?.version, "2.1.10");
   });
 });
 

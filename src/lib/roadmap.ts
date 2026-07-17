@@ -163,6 +163,17 @@ export const roadmapReleases: RoadmapRelease[] = [
     completionDate: "2026-07-16",
     route: "/automation",
   },
+  {
+    version: "2.1.10",
+    title: "Personalization Dashboard & Release Polish",
+    cycle: "2.1.x",
+    status: "completed",
+    description: "Brings adaptive recommendations, feedback, playlist identity, playback awareness, score influence, privacy controls, migration readiness, and data portability into one understandable user-controlled dashboard.",
+    featureLabels: ["Personalization dashboard", "Real aggregate metrics", "Recently learned preferences", "Influential feedback", "Playlist identity browser", "Behavioral quality trends", "Score influence distribution", "Playback health", "JSON export and import", "Selective reset", "First-time onboarding", "Stable-readiness checks", "Cleanup previews", "Responsive accessible UI"],
+    releaseOrder: 111,
+    completionDate: "2026-07-17",
+    route: "/personalization",
+  },
 ];
 
 export const roadmapCycles: RoadmapCycle[] = [
@@ -175,13 +186,28 @@ export const roadmapCycles: RoadmapCycle[] = [
   },
   {
     id: "2.1.x",
-    title: "v2.1.x — Personalization & Adaptive Recommendations",
-    status: "current",
-    description: "The v2.1.x cycle adds optional, locally stored personalization so Smart Mix can gradually adapt to each user's selections, rejections, playlist habits, and recommendation preferences.",
+    title: "v2.1.x — Adaptive Personalization",
+    status: "completed",
+    description: "Mixarr can now learn from direct feedback, playlist history, recommendation decisions, playlist identity, and playback behavior while keeping the resulting adjustments visible and under user control.",
     releases: roadmapReleases.filter((release) => release.cycle === "2.1.x"),
-    futureThemes: ["Cross-playlist preference insights", "More playback-source adapters", "Long-term recommendation health", "Additional user-controlled personalization safeguards"],
+  },
+  {
+    id: "2.2.x",
+    title: "v2.2.x — Automation & Playlist Lifecycle",
+    status: "upcoming",
+    description: "The proposed v2.2.x direction strengthens deterministic automation, playlist lifecycle management, operational resilience, and long-term recommendation quality without making generative AI a dependency.",
+    releases: [],
+    futureThemes: ["Lifecycle-aware playlist maintenance", "Safer scheduled regeneration", "Automation observability and recovery", "Long-term recommendation quality monitoring", "Cross-playlist capacity planning", "More playback-source adapters", "Reviewable maintenance proposals", "Storage and retention controls"],
   },
 ];
+
+export const aiExploration = {
+  title: "Future Exploration — AI-Assisted Mixarr",
+  timing: "Long-term exploration for later in v2.x or the path toward v3.0",
+  description: "Mixarr may eventually support optional AI-assisted features through local providers such as Ollama or user-configured API providers such as OpenRouter, OpenAI, Anthropic, and compatible services. These are not part of the immediate v2.2.x roadmap, and no provider is preferred or guaranteed.",
+  ideas: ["Natural-language playlist creation and refinement", "Playlist identity and scoring summaries", "Mood mapping and genre normalization", "Playlist naming and description suggestions", "Library exploration conversations", "Troubleshooting and comparison summaries", "Metadata cleanup suggestions", "Semantic playlist search", "Natural-language automation rules"],
+  safeguards: ["AI remains optional", "Core generation and scoring work without AI", "Local models are supported where practical", "External providers require explicit configuration and consent", "Users see what data would be sent", "Credentials require secure storage", "Usage and cost controls are required", "Provider failures cannot break playlist generation", "AI cannot silently override deterministic scoring", "AI output remains reviewable and explainable"],
+};
 
 export function currentRoadmapRelease() {
   return roadmapReleases.find((release) => release.status === "current")

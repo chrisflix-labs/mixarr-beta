@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { CalendarCheck, CheckCircle2, FlaskConical, HeartHandshake, MessageCircle, Rocket, Sparkles } from "lucide-react";
+import { Bot, CalendarCheck, CheckCircle2, FlaskConical, HeartHandshake, MessageCircle, Rocket, ShieldCheck, Sparkles } from "lucide-react";
 import { MIXARR_BETA_DISCORD_URL } from "@/lib/releaseNotes";
-import { currentRoadmapRelease, roadmapCycles, type RoadmapStatus } from "@/lib/roadmap";
+import { aiExploration, currentRoadmapRelease, roadmapCycles, type RoadmapStatus } from "@/lib/roadmap";
 import styles from "./roadmap.module.css";
 
 export const metadata = { title: "Roadmap | Mixarr", description: "Mixarr product roadmap and current release cycle." };
@@ -24,7 +24,7 @@ export default function RoadmapPage() {
           <div className={styles.releaseList}>
             {cycle.releases.map((release) => (
               <article key={release.version} className={styles.releaseItem} data-status={release.status}>
-                <div><span className={styles.versionPill}>v{release.version}</span><span className={styles.releaseStatus}>{release.status === "current" ? "Current" : "Completed"}</span></div>
+                <div><span className={styles.versionPill}>v{release.version}</span><span className={styles.releaseStatus}>{release.status === "current" ? "Current" : release.status === "upcoming" ? "Proposed" : "Completed"}</span></div>
                 <h4>{release.title}</h4>
                 {release.status === "current" && <p>{release.description}</p>}
                 {release.featureLabels.length > 0 && <div className={styles.ideaGrid}>{release.featureLabels.map((feature) => <span key={feature}>{feature}</span>)}</div>}
@@ -35,7 +35,14 @@ export default function RoadmapPage() {
         </section>
       ))}
 
-      {current && <section className={styles.releasePanel} aria-labelledby="current-release"><div className={styles.panelIcon}><CalendarCheck size={20} /></div><div><span className={styles.badge}>Current release</span><h3 id="current-release">v{current.version} — {current.title}</h3><p>{current.description}</p><Link href={current.route || "/release-notes"}>Open adaptive scoring settings</Link></div></section>}
+      <section className={styles.teaser} aria-labelledby="ai-exploration">
+        <div className={styles.teaserTop}><span className={styles.teaserIcon}><Bot size={20} /></span><span className={styles.versionPill}>Exploratory · no committed version</span></div>
+        <h3 id="ai-exploration">{aiExploration.title}</h3><p><strong>{aiExploration.timing}.</strong> {aiExploration.description}</p>
+        <div className={styles.ideaGrid}>{aiExploration.ideas.map((idea) => <span key={idea}>{idea}</span>)}</div>
+        <div className={styles.aiSafeguards}><h4><ShieldCheck size={17} /> Non-negotiable safeguards</h4><ul>{aiExploration.safeguards.map((item) => <li key={item}>{item}</li>)}</ul></div>
+      </section>
+
+      {current && <section className={styles.releasePanel} aria-labelledby="current-release"><div className={styles.panelIcon}><CalendarCheck size={20} /></div><div><span className={styles.badge}>Latest completed release</span><h3 id="current-release">v{current.version} — {current.title}</h3><p>{current.description}</p><Link href={current.route || "/release-notes"}>Open release feature</Link></div></section>}
 
       <section className={styles.communityGrid} aria-label="Community and beta access">
         <article className={styles.callout}><div className={styles.calloutIcon}><MessageCircle size={18} /></div><div><h3>Community feedback</h3><p>Follow development, report bugs, and suggest roadmap ideas.</p>{MIXARR_BETA_DISCORD_URL ? <a href={MIXARR_BETA_DISCORD_URL} target="_blank" rel="noopener noreferrer">Open Discord</a> : <Link href="/support">Open Beta Support</Link>}</div></article>
