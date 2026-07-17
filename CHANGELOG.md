@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.1.9 - Adaptive Automation Policies
+
+- Added centralized, fail-safe policy evaluation for all Recently Added and scheduled-regeneration Plex writes.
+- Added Disabled, Suggest Only, Require Approval, and Fully Automatic modes with Conservative, Balanced, Aggressive, and Custom presets.
+- Added addition/removal limits, confidence thresholds, daily and weekly usage boundaries, timezone-aware quiet hours, playlist/track protection, and an emergency pause.
+- Added stale-safe approvals, durable activity explanations, recoverable pre-write versions, and idempotent rollback through Playlist Version History.
+- Added a responsive policy workspace, dashboard health summary, playlist protection tools, approval queue, and activity/rollback views.
+- Added the additive `20260716130000_adaptive_automation_policies` migration with conservative legacy mapping and automatic removals disabled.
+
 ## v2.1.8 - Smart Mix Explanations & Insights
 
 - Added immutable Smart Mix v2 decision traces sourced from actual scoring, filtering, fallback, transition, personalization, identity, and selection-margin values.

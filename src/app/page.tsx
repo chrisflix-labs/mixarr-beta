@@ -14,6 +14,7 @@ import { getPlaylistHistoryDashboardSummary } from "@/lib/playlistHistory";
 import { getDashboardSummary, type DashboardSummary } from "@/lib/dashboardSummary";
 import { isFeatureEnabled as isResolvedBetaFeatureEnabled } from "@/lib/featureFlagService";
 import RecentlyAddedDiscoveryCard from "@/components/RecentlyAddedDiscoveryCard";
+import { getAutomationOverview } from "@/lib/automation";
 
 const previewFeatures = [
   {
@@ -101,6 +102,20 @@ function RecentJobsCard({ summary }: { summary: Awaited<ReturnType<typeof getRec
       <span className={styles.cardAction}>View Job History</span>
     </Link>
   );
+}
+
+function AutomationPolicyCard({ overview }: { overview: Awaited<ReturnType<typeof getAutomationOverview>> | null }) {
+  return <Link href="/automation" className={styles.card}>
+    <ShieldAlert size={22} className={styles.cardIcon} />
+    <h3>Automation Policy</h3>
+    {overview ? <>
+      <p>Mode: {overview.policy.preset.toLowerCase().replace(/^./, (letter) => letter.toUpperCase())}{overview.policy.isCustom ? " · Custom" : ""}</p>
+      <p>{overview.protectedPlaylists} protected · {overview.pendingApprovals} awaiting approval</p>
+      <p>Today: {overview.usage.totals.today} / {overview.usage.limits.day} · This week: {overview.usage.totals.week} / {overview.usage.limits.week}</p>
+      {overview.policy.paused && <p className={styles.failureText}>Automation is paused.</p>}
+    </> : <p>Configure guarded playlist automation, approvals, protection, and rollback.</p>}
+    <span className={styles.cardAction}>Manage Automation</span>
+  </Link>;
 }
 
 function GuestDataEnrichmentDashboardCard() {
@@ -239,12 +254,13 @@ export default async function Home() {
   let generatedPlaylistCount = 0;
   let playlistHistoryCount = 0;
   let lastPlaylistHistoryEvent: { playlistName: string; eventType: string; createdAt: Date } | null = null;
+  let automationOverview: Awaited<ReturnType<typeof getAutomationOverview>> | null = null;
   if (sessionId) {
     user = await prisma.user.findUnique({
       where: { id: sessionId },
     });
     if (user) {
-      const [dashboardResult, jobsResult, recipesResult, generatedPlaylistsResult, playlistHistorySummary] = await Promise.all([
+      const [dashboardResult, jobsResult, recipesResult, generatedPlaylistsResult, playlistHistorySummary, automationResult] = await Promise.all([
         getDashboardSummary(user.id).catch((error) => {
           console.error("[Dashboard] Initial summary failed", error);
           return null;
@@ -253,6 +269,7 @@ export default async function Home() {
         prisma.playlistRecipe.count({ where: { userId: user.id, isArchived: false } }),
         prisma.generatedPlaylist.count({ where: { userId: user.id } }),
         getPlaylistHistoryDashboardSummary(user.id),
+        getAutomationOverview(user.id).catch((error) => { console.error("[AutomationPolicy] dashboard summary failed", error); return null; }),
       ]);
       dashboardSummary = dashboardResult;
       jobSummary = jobsResult;
@@ -260,6 +277,7 @@ export default async function Home() {
       generatedPlaylistCount = generatedPlaylistsResult;
       playlistHistoryCount = playlistHistorySummary.count;
       lastPlaylistHistoryEvent = playlistHistorySummary.lastEvent;
+      automationOverview = automationResult;
     }
   }
 
@@ -278,6 +296,7 @@ export default async function Home() {
           <div className={styles.compactCardsGrid}>
             <RecentlyAddedDiscoveryCard />
             <RecentJobsCard summary={jobSummary} />
+            <AutomationPolicyCard overview={automationOverview} />
             <SmartBuilderCard />
 
             <RecentlyAddedDiscoveryCard />

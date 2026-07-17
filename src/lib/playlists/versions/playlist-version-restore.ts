@@ -96,6 +96,8 @@ export async function restorePlaylistVersion(input: {
           locked: snapshotTrack.locked,
           liked: snapshotTrack.liked,
           regenerationExcluded: snapshotTrack.regenerationExcluded,
+          automationProtected: snapshotTrack.automationProtected || false,
+          protectionReason: snapshotTrack.protectionReason || null,
         };
       }),
     });

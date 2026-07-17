@@ -22,6 +22,7 @@ export function describePlaylistVersion(reason: PlaylistVersionReason, context?:
     import: "Imported playlist",
     system_migration: "Baseline version created for legacy playlist",
     recently_added_automation: `Recently Added Automation added ${count} track${count === 1 ? "" : "s"}`,
+    automation_backup: "Recoverable version before an automated playlist update",
   };
   return descriptions[reason];
 }

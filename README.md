@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. The v2.1.8 migration adds bounded Smart Mix explanation generations, decision traces, preferences, and selected-track snapshots; existing playlists, tracks, interactions, feedback, personalization profiles, playlist identities, playback history, coordination data, and versions are preserved. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. The v2.1.9 migration adds conservative automation policies, proposals, activity, protection, and rollback links; existing playlists, schedules, Recently Added settings, tracks, feedback, identities, explanations, and versions are preserved. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -50,7 +50,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.1.8 makes Smart Mix v2 decisions inspectable without adding a second scoring system. Explanations capture the values used during generation, so later metadata, settings, identity, or personalization changes do not rewrite history. Selected explanations remain with playlist versions; rejected details default to the top 100 candidates for 30 days while aggregate insights remain. Data stays in the local Mixarr database and debug exports are sanitized but may still reveal listening preferences. See [Smart Mix Explanations & Insights](docs/SMART_MIX_EXPLANATIONS_V218.md), [Playlist Relationships & Coordination](docs/PLAYLIST_COORDINATION_V217.md), [Contextual Mixes](docs/CONTEXTUAL_MIXES_V216.md), [Listening History & Playback Awareness](docs/PLAYBACK_AWARENESS_V215.md), and [Adaptive Smart Mix Scoring](docs/ADAPTIVE_SCORING_V214.md).
+Mixarr v2.1.9 makes automation controlled, visible, and reversible. Every Recently Added or scheduled-regeneration write is evaluated on the server for mode, confidence, limits, protection, quiet hours, pause state, approval, and version safety. Existing automation migrates to review-first settings and automatic removals remain off. See [Adaptive Automation Policies](docs/ADAPTIVE_AUTOMATION_POLICIES_V219.md), [Smart Mix Explanations & Insights](docs/SMART_MIX_EXPLANATIONS_V218.md), and [Recently Added Automation](docs/RECENTLY_ADDED_AUTOMATION.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 
@@ -218,7 +218,7 @@ Please avoid posting secrets such as Plex tokens, API keys, database passwords, 
 
 The v2.0.x Smart Mix Engine v2 cycle is complete. It delivered visible scoring, tuning, mood blending, BPM flow, discovery controls, advanced regeneration, playlist versions, manual metadata corrections, Recently Added automation, and advanced beta flags.
 
-The current v2.1.x cycle adds optional, locally stored personalization and adaptive recommendations. v2.1.8 is complete and adds immutable scoring explanations, deterministic confidence, rejected-candidate inspection, candidate comparison, generation insights, retention controls, version snapshots, and safe debug export. See the in-app Product Roadmap for the typed release list and future themes.
+The current v2.1.x cycle adds optional, locally stored personalization and adaptive recommendations. v2.1.9 is complete and adds explicit automation permissions, presets, confidence and change limits, protection, quiet hours, approvals, activity, pause, and rollback. See the in-app Product Roadmap for the typed release list and future themes.
 
 ## Previews
 

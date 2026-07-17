@@ -2,7 +2,7 @@
 
 import styles from "./Sidebar.module.css";
 import { useEffect, useMemo, useState } from "react";
-import { AudioWaveform, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, HeartPulse, History, LayoutDashboard, LifeBuoy, ListMusic, ListRestart, Map, MoreHorizontal, Network, ScrollText, Settings, Sparkles, Tags, Wand2, X } from "lucide-react";
+import { AudioWaveform, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, HeartPulse, History, LayoutDashboard, LifeBuoy, ListMusic, ListRestart, Map, MoreHorizontal, Network, ScrollText, Settings, ShieldCheck, Sparkles, Tags, Wand2, X } from "lucide-react";
 import PlexLoginButton from "./PlexLoginButton";
 import LogoutButton from "./LogoutButton";
 import Link from "next/link";
@@ -16,6 +16,7 @@ const playlistLinks = [
   { href: "/generated-playlists", label: "Generated Playlists", icon: ListRestart, isActive: (pathname: string) => pathname.startsWith("/generated-playlists") },
   { href: "/playlist-coordination", label: "Playlist Coordination", icon: Network, isActive: (pathname: string) => pathname.startsWith("/playlist-coordination") },
   { href: "/recently-added", label: "Recently Added", icon: Sparkles, isActive: (pathname: string) => pathname.startsWith("/recently-added") },
+  { href: "/automation", label: "Automation Policies", icon: ShieldCheck, isActive: (pathname: string) => pathname.startsWith("/automation") },
   { href: "/playlist-history", label: "Playlist History", icon: History, isActive: (pathname: string) => pathname.startsWith("/playlist-history") },
 ];
 

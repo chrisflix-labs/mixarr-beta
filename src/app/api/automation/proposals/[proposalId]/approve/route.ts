@@ -1,0 +1,16 @@
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { approveAutomationProposal } from "@/lib/automation";
+
+const schema = z.object({ itemIds: z.array(z.string().uuid()).max(500).optional() });
+export async function POST(request: Request, { params }: { params: { proposalId: string } }) {
+  const userId = cookies().get("mixarr_session")?.value;
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const parsed = schema.safeParse(await request.json().catch(() => ({})));
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message }, { status: 400 });
+  try {
+    const proposal = await approveAutomationProposal(userId, params.proposalId, parsed.data.itemIds);
+    return proposal ? NextResponse.json({ proposal }) : NextResponse.json({ error: "Proposal not found." }, { status: 404 });
+  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Approval failed." }, { status: 409 }); }
+}

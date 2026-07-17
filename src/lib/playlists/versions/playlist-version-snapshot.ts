@@ -53,6 +53,8 @@ export async function capturePlaylistSnapshot(db: DbClient, generatedPlaylistId:
       locked: track.locked,
       liked: track.liked,
       regenerationExcluded: track.regenerationExcluded,
+      automationProtected: track.automationProtected,
+      protectionReason: track.protectionReason,
       titleSnapshot: track.title,
       artistSnapshot: track.artist,
       albumSnapshot: track.album,
@@ -94,7 +96,7 @@ export async function capturePlaylistSnapshot(db: DbClient, generatedPlaylistId:
 
 const trackSchema = z.object({
   trackId: z.string().nullable(), plexTrackRatingKey: z.string().nullable(), position: z.number().int().positive(),
-  locked: z.boolean(), liked: z.boolean(), regenerationExcluded: z.boolean(), titleSnapshot: z.string(),
+  locked: z.boolean(), liked: z.boolean(), regenerationExcluded: z.boolean(), automationProtected: z.boolean().optional().default(false), protectionReason: z.string().nullable().optional().default(null), titleSnapshot: z.string(),
   artistSnapshot: z.string().nullable(), albumSnapshot: z.string().nullable(), durationMsSnapshot: z.number().nullable(),
   bpmSnapshot: z.number().nullable(), moodSnapshot: z.array(z.string()), energySnapshot: z.number().nullable(),
   adaptiveScoreSnapshot: z.record(z.unknown()).nullable().optional(),
@@ -126,7 +128,7 @@ function migrateLegacySnapshot(value: unknown, fallback: { name: string; engineV
       trackId: typeof row.trackId === "string" ? row.trackId : null,
       plexTrackRatingKey: typeof row.plexTrackRatingKey === "string" ? row.plexTrackRatingKey : null,
       position: typeof row.position === "number" ? row.position : index + 1,
-      locked: Boolean(row.locked), liked: Boolean(row.liked), regenerationExcluded: Boolean(row.regenerationExcluded),
+      locked: Boolean(row.locked), liked: Boolean(row.liked), regenerationExcluded: Boolean(row.regenerationExcluded), automationProtected: Boolean(row.automationProtected), protectionReason: typeof row.protectionReason === "string" ? row.protectionReason : null,
       titleSnapshot: typeof row.title === "string" ? row.title : "Unknown track",
       artistSnapshot: typeof row.artist === "string" ? row.artist : null,
       albumSnapshot: typeof row.album === "string" ? row.album : null,

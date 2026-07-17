@@ -10,6 +10,7 @@ import { findRecentlyAddedPlaylistMatches } from "./matching";
 import { createRecentlyAddedNotification } from "./notifications";
 import { getRecentlyAddedSettings } from "./settings";
 import { getBetaStatus, getFeatureState, recordBetaUsage } from "../featureFlagService";
+import { createAutomationProposal, evaluatePlaylistAutomation, getAutomationPolicy, quietHoursState, recordAutomationActivity } from "../automation";
 
 export const RECENTLY_ADDED_JOB_KEY = "recently-added:automation";
 
@@ -32,7 +33,7 @@ async function createAutomaticChangeSet(userId: string, runId: string, settings:
       compatibilityScore: { gte: settings.matchThreshold },
       confidenceScore: { gte: settings.metadataConfidenceThreshold },
       status: { in: ["suggested", "pending"] },
-      generatedPlaylist: { userId, automationSettings: { is: { mode: "automatic" } } },
+      generatedPlaylist: { userId },
       track: { recentlyAddedState: { is: { ignored: false, neverAutoAdd: false, manualUseOnly: false, status: { in: settings.allowLowConfidenceAutomation ? ["ready_for_matching", "suggested", "low_confidence"] : ["ready_for_matching", "suggested"] } } } },
     },
     orderBy: [{ compatibilityScore: "desc" }, { createdAt: "asc" }],
@@ -52,7 +53,8 @@ async function createAutomaticChangeSet(userId: string, runId: string, settings:
         trackId: match.trackId,
         generatedPlaylistId: match.generatedPlaylistId,
         action: "add",
-        status: settings.requirePreview ? "pending" : "approved",
+        // The centralized v2.1.9 policy, not this legacy preview flag, is authoritative.
+        status: "approved",
         scoreAfter: match.expectedScoreChange == null ? null : match.expectedScoreChange,
         reasonsJson: match.matchReasonsJson as Prisma.InputJsonValue,
       },
@@ -79,6 +81,7 @@ async function runScheduledRegenerationPreviews(userId: string, settings: any, b
   });
   const eligibleMatches = matches.filter((match) => match.generatedPlaylist.automationSettings?.mode !== "off" && !match.generatedPlaylist.automationSettings?.excludeFromScheduledRegeneration);
   const byPlaylist = new Map<string, string[]>();
+  const candidateConfidence = new Map(matches.map((match) => [`${match.generatedPlaylistId}:${match.trackId}`, match.confidenceScore]));
   for (const match of eligibleMatches) {
     const ids = byPlaylist.get(match.generatedPlaylistId) || [];
     if (ids.length < settings.maxAddsPerPlaylist) byPlaylist.set(match.generatedPlaylistId, [...ids, match.trackId]);
@@ -111,10 +114,29 @@ async function runScheduledRegenerationPreviews(userId: string, settings: any, b
       });
       if (!preview.changes.length) continue;
       previews += 1;
-      const playlistMode = eligibleMatches.find((item) => item.generatedPlaylistId === playlistId)?.generatedPlaylist.automationSettings?.mode || "suggestions";
-      if (!settings.requirePreview && playlistMode === "automatic") {
+      {
+        const additions = preview.changes.map((change: any) => ({ id: `add:${change.id || change.position}`, trackId: change.proposedTrackId, positionAfter: change.position, confidence: Math.round(change.proposedMetrics?.confidenceScore ?? change.proposedMetrics?.confidence ?? candidateConfidence.get(`${playlistId}:${change.proposedTrackId}`) ?? 0), metadataComplete: Boolean(change.proposedTrackId) }));
+        const removals = preview.changes.map((change: any) => ({ id: `remove:${change.id || change.position}`, trackId: change.originalTrackId, positionBefore: change.position, confidence: Math.round(change.proposedMetrics?.confidenceScore ?? change.proposedMetrics?.confidence ?? candidateConfidence.get(`${playlistId}:${change.proposedTrackId}`) ?? 0), protected: change.originalTrack?.automationProtected, locked: change.originalTrack?.locked, important: change.originalTrack?.liked, metadataComplete: Boolean(change.originalTrackId) }));
+        const decision = await evaluatePlaylistAutomation({ userId, generatedPlaylistId: playlistId, source: "SCHEDULED_REGENERATION", additions, removals });
+        if (!decision.allowed) {
+          const mayCreateQuietProposal = decision.reasonCode !== "quiet_hours_active" || decision.policySnapshot.allowProposalsDuringQuietHours !== false;
+          const mayStoreSuggestion = !["automation_disabled", "automation_paused", "policy_invalid"].includes(decision.reasonCode);
+          const proposal = mayCreateQuietProposal && mayStoreSuggestion ? await createAutomationProposal({ userId, generatedPlaylistId: playlistId, source: "SCHEDULED_REGENERATION", decision, status: decision.reasonCode === "quiet_hours_active" ? "DELAYED" : decision.requiresApproval || decision.reasonCode === "suggest_only_mode" ? "PENDING" : "SUGGESTED", idempotencyKey: decision.reasonCode === "quiet_hours_active" ? `scheduled-regeneration:quiet:${playlistId}:${decision.eligibleAfter}` : `scheduled-regeneration:${preview.previewId}`, items: [...additions.map((item) => ({ ...item, action: "ADD" as const })), ...removals.map((item) => ({ ...item, action: "REMOVE" as const }))] }) : null;
+          await recordAutomationActivity({ userId, generatedPlaylistId: playlistId, source: "SCHEDULED_REGENERATION", status: decision.reasonCode === "quiet_hours_active" ? "DELAYED" : proposal ? (decision.requiresApproval ? "AWAITING_APPROVAL" : "SUGGESTED") : "BLOCKED", decision, proposedAdditions: additions.length, proposedRemovals: removals.length, proposalId: proposal?.id });
+          warnings.push(`Playlist ${playlistId}: ${decision.summary}`);
+          continue;
+        }
+        const allowedChanges = preview.changes.filter((change: any) => decision.eligibleAdditionIds.includes(`add:${change.id || change.position}`) && decision.eligibleRemovalIds.includes(`remove:${change.id || change.position}`));
+        if (allowedChanges.length !== preview.changes.length) {
+          warnings.push(`Playlist ${playlistId}: scheduled regeneration was not applied because the preview contains changes blocked by policy. A new bounded preview is required.`);
+          await recordAutomationActivity({ userId, generatedPlaylistId: playlistId, source: "SCHEDULED_REGENERATION", status: "BLOCKED", decision: { ...decision, allowed: false, reasonCode: "policy_preview_mismatch", summary: "The regeneration preview included changes outside the allowed policy limits." }, proposedAdditions: additions.length, proposedRemovals: removals.length });
+          continue;
+        }
         const result = await applyAdvancedPlaylistRegeneration({ userId, generatedPlaylistId: playlistId, previewId: preview.previewId });
-        if (!result.rejected) { applied += result.tracksReplaced; playlistsModified += 1; }
+        if (!result.rejected) {
+          applied += result.tracksReplaced; playlistsModified += 1;
+          await recordAutomationActivity({ userId, generatedPlaylistId: playlistId, source: "SCHEDULED_REGENERATION", status: "APPLIED", decision, proposedAdditions: additions.length, proposedRemovals: removals.length, appliedAdditions: result.tracksReplaced, appliedRemovals: result.tracksReplaced });
+        }
       }
     } catch (error) {
       warnings.push(`Playlist ${playlistId}: ${error instanceof Error ? error.message : "regeneration failed"}`);
@@ -135,6 +157,15 @@ export async function runRecentlyAddedAutomation({
   scan?: boolean;
 }) {
   const storedSettings = await getRecentlyAddedSettings(userId);
+  const globalAutomationPolicy = await getAutomationPolicy(userId);
+  if (triggerType !== "manual" && globalAutomationPolicy.permissionLevel === "DISABLED") {
+    console.info("[AutomationPolicy] unattended analysis blocked", { userId, source: "RECENTLY_ADDED", reasonCode: "automation_disabled" });
+    return { skipped: true, reason: "automation_disabled", permanent: false };
+  }
+  if (triggerType !== "manual" && quietHoursState(globalAutomationPolicy).active && !globalAutomationPolicy.allowAnalysisDuringQuietHours) {
+    console.info("[AutomationPolicy] unattended analysis delayed", { userId, source: "RECENTLY_ADDED", reasonCode: "quiet_hours_active" });
+    return { skipped: true, reason: "quiet_hours_active", permanent: false };
+  }
   const requestedFeatureFlags = [
     ...(storedSettings.autoAddStrongMatches ? ["smartMix.recentlyAddedAutoAdd"] : []),
     ...(triggerType === "scheduled" && storedSettings.scheduledRegenerationEnabled && !["add_only", "suggestions_only"].includes(storedSettings.regenerationBehavior) ? ["smartMix.experimentalScheduledRegeneration"] : []),
@@ -160,7 +191,7 @@ export async function runRecentlyAddedAutomation({
   });
   const persistedActive = await prisma.recentlyAddedAutomationRun.findFirst({ where: { userId, status: { in: activeStatuses }, startedAt: { gte: staleBefore } }, orderBy: { startedAt: "desc" } });
   if (persistedActive) return { skipped: true, reason: "already_running", activeRun: { id: persistedActive.id, phase: persistedActive.phase, startedAt: persistedActive.startedAt } };
-  const lock = acquireJobLock({ name: "recently added automation", keys: [RECENTLY_ADDED_JOB_KEY, `recently-added:user:${userId}`], source: triggerType });
+  const lock = acquireJobLock({ name: "recently added automation", keys: [RECENTLY_ADDED_JOB_KEY, `recently-added:user:${userId}`, `automation:user:${userId}`], source: triggerType });
   if (!lock.acquired) return { skipped: true, reason: "already_running", activeRun: lock.activeJob };
   const history = await safeStartJobHistory({ userId, type: "playlist", name: "Recently Added Automation", trigger: triggerType, lockKey: lock.job.lockKey, workerId: lock.job.workerId });
   attachJobHistoryToLock(lock.job, history, "playlist");
@@ -186,7 +217,7 @@ export async function runRecentlyAddedAutomation({
       : { tracks: 0, playlists: 0, matches: 0, strong: 0 };
     const changeSet = await createAutomaticChangeSet(userId, run.id, settings, batchId);
     let applied = { applied: 0, playlistsModified: 0, failed: 0 };
-    if (settings.enabled && settings.autoAddStrongMatches && !settings.requirePreview && changeSet.proposed) {
+    if (settings.enabled && settings.autoAddStrongMatches && changeSet.proposed) {
       setJobPhase(lock.job, "Applying approved automation");
       await prisma.recentlyAddedAutomationRun.update({ where: { id: run.id }, data: { status: "applying_approved_automation", phase: "applying_approved_automation" } });
       applied = await applyRecentlyAddedChanges({ userId, runId: run.id, automatic: true });
@@ -194,7 +225,7 @@ export async function runRecentlyAddedAutomation({
     const regeneration = triggerType === "scheduled" ? await runScheduledRegenerationPreviews(userId, settings, batchId) : { previews: 0, applied: 0, playlistsModified: 0, warnings: [] as string[] };
     applied.applied += regeneration.applied;
     applied.playlistsModified += regeneration.playlistsModified;
-    const mix = settings.enabled && settings.createRecentlyAddedPlaylists ? await createRecentlyAddedMix({ userId }).catch((error) => ({ created: false, reason: error instanceof Error ? error.message : "mix_failed" })) : null;
+    const mix = settings.enabled && settings.createRecentlyAddedPlaylists ? await createRecentlyAddedMix({ userId, automatic: true }).catch((error) => ({ created: false, reason: error instanceof Error ? error.message : "mix_failed" })) : null;
     const warnings = [...(analysis.failed ? [`${analysis.failed} track analyses failed.`] : []), ...regeneration.warnings, ...(mix && !mix.created && !["not_enough_tracks", "period_playlist_exists"].includes(String(mix.reason)) ? [`Recently added mix: ${mix.reason}`] : [])];
     const finalStatus = applied.failed || warnings.length ? "completed_with_warnings" : "completed";
     await prisma.recentlyAddedAutomationRun.update({
@@ -281,10 +312,28 @@ export async function applyRecentlyAddedChanges({
   for (const [playlistId, group] of Array.from(groups.entries())) {
     const playlist = await prisma.generatedPlaylist.findFirst({ where: { id: playlistId, userId }, include: { tracks: { orderBy: { position: "asc" } }, automationSettings: true } });
     if (!playlist) { failed += group.length; continue; }
-    if (automatic && playlist.automationSettings?.mode !== "automatic") continue;
+    let policyDecision = null as Awaited<ReturnType<typeof evaluatePlaylistAutomation>> | null;
+    let proposalId: string | null = null;
+    let policyEligibleIds: Set<string> | null = null;
+    if (automatic) {
+      const candidates = group.map((change) => ({ id: change.id, trackId: change.trackId, confidence: change.match?.confidenceScore == null ? null : Math.round(change.match.confidenceScore), metadataComplete: Boolean((change.track.ratingKey || change.track.plexId) && change.track.title && change.track.artist?.title) }));
+      policyDecision = await evaluatePlaylistAutomation({ userId, generatedPlaylistId: playlistId, source: "RECENTLY_ADDED", additions: candidates });
+      if (!policyDecision.allowed) {
+        const mayCreateQuietProposal = policyDecision.reasonCode !== "quiet_hours_active" || policyDecision.policySnapshot.allowProposalsDuringQuietHours !== false;
+        const mayStoreSuggestion = !["automation_disabled", "automation_paused", "policy_invalid"].includes(policyDecision.reasonCode);
+        const proposal = mayCreateQuietProposal && mayStoreSuggestion
+          ? await createAutomationProposal({ userId, generatedPlaylistId: playlistId, source: "RECENTLY_ADDED", decision: policyDecision, status: policyDecision.reasonCode === "quiet_hours_active" ? "DELAYED" : policyDecision.requiresApproval || policyDecision.reasonCode === "suggest_only_mode" ? "PENDING" : "SUGGESTED", idempotencyKey: policyDecision.reasonCode === "quiet_hours_active" ? `recently-added:quiet:${playlistId}:${policyDecision.eligibleAfter}` : `recently-added:${resolvedRunId}:${playlistId}`, requestingJobId: resolvedRunId, items: group.map((change) => ({ id: change.id, action: "ADD", trackId: change.trackId, plexRatingKey: change.track.ratingKey || change.track.plexId, confidence: change.match?.confidenceScore, explanation: change.reasonsJson })) })
+          : null;
+        proposalId = proposal?.id || null;
+        await recordAutomationActivity({ userId, generatedPlaylistId: playlistId, source: "RECENTLY_ADDED", status: proposal ? (policyDecision.requiresApproval ? "AWAITING_APPROVAL" : "SUGGESTED") : policyDecision.reasonCode === "quiet_hours_active" ? "DELAYED" : "BLOCKED", decision: policyDecision, proposedAdditions: group.length, proposalId, jobId: resolvedRunId, items: group.map((change) => ({ action: "ADD", trackId: change.trackId, plexRatingKey: change.track.ratingKey || change.track.plexId, confidence: change.match?.confidenceScore, outcome: "SKIPPED", reasonCode: policyDecision?.skipped.find((item) => item.candidateId === change.id)?.reasonCode || policyDecision?.reasonCode, explanation: change.reasonsJson })) });
+        console.info("[AutomationPolicy] automatic write blocked", { userId, playlistId, runId: resolvedRunId, source: "RECENTLY_ADDED", reasonCode: policyDecision.reasonCode, proposalId });
+        continue;
+      }
+      policyEligibleIds = new Set(policyDecision.eligibleAdditionIds);
+    }
     const accepted = [] as typeof group;
     const alreadyPresent = [] as typeof group;
-    for (const change of group.slice(0, automatic ? settings.maxAddsPerPlaylist : group.length)) {
+    for (const change of group.filter((item) => !policyEligibleIds || policyEligibleIds.has(item.id)).slice(0, automatic && !policyDecision ? settings.maxAddsPerPlaylist : group.length)) {
       if (excludedTrackIds.has(change.trackId)) {
         await prisma.recentlyAddedAutomationChange.update({ where: { id: change.id }, data: { status: "failed", error: "never_recommend" } });
         failed += 1;
@@ -305,9 +354,11 @@ export async function applyRecentlyAddedChanges({
     }
     if (!accepted.length && !alreadyPresent.length) continue;
     let committed = false;
+    let backupVersionId: string | null = null;
     try {
       if (accepted.length) await prisma.$transaction(async (tx) => {
-        await createPlaylistVersionInTransaction(tx, { generatedPlaylistId: playlistId, reason: "manual_edit", description: "Automatic backup before Recently Added changes", force: true });
+        const backup = await createPlaylistVersionInTransaction(tx, { generatedPlaylistId: playlistId, reason: "automation_backup", description: "Automatic backup before Recently Added changes", force: true });
+        backupVersionId = backup.id;
         await tx.generatedPlaylistTrack.createMany({
           data: accepted.map((change, index) => ({
             generatedPlaylistId: playlistId,
@@ -339,6 +390,7 @@ export async function applyRecentlyAddedChanges({
       ]);
       applied += accepted.length;
       playlistsModified += 1;
+      if (automatic && policyDecision) await recordAutomationActivity({ userId, generatedPlaylistId: playlistId, source: "RECENTLY_ADDED", status: "APPLIED", decision: policyDecision, proposedAdditions: group.length, appliedAdditions: accepted.length, playlistRevisionId: backupVersionId, proposalId, jobId: resolvedRunId, items: group.map((change) => ({ action: "ADD", trackId: change.trackId, plexRatingKey: change.track.ratingKey || change.track.plexId, confidence: change.match?.confidenceScore, outcome: accepted.some((item) => item.id === change.id) ? "APPLIED" : "SKIPPED", reasonCode: policyDecision?.skipped.find((item) => item.candidateId === change.id)?.reasonCode, explanation: change.reasonsJson })) });
       console.info("[RecentlyAdded] playlist updated", { playlistId, runId: resolvedRunId, added: accepted.length, automatic });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Playlist update failed";
@@ -346,6 +398,7 @@ export async function applyRecentlyAddedChanges({
       await prisma.recentlyAddedAutomationChange.updateMany({ where: { id: { in: failedChanges.map((item) => item.id) } }, data: { status: "failed", error: message } });
       await prisma.recentlyAddedPlaylistMatch.updateMany({ where: { id: { in: failedChanges.map((item) => item.matchId).filter((id): id is string => Boolean(id)) } }, data: { status: "failed" } });
       if (committed) await prisma.playlistRevision.updateMany({ where: { generatedPlaylistId: playlistId, isCurrent: true, syncStatus: "pending" }, data: { syncStatus: "failed" } });
+      if (automatic && policyDecision) await recordAutomationActivity({ userId, generatedPlaylistId: playlistId, source: "RECENTLY_ADDED", status: committed ? "PARTIAL" : "FAILED", decision: { ...policyDecision, reasonCode: "plex_unavailable", summary: committed ? "The local playlist changed, but Plex synchronization failed. Review or roll back before retrying." : "The automated playlist update failed before Plex was changed." }, proposedAdditions: group.length, appliedAdditions: 0, playlistRevisionId: backupVersionId, jobId: resolvedRunId, error: message, items: group.map((change) => ({ action: "ADD", trackId: change.trackId, plexRatingKey: change.track.ratingKey || change.track.plexId, confidence: change.match?.confidenceScore, outcome: committed && accepted.some((item) => item.id === change.id) ? "PARTIAL" : "FAILED", reasonCode: "plex_unavailable", explanation: change.reasonsJson })) });
       failed += failedChanges.length;
       console.error("[RecentlyAdded] playlist update failed", { playlistId, runId: resolvedRunId, reason: message });
     }

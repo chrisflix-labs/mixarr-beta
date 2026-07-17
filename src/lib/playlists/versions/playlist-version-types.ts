@@ -4,7 +4,7 @@ export const playlistVersionReasons = [
   "initial_generation", "full_regeneration", "advanced_regeneration",
   "manual_track_add", "manual_track_remove", "manual_reorder", "manual_edit",
   "settings_change", "restore", "undo", "import", "system_migration",
-  "recently_added_automation",
+  "recently_added_automation", "automation_backup",
 ] as const;
 
 export type PlaylistVersionReason = typeof playlistVersionReasons[number];
@@ -23,6 +23,8 @@ export interface PlaylistVersionTrack {
   locked: boolean;
   liked: boolean;
   regenerationExcluded: boolean;
+  automationProtected?: boolean;
+  protectionReason?: string | null;
   titleSnapshot: string;
   artistSnapshot: string | null;
   albumSnapshot: string | null;
@@ -84,7 +86,7 @@ export interface PlaylistVersionDiff {
   movedTracks: Array<{ track: VersionDiffTrack; fromPosition: number; toPosition: number }>;
   replacements: Array<{ position: number; removed: VersionDiffTrack; added: VersionDiffTrack; inferred: true }>;
   unchangedTracks: VersionDiffTrack[];
-  stateChanges: Array<{ track: VersionDiffTrack; fields: Array<"locked" | "liked" | "regenerationExcluded"> }>;
+  stateChanges: Array<{ track: VersionDiffTrack; fields: Array<"locked" | "liked" | "regenerationExcluded" | "automationProtected"> }>;
   settingsChanges: SettingsDiffEntry[];
   scoreChanges: Array<{ path: string; label: string; from: number | null; to: number | null }>;
 }

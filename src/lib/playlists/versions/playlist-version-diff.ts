@@ -72,7 +72,7 @@ export function diffPlaylistVersions(input: {
     if (!target) continue;
     if (track.position !== target.position) movedTracks.push({ track: target, fromPosition: track.position, toPosition: target.position });
     else unchangedTracks.push(target);
-    const fields = (["locked", "liked", "regenerationExcluded"] as const).filter((field) => track[field] !== target[field]);
+    const fields = (["locked", "liked", "regenerationExcluded", "automationProtected"] as const).filter((field) => track[field] !== target[field]);
     if (fields.length) stateChanges.push({ track: target, fields });
   }
 

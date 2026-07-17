@@ -152,6 +152,17 @@ export const roadmapReleases: RoadmapRelease[] = [
     completionDate: "2026-07-16",
     route: "/smart-builder",
   },
+  {
+    version: "2.1.9",
+    title: "Adaptive Automation Policies",
+    cycle: "2.1.x",
+    status: "completed",
+    description: "Makes playlist automation explicitly permissioned, bounded, protected, explainable, approval-aware, pausable, and reversible through one server-side policy evaluator.",
+    featureLabels: ["Four automation permission levels", "Conservative, Balanced, and Aggressive presets", "Per-update, daily, and weekly limits", "Confidence thresholds", "Playlist and track protection", "Quiet hours and time zones", "Approval queue", "Automation activity", "Emergency pause", "Recoverable versions and rollback", "Safe legacy migration"],
+    releaseOrder: 110,
+    completionDate: "2026-07-16",
+    route: "/automation",
+  },
 ];
 
 export const roadmapCycles: RoadmapCycle[] = [

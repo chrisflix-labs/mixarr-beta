@@ -73,6 +73,23 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.1.9",
+    title: "Adaptive Automation Policies",
+    releaseDate: "July 16, 2026",
+    badges: ["Automation", "Safety Rules", "Playlists", "Plex", "History", "Backup", "Scheduler", "Notifications", "Database", "Settings", "Dashboard", "Mobile", "UI", "Security", "Reliability"],
+    changes: [
+      "Added one authoritative server-side evaluator for Recently Added and scheduled-regeneration writes, with stable reason codes and fail-safe behavior for missing or invalid policies.",
+      "Added Disabled, Suggest Only, Require Approval, and Fully Automatic permission levels plus visible Conservative, Balanced, Aggressive, and Custom presets.",
+      "Added separate addition and removal permissions, per-update limits, confidence thresholds, aggregate daily and weekly limits, explicit IANA-timezone quiet hours, and a durable emergency pause.",
+      "Added global policy inheritance, conservative playlist overrides, playlist protection, membership-level track protection, and enforcement for existing locked, liked, important, and regeneration-excluded tracks.",
+      "Added an approval queue that revalidates policy, playlist freshness, protection, limits, and source state before creating a recoverable version and writing to Plex.",
+      "Added durable automation activity with proposed, skipped, blocked, applied, delayed, partial, and rollback outcomes, policy snapshots, confidence, sources, reasons, version links, and usage accounting.",
+      "Added rollback of the latest eligible automated update through existing Playlist Version History, including stale-change warnings, idempotency, safety versions, Plex reconciliation, and non-destructive audit retention.",
+      "Added a responsive Automation Policies workspace, dashboard health card, navigation entry, plain-language policy preview, protected-playlist management, approvals, activity, pause, and rollback actions.",
+      "Added the non-destructive 20260716130000 migration. Existing Recently Added settings and schedules remain; global and playlist permissions migrate to conservative review-first modes, with automatic removals off.",
+    ],
+  },
+  {
     version: "2.1.8",
     title: "Smart Mix Explanations & Insights",
     releaseDate: "July 16, 2026",
