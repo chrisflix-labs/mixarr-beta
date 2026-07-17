@@ -29,6 +29,8 @@ import {
   type BpmStartingMode,
 } from "@/lib/smartMixEngine/v2/bpmFlow";
 import { discoveryPreset, type DiscoveryConfig, type DiscoveryLevel } from "@/lib/smartMixEngine/v2/discovery";
+import PlaylistGenerationProgress from "@/components/PlaylistGenerationProgress";
+import { cancelPlaylistGeneration, generatePlaylistPreviewInBackground, type PlaylistGenerationJobView } from "@/lib/playlistGenerationClient";
 import styles from "./builder.module.css";
 
 type Rule = {
@@ -347,6 +349,7 @@ export default function BuilderPage() {
   const [previewError, setPreviewError] = useState("");
   const [exclusionNotice, setExclusionNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const [generationJob, setGenerationJob] = useState<PlaylistGenerationJobView | null>(null);
   const [exporting, setExporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingRecipe, setSavingRecipe] = useState(false);
@@ -807,7 +810,7 @@ export default function BuilderPage() {
 
   const previewConfigSignature = () => JSON.stringify(playlistPayload({ pinnedTrackIds: [], excludedTrackIds: [] }));
   const isPreviewCurrent = playlistPreview?.signature === previewConfigSignature();
-  const createTrackIds = tracks.map((track) => track.id);
+  const createTrackIds = playlistPreview?.trackIds || [];
   const playlistNameReady = playlistName.trim().length > 0;
   const moodValidationMessage = moodBlendValidationMessage(moodBlendSettings);
   const canCreateFromPreview = Boolean(playlistNameReady && playlistPreview && isPreviewCurrent && createTrackIds.length > 0);
@@ -1222,24 +1225,24 @@ export default function BuilderPage() {
     try {
       setPinnedTrackIds([]);
       setExcludedTrackIds([]);
-      const res = await axios.post("/api/playlists/preview", config);
-      setTracks(res.data.tracks || []);
+      const data = await generatePlaylistPreviewInBackground(config, setGenerationJob);
+      setTracks(data.tracks || []);
       setPlaylistPreview({
-        previewId: res.data.previewId,
-        trackIds: res.data.trackIds || [],
-        totalPreviewTrackCount: res.data.totalPreviewTrackCount || 0,
-        summary: res.data.summary,
-        filterSummary: res.data.filterSummary || [],
-        warnings: res.data.warnings || [],
-        messages: res.data.messages || (res.data.warnings || []).map((message: string) => ({ severity: "warning", message })),
+        previewId: data.previewId,
+        trackIds: data.trackIds || [],
+        totalPreviewTrackCount: data.totalPreviewTrackCount || 0,
+        summary: data.summary,
+        filterSummary: data.filterSummary || [],
+        warnings: data.warnings || [],
+        messages: data.messages || (data.warnings || []).map((message: string) => ({ severity: "warning", message })),
         signature,
       });
       if (recipeForUsage?.id) {
         await axios.post(`/api/playlist-recipes/${recipeForUsage.id}/use`);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      setPreviewError("Unable to generate playlist preview. Check your filters and try again.");
+      setPreviewError(e?.message || "Unable to generate playlist preview. Check your filters and try again.");
     } finally {
       setLoading(false);
     }
@@ -1258,25 +1261,25 @@ export default function BuilderPage() {
     setExclusionNotice("");
     try {
       const signature = previewConfigSignature();
-      const res = await axios.post("/api/playlists/preview", playlistPayload({
+      const data = await generatePlaylistPreviewInBackground(playlistPayload({
         pinnedTrackIds,
         excludedTrackIds,
-      }));
-      setTracks(res.data.tracks || []);
+      }), setGenerationJob);
+      setTracks(data.tracks || []);
       setPlaylistPreview({
-        previewId: res.data.previewId,
-        trackIds: res.data.trackIds || [],
-        totalPreviewTrackCount: res.data.totalPreviewTrackCount || 0,
-        summary: res.data.summary,
-        filterSummary: res.data.filterSummary || [],
-        warnings: res.data.warnings || [],
-        messages: res.data.messages || (res.data.warnings || []).map((message: string) => ({ severity: "warning", message })),
+        previewId: data.previewId,
+        trackIds: data.trackIds || [],
+        totalPreviewTrackCount: data.totalPreviewTrackCount || 0,
+        summary: data.summary,
+        filterSummary: data.filterSummary || [],
+        warnings: data.warnings || [],
+        messages: data.messages || (data.warnings || []).map((message: string) => ({ severity: "warning", message })),
         signature,
       });
-      setPinnedTrackIds((res.data.trackIds || []).filter((trackId: string) => pinnedTrackIds.includes(trackId)));
-    } catch (e) {
+      setPinnedTrackIds((data.trackIds || []).filter((trackId: string) => pinnedTrackIds.includes(trackId)));
+    } catch (e: any) {
       console.error(e);
-      setPreviewError("Unable to generate playlist preview. Check your filters and try again.");
+      setPreviewError(e?.message || "Unable to generate playlist preview. Check your filters and try again.");
     } finally {
       setLoading(false);
     }
@@ -2197,6 +2200,7 @@ export default function BuilderPage() {
       </div>
 
       {/* RIGHT COLUMN: PREVIEW */}
+      {generationJob && <PlaylistGenerationProgress job={generationJob} requestedTracks={Number(limit) || 100} onCancel={() => { const id = generationJob.id || generationJob.jobId; if (id) void cancelPlaylistGeneration(id); }} />}
       <div className={`glass-panel ${styles.previewPanel}`}>
         <div className={styles.previewHeader}>
           <div>

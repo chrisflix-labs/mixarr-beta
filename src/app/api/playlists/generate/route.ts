@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { generatePlaylistTracksWithStats, playlistConfigSchema } from "@/lib/playlistService";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
+import { queuePlaylistGenerationJob } from "@/lib/playlistGenerationJobs";
 
 export async function POST(req: Request) {
   const cookieStore = cookies();
@@ -14,6 +15,9 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const config = playlistConfigSchema.parse(body);
+    if (String(config.engineVersion) === "v2") {
+      return NextResponse.json(await queuePlaylistGenerationJob({ userId, config }), { status: 202 });
+    }
     const result = await generatePlaylistTracksWithStats({
       userId,
       config,

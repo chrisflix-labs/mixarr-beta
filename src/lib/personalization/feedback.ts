@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import prisma from "../prisma";
+import { queryInBatches } from "../databaseBatching";
 import { artistFeedbackAdjustment, playlistFitAdjustment, trackFeedbackAdjustment, transitionPairKey } from "./feedbackRules";
 import type { ArtistFeedbackState, ExplicitFeedbackScoringContext, PlaylistFitState, TrackFeedbackState } from "./types";
 import { markAdaptiveScoringDirty } from "../adaptiveScoring";
@@ -264,12 +265,11 @@ export async function getFeedbackState(userId: string, trackIds: string[], playl
 export async function loadExplicitFeedbackScoringContext(userId: string, trackIds: string[], artistIds: string[], playlistId?: string | null): Promise<ExplicitFeedbackScoringContext> {
   const scope = await playlistScope(userId, playlistId);
   const uniqueTracks = Array.from(new Set(trackIds)); const uniqueArtists = Array.from(new Set(artistIds));
-  const [trackRows, artistRows, fitRows, transitionRows] = await Promise.all([
-    prisma.userTrackPreference.findMany({ where: { userId, trackId: { in: uniqueTracks } }, select: { trackId: true, state: true, scoreAdjustment: true } }),
-    prisma.userArtistPreference.findMany({ where: { userId, artistId: { in: uniqueArtists } }, select: { artistId: true, state: true, scoreAdjustment: true } }),
-    scope.scopeKey ? prisma.playlistFitFeedback.findMany({ where: { userId, trackId: { in: uniqueTracks }, scopeKey: scope.scopeKey }, select: { trackId: true, state: true, reason: true } }) : Promise.resolve([]),
-    scope.playlistId || scope.playlistProfileId ? prisma.transitionFeedback.findMany({ where: { userId, previousTrackId: { in: uniqueTracks }, currentTrackId: { in: uniqueTracks }, OR: [...(scope.playlistId ? [{ playlistId: scope.playlistId }] : []), ...(scope.playlistProfileId ? [{ playlistProfileId: scope.playlistProfileId }] : [])] }, orderBy: { createdAt: "desc" }, take: 2000, select: { previousTrackId: true, currentTrackId: true, reason: true, contextJson: true } }) : Promise.resolve([]),
-  ]);
+  const trackRows = await queryInBatches(uniqueTracks, (batch) => prisma.userTrackPreference.findMany({ where: { userId, trackId: { in: batch } }, select: { trackId: true, state: true, scoreAdjustment: true } }));
+  const artistRows = await queryInBatches(uniqueArtists, (batch) => prisma.userArtistPreference.findMany({ where: { userId, artistId: { in: batch } }, select: { artistId: true, state: true, scoreAdjustment: true } }));
+  const fitRows = scope.scopeKey ? await queryInBatches(uniqueTracks, (batch) => prisma.playlistFitFeedback.findMany({ where: { userId, trackId: { in: batch }, scopeKey: scope.scopeKey! }, select: { trackId: true, state: true, reason: true } })) : [];
+  const transitionTrackIds = uniqueTracks.slice(0, 2_000);
+  const transitionRows = scope.playlistId || scope.playlistProfileId ? await prisma.transitionFeedback.findMany({ where: { userId, previousTrackId: { in: transitionTrackIds }, currentTrackId: { in: transitionTrackIds }, OR: [...(scope.playlistId ? [{ playlistId: scope.playlistId }] : []), ...(scope.playlistProfileId ? [{ playlistProfileId: scope.playlistProfileId }] : [])] }, orderBy: { createdAt: "desc" }, take: 2000, select: { previousTrackId: true, currentTrackId: true, reason: true, contextJson: true } }) : [];
   const context: ExplicitFeedbackScoringContext = {
     trackPreferences: Object.fromEntries(trackRows.map((row) => [row.trackId, { state: row.state as TrackFeedbackState, adjustment: row.scoreAdjustment }])),
     artistPreferences: Object.fromEntries(artistRows.map((row) => [row.artistId, { state: row.state as ArtistFeedbackState, adjustment: row.scoreAdjustment }])),

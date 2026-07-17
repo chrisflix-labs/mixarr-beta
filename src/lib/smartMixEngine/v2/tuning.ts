@@ -387,7 +387,9 @@ export function applyTuningToTransitionScore({
   rightTrack: any;
   tuningConfig: SmartMixTuningConfig;
 }) {
-  const tuning = normalizeSmartMixTuningConfig(tuningConfig);
+  const tuning = tuningConfig.tuningVersion === SMART_MIX_TUNING_VERSION
+    ? tuningConfig
+    : normalizeSmartMixTuningConfig(tuningConfig);
   let score = 0;
   const leftBpm = getTrackBpm(leftTrack);
   const rightBpm = getTrackBpm(rightTrack);

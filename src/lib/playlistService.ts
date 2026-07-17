@@ -24,6 +24,7 @@ import { buildDecisionExplanation, buildGenerationInsights, type TraceableSmartM
 import { attachGenerationExplanationsToPlaylist, getExplanationPreference, persistGenerationExplanations } from "./smartMixExplanations/service";
 import {
   runSmartMixEngineV2,
+  runSmartMixEngineV2Async,
   smartMixEngineLabel,
   SMART_MIX_ENGINE_V1,
   SMART_MIX_ENGINE_V2,
@@ -43,6 +44,7 @@ import {
   type PlaylistRegenerationRequest,
   type PlaylistTrackState,
   type SmartMixEngineV2Config,
+  type SmartMixEngineV2RunInput,
   scoreSmartMixTrack,
 } from "./smartMixEngine/v2";
 import {
@@ -53,6 +55,9 @@ import {
   playlistRefreshDurationSeconds,
   playlistRefreshesTotal,
 } from "./metrics";
+import type { PlaylistGenerationControl } from "./playlistGenerationControl";
+import { PLAYLIST_GENERATION_LIMITS } from "./playlistGenerationLimits";
+import { chunkValues, queryInBatches } from "./databaseBatching";
 
 const numericFields = ["popularity", "energy", "valence", "tempo", "year", "duration", "rating", "playCount"] as const;
 const booleanFields = ["isLive", "isRemaster", "isExplicit", "hasPopularity"] as const;
@@ -64,7 +69,7 @@ const smartMixEngineVersions = [SMART_MIX_ENGINE_V1, SMART_MIX_ENGINE_V2] as con
 const moodBlendModes = ["off", "smooth_transition", "strict_matching", "mixed_mood"] as const;
 const v2SoftMetadataFilterFields = new Set<string>(["popularity", "energy", "valence", "tempo"]);
 
-const maxPlaylistSize = Number(process.env.MAX_PLAYLIST_SIZE || 5000);
+const maxPlaylistSize = Math.min(Number(process.env.MAX_PLAYLIST_SIZE || 5000), PLAYLIST_GENERATION_LIMITS.maxTracks);
 const supportedRegenerationModes = ["replace_all", "keep_some"] as const;
 const supportedKeepPercents = [25, 50] as const;
 const moodBlendSliderSchema = z.coerce.number().int().min(0).max(100);
@@ -417,18 +422,16 @@ export function applyDuplicatePolicy(tracks: any[], config: PlaylistConfigInput,
   if (config.duplicateStrategy === "allow" || config.duplicateStrategy === "allow_alternate_copies") return tracks.slice(0, limit);
 
   const selected: any[] = [];
+  const selectedIndexByKey = new Map<string, number>();
   for (let index = 0; index < tracks.length; index += 1) {
     const track = tracks[index];
     const key = duplicateKey(track);
-    const existingIndex = selected.findIndex((candidate) => duplicateKey(candidate) === key);
-    if (existingIndex === -1) {
+    const existingIndex = selectedIndexByKey.get(key);
+    if (existingIndex == null) {
+      selectedIndexByKey.set(key, selected.length);
       selected.push(track);
     } else if (duplicateScore(track, index, config) > duplicateScore(selected[existingIndex], existingIndex, config)) {
       selected[existingIndex] = track;
-    }
-
-    if (selected.length >= limit && tracks.length - index > limit) {
-      continue;
     }
   }
 
@@ -856,14 +859,17 @@ export async function generatePlaylistTracksWithStats({
   userId,
   config,
   personalizationPlaylistId,
+  control,
 }: {
   userId: string;
   config: PlaylistConfigInput;
   personalizationPlaylistId?: string | null;
+  control?: PlaylistGenerationControl;
 }): Promise<PlaylistGenerationStats> {
   const endTimer = playlistGenerationDurationSeconds.startTimer();
   let result: "success" | "failed" = "success";
   try {
+    if (control?.stage === "queued") await control.setStage("loading", "Loading library metadata", { selectedTracks: 0 });
     const { pinnedTracks, omittedIds, blockedTrackIds, manualExcludedTrackIds, feedbackExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
     const engineVersion = config.engineVersion || SMART_MIX_ENGINE_V1;
     const useSmartMixV2 = engineVersion === SMART_MIX_ENGINE_V2;
@@ -909,6 +915,7 @@ export async function generatePlaylistTracksWithStats({
         ? safetyCandidateLimit
         : Math.max(safetyCandidateLimit * 5, safetyCandidateLimit + 25),
     );
+    await control?.setStage("filtering", "Applying filters", { initialCandidates: take, selectedTracks: pinnedTracks.length });
     let candidates = remainingLimit > 0
       ? await queryCandidateTracks(userId, config, omittedIds, take, audioFeatureFilterOptions, useSmartMixV2)
       : [];
@@ -965,6 +972,7 @@ export async function generatePlaylistTracksWithStats({
       if (coordination) runConfig = { ...runConfig, coordination };
     }
     const reasons = collectRuleReasons(config.ruleTree, config.rules);
+    await control?.progress("Applying filters", { initialCandidates: candidates.length, eligibleCandidates: candidates.length, selectedTracks: effectivePinnedTracks.length }, true);
 
     const baseOmittedIds = config.excludedTrackIds
       .concat(blockedTrackIds)
@@ -985,7 +993,7 @@ export async function generatePlaylistTracksWithStats({
     ]);
     const hardTraceTracks = useSmartMixV2 && hardCodeByTrackId.size
       ? await prisma.track.findMany({
-          where: { AND: [{ id: { in: Array.from(hardCodeByTrackId.keys()) } }, buildTrackWhereClause(userId, config, [], audioFeatureFilterOptions, { softMetadataFilters: true })] },
+          where: { AND: [{ id: { in: Array.from(hardCodeByTrackId.keys()).slice(0, PLAYLIST_GENERATION_LIMITS.explanationRejectedSampleLimit) } }, buildTrackWhereClause(userId, config, [], audioFeatureFilterOptions, { softMetadataFilters: true })] },
           include: playlistTrackInclude,
           take: 100,
         })
@@ -1020,14 +1028,17 @@ export async function generatePlaylistTracksWithStats({
     });
 
     if (useSmartMixV2) {
-      const engineResult = runSmartMixEngineV2({
+      const engineInput: SmartMixEngineV2RunInput<any> = {
         config: runConfig,
         pinnedTracks: effectivePinnedTracks,
         candidates,
         safetyCandidateLimit,
         applyDuplicatePolicy: (tracks, runConfig, limit) => applyDuplicatePolicy(tracks, runConfig as PlaylistConfigInput, limit),
         applyPlaylistSafetyRules: (tracks, runConfig) => applyPlaylistSafetyRules(tracks, runConfig as PlaylistConfigInput),
-      });
+      };
+      const engineResult = control
+        ? await runSmartMixEngineV2Async({ ...engineInput, control })
+        : runSmartMixEngineV2(engineInput);
 
       const tracks = engineResult.tracks.map((track) => annotateTrack(track, reasons, SMART_MIX_ENGINE_V2));
       return {
@@ -1259,11 +1270,14 @@ export async function previewPlaylistTracks({
   userId,
   config,
   displayLimit = previewDisplayLimit,
+  control,
 }: {
   userId: string;
   config: PlaylistConfigInput;
   displayLimit?: number;
+  control?: PlaylistGenerationControl;
 }) {
+  await control?.setStage("loading", "Loading library metadata", { selectedTracks: 0 });
   const { blockedTrackIds, manualExcludedTrackIds, audioFeatureFilterOptions } = await resolvePlaylistGenerationInputs(userId, config);
   const baseOmittedIds = config.excludedTrackIds.concat(blockedTrackIds);
   const useSmartMixV2 = config.engineVersion === SMART_MIX_ENGINE_V2;
@@ -1273,7 +1287,9 @@ export async function previewPlaylistTracks({
   const matchedTrackCount = await prisma.track.count({
     where: buildTrackWhereClause(userId, config, baseOmittedIds.concat(manualExcludedTrackIds), audioFeatureFilterOptions, { softMetadataFilters: useSmartMixV2 }),
   });
-  const generation = await generatePlaylistTracksWithStats({ userId, config });
+  const libraryTrackCount = await prisma.track.count({ where: { syncStatus: "active", library: { server: { userId, ...(config.serverId ? { id: config.serverId } : {}) }, ...(config.libraryId ? { id: config.libraryId } : {}) } } });
+  await control?.setStage("filtering", "Applying filters", { libraryTracks: libraryTrackCount, initialCandidates: matchedBeforeManualExclusions, eligibleCandidates: matchedTrackCount, selectedTracks: 0 });
+  const generation = await generatePlaylistTracksWithStats({ userId, config, control });
   const tracks = generation.tracks;
   const rules = collectRules(config.ruleTree, config.rules);
   const server = config.serverId ? await prisma.server.findFirst({ where: { id: config.serverId, userId }, select: { name: true } }) : null;
@@ -1287,10 +1303,10 @@ export async function previewPlaylistTracks({
   const summary = {
     targetTrackCount: config.limit,
     matchingTrackCount: matchedTrackCount,
-    finalTrackCount: previewTracks.length,
+    finalTrackCount: tracks.length,
     displayedTrackCount: previewTracks.length,
-    estimatedDurationMs: previewTracks.reduce((sum, track) => sum + (track.duration || 0), 0),
-    estimatedDurationMinutes: Math.round(previewTracks.reduce((sum, track) => sum + (track.duration || 0), 0) / 60000),
+    estimatedDurationMs: tracks.reduce((sum, track) => sum + (track.duration || 0), 0),
+    estimatedDurationMinutes: Math.round(tracks.reduce((sum, track) => sum + (track.duration || 0), 0) / 60000),
     bpmRange: numericRangeLabel(rules, "tempo"),
     energyRange: numericRangeLabel(rules, "energy"),
     moodRange: numericRangeLabel(rules, "valence"),
@@ -1408,7 +1424,7 @@ export async function previewPlaylistTracks({
 
   const messages = uniquePreviewMessages([
     ...buildPreviewMessages({
-      tracks: previewTracks,
+      tracks,
       matchedTrackCount,
       requestedLimit: config.limit,
       safetyRules: config.safetyRules,
@@ -1429,6 +1445,7 @@ export async function previewPlaylistTracks({
   let generationInsights = null;
   let rejectedCandidates: any[] = [];
   if (useSmartMixV2 && generation.explanationContext) {
+    await control?.setStage("persisting", "Saving generation diagnostics", { eligibleCandidates: generation.explanationContext.decisionTrace.eligibleCandidateCount, selectedTracks: previewTracks.length });
     const traceStartedAt = Date.now();
     const preference = await getExplanationPreference(userId);
     const selectedExplanations = previewTracks.map((track, index) => buildDecisionExplanation({ track: track as TraceableSmartMixTrack, generationId: previewId, decision: "selected", rank: index + 1 }));
@@ -1468,9 +1485,11 @@ export async function previewPlaylistTracks({
     for (let index = 0; index < previewTracks.length; index += 1) previewTracks[index].decisionExplanation = selectedExplanations[index];
   }
 
+  await control?.setStage("completed", "Generation complete", { eligibleCandidates: matchedTrackCount, selectedTracks: previewTracks.length });
+
   return {
     previewId,
-    trackIds: previewTracks.map((track) => track.id),
+    trackIds: tracks.map((track) => track.id),
     tracks: previewTracks.map(publicPreviewTrack),
     totalPreviewTrackCount: tracks.length,
     summary,
@@ -1492,14 +1511,10 @@ export async function previewPlaylistTracks({
 
 async function fetchOwnedTracksInOrder(userId: string, trackIds: string[]) {
   const uniqueIds = trackIds.filter((id, index) => trackIds.indexOf(id) === index);
-  const tracks = await prisma.track.findMany({
-    where: {
-      id: { in: uniqueIds },
-      syncStatus: "active",
-      library: { server: { userId } },
-    },
+  const tracks = await queryInBatches(uniqueIds, (batch) => prisma.track.findMany({
+    where: { id: { in: batch }, syncStatus: "active", library: { server: { userId } } },
     include: playlistTrackInclude,
-  });
+  }));
 
   if (tracks.length !== uniqueIds.length) {
     throw new Error("Some tracks were not found or are not owned by this user");
@@ -1540,33 +1555,38 @@ async function pushTracksToPlex({
   ratingKeys: string[];
   playlistId?: string | null;
 }) {
-  const uri = `server://${server.machineIdentifier}/com.plexapp.plugins.library/library/metadata/${ratingKeys.join(",")}`;
+  const uniqueRatingKeys = ratingKeys.map(String).filter(Boolean).filter((key, index, keys) => keys.indexOf(key) === index);
+  if (uniqueRatingKeys.length === 0) throw new Error("Mixarr will not create an empty Plex playlist.");
   const headers = plexHeaders(server.accessToken);
+  const batches = chunkValues(uniqueRatingKeys, PLAYLIST_GENERATION_LIMITS.queryBatchSize);
+  const uriFor = (batch: string[]) => `server://${server.machineIdentifier}/com.plexapp.plugins.library/library/metadata/${batch.join(",")}`;
 
   if (playlistId) {
-    await axios.put(`${server.uri}/playlists/${playlistId}`, null, {
-      params: { title: name },
-      headers,
-    }).catch(() => undefined);
-    await axios.delete(`${server.uri}/playlists/${playlistId}/items`, { headers });
-    await axios.put(`${server.uri}/playlists/${playlistId}/items`, null, {
-      params: { uri },
-      headers,
-    });
-    return playlistId;
+    const previousRatingKeys = await fetchPlexPlaylistItemRatingKeys({ server, playlistId });
+    try {
+      await axios.put(`${server.uri}/playlists/${playlistId}`, null, { params: { title: name }, headers });
+      await axios.delete(`${server.uri}/playlists/${playlistId}/items`, { headers });
+      for (const batch of batches) await axios.put(`${server.uri}/playlists/${playlistId}/items`, null, { params: { uri: uriFor(batch) }, headers });
+      return playlistId;
+    } catch (error) {
+      const rollbackBatches = chunkValues(previousRatingKeys, PLAYLIST_GENERATION_LIMITS.queryBatchSize);
+      await axios.delete(`${server.uri}/playlists/${playlistId}/items`, { headers }).catch(() => undefined);
+      for (const batch of rollbackBatches) await axios.put(`${server.uri}/playlists/${playlistId}/items`, null, { params: { uri: uriFor(batch) }, headers }).catch(() => undefined);
+      throw error;
+    }
   }
 
-  const response = await axios.post(`${server.uri}/playlists`, null, {
-    params: {
-      type: "audio",
-      title: name,
-      smart: 0,
-      uri,
-    },
-    headers,
-  });
-
-  return response.data?.MediaContainer?.Metadata?.[0]?.ratingKey || null;
+  let createdPlaylistId: string | null = null;
+  try {
+    const response = await axios.post(`${server.uri}/playlists`, null, { params: { type: "audio", title: name, smart: 0, uri: uriFor(batches[0]) }, headers });
+    createdPlaylistId = response.data?.MediaContainer?.Metadata?.[0]?.ratingKey || null;
+    if (!createdPlaylistId) throw new Error("Plex did not confirm playlist creation.");
+    for (const batch of batches.slice(1)) await axios.put(`${server.uri}/playlists/${createdPlaylistId}/items`, null, { params: { uri: uriFor(batch) }, headers });
+    return createdPlaylistId;
+  } catch (error) {
+    if (createdPlaylistId) await axios.delete(`${server.uri}/playlists/${createdPlaylistId}`, { headers }).catch(() => undefined);
+    throw error;
+  }
 }
 
 async function assertPlexPlaylistExists({
@@ -3211,6 +3231,7 @@ export async function exportTracksToPlex({
     return {
       playlistId,
       serverId: targetServer.id,
+      createdNewPlaylist: !existingRule,
       trackCount: tracks.length,
       excludedTrackCount: filtered.excludedTrackCount,
       exportedTrackIds: tracks.map((track) => track.id),
@@ -3236,6 +3257,14 @@ export async function exportTracksToPlex({
     endTimer();
     playlistExportsTotal.inc({ result: exportResult });
   }
+}
+
+export async function rollbackCreatedPlexPlaylist({ userId, serverId, playlistId }: { userId: string; serverId: string; playlistId: string | null | undefined }) {
+  if (!playlistId) return false;
+  const server = await prisma.server.findFirst({ where: { id: serverId, userId }, select: { uri: true, accessToken: true } });
+  if (!server) return false;
+  await axios.delete(`${server.uri}/playlists/${playlistId}`, { headers: plexHeaders(server.accessToken) });
+  return true;
 }
 
 // Process-local set of PlaylistRule IDs currently being refreshed. Mirrors

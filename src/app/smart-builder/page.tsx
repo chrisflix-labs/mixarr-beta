@@ -17,6 +17,8 @@ import TrackFeedbackMenu from "@/components/TrackFeedbackMenu";
 import AdaptiveScoreBreakdown from "@/components/AdaptiveScoreBreakdown";
 import SmartMixExplanation from "@/components/SmartMixExplanation";
 import SmartMixGenerationInsights from "@/components/SmartMixGenerationInsights";
+import PlaylistGenerationProgress from "@/components/PlaylistGenerationProgress";
+import { cancelPlaylistGeneration, generatePlaylistPreviewInBackground, type PlaylistGenerationJobView } from "@/lib/playlistGenerationClient";
 import { getMoodPreset, moodPresetLabel, MOOD_PRESET_VERSION, type MoodPreset } from "@/lib/moodPresets";
 import { buildSmartPresetConfig, SMART_PRESET_VERSION, smartPlaylistPresets, type SmartPlaylistPreset } from "@/lib/smartPlaylistPresets";
 import styles from "./smart-builder.module.css";
@@ -258,6 +260,7 @@ export default function SmartBuilderPage() {
   const [previewError, setPreviewError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const [generationJob, setGenerationJob] = useState<PlaylistGenerationJobView | null>(null);
   const [creating, setCreating] = useState(false);
   const [savingRecipe, setSavingRecipe] = useState(false);
   const [generatedPlaylists, setGeneratedPlaylists] = useState<Array<{ id: string; plexPlaylistTitle: string; trackCount: number }>>([]);
@@ -496,22 +499,22 @@ export default function SmartBuilderPage() {
     setNotice("");
     try {
       const signature = JSON.stringify(payload);
-      const res = await axios.post("/api/playlists/preview", payload);
-      setTracks(res.data.tracks || []);
+      const data = await generatePlaylistPreviewInBackground(payload, setGenerationJob);
+      setTracks(data.tracks || []);
       setPlaylistPreview({
-        previewId: res.data.previewId,
-        trackIds: res.data.trackIds || [],
-        totalPreviewTrackCount: res.data.totalPreviewTrackCount || 0,
-        summary: res.data.summary,
-        filterSummary: res.data.filterSummary || [],
-        warnings: res.data.warnings || [],
-        generationInsights: res.data.generationInsights || null,
-        rejectedCandidates: res.data.rejectedCandidates || [],
+        previewId: data.previewId,
+        trackIds: data.trackIds || [],
+        totalPreviewTrackCount: data.totalPreviewTrackCount || 0,
+        summary: data.summary,
+        filterSummary: data.filterSummary || [],
+        warnings: data.warnings || [],
+        generationInsights: data.generationInsights || null,
+        rejectedCandidates: data.rejectedCandidates || [],
         signature,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setPreviewError("Unable to generate playlist preview. Adjust the preset settings and try again.");
+      setPreviewError(error?.message || "Unable to generate playlist preview. Adjust the preset settings and try again.");
     } finally {
       setLoading(false);
     }
@@ -582,7 +585,7 @@ export default function SmartBuilderPage() {
     try {
       await axios.post("/api/playlists/create-from-preview", {
         name: playlistName.trim(),
-        trackIds: tracks.map((track) => track.id),
+        trackIds: playlistPreview.trackIds,
         rulesSnapshot: payload.ruleTree || payload.rules,
         optionsSnapshot: payload,
         previewId: playlistPreview.previewId,
@@ -829,6 +832,7 @@ export default function SmartBuilderPage() {
           </div>
 
           <div className={styles.previewColumn}>
+            {generationJob && <PlaylistGenerationProgress job={generationJob} requestedTracks={Number(limit) || 50} onCancel={() => { const id = generationJob.id || generationJob.jobId; if (id) void cancelPlaylistGeneration(id); }} />}
             <div className={styles.panel}>
               <div className={styles.previewHeader}>
                 <div>

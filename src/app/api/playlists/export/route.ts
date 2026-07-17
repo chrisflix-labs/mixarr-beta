@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { exportTracksToPlex, playlistConfigSchema, recordGeneratedPlaylist, summarizePlaylistSafetyRules } from "@/lib/playlistService";
+import { exportTracksToPlex, playlistConfigSchema, recordGeneratedPlaylist, rollbackCreatedPlexPlaylist, summarizePlaylistSafetyRules } from "@/lib/playlistService";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
 import { recordPlaylistHistoryEntry } from "@/lib/playlistHistory";
 
@@ -39,15 +39,21 @@ export async function POST(req: Request) {
     const sourceType = safetyConfig?.success && (safetyConfig.data.smartPresetName || safetyConfig.data.moodPresetName || safetyConfig.data.bpmPresetName)
       ? "smart_builder"
       : "manual_builder";
-    const generatedPlaylist = await recordGeneratedPlaylist({
-      userId,
-      serverId: result.serverId,
-      plexPlaylistRatingKey: result.playlistId || null,
-      plexPlaylistTitle: name,
-      sourceType,
-      filters,
-      trackIds: result.exportedTrackIds || trackIds,
-    });
+    let generatedPlaylist;
+    try {
+      generatedPlaylist = await recordGeneratedPlaylist({
+        userId,
+        serverId: result.serverId,
+        plexPlaylistRatingKey: result.playlistId || null,
+        plexPlaylistTitle: name,
+        sourceType,
+        filters,
+        trackIds: result.exportedTrackIds || trackIds,
+      });
+    } catch (error) {
+      if (result.createdNewPlaylist) await rollbackCreatedPlexPlaylist({ userId, serverId: result.serverId, playlistId: result.playlistId }).catch(() => undefined);
+      throw error;
+    }
     const creationSummary = `Created playlist "${name}" from export with ${result.trackCount} track${result.trackCount === 1 ? "" : "s"}.${exclusionSummary}${safetySummary}`;
     await recordPlaylistHistoryEntry({
       userId,

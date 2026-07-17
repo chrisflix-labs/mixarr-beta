@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { exportTracksToPlex, playlistConfigSchema, recordGeneratedPlaylist, summarizePlaylistSafetyRules } from "@/lib/playlistService";
+import { exportTracksToPlex, playlistConfigSchema, recordGeneratedPlaylist, rollbackCreatedPlexPlaylist, summarizePlaylistSafetyRules } from "@/lib/playlistService";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
 import { recordPlaylistHistoryEntry } from "@/lib/playlistHistory";
 import prisma from "@/lib/prisma";
@@ -95,19 +95,24 @@ export async function POST(req: Request) {
     let generatedPlaylist: Awaited<ReturnType<typeof recordGeneratedPlaylist>> | null = null;
     const resolvedSourceType = sourceType || (ownedRecipe || recipeId ? "recipe" : smartPresetName ? "smart_builder" : "manual_builder");
     if (generationFilters) {
-      generatedPlaylist = await recordGeneratedPlaylist({
-        userId,
-        serverId: result.serverId,
-        plexPlaylistRatingKey: result.playlistId || null,
-        plexPlaylistTitle: trimmedName,
-        sourceType: resolvedSourceType,
-        recipeId: ownedRecipe?.id || recipeId || null,
-        recipeName: resolvedRecipeName,
-        filters: generationFilters,
-        trackIds: result.exportedTrackIds || trackIds,
-        discoveryResult,
-        previewId: previewId || null,
-      });
+      try {
+        generatedPlaylist = await recordGeneratedPlaylist({
+          userId,
+          serverId: result.serverId,
+          plexPlaylistRatingKey: result.playlistId || null,
+          plexPlaylistTitle: trimmedName,
+          sourceType: resolvedSourceType,
+          recipeId: ownedRecipe?.id || recipeId || null,
+          recipeName: resolvedRecipeName,
+          filters: generationFilters,
+          trackIds: result.exportedTrackIds || trackIds,
+          discoveryResult,
+          previewId: previewId || null,
+        });
+      } catch (error) {
+        if (result.createdNewPlaylist) await rollbackCreatedPlexPlaylist({ userId, serverId: result.serverId, playlistId: result.playlistId }).catch(() => undefined);
+        throw error;
+      }
       if (generatedPlaylist && previewId) {
         await prisma.playlistFitFeedback.updateMany({
           where: { userId, generationId: previewId, scopeKey: `generation:${previewId}` },

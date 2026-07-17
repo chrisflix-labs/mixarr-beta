@@ -1,5 +1,7 @@
 import { getTrackBpm, getTrackEnergy, getTrackMood } from "./metadataFallbacks";
 import type { SmartMixTuningConfig } from "./tuning";
+import { PLAYLIST_GENERATION_LIMITS } from "../../playlistGenerationLimits";
+import type { PlaylistGenerationControl } from "../../playlistGenerationControl";
 
 export const bpmFlowModes = ["RAMP_UP", "RAMP_DOWN", "STEADY", "NATURAL", "DISABLED"] as const;
 export const bpmStartingModes = ["AUTO", "LOWEST", "HIGHEST", "CUSTOM", "SEED"] as const;
@@ -384,7 +386,7 @@ function bpmTransitionBonus(transition: BpmTransitionScore, config: BpmFlowConfi
   return scoreOffset * strength + strictJumpPenalty;
 }
 
-export function orderTracksByBpmFlow<TTrack extends Record<string, any>>({
+function* orderTracksByBpmFlowIterator<TTrack extends Record<string, any>>({
   tracks,
   tuningConfig,
   baseScore,
@@ -398,14 +400,24 @@ export function orderTracksByBpmFlow<TTrack extends Record<string, any>>({
 
   const remaining = [...tracks];
   const selected: TTrack[] = [];
+  const artistCounts = new Map<string, number>();
+  const albumCounts = new Map<string, number>();
+  const countSelected = (track: any) => {
+    const artist = String(track.artistId || track.artist?.id || track.artist?.title || "").toLowerCase();
+    const album = String(track.albumId || track.album?.id || track.album?.title || "").toLowerCase();
+    if (artist) artistCounts.set(artist, (artistCounts.get(artist) || 0) + 1);
+    if (album) albumCounts.set(album, (albumCounts.get(album) || 0) + 1);
+  };
   const startIndex = startingTrackIndex(remaining, config);
   selected.push(...remaining.splice(Math.max(0, startIndex), 1));
+  countSelected(selected[0]);
 
   while (remaining.length > 0) {
     const previousTrack = selected[selected.length - 1];
     let bestIndex = 0;
     let bestScore = Number.NEGATIVE_INFINITY;
-    for (let index = 0; index < remaining.length; index += 1) {
+    const lookahead = Math.min(remaining.length, PLAYLIST_GENERATION_LIMITS.maxSelectionAttempts);
+    for (let index = 0; index < lookahead; index += 1) {
       const candidate = remaining[index];
       const transition = scoreBpmTransition({ fromTrack: previousTrack, toTrack: candidate, config });
       const energyPenalty = featurePenalty(getTrackEnergy(previousTrack), getTrackEnergy(candidate), 7);
@@ -414,16 +426,51 @@ export function orderTracksByBpmFlow<TTrack extends Record<string, any>>({
         + bpmTransitionBonus(transition, config)
         - energyPenalty
         - moodPenalty
-        - varietyPenalty({ track: candidate, selectedTracks: selected, tuningConfig });
+        - varietyPenaltyFromCounts({ track: candidate, artistCounts, albumCounts, tuningConfig });
       if (candidateScore > bestScore) {
         bestScore = candidateScore;
         bestIndex = index;
       }
     }
     selected.push(...remaining.splice(bestIndex, 1));
+    countSelected(selected[selected.length - 1]);
+    yield { selectedCount: selected.length, total: tracks.length };
   }
 
-  return optimizeLocalBpmSwaps(selected, config, tuningConfig);
+  let optimized = selected;
+  for (let pass = 0; pass < PLAYLIST_GENERATION_LIMITS.maxOptimizationPasses; pass += 1) optimized = optimizeLocalBpmSwaps(optimized, config, tuningConfig);
+  return optimized;
+}
+
+export function orderTracksByBpmFlow<TTrack extends Record<string, any>>(input: {
+  tracks: TTrack[];
+  tuningConfig: SmartMixTuningConfig;
+  baseScore?: (track: TTrack) => number;
+}) {
+  const iterator = orderTracksByBpmFlowIterator(input);
+  let step = iterator.next();
+  while (!step.done) step = iterator.next();
+  return step.value;
+}
+
+export async function orderTracksByBpmFlowAsync<TTrack extends Record<string, any>>(input: {
+  tracks: TTrack[];
+  tuningConfig: SmartMixTuningConfig;
+  baseScore?: (track: TTrack) => number;
+  control: PlaylistGenerationControl;
+}) {
+  const { control, ...orderingInput } = input;
+  const iterator = orderTracksByBpmFlowIterator(orderingInput);
+  let step = iterator.next();
+  while (!step.done) {
+    await control.yield("Optimizing BPM and mood flow", {
+      processedCandidates: step.value.selectedCount,
+      selectedTracks: step.value.total,
+      optimizationPasses: 1,
+    }, true);
+    step = iterator.next();
+  }
+  return step.value;
 }
 
 function featurePenalty(left: number | null, right: number | null, weight: number) {
@@ -452,6 +499,23 @@ function varietyPenalty({
     : 0;
   return artistRepeats * tuningWeightFactor(tuningConfig.artistVariety) * 3.5
     + albumRepeats * tuningWeightFactor(tuningConfig.albumVariety) * 2.75;
+}
+
+function varietyPenaltyFromCounts({
+  track,
+  artistCounts,
+  albumCounts,
+  tuningConfig,
+}: {
+  track: any;
+  artistCounts: Map<string, number>;
+  albumCounts: Map<string, number>;
+  tuningConfig: SmartMixTuningConfig;
+}) {
+  const artistKey = String(track.artistId || track.artist?.id || track.artist?.title || "").toLowerCase();
+  const albumKey = String(track.albumId || track.album?.id || track.album?.title || "").toLowerCase();
+  return (artistCounts.get(artistKey) || 0) * tuningWeightFactor(tuningConfig.artistVariety) * 3.5
+    + (albumCounts.get(albumKey) || 0) * tuningWeightFactor(tuningConfig.albumVariety) * 2.75;
 }
 
 function totalBpmScore(tracks: any[], config: BpmFlowConfig) {

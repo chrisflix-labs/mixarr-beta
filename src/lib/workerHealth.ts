@@ -239,7 +239,7 @@ async function startupSelfCheck() {
     prisma.jobHistory.count({ where: { status: { in: ["queued", "retrying"] } } }),
     prisma.jobHistory.count({
       where: {
-        status: { in: ["running", "processing", "stale"] },
+        status: { in: ["queued", "running", "processing", "stale"] },
         OR: [
           { lastHeartbeatAt: { lt: staleBefore } },
           { leaseExpiresAt: { lt: now } },
@@ -277,7 +277,7 @@ async function findStaleJobRows() {
   const staleBefore = new Date(now.getTime() - workerStaleThresholdMs());
   return prisma.jobHistory.findMany({
     where: {
-      status: { in: ["running", "processing", "retrying", "stale"] },
+      status: { in: ["queued", "running", "processing", "retrying", "stale"] },
       OR: [
         { lastHeartbeatAt: { lt: staleBefore } },
         { leaseExpiresAt: { lt: now } },
@@ -487,7 +487,7 @@ export async function getWorkerHealthSummary() {
     prisma.jobHistory.findMany({ where: { status: { in: ["running", "processing"] } }, orderBy: { startedAt: "desc" }, take: 10 }),
     prisma.jobHistory.findMany({
       where: {
-        status: { in: ["running", "processing", "retrying", "stale"] },
+        status: { in: ["queued", "running", "processing", "retrying", "stale"] },
         OR: [
           { lastHeartbeatAt: { lt: staleBefore } },
           { leaseExpiresAt: { lt: now } },

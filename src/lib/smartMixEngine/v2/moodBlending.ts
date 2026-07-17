@@ -1,5 +1,5 @@
 import { getTrackBpm, getTrackEnergy, getTrackMood } from "./metadataFallbacks";
-import { normalizeSmartMixTuningConfig, tuningWeightFactor } from "./tuning";
+import { normalizeSmartMixTuningConfig, tuningWeightFactor, type SmartMixTuningConfig } from "./tuning";
 import type {
   SmartMixEngineV2Config,
   SmartMixMoodBlendMode,
@@ -13,7 +13,7 @@ type MoodProfile = {
   energy: number;
 };
 
-type NormalizedMoodBlendConfig = {
+export type NormalizedMoodBlendConfig = {
   moodBlendMode: SmartMixMoodBlendMode;
   selectedMoodPath: string[];
   allowedMoods: string[];
@@ -504,16 +504,20 @@ export function scoreMoodBlendForTrack<TTrack extends Record<string, any>>({
   config,
   position,
   limit,
+  normalizedBlend,
+  normalizedTuning,
 }: {
   track: TTrack;
   config: SmartMixEngineV2Config;
   position: number;
   limit: number;
+  normalizedBlend?: NormalizedMoodBlendConfig;
+  normalizedTuning?: SmartMixTuningConfig;
 }): MoodBlendScoreResult {
-  const blend = normalizeMoodBlendConfig(config);
+  const blend = normalizedBlend || normalizeMoodBlendConfig(config);
   const normalizedMoodTags = getNormalizedTrackMoods(track);
   const moodTags = normalizedMoodTags.map((tag) => tag.canonical);
-  const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
+  const tuning = normalizedTuning || normalizeSmartMixTuningConfig(config.tuningConfig);
   const factor = tuningWeightFactor(tuning.moodWeight) * moodStrengthFactor(blend.moodStrength);
   const strictFactor = strictnessFactor(blend.moodStrictness);
   const fallbackFactor = fallbackPenaltyFactor(blend.fallbackTolerance);
