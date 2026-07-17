@@ -74,6 +74,23 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.2.0",
+    title: "Playlist Orchestration Foundation",
+    releaseDate: "July 17, 2026",
+    badges: ["Automation", "Playlists", "Jobs", "Worker", "Database", "Reliability", "Security", "Settings", "Dashboard", "Navigation", "Preview", "History", "Plex", "Performance", "Mobile", "UI"],
+    changes: [
+      "Added a persistent opt-in managed playlist registry with explicit automation configuration, runtime states, priority, Plex availability, and non-destructive unregister behavior.",
+      "Added DEPENDS_ON, RUNS_AFTER, and RELATED data with duplicate, ownership, library, self-reference, and full circular-chain validation.",
+      "Added one shared persistent queue with typed jobs and triggers, deterministic priority aging, dependency snapshots, idempotent creation, cancellation, retry lineage, and paginated history.",
+      "Added database-backed conflict and concurrency leases for managed playlists, Plex playlists, playlist identities, library writes, global slots, user slots, and library slots.",
+      "Added safe startup recovery, operation phase tracking, heartbeats, stale lock cleanup, manual review for potentially partial Plex writes, and durable audit events.",
+      "Added dry-run regeneration analysis that does not write Plex, versions, identity history, or personalization feedback, and clearly records that Plex was not modified.",
+      "Added authenticated user-isolated APIs, admin-only global controls, orchestration health, a responsive management page, dependency view, queue, audit activity, settings, navigation, and compact dashboard summary.",
+      "Preserved legacy generation, regeneration, Recently Added, synchronization, identities, versions, personalization, feedback, and existing schedules through an opt-in gradual integration strategy.",
+      "Added the additive v2.2.0 Prisma migration, conservative disabled defaults, tests, migration rollback guidance, API documentation, upgrade notes, and roadmap previews for later v2.2.x features.",
+    ],
+  },
+  {
     version: "2.1.11",
     title: "Dashboard UI Cleanup",
     releaseDate: "July 17, 2026",

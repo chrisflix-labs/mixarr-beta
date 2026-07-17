@@ -185,6 +185,28 @@ export const roadmapReleases: RoadmapRelease[] = [
     completionDate: "2026-07-17",
     route: "/release-notes",
   },
+  {
+    version: "2.2.0",
+    title: "Playlist Orchestration Foundation",
+    cycle: "2.2.x",
+    status: "current",
+    description: "Introduces the opt-in managed playlist registry, validated dependencies, shared persistent queue, priority aging, database-backed conflict and concurrency leases, dry runs, recovery, auditing, APIs, health, settings, and responsive orchestration workspace without forcing legacy actions through the new layer.",
+    featureLabels: ["Managed playlist registry", "Playlist dependencies", "Cycle detection", "Shared persistent queue", "Priority aging", "Persistent conflict locks", "Concurrency limits", "Idempotency", "Dry runs", "Crash recovery", "Audit history", "Global and playlist controls", "Orchestration workspace", "Legacy compatibility"],
+    releaseOrder: 200,
+    completionDate: "2026-07-17",
+    route: "/orchestration",
+  },
+  ...[
+    ["2.2.1", "Playlist Groups & Collections"], ["2.2.2", "Cross-Playlist Duplicate Control"],
+    ["2.2.3", "Shared Track Pools"], ["2.2.4", "Playlist Scheduling & Run Windows"],
+    ["2.2.5", "Playlist Rotation Rules"], ["2.2.6", "Cross-Playlist Balancing"],
+    ["2.2.7", "Orchestration Visual Planner"], ["2.2.8", "Failure Recovery & Repair Tools"],
+    ["2.2.9", "Orchestration Insights & Optimization"],
+  ].map(([version, title], index) => ({
+    version, title, cycle: "2.2.x", status: "upcoming" as const,
+    description: "Planned follow-on work that builds on the v2.2.0 orchestration foundation; it is not implemented in v2.2.0.",
+    featureLabels: [], releaseOrder: 201 + index,
+  })),
 ];
 
 export const roadmapCycles: RoadmapCycle[] = [
@@ -204,11 +226,11 @@ export const roadmapCycles: RoadmapCycle[] = [
   },
   {
     id: "2.2.x",
-    title: "v2.2.x — Automation & Playlist Lifecycle",
-    status: "upcoming",
-    description: "The proposed v2.2.x direction strengthens deterministic automation, playlist lifecycle management, operational resilience, and long-term recommendation quality without making generative AI a dependency.",
-    releases: [],
-    futureThemes: ["Lifecycle-aware playlist maintenance", "Safer scheduled regeneration", "Automation observability and recovery", "Long-term recommendation quality monitoring", "Cross-playlist capacity planning", "More playback-source adapters", "Reviewable maintenance proposals", "Storage and retention controls"],
+    title: "v2.2.x — Playlist Orchestration",
+    status: "current",
+    description: "v2.2.0 establishes deterministic, database-backed playlist orchestration. Later v2.2.x releases may add richer grouping and cross-playlist behavior without making generative AI a dependency.",
+    releases: roadmapReleases.filter((release) => release.cycle === "2.2.x"),
+    futureThemes: ["Playlist groups", "Cross-playlist duplicate control", "Shared track pools", "Run windows", "Rotation rules", "Balancing", "Visual planning", "Repair tools", "Operational insights"],
   },
 ];
 

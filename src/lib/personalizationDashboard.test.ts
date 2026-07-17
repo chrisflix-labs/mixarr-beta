@@ -66,7 +66,7 @@ describe("v2.1.10 roadmap separation", () => {
   it("completes adaptive personalization and keeps AI outside v2.2.x", () => {
     assert.equal(roadmapReleases.find((item) => item.version === "2.1.10")?.status, "completed");
     assert.equal(roadmapCycles.find((item) => item.id === "2.1.x")?.status, "completed");
-    assert.equal(roadmapCycles.find((item) => item.id === "2.2.x")?.status, "upcoming");
+    assert.equal(roadmapCycles.find((item) => item.id === "2.2.x")?.status, "current");
     assert.match(aiExploration.description, /Ollama/);
     assert.match(aiExploration.description, /OpenRouter/);
     assert.match(aiExploration.description, /OpenAI/);

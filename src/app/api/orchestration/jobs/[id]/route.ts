@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+import { orchestrationApiError, orchestrationSession, orchestrationUnauthorized } from "@/lib/orchestration/api";
+export async function GET(_: Request, { params }: { params: { id: string } }) { const userId = orchestrationSession(); if (!userId) return orchestrationUnauthorized(); try { const job = await prisma.playlistOrchestrationJob.findFirst({ where: { id: params.id, userId }, include: { managedPlaylist: true, locks: { select: { conflictKey: true, acquiredAt: true, heartbeatAt: true, leaseExpiresAt: true } }, auditEvents: { orderBy: { createdAt: "asc" } } } }); if (!job) return NextResponse.json({ error: { code: "JOB_NOT_FOUND", message: "Orchestration job not found." } }, { status: 404 }); const { lockedBy: _internalWorkerOwner, ...safeJob } = job; return NextResponse.json({ job: safeJob }); } catch (error) { return orchestrationApiError(error); } }

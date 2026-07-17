@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.2.0 - Playlist Orchestration Foundation
+
+- Added an opt-in managed playlist registry that distinguishes existing Plex playlists, generated playlists, managed playlists, automation configuration, runtime state, availability, and historical unregister state.
+- Added validated `DEPENDS_ON`, `RUNS_AFTER`, and `RELATED` relationships with ownership/library checks, duplicate prevention, deterministic dependency ordering, full cycle reporting, and immutable job dependency snapshots.
+- Added a shared persistent orchestration queue with strongly typed jobs, triggers, statuses, priority aging, scheduled eligibility, idempotency keys, duplicate audit decisions, cancellation, safe retry, and paginated history.
+- Added database-backed playlist, Plex playlist, identity, library-write, global, user, and library locks with owners, heartbeats, leases, expiry, idempotent release, multi-process conflict handling, and conservative concurrency defaults.
+- Added startup stale-job recovery that only requeues planning-only read/simulation work and sends possibly partial playlist writes to manual review.
+- Added global and per-playlist automation controls, explicit state transitions and reasons, dry-run safeguards, structured audit events, startup schema health warnings, and a dedicated orchestration worker integrated with existing startup reliability.
+- Added authenticated, user-isolated orchestration APIs, admin-only global settings, a responsive `/orchestration` workspace, dependency list, queue and audit controls, navigation, one compact dashboard card, and settings UI.
+- Added the additive `20260717020000_playlist_orchestration_foundation` migration. Global orchestration, automatic registration, automatic automation enablement, and scheduled orchestration default to off; existing playlists are not silently registered.
+- Added orchestration unit and safety coverage, v2.2.0 release/upgrade/rollback/API documentation, roadmap updates, and version metadata.
+
 ## v2.1.11 - Dashboard UI Cleanup
 
 - Reorganized the dashboard around Library Readiness, Quick Actions, Activity & Automation, Playlist Management, Product & Preview, and Plex Servers.

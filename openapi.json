@@ -4239,6 +4239,48 @@
     }
   ],
   "paths": {
+    "/api/orchestration/status": {
+      "get": { "summary": "Get playlist orchestration status", "tags": ["Mixarr Playlist Orchestration"], "responses": { "200": { "description": "User-scoped settings, counts, and health" }, "401": { "description": "Authentication required" } } }
+    },
+    "/api/orchestration/playlists": {
+      "get": { "summary": "List managed playlists", "tags": ["Mixarr Playlist Orchestration"], "responses": { "200": { "description": "Paginated managed playlists" } } },
+      "post": { "summary": "Register a managed playlist", "tags": ["Mixarr Playlist Orchestration"], "responses": { "201": { "description": "Playlist registered" }, "409": { "description": "Playlist already managed" } } }
+    },
+    "/api/orchestration/playlists/{id}": {
+      "get": { "summary": "Get a managed playlist", "tags": ["Mixarr Playlist Orchestration"], "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }], "responses": { "200": { "description": "Managed playlist details" } } },
+      "patch": { "summary": "Update managed playlist automation", "tags": ["Mixarr Playlist Orchestration"], "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }], "responses": { "200": { "description": "Playlist updated" } } },
+      "delete": { "summary": "Unregister without deleting Plex playlist", "tags": ["Mixarr Playlist Orchestration"], "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }], "responses": { "200": { "description": "Playlist unregistered; Plex unchanged" } } }
+    },
+    "/api/orchestration/relationships": {
+      "get": { "summary": "List playlist relationships", "tags": ["Mixarr Playlist Orchestration"], "responses": { "200": { "description": "Paginated relationships" } } },
+      "post": { "summary": "Create a validated playlist relationship", "tags": ["Mixarr Playlist Orchestration"], "responses": { "201": { "description": "Relationship created" }, "400": { "description": "Invalid or circular dependency" } } }
+    },
+    "/api/orchestration/relationships/{id}": {
+      "delete": { "summary": "Remove a playlist relationship", "tags": ["Mixarr Playlist Orchestration"], "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }], "responses": { "200": { "description": "Relationship removed" } } }
+    },
+    "/api/orchestration/jobs": {
+      "get": { "summary": "List orchestration jobs", "tags": ["Mixarr Playlist Orchestration"], "responses": { "200": { "description": "Paginated jobs with filters" } } },
+      "post": { "summary": "Queue an idempotent orchestration job", "tags": ["Mixarr Playlist Orchestration"], "parameters": [{ "name": "Idempotency-Key", "in": "header", "required": false, "schema": { "type": "string" } }], "responses": { "201": { "description": "Job queued" }, "200": { "description": "Existing duplicate job returned" } } }
+    },
+    "/api/orchestration/jobs/{id}": {
+      "get": { "summary": "Get orchestration job details", "tags": ["Mixarr Playlist Orchestration"], "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }], "responses": { "200": { "description": "Job, locks, dependency snapshot, and audit" } } }
+    },
+    "/api/orchestration/jobs/{id}/cancel": {
+      "post": { "summary": "Cancel an eligible queued job", "tags": ["Mixarr Playlist Orchestration"], "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }], "responses": { "200": { "description": "Job cancelled" } } }
+    },
+    "/api/orchestration/jobs/{id}/retry": {
+      "post": { "summary": "Safely retry a failed job", "tags": ["Mixarr Playlist Orchestration"], "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }], "responses": { "201": { "description": "Retry queued" }, "400": { "description": "Manual review required" } } }
+    },
+    "/api/orchestration/dry-run": {
+      "post": { "summary": "Queue a no-write orchestration dry run", "tags": ["Mixarr Playlist Orchestration"], "responses": { "201": { "description": "Dry run queued" } } }
+    },
+    "/api/orchestration/audit": {
+      "get": { "summary": "List user-scoped orchestration audit events", "tags": ["Mixarr Playlist Orchestration"], "responses": { "200": { "description": "Paginated sanitized audit events" } } }
+    },
+    "/api/settings/orchestration": {
+      "get": { "summary": "Get admin orchestration settings", "tags": ["Mixarr Playlist Orchestration"], "responses": { "200": { "description": "Global orchestration settings" }, "403": { "description": "Administrator required" } } },
+      "patch": { "summary": "Update admin orchestration settings", "tags": ["Mixarr Playlist Orchestration"], "responses": { "200": { "description": "Settings updated" }, "403": { "description": "Administrator required" } } }
+    },
     "/": {
       "get": {
         "tags": [

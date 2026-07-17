@@ -9,17 +9,17 @@ datasource db {
 }
 
 model User {
-  id                             String                           @id @default(uuid())
-  plexId                         Int                              @unique
+  id                             String                            @id @default(uuid())
+  plexId                         Int                               @unique
   username                       String
   email                          String?
   thumb                          String?
   accessToken                    String
   defaultServerId                String?
   defaultLibraryId               String?
-  createdAt                      DateTime                         @default(now())
-  updatedAt                      DateTime                         @updatedAt
-  isAdmin                        Boolean                          @default(false)
+  createdAt                      DateTime                          @default(now())
+  updatedAt                      DateTime                          @updatedAt
+  isAdmin                        Boolean                           @default(false)
   servers                        Server[]
   playlistRules                  PlaylistRule[]
   playlistRecipes                PlaylistRecipe[]
@@ -32,9 +32,9 @@ model User {
   trackExclusions                TrackExclusion[]
   syncSettings                   SyncSettings?
   jobHistory                     JobHistory[]
-  metadataCorrections            TrackMetadataCorrection[]        @relation("MetadataCorrectionActor")
-  metadataVerifications          TrackMetadataVerification[]      @relation("MetadataVerificationActor")
-  metadataCorrectionHistory      TrackMetadataCorrectionHistory[] @relation("MetadataHistoryActor")
+  metadataCorrections            TrackMetadataCorrection[]         @relation("MetadataCorrectionActor")
+  metadataVerifications          TrackMetadataVerification[]       @relation("MetadataVerificationActor")
+  metadataCorrectionHistory      TrackMetadataCorrectionHistory[]  @relation("MetadataHistoryActor")
   recentlyAddedSettings          RecentlyAddedSettings?
   recentlyAddedBatches           RecentlyAddedBatch[]
   recentlyAddedRuns              RecentlyAddedAutomationRun[]
@@ -73,6 +73,9 @@ model User {
   automationActivities           AutomationActivity[]
   personalizationImportBackups   PersonalizationImportBackup[]
   personalizationAuditEntries    PersonalizationAuditEntry[]
+  managedPlaylists               ManagedPlaylist[]
+  orchestrationJobs              PlaylistOrchestrationJob[]
+  orchestrationAuditEvents       PlaylistOrchestrationAuditEvent[]
 }
 
 model SyncSettings {
@@ -137,12 +140,12 @@ model Server {
 }
 
 model Library {
-  id                       String                    @id @default(uuid())
+  id                       String                      @id @default(uuid())
   plexId                   String
   serverId                 String
   name                     String
   type                     String
-  server                   Server                    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  server                   Server                      @relation(fields: [serverId], references: [id], onDelete: Cascade)
   artists                  Artist[]
   albums                   Album[]
   tracks                   Track[]
@@ -155,8 +158,11 @@ model Library {
   playlistTrackMemories    PlaylistTrackMemory[]
   playlistMembershipEvents PlaylistMembershipEvent[]
   playbackEvents           PlexPlaybackEvent[]
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
+  managedPlaylists         ManagedPlaylist[]
+  orchestrationJobs        PlaylistOrchestrationJob[]
+  orchestrationLocks       PlaylistOrchestrationLock[]
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime                    @updatedAt
 
   @@unique([serverId, plexId])
 }
@@ -688,6 +694,7 @@ model GeneratedPlaylist {
   decisionTraces         SmartMixDecisionTrace[]
   automationProposals    AutomationProposal[]
   automationActivities   AutomationActivity[]
+  managedPlaylist        ManagedPlaylist?
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -1105,6 +1112,7 @@ model PlaylistIdentity {
   genrePreferences      PlaylistGenrePreference[]
   trainingRuns          PlaylistIdentityTrainingRun[]
   snapshots             PlaylistIdentitySnapshot[]
+  managedPlaylist       ManagedPlaylist?
 
   @@index([userId, updatedAt])
   @@index([plexPlaylistId])
@@ -2399,4 +2407,223 @@ model ProviderSetting {
   @@index([usesTags])
   @@index([usesBpm])
   @@index([usesAudioFeatures])
+}
+
+enum PlaylistPriority {
+  HIGH
+  NORMAL
+  LOW
+}
+
+enum PlaylistAutomationState {
+  ACTIVE
+  PAUSED
+  DISABLED
+  WAITING
+  RUNNING
+  BLOCKED
+  ERROR
+}
+
+enum PlaylistOrchestrationMode {
+  COORDINATED
+  OBSERVE_ONLY
+  DRY_RUN_ONLY
+}
+
+enum ManagedPlaylistRelationshipType {
+  DEPENDS_ON
+  RUNS_AFTER
+  RELATED
+}
+
+enum PlaylistOrchestrationJobType {
+  GENERATE
+  REGENERATE
+  SYNC
+  ANALYZE
+  PREVIEW
+  DRY_RUN
+}
+
+enum PlaylistOrchestrationJobStatus {
+  QUEUED
+  WAITING
+  BLOCKED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  SKIPPED
+  STALE
+}
+
+enum PlaylistOrchestrationTrigger {
+  MANUAL
+  SCHEDULED
+  RECENTLY_ADDED
+  DEPENDENCY
+  SYSTEM
+  RETRY
+}
+
+model ManagedPlaylist {
+  id                    String                            @id @default(uuid())
+  userId                String
+  libraryId             String
+  playlistId            String
+  generatedPlaylistId   String?                           @unique
+  playlistIdentityId    String?                           @unique
+  displayName           String
+  enabled               Boolean                           @default(true)
+  automationEnabled     Boolean                           @default(false)
+  priority              PlaylistPriority                  @default(NORMAL)
+  automationState       PlaylistAutomationState           @default(DISABLED)
+  automationStateReason String?
+  orchestrationMode     PlaylistOrchestrationMode         @default(COORDINATED)
+  plexAvailable         Boolean                           @default(true)
+  lastAvailabilityCheck DateTime?
+  lastQueuedAt          DateTime?
+  lastStartedAt         DateTime?
+  lastCompletedAt       DateTime?
+  lastFailedAt          DateTime?
+  lastSuccessfulJobId   String?
+  currentJobId          String?
+  unregisteredAt        DateTime?
+  createdAt             DateTime                          @default(now())
+  updatedAt             DateTime                          @updatedAt
+  user                  User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  library               Library                           @relation(fields: [libraryId], references: [id], onDelete: Restrict)
+  generatedPlaylist     GeneratedPlaylist?                @relation(fields: [generatedPlaylistId], references: [id], onDelete: SetNull)
+  playlistIdentity      PlaylistIdentity?                 @relation(fields: [playlistIdentityId], references: [id], onDelete: SetNull)
+  relationshipSources   ManagedPlaylistRelationship[]     @relation("ManagedRelationshipSource")
+  relationshipTargets   ManagedPlaylistRelationship[]     @relation("ManagedRelationshipTarget")
+  jobs                  PlaylistOrchestrationJob[]
+  locks                 PlaylistOrchestrationLock[]
+  auditEvents           PlaylistOrchestrationAuditEvent[]
+
+  @@unique([userId, playlistId])
+  @@index([userId, enabled, automationEnabled])
+  @@index([libraryId, automationState])
+  @@index([priority, lastQueuedAt])
+  @@index([currentJobId])
+}
+
+model ManagedPlaylistRelationship {
+  id                      String                          @id @default(uuid())
+  sourceManagedPlaylistId String
+  targetManagedPlaylistId String
+  relationshipType        ManagedPlaylistRelationshipType
+  enabled                 Boolean                         @default(true)
+  priority                Int                             @default(0)
+  metadataJson            Json?
+  createdAt               DateTime                        @default(now())
+  updatedAt               DateTime                        @updatedAt
+  sourceManagedPlaylist   ManagedPlaylist                 @relation("ManagedRelationshipSource", fields: [sourceManagedPlaylistId], references: [id], onDelete: Restrict)
+  targetManagedPlaylist   ManagedPlaylist                 @relation("ManagedRelationshipTarget", fields: [targetManagedPlaylistId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceManagedPlaylistId, targetManagedPlaylistId, relationshipType])
+  @@index([sourceManagedPlaylistId, enabled])
+  @@index([targetManagedPlaylistId, enabled])
+  @@index([createdAt])
+}
+
+model PlaylistOrchestrationJob {
+  id                     String                            @id @default(uuid())
+  userId                 String
+  managedPlaylistId      String?
+  libraryId              String?
+  parentJobId            String?
+  rootJobId              String?
+  jobType                PlaylistOrchestrationJobType
+  status                 PlaylistOrchestrationJobStatus    @default(QUEUED)
+  playlistPriority       PlaylistPriority                  @default(NORMAL)
+  priority               Int                               @default(0)
+  trigger                PlaylistOrchestrationTrigger
+  dryRun                 Boolean                           @default(false)
+  idempotencyKey         String                            @unique
+  requestedAt            DateTime                          @default(now())
+  scheduledFor           DateTime                          @default(now())
+  startedAt              DateTime?
+  completedAt            DateTime?
+  failedAt               DateTime?
+  cancelledAt            DateTime?
+  attemptCount           Int                               @default(0)
+  maxAttempts            Int                               @default(1)
+  lockedBy               String?
+  lockedAt               DateTime?
+  heartbeatAt            DateTime?
+  leaseExpiresAt         DateTime?
+  dependencySnapshotJson Json?
+  requestPayloadJson     Json?
+  resultSummaryJson      Json?
+  operationPhase         String                            @default("PLANNING")
+  waitingReason          String?
+  errorCode              String?
+  errorMessage           String?
+  createdAt              DateTime                          @default(now())
+  updatedAt              DateTime                          @updatedAt
+  user                   User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  managedPlaylist        ManagedPlaylist?                  @relation(fields: [managedPlaylistId], references: [id], onDelete: SetNull)
+  library                Library?                          @relation(fields: [libraryId], references: [id], onDelete: SetNull)
+  locks                  PlaylistOrchestrationLock[]
+  auditEvents            PlaylistOrchestrationAuditEvent[]
+
+  @@index([status, scheduledFor])
+  @@index([managedPlaylistId, status])
+  @@index([playlistPriority, priority, requestedAt])
+  @@index([userId, status])
+  @@index([libraryId, status])
+  @@index([lockedAt])
+  @@index([heartbeatAt])
+  @@index([leaseExpiresAt])
+  @@index([createdAt])
+  @@index([rootJobId])
+}
+
+model PlaylistOrchestrationLock {
+  id                String                   @id @default(uuid())
+  conflictKey       String                   @unique
+  jobId             String
+  managedPlaylistId String?
+  libraryId         String?
+  ownerId           String
+  acquiredAt        DateTime                 @default(now())
+  heartbeatAt       DateTime                 @default(now())
+  leaseExpiresAt    DateTime
+  releasedAt        DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  job               PlaylistOrchestrationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  managedPlaylist   ManagedPlaylist?         @relation(fields: [managedPlaylistId], references: [id], onDelete: SetNull)
+  library           Library?                 @relation(fields: [libraryId], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([managedPlaylistId])
+  @@index([libraryId])
+  @@index([leaseExpiresAt])
+  @@index([heartbeatAt])
+}
+
+model PlaylistOrchestrationAuditEvent {
+  id                String                    @id @default(uuid())
+  userId            String?
+  managedPlaylistId String?
+  jobId             String?
+  eventType         String
+  severity          String                    @default("INFO")
+  actorType         String                    @default("SYSTEM")
+  actorId           String?
+  message           String
+  metadataJson      Json?
+  createdAt         DateTime                  @default(now())
+  user              User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  managedPlaylist   ManagedPlaylist?          @relation(fields: [managedPlaylistId], references: [id], onDelete: SetNull)
+  job               PlaylistOrchestrationJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([managedPlaylistId, createdAt])
+  @@index([jobId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([createdAt])
 }

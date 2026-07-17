@@ -1,0 +1,6 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { orchestrationApiError, orchestrationSession, orchestrationUnauthorized } from "@/lib/orchestration/api";
+import { queueOrchestrationJob } from "@/lib/orchestration/service";
+const schema = z.object({ managedPlaylistId: z.string().uuid(), jobType: z.enum(["GENERATE", "REGENERATE", "SYNC", "ANALYZE", "PREVIEW", "DRY_RUN"]).default("DRY_RUN"), priority: z.number().int().min(-100).max(100).optional(), payload: z.record(z.unknown()).optional(), idempotencyKey: z.string().min(8).max(200).optional() });
+export async function POST(request: Request) { const userId = orchestrationSession(); if (!userId) return orchestrationUnauthorized(); try { const input = schema.parse(await request.json()); const result = await queueOrchestrationJob({ userId, managedPlaylistId: input.managedPlaylistId, jobType: input.jobType, trigger: "MANUAL", dryRun: true, priority: input.priority, payload: input.payload, requestKey: input.idempotencyKey || request.headers.get("idempotency-key") || undefined, actorId: userId }); return NextResponse.json(result, { status: result.duplicate ? 200 : 201 }); } catch (error) { return orchestrationApiError(error); } }

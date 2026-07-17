@@ -1967,6 +1967,19 @@ export async function recordGeneratedPlaylist({
   trainPlaylistIdentity({ userId, playlistId: generatedPlaylist.id, source: existing ? "REGENERATION" : "GENERATION" }).catch((error: unknown) => {
     console.warn("[PlaylistIdentity] automatic training failed; playlist remains available", { playlistId: generatedPlaylist.id, message: error instanceof Error ? error.message : "unknown error" });
   });
+  if (!existing && generatedPlaylist.plexPlaylistRatingKey) {
+    const { getOrchestrationSettings } = await import("./orchestration/settings");
+    const orchestrationSettings = await getOrchestrationSettings().catch(() => null);
+    if (orchestrationSettings?.autoRegisterGeneratedPlaylists) {
+      const libraryId = tracks[0]?.libraryId || (await prisma.library.findFirst({ where: { server: { userId }, type: "artist" }, select: { id: true } }))?.id;
+      if (libraryId) {
+        const { registerManagedPlaylist } = await import("./orchestration/service");
+        await registerManagedPlaylist({ userId, libraryId, generatedPlaylistId: generatedPlaylist.id }).catch((error: unknown) => {
+          console.warn("[Orchestration] Automatic playlist registration failed; playlist generation remains successful", { playlistId: generatedPlaylist.id, message: error instanceof Error ? error.message : "unknown error" });
+        });
+      }
+    }
+  }
   return generatedPlaylist;
 }
 

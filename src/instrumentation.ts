@@ -41,6 +41,13 @@ export async function register() {
     } catch (error) {
       console.error("[RecentlyAdded] Scheduler startup failed", sanitizeErrorText(error));
     }
+
+    try {
+      const { initializePlaylistOrchestrationWorker } = await import("./lib/orchestration/worker");
+      await initializePlaylistOrchestrationWorker();
+    } catch (error) {
+      console.error("[OrchestrationWorker] Startup initialization failed", sanitizeErrorText(error));
+    }
   }
 
   try {

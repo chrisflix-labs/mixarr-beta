@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import {
-  Activity, BookMarked, ChevronDown, Clock3, FlaskConical, History,
+  Activity, BookMarked, ChevronDown, Clock3, FlaskConical, History, Network,
   LifeBuoy, ListMusic, ListRestart, Map, ScrollText, ShieldAlert,
   Sparkles, Wand2,
 } from "lucide-react";
@@ -21,6 +21,7 @@ import { getRecentJobSummary } from "@/lib/jobHistory";
 import { getPlaylistHistoryDashboardSummary } from "@/lib/playlistHistory";
 import prisma from "@/lib/prisma";
 import { getRecentlyAddedSummary } from "@/lib/recentlyAdded";
+import { getOrchestrationSettings } from "@/lib/orchestration/settings";
 
 type JobSummary = Awaited<ReturnType<typeof getRecentJobSummary>>;
 type AutomationOverview = Awaited<ReturnType<typeof getAutomationOverview>>;
@@ -97,6 +98,19 @@ function PlaylistManagementCard({ historyCount, generatedCount, versionCount, re
   </article>;
 }
 
+function OrchestrationSummaryCard({ summary }: { summary: { managed: number; running: number; queued: number; blocked: number; enabled: boolean } }) {
+  return <article className={styles.managementCard}>
+    <div className={styles.cardTitle}><Network size={20} /><div><h3>Playlist Orchestration</h3><p>Shared queue and dependency-safe automation.</p></div></div>
+    <div className={styles.managementMetrics}>
+      <Link href="/orchestration"><b>{summary.managed}</b><span>Managed</span></Link>
+      <Link href="/orchestration"><b>{summary.running}</b><span>Running</span></Link>
+      <Link href="/orchestration"><b>{summary.queued}</b><span>Queued</span></Link>
+      <Link href="/orchestration"><b>{summary.blocked}</b><span>Blocked</span></Link>
+    </div>
+    <div className={styles.managementFooter}><span>Automation: {summary.enabled ? "Enabled" : "Disabled"}</span><Link href="/orchestration" className={styles.secondaryAction}>Open Orchestration</Link></div>
+  </article>;
+}
+
 function ProductPreviewPanel({ showExperimental }: { showExperimental: boolean }) {
   return <details className={styles.productPanel}>
     <summary>
@@ -137,6 +151,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
   let historyCount = 0;
   let lastHistoryEvent: { playlistName: string; eventType: string; createdAt: Date } | null = null;
   let showExperimental = false;
+  let orchestration = { managed: 0, running: 0, queued: 0, blocked: 0, enabled: false };
 
   if (user && !developmentPreview) {
     const results = await Promise.all([
@@ -152,11 +167,19 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
         isResolvedBetaFeatureEnabled("showBetaCards", { userId: user.id }),
         isResolvedBetaFeatureEnabled("enableV2PreviewCards", { userId: user.id }),
       ]).then((flags) => flags.every(Boolean)).catch(() => false),
+      Promise.all([
+        prisma.managedPlaylist.count({ where: { userId: user.id, enabled: true } }),
+        prisma.playlistOrchestrationJob.count({ where: { userId: user.id, status: "RUNNING" } }),
+        prisma.playlistOrchestrationJob.count({ where: { userId: user.id, status: "QUEUED" } }),
+        prisma.playlistOrchestrationJob.count({ where: { userId: user.id, status: { in: ["WAITING", "BLOCKED"] } } }),
+        getOrchestrationSettings(),
+      ]).then(([managed, running, queued, blocked, settings]) => ({ managed, running, queued, blocked, enabled: settings.enabled })).catch(() => ({ managed: 0, running: 0, queued: 0, blocked: 0, enabled: false })),
     ]);
     [dashboardSummary, jobs, automation, recentlyAdded, recipeCount, generatedCount, versionCount] = results;
     historyCount = results[7].count;
     lastHistoryEvent = results[7].lastEvent;
     showExperimental = results[8];
+    orchestration = results[9];
   }
 
   const quickWidgets = dashboardWidgetsForSection("quick-actions");
@@ -195,6 +218,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
       <section className={styles.dashboardSection} aria-labelledby="playlist-management-heading">
         <SectionHeading id="playlist-management-heading" title="Playlist Management" description="A compact view of generated playlists, versions, history, and recipes." />
         {dashboardWidgetsForSection("playlist-management").map((widget) => <PlaylistManagementCard key={widget.id} historyCount={historyCount} generatedCount={generatedCount} versionCount={versionCount} recipeCount={recipeCount} lastEvent={lastHistoryEvent} />)}
+        <OrchestrationSummaryCard summary={orchestration} />
       </section>
 
       <section className={`${styles.dashboardSection} ${styles.lowPrioritySection}`} aria-label="Product and preview information">

@@ -14,6 +14,7 @@ import PersonalizationProfilePanel from "@/components/PersonalizationProfilePane
 import PlaylistIdentitySettings from "@/components/PlaylistIdentitySettings";
 import ContextualMixSettings from "@/components/ContextualMixSettings";
 import SmartMixExplanationSettings from "@/components/SmartMixExplanationSettings";
+import OrchestrationSettings from "@/components/OrchestrationSettings";
 import { APP_DESCRIPTION, APP_NAME, MIXARR_GITHUB_URL } from "@/lib/appInfo";
 import { APP_VERSION } from "@/lib/appVersion";
 import { getExternalApiSettingsPayload } from "@/lib/externalApiSettings";
@@ -233,6 +234,14 @@ export default async function SettingsPage() {
         </p>
         <WorkerHealthCard />
         <BackgroundSchedulerSettings />
+      </section>
+
+      <section className={`glass-panel ${styles.section}`}>
+        <h3 className={styles.sectionTitle}>
+          <ShieldCheck size={20} color="var(--accent)" /> Playlist Orchestration
+        </h3>
+        <p className={styles.sectionDesc}>Configure the opt-in shared playlist queue, persistent concurrency limits, recovery timeout, and safe registration defaults.</p>
+        <OrchestrationSettings />
       </section>
 
       <section className={`glass-panel ${styles.section}`}>
