@@ -76,6 +76,21 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.2.7",
+    title: "Smart Action Center",
+    releaseDate: "July 18, 2026",
+    badges: ["Automation", "Playlists", "Library", "Preview", "History", "Scheduler", "Settings", "Dashboard", "Database", "Plex", "Performance", "Mobile", "Accessibility", "Reliability"],
+    changes: [
+      "Added a centralized Smart Action queue for typed playlist, library, and metadata recommendations with visible confidence, risk, explanation, evidence, and estimated impact.",
+      "Added preview, approve, reject, snooze, schedule, cancel, apply-now, history, detail, search, filtering, sorting, pagination, and CSV export workflows without changing data during review.",
+      "Added safe bulk selection that excludes low-confidence and high-risk actions by default, detects incompatible playlist and metadata actions, and reports a combined estimated impact before execution.",
+      "Added server-side revalidation, ownership checks, protected-track enforcement, playlist-version snapshots, Plex compensation on local transaction failure, metadata correction history, structured failures, and restore links.",
+      "Added configurable maintenance windows with playback awareness, action and playlist limits, capability gates, deterministic ordering, per-action failure isolation, and narrowly scoped automation policies disabled by default.",
+      "Added extensible providers for Recently Added matches, metadata conflicts, and Smart Refresh recommendations, plus deduplication, material-change superseding, expiration, snooze revalidation, audit events, and Job History stages.",
+      "Added a responsive Smart Action Center, dashboard summary, primary navigation, settings and safety explanations, accessible labels, loading and empty states, additive indexed persistence, APIs, tests, and v2.2.7 release metadata.",
+    ],
+  },
+  {
     version: "2.2.6",
     title: "Smart Experiments & Playlist A/B Testing",
     releaseDate: "July 18, 2026",

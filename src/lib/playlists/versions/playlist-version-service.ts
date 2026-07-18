@@ -24,6 +24,7 @@ export function describePlaylistVersion(reason: PlaylistVersionReason, context?:
     recently_added_automation: `Recently Added Automation added ${count} track${count === 1 ? "" : "s"}`,
     automation_backup: "Recoverable version before an automated playlist update",
     cross_playlist_overlap_repair: "Cross-playlist overlap repair",
+    smart_action: "Protected version before an approved Smart Action",
   };
   return descriptions[reason];
 }
@@ -39,6 +40,7 @@ type CreateVersionInput = {
   isAutomatic?: boolean;
   syncStatus?: "pending" | "synced" | "failed";
   force?: boolean;
+  smartActionId?: string | null;
 };
 
 export async function createPlaylistVersionInTransaction(tx: Prisma.TransactionClient, input: CreateVersionInput & { force: true }): Promise<NonNullable<Awaited<ReturnType<typeof tx.playlistRevision.create>>>>;
@@ -80,6 +82,7 @@ export async function createPlaylistVersionInTransaction(tx: Prisma.TransactionC
       trackCount: snapshot.data.summary.trackCount,
       durationMs: snapshot.data.summary.durationMs,
       restoredFromVersionId: input.restoredFromVersionId || null,
+      smartActionId: input.smartActionId || null,
       isPinned: Boolean(input.isPinned),
       isAutomatic: input.isAutomatic !== false,
       isCurrent: true,

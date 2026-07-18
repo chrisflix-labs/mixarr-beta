@@ -265,6 +265,26 @@ export async function runScheduledBackgroundSync(activeCron: string) {
       console.log(`[Scheduler] Library coverage snapshot scheduling completed queued=${queued}`);
     }
 
+    // Smart Actions run only after audio-feature work has yielded the shared
+    // scheduler, so recommendation previews and approved maintenance do not
+    // compete with analysis for capacity.
+    if (remaining()) {
+      stageStartedAt = Date.now();
+      const { generateSmartActions, getSmartActionSettings, runSmartActionMaintenance } = await import("./smartActions");
+      const userIds = Array.from(new Set(libraries.map((library) => library.server.userId)));
+      const generated = [];
+      for (const userId of userIds) {
+        if (!remaining()) break;
+        const actionSettings = await getSmartActionSettings(userId);
+        if (!actionSettings.enabled || !actionSettings.generateDuringNightlySync) continue;
+        generated.push({ userId, ...(await generateSmartActions(userId, { limit: 50 })) });
+      }
+      const maintenance = remaining() ? await runSmartActionMaintenance() : [];
+      durationMs = Date.now() - stageStartedAt;
+      stages.push({ name: "smart_actions", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, generated, maintenance });
+      console.log(`[Scheduler] Smart Actions completed duration=${Math.round(durationMs / 1000)}s users=${generated.length} maintenanceRuns=${maintenance.length}`);
+    }
+
     const durationSeconds = Math.round((Date.now() - pipelineStart) / 1000);
     const log = pipelineResult === "success" ? console.log : console.warn;
     log(`[Scheduler] Nightly sync completed status=${pipelineResult} duration=${durationSeconds}s`);

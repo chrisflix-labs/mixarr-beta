@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.7 - Smart Action Center
+
+- Added a persistent, typed Smart Action framework and centralized review queue for playlist, library, and metadata recommendations.
+- Added confidence, risk, explanations, previews, expected impact, approval, rejection, snooze, bulk safeguards, conflict detection, immediate execution, and maintenance scheduling.
+- Added server-side revalidation, protected-track enforcement, playlist-version snapshots, restore links, audit history, structured failures, ownership checks, and automation policies disabled by default.
+- Added Recently Added, metadata-conflict, and Smart Refresh providers with deduplication, superseding, expiry, progress-aware Job History, dashboard, navigation, settings, responsive UI, APIs, additive migration, and tests.
+
 ## v2.2.6 - Smart Experiments & Playlist A/B Testing
 
 - Added protected Smart Mix v2 experiment drafts with pinned original playlist-version snapshots, controlled Version A and B settings, stable configuration history, and no Plex mutation during setup or generation.

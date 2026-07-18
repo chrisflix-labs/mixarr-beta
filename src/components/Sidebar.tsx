@@ -2,7 +2,7 @@
 
 import styles from "./Sidebar.module.css";
 import { useEffect, useMemo, useState } from "react";
-import { AudioWaveform, BarChart3, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, Grid2X2, HeartPulse, History, LayoutDashboard, LifeBuoy, ListMusic, ListRestart, Map, MoreHorizontal, Network, Route, ScrollText, Settings, ShieldCheck, Sparkles, Tags, Wand2, X } from "lucide-react";
+import { AudioWaveform, BarChart3, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, Grid2X2, HeartPulse, History, LayoutDashboard, LifeBuoy, ListChecks, ListMusic, ListRestart, Map, MoreHorizontal, Network, Route, ScrollText, Settings, ShieldCheck, Sparkles, Tags, Wand2, X } from "lucide-react";
 import PlexLoginButton from "./PlexLoginButton";
 import LogoutButton from "./LogoutButton";
 import Link from "next/link";
@@ -12,6 +12,7 @@ import { MIXARR_GITHUB_URL } from "@/lib/appInfo";
 const playlistLinks = [
   { href: "/builder", label: "Build Playlist", shortLabel: "Build", icon: Wand2, isActive: (pathname: string) => pathname === "/builder" },
   { href: "/smart-builder", label: "Smart Builder", shortLabel: "Smart", icon: Sparkles, isActive: (pathname: string) => pathname === "/smart-builder" },
+  { href: "/smart-actions", label: "Smart Actions", shortLabel: "Actions", icon: ListChecks, isActive: (pathname: string) => pathname.startsWith("/smart-actions") },
   { href: "/experiments", label: "Smart Experiments", shortLabel: "Tests", icon: FlaskConical, isActive: (pathname: string) => pathname.startsWith("/experiments") },
   { href: "/recipes", label: "Recipes", shortLabel: "Recipes", icon: BookMarked, isActive: (pathname: string) => pathname.startsWith("/recipes") },
   { href: "/generated-playlists", label: "Generated Playlists", icon: ListRestart, isActive: (pathname: string) => pathname.startsWith("/generated-playlists") },

@@ -6,6 +6,7 @@ export const playlistVersionReasons = [
   "settings_change", "restore", "undo", "import", "system_migration",
   "recently_added_automation", "automation_backup",
   "cross_playlist_overlap_repair",
+  "smart_action",
 ] as const;
 
 export type PlaylistVersionReason = typeof playlistVersionReasons[number];

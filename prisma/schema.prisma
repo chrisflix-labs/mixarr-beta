@@ -97,6 +97,10 @@ model User {
   smartExperimentEvents          SmartExperimentEvent[]            @relation("SmartExperimentEventActor")
   smartExperimentDecisions       SmartExperimentDecision[]         @relation("SmartExperimentDecisionActor")
   smartExperimentSetting         SmartExperimentSetting?
+  smartActions                   SmartAction[]
+  smartActionAuditEvents         SmartActionAuditEvent[]           @relation("SmartActionAuditActor")
+  smartActionSetting             SmartActionSetting?
+  smartActionAutomationPolicies  SmartActionAutomationPolicy[]
 }
 
 model SyncSettings {
@@ -183,6 +187,7 @@ model Library {
   orchestrationJobs        PlaylistOrchestrationJob[]
   orchestrationLocks       PlaylistOrchestrationLock[]
   coverageSnapshots        LibraryCoverageSnapshot[]
+  smartActions             SmartAction[]
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -1111,6 +1116,7 @@ model GeneratedPlaylist {
   smartRefreshEvaluations  SmartRefreshEvaluation[]
   sourceExperiments        SmartExperiment[]               @relation("SmartExperimentSourcePlaylist")
   experimentVariants       SmartExperimentVariant[]
+  smartActions             SmartAction[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -1982,6 +1988,7 @@ model PlaylistRevision {
   trackCount             Int                       @default(0)
   durationMs             Int                       @default(0)
   restoredFromVersionId  String?
+  smartActionId          String?
   isPinned               Boolean                   @default(false)
   isAutomatic            Boolean                   @default(true)
   isCurrent              Boolean                   @default(false)
@@ -1993,12 +2000,132 @@ model PlaylistRevision {
   automationActivity     AutomationActivity?
   originalForExperiments SmartExperiment[]         @relation("SmartExperimentOriginalVersion")
   experimentVariants     SmartExperimentVariant[]
+  smartAction            SmartAction?              @relation(fields: [smartActionId], references: [id], onDelete: SetNull)
 
   @@unique([generatedPlaylistId, revisionNumber])
   @@index([generatedPlaylistId, createdAt])
   @@index([generatedPlaylistId, isCurrent])
   @@index([generatedPlaylistId, isPinned])
+  @@index([smartActionId])
   @@index([regenerationId])
+}
+
+model SmartAction {
+  id                String                  @id @default(uuid())
+  userId            String
+  libraryId         String?
+  playlistId        String?
+  actionType        String
+  status            String                  @default("PENDING")
+  title             String
+  summary           String
+  explanation       String
+  confidenceScore   Int
+  confidenceLevel   String
+  priority          Int                     @default(0)
+  sourceService     String
+  sourceVersion     String
+  actionPayload     Json
+  previewPayload    Json
+  expectedImpact    Json
+  actualImpact      Json?
+  riskLevel         String                  @default("LOW")
+  sourceFingerprint String?
+  rejectionReason   String?
+  snoozeCondition   String?
+  approvedBy        String?
+  executionAttempts Int                     @default(0)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  reviewedAt        DateTime?
+  approvedAt        DateTime?
+  rejectedAt        DateTime?
+  snoozedUntil      DateTime?
+  scheduledFor      DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  failedAt          DateTime?
+  failureReason     String?
+  deduplicationKey  String
+  expiresAt         DateTime?
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  library           Library?                @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  playlist          GeneratedPlaylist?      @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  auditEvents       SmartActionAuditEvent[]
+  playlistRevisions PlaylistRevision[]
+
+  @@index([userId, deduplicationKey])
+  @@index([userId, status, createdAt])
+  @@index([libraryId, status])
+  @@index([playlistId, status])
+  @@index([actionType])
+  @@index([confidenceLevel])
+  @@index([scheduledFor, status])
+  @@index([createdAt])
+}
+
+model SmartActionAuditEvent {
+  id             String      @id @default(uuid())
+  actionId       String
+  actorUserId    String?
+  actorType      String      @default("USER")
+  eventType      String
+  previousStatus String?
+  newStatus      String?
+  reason         String?
+  resultJson     Json?
+  createdAt      DateTime    @default(now())
+  action         SmartAction @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  actor          User?       @relation("SmartActionAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actionId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model SmartActionSetting {
+  id                            String   @id @default(uuid())
+  userId                        String   @unique
+  enabled                       Boolean  @default(true)
+  generateDuringNightlySync     Boolean  @default(true)
+  generateAfterPlaylistCreation Boolean  @default(true)
+  generateAfterMetadataAnalysis Boolean  @default(true)
+  minimumConfidenceToDisplay    Int      @default(0)
+  highConfidenceThreshold       Int      @default(85)
+  mediumConfidenceThreshold     Int      @default(65)
+  maximumPendingActions         Int      @default(500)
+  expireAfterDays               Int      @default(30)
+  recommendationTypesJson       Json
+  maintenanceEnabled            Boolean  @default(false)
+  maintenanceStartTime          String   @default("03:00")
+  maintenanceDaysJson           Json
+  maximumActionsPerWindow       Int      @default(20)
+  maximumPlaylistsPerWindow     Int      @default(10)
+  maximumConcurrentActions      Int      @default(1)
+  allowPlexRefreshes            Boolean  @default(true)
+  allowMetadataChanges          Boolean  @default(false)
+  allowPlaylistRegeneration     Boolean  @default(false)
+  pauseDuringPlayback           Boolean  @default(true)
+  automationEmergencyDisabled   Boolean  @default(true)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+  user                          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SmartActionAutomationPolicy {
+  id                String   @id @default(uuid())
+  userId            String
+  actionType        String
+  enabled           Boolean  @default(false)
+  minimumConfidence Int      @default(95)
+  maximumRisk       String   @default("LOW")
+  maximumPerWindow  Int      @default(3)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, actionType])
+  @@index([userId, enabled])
 }
 
 model PlaylistIdentity {

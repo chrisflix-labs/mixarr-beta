@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Settings as SettingsIcon, Ban, BarChart3, Brain, CalendarDays, CircleHelp, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, ListMusic, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
+import { Settings as SettingsIcon, Ban, BarChart3, Brain, CalendarDays, CircleHelp, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, ListChecks, ListMusic, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
 import ProviderTestButton from "@/components/ProviderTestButton";
 import BetaFeatureSettingsForm from "@/components/BetaFeatureSettingsForm";
 import ExternalApiSettingsPanel from "@/components/ExternalApiSettingsPanel";
@@ -18,6 +18,7 @@ import SmartMixExplanationSettings from "@/components/SmartMixExplanationSetting
 import OrchestrationSettings from "@/components/OrchestrationSettings";
 import PlaylistChainSettings from "@/components/PlaylistChainSettings";
 import SmartExperimentSettings from "@/components/SmartExperimentSettings";
+import SmartActionSettings from "@/components/SmartActionSettings";
 import { APP_DESCRIPTION, APP_NAME, MIXARR_GITHUB_URL } from "@/lib/appInfo";
 import { APP_VERSION } from "@/lib/appVersion";
 import { getExternalApiSettingsPayload } from "@/lib/externalApiSettings";
@@ -170,6 +171,12 @@ export default async function SettingsPage() {
         <h3 id="smart-experiment-settings" className={styles.sectionTitle}><FlaskConical size={20} color="var(--accent)" /> Smart Experiments</h3>
         <p className={styles.sectionDesc}>Set conservative defaults and minimum evidence requirements for controlled Smart Mix comparisons. Mixarr never automatically applies a winner.</p>
         <SmartExperimentSettings />
+      </section>
+
+      <section id="smart-actions" className={`glass-panel ${styles.section}`} aria-labelledby="smart-action-settings">
+        <h3 id="smart-action-settings" className={styles.sectionTitle}><ListChecks size={20} color="var(--accent)" /> Smart Action Center</h3>
+        <p className={styles.sectionDesc}>Configure reviewable recommendations, confidence thresholds, maintenance safeguards, and narrowly scoped automation.</p>
+        <SmartActionSettings />
       </section>
 
       {/* API Keys & Integrations */}

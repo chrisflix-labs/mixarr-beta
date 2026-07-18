@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import {
   Activity, BookMarked, ChevronDown, Clock3, FlaskConical, History, Network,
-  LifeBuoy, ListMusic, ListRestart, Map, ScrollText, ShieldAlert,
+  LifeBuoy, ListChecks, ListMusic, ListRestart, Map, ScrollText, ShieldAlert,
   Sparkles, Wand2,
 } from "lucide-react";
 import styles from "./page.module.css";
@@ -23,6 +23,7 @@ import prisma from "@/lib/prisma";
 import { getRecentlyAddedSummary } from "@/lib/recentlyAdded";
 import { getOrchestrationSettings } from "@/lib/orchestration/settings";
 import { getSmartRefreshDashboardSummary } from "@/lib/smartRefresh";
+import { getSmartActionSummary } from "@/lib/smartActions";
 
 type JobSummary = Awaited<ReturnType<typeof getRecentJobSummary>>;
 type AutomationOverview = Awaited<ReturnType<typeof getAutomationOverview>>;
@@ -126,6 +127,20 @@ function SmartRefreshSummaryCard({ summary }: { summary: Awaited<ReturnType<type
   </article>;
 }
 
+function SmartActionSummaryCard({ summary }: { summary: Awaited<ReturnType<typeof getSmartActionSummary>> }) {
+  const leadingTypes = Object.entries(summary.byType).filter(([, count]) => count > 0).sort((left, right) => right[1] - left[1]).slice(0, 3);
+  return <article className={styles.managementCard}>
+    <div className={styles.cardTitle}><ListChecks size={20} /><div><h3>Smart Actions</h3><p>{summary.high ? `${summary.high} high-confidence action${summary.high === 1 ? " is" : "s are"} ready for review.` : "Review recommendations before Mixarr changes anything."}</p></div></div>
+    <div className={styles.managementMetrics}>
+      <Link href="/smart-actions"><b>{summary.pending}</b><span>Pending</span></Link>
+      <Link href="/smart-actions?confidence=HIGH"><b>{summary.high}</b><span>High confidence</span></Link>
+      <Link href="/smart-actions?status=SCHEDULED"><b>{summary.waiting}</b><span>Waiting to apply</span></Link>
+      <Link href="/smart-actions?status=FAILED"><b>{summary.failed}</b><span>Need attention</span></Link>
+    </div>
+    <div className={styles.managementFooter}><span>{leadingTypes.length ? leadingTypes.map(([type, count]) => `${type.replaceAll("_", " ").toLowerCase()}: ${count}`).join(" · ") : "No recommendations need attention."}</span><Link href="/smart-actions" className={styles.secondaryAction}>Review Actions</Link></div>
+  </article>;
+}
+
 function ProductPreviewPanel({ showExperimental }: { showExperimental: boolean }) {
   return <details className={styles.productPanel}>
     <summary>
@@ -169,6 +184,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
   let orchestration = { managed: 0, running: 0, queued: 0, blocked: 0, enabled: false };
   let groupSummary = { groups: 0, groupedPlaylists: 0, attention: 0, paused: 0 };
   let smartRefresh = { monitored: 0, recommended: 0, deferred: 0, healthy: 0, fixedSchedule: 0, manualOnly: 0, playlists: [] } as Awaited<ReturnType<typeof getSmartRefreshDashboardSummary>>;
+  let smartActions = { pending: 0, high: 0, medium: 0, low: 0, waiting: 0, snoozed: 0, recentlyCompleted: 0, failed: 0, byType: {} } as Awaited<ReturnType<typeof getSmartActionSummary>>;
 
   if (user && !developmentPreview) {
     const results = await Promise.all([
@@ -198,6 +214,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
         prisma.playlistGroup.count({ where: { userId: user.id, memberships: { some: { playlist: { OR: [{ trackCount: 0 }, { engineVersion: { not: "v2" } }] } } } } }),
       ]).then(([groups, groupedPlaylists, paused, attention]) => ({ groups, groupedPlaylists, paused, attention })).catch(() => ({ groups: 0, groupedPlaylists: 0, attention: 0, paused: 0 })),
       getSmartRefreshDashboardSummary(user.id).catch(() => ({ monitored: 0, recommended: 0, deferred: 0, healthy: 0, fixedSchedule: 0, manualOnly: 0, playlists: [] })),
+      getSmartActionSummary(user.id).catch(() => ({ pending: 0, high: 0, medium: 0, low: 0, waiting: 0, snoozed: 0, recentlyCompleted: 0, failed: 0, byType: {} })),
     ]);
     [dashboardSummary, jobs, automation, recentlyAdded, recipeCount, generatedCount, versionCount] = results;
     historyCount = results[7].count;
@@ -206,6 +223,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
     orchestration = results[9];
     groupSummary = results[10];
     smartRefresh = results[11];
+    smartActions = results[12];
   }
 
   const quickWidgets = dashboardWidgetsForSection("quick-actions");
@@ -246,6 +264,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
         {dashboardWidgetsForSection("playlist-management").map((widget) => <PlaylistManagementCard key={widget.id} historyCount={historyCount} generatedCount={generatedCount} versionCount={versionCount} recipeCount={recipeCount} groupSummary={groupSummary} lastEvent={lastHistoryEvent} />)}
         <OrchestrationSummaryCard summary={orchestration} />
         <SmartRefreshSummaryCard summary={smartRefresh} />
+        <SmartActionSummaryCard summary={smartActions} />
       </section>
 
       <section className={`${styles.dashboardSection} ${styles.lowPrioritySection}`} aria-label="Product and preview information">

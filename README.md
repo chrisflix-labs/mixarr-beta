@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.2.6 adds only Smart Experiment tables and relations; existing playlists, settings, personalization, playback data, Plex mappings, and version history remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.2.7 adds only Smart Action tables, relations, and an optional playlist-version reference; existing playlists, settings, personalization, playback data, Plex mappings, and version history remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -53,7 +53,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.2.6 adds protected Smart Experiments with controlled playlist variants, explicit feedback, optional playback signals, explainable minimum-evidence recommendations, merge previews, and original restoration. See [Smart Experiments](docs/SMART_EXPERIMENTS_V226.md), [Smart Refresh Scheduling](docs/SMART_REFRESH_SCHEDULING_V224.md), and [Playlist Orchestration Foundation](docs/PLAYLIST_ORCHESTRATION_V220.md).
+Mixarr v2.2.7 adds the Smart Action Center: a typed, explainable recommendation queue with approval, snooze, conflict detection, safe bulk review, maintenance scheduling, version snapshots, history, and restore links. See [Smart Action Center](docs/SMART_ACTION_CENTER_V227.md), [Smart Experiments](docs/SMART_EXPERIMENTS_V226.md), and [Smart Refresh Scheduling](docs/SMART_REFRESH_SCHEDULING_V224.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 
