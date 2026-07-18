@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { rotateAlternatingExperiment } from "@/lib/experiments/generation"; import { experimentApiError, experimentUnauthorized, experimentUserId } from "@/lib/experiments/api";
+export async function POST(_request: Request, { params }: { params: { id: string } }) { const userId = experimentUserId(); if (!userId) return experimentUnauthorized(); try { return NextResponse.json(await rotateAlternatingExperiment(userId, params.id, true)); } catch (error) { return experimentApiError(error); } }

@@ -55,6 +55,13 @@ export async function register() {
     } catch (error) {
       console.error("[PlaylistGroupScheduler] Startup initialization failed", sanitizeErrorText(error));
     }
+
+    try {
+      const { initializeExperimentScheduler } = await import("./lib/experiments/scheduler");
+      await initializeExperimentScheduler();
+    } catch (error) {
+      console.error("[SmartExperiments] Scheduler startup failed", sanitizeErrorText(error));
+    }
   }
 
   try {

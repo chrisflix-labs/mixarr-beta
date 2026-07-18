@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.2.6 - Smart Experiments & Playlist A/B Testing
+
+- Added protected Smart Mix v2 experiment drafts with pinned original playlist-version snapshots, controlled Version A and B settings, stable configuration history, and no Plex mutation during setup or generation.
+- Added discovery, personalized-versus-base, scoring, BPM flow, mood blend, artist variety, and custom comparisons with controlled-variable validation, visible differences, constant settings, shared candidate/library/metadata references, random seeds, fallbacks, missing metadata, personalization influence, and overlap.
+- Added optional separate Plex playlists and explicitly experimental alternating-active publication with independent stored Plex identifiers and idempotent retry behavior; the original is never replaced by publishing variants.
+- Added independent variant feedback, acceptance/rejection metrics that exclude passive inactivity, bounded playback aggregation for unique tracks, generation-quality scores, metric definitions, and explainable confidence-limited suggested winners.
+- Added explicit Version A or B application, continue/no-winner/inconclusive outcomes, merged-configuration generation previews and application, and snapshot-based original restoration with retained experiment history.
+- Added the responsive `/experiments` dashboard, protected setup wizard, detail page, track comparison and feedback, timeline, decision controls, Smart Experiment settings, navigation, and Generated Playlists entry points.
+- Added the additive `20260718190000_smart_experiments_v226` migration, ownership-checked APIs, Job History integration, bounded writes and playback reads, unit tests, documentation, roadmap completion, and v2.2.6 metadata.
+
 ## v2.2.5 - Library Coverage & Rotation Intelligence
 
 - Added a responsive Library Coverage dashboard with all-time, active, 30-day, 90-day, and 12-month coverage; quality-weighted rotation fairness; used-versus-unused, trend, genre, mood, decade, and recently-added views.

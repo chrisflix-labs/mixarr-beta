@@ -12,6 +12,7 @@ import { MIXARR_GITHUB_URL } from "@/lib/appInfo";
 const playlistLinks = [
   { href: "/builder", label: "Build Playlist", shortLabel: "Build", icon: Wand2, isActive: (pathname: string) => pathname === "/builder" },
   { href: "/smart-builder", label: "Smart Builder", shortLabel: "Smart", icon: Sparkles, isActive: (pathname: string) => pathname === "/smart-builder" },
+  { href: "/experiments", label: "Smart Experiments", shortLabel: "Tests", icon: FlaskConical, isActive: (pathname: string) => pathname.startsWith("/experiments") },
   { href: "/recipes", label: "Recipes", shortLabel: "Recipes", icon: BookMarked, isActive: (pathname: string) => pathname.startsWith("/recipes") },
   { href: "/generated-playlists", label: "Generated Playlists", icon: ListRestart, isActive: (pathname: string) => pathname.startsWith("/generated-playlists") },
   { href: "/playlist-groups", label: "Collections", icon: Grid2X2, isActive: (pathname: string) => pathname.startsWith("/playlist-groups") },

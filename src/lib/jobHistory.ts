@@ -67,7 +67,7 @@ const TYPE_GROUPS: Record<string, string[]> = {
   audio_features: ["audio_features", "local_audio_features"],
   plex_sync: ["plex_sync"],
   playback_history: ["playback_history", "playback_profile"],
-  playlist: ["playlist"],
+  playlist: ["playlist", "smart_experiment"],
   library_health: ["library_health", "genres", "popularity"],
   cleanup: ["cleanup"],
   other: ["other", "initial", "tags"],

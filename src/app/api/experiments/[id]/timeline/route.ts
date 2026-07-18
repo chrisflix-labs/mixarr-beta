@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { getExperiment } from "@/lib/experiments/service"; import { experimentApiError, experimentUnauthorized, experimentUserId } from "@/lib/experiments/api";
+export async function GET(_request: Request, { params }: { params: { id: string } }) { const userId = experimentUserId(); if (!userId) return experimentUnauthorized(); try { const experiment = await getExperiment(userId, params.id); return NextResponse.json({ events: experiment.events }); } catch (error) { return experimentApiError(error); } }

@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { generateExperimentVariants } from "@/lib/experiments/generation"; import { experimentApiError, experimentUnauthorized, experimentUserId } from "@/lib/experiments/api";
+export async function POST(_request: Request, { params }: { params: { id: string } }) { const userId = experimentUserId(); if (!userId) return experimentUnauthorized(); try { return NextResponse.json(await generateExperimentVariants(userId, params.id)); } catch (error) { return experimentApiError(error); } }

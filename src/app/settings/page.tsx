@@ -17,6 +17,7 @@ import ContextualMixSettings from "@/components/ContextualMixSettings";
 import SmartMixExplanationSettings from "@/components/SmartMixExplanationSettings";
 import OrchestrationSettings from "@/components/OrchestrationSettings";
 import PlaylistChainSettings from "@/components/PlaylistChainSettings";
+import SmartExperimentSettings from "@/components/SmartExperimentSettings";
 import { APP_DESCRIPTION, APP_NAME, MIXARR_GITHUB_URL } from "@/lib/appInfo";
 import { APP_VERSION } from "@/lib/appVersion";
 import { getExternalApiSettingsPayload } from "@/lib/externalApiSettings";
@@ -163,6 +164,12 @@ export default async function SettingsPage() {
         <h3 id="contextual-mix-settings" className={styles.sectionTitle}><CalendarDays size={20} color="var(--accent)" /> Contextual Mixes</h3>
         <p className={styles.sectionDesc}>Control context cards, local-time suggestions, confirmation behavior, and default influence.</p>
         <ContextualMixSettings />
+      </section>
+
+      <section className={`glass-panel ${styles.section}`} aria-labelledby="smart-experiment-settings">
+        <h3 id="smart-experiment-settings" className={styles.sectionTitle}><FlaskConical size={20} color="var(--accent)" /> Smart Experiments</h3>
+        <p className={styles.sectionDesc}>Set conservative defaults and minimum evidence requirements for controlled Smart Mix comparisons. Mixarr never automatically applies a winner.</p>
+        <SmartExperimentSettings />
       </section>
 
       {/* API Keys & Integrations */}

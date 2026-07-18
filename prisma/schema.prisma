@@ -93,6 +93,10 @@ model User {
   libraryCoverageSnapshots       LibraryCoverageSnapshot[]
   librarySegmentCoverage         LibrarySegmentCoverage[]
   coverageCalculationJobs        CoverageCalculationJob[]
+  smartExperiments               SmartExperiment[]                 @relation("SmartExperimentOwner")
+  smartExperimentEvents          SmartExperimentEvent[]            @relation("SmartExperimentEventActor")
+  smartExperimentDecisions       SmartExperimentDecision[]         @relation("SmartExperimentDecisionActor")
+  smartExperimentSetting         SmartExperimentSetting?
 }
 
 model SyncSettings {
@@ -357,6 +361,7 @@ model Track {
   playlistDesignations       PlaylistTrackDesignation[]
   playlistChainTransitions   PlaylistChainTransitionTrack[]
   rotationStatistics         TrackRotationStatistic[]
+  smartExperimentTracks      SmartExperimentTrack[]
 
   @@unique([libraryId, plexId])
   @@unique([plexServerId, plexLibraryId, ratingKey])
@@ -543,6 +548,207 @@ model CoverageCalculationJob {
   @@index([userId, status, createdAt])
   @@index([status, lastHeartbeatAt])
   @@index([libraryId, status])
+}
+
+// v2.2.6 Smart Experiments. Historical configuration, tracks, and metrics are
+// stored on the experiment records so later setting or engine changes cannot
+// rewrite the meaning of a completed comparison.
+model SmartExperiment {
+  id                         String                    @id @default(uuid())
+  userId                     String
+  sourcePlaylistId           String
+  originalPlaylistVersionId  String
+  name                       String
+  hypothesis                 String?
+  experimentType             String
+  status                     String                    @default("DRAFT")
+  publicationMode            String                    @default("PREVIEW_ONLY")
+  durationType               String                    @default("MANUAL")
+  durationTarget             Int?
+  startAt                    DateTime?
+  plannedEndAt               DateTime?
+  completedAt                DateTime?
+  pausedAt                   DateTime?
+  pausedDurationSeconds      Int                       @default(0)
+  completionReason           String?
+  suggestedWinner            String?
+  selectedWinner             String?
+  winnerConfidence           String?
+  recommendationExplanation  Json?
+  configurationSchemaVersion Int                       @default(1)
+  constantConfiguration      Json
+  originalSnapshot           Json
+  candidatePoolReference     String?
+  librarySnapshotReference   String?
+  metadataSnapshotReference  String?
+  randomSeed                 String?
+  overlapPercentage          Float?
+  generatedAt                DateTime?
+  finalPlexPlaylistId        String?
+  alternatingIntervalHours   Int                       @default(24)
+  activeVariant              String?
+  lastRotatedAt              DateTime?
+  idempotencyKey             String?
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  user                       User                      @relation("SmartExperimentOwner", fields: [userId], references: [id], onDelete: Cascade)
+  sourcePlaylist             GeneratedPlaylist         @relation("SmartExperimentSourcePlaylist", fields: [sourcePlaylistId], references: [id], onDelete: Restrict)
+  originalPlaylistVersion    PlaylistRevision          @relation("SmartExperimentOriginalVersion", fields: [originalPlaylistVersionId], references: [id], onDelete: Restrict)
+  variants                   SmartExperimentVariant[]
+  metrics                    SmartExperimentMetric[]
+  tracks                     SmartExperimentTrack[]
+  events                     SmartExperimentEvent[]
+  decisions                  SmartExperimentDecision[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, status, updatedAt])
+  @@index([sourcePlaylistId, createdAt])
+  @@index([status, plannedEndAt])
+  @@index([status, publicationMode, lastRotatedAt])
+  @@index([completedAt])
+}
+
+model SmartExperimentVariant {
+  id                         String                  @id @default(uuid())
+  experimentId               String
+  variant                    String
+  generatedPlaylistId        String?
+  playlistVersionId          String?
+  plexPlaylistId             String?
+  engineVersion              String
+  randomSeed                 String
+  configurationSchemaVersion Int                     @default(1)
+  configurationSnapshot      Json
+  librarySnapshotReference   String?
+  candidatePoolReference     String?
+  fallbackBehavior           Json?
+  missingMetadataConditions  Json?
+  personalizationSnapshot    Json?
+  generatedTrackCount        Int                     @default(0)
+  playlistScore              Float?
+  generationStatus           String                  @default("PENDING")
+  generationError            String?
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+  experiment                 SmartExperiment         @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  generatedPlaylist          GeneratedPlaylist?      @relation(fields: [generatedPlaylistId], references: [id], onDelete: SetNull)
+  playlistVersion            PlaylistRevision?       @relation(fields: [playlistVersionId], references: [id], onDelete: SetNull)
+  metrics                    SmartExperimentMetric[]
+  tracks                     SmartExperimentTrack[]
+
+  @@unique([experimentId, variant])
+  @@index([experimentId, generationStatus])
+  @@index([plexPlaylistId])
+}
+
+model SmartExperimentMetric {
+  id           String                 @id @default(uuid())
+  experimentId String
+  variantId    String
+  metricType   String
+  metricValue  Float
+  sampleSize   Int                    @default(0)
+  source       String
+  calculatedAt DateTime               @default(now())
+  experiment   SmartExperiment        @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  variant      SmartExperimentVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, metricType, source])
+  @@index([experimentId, metricType])
+  @@index([experimentId, calculatedAt])
+}
+
+model SmartExperimentTrack {
+  id                        String                 @id @default(uuid())
+  experimentId              String
+  variantId                 String
+  trackId                   String
+  position                  Int
+  selectionScore            Float?
+  selectionExplanation      Json?
+  personalizationInfluenced Boolean                @default(false)
+  sharedBetweenVariants     Boolean                @default(false)
+  evaluated                 Boolean                @default(false)
+  accepted                  Boolean                @default(false)
+  rejected                  Boolean                @default(false)
+  kept                      Boolean                @default(false)
+  removed                   Boolean                @default(false)
+  replaced                  Boolean                @default(false)
+  liked                     Boolean                @default(false)
+  disliked                  Boolean                @default(false)
+  neverRecommend            Boolean                @default(false)
+  goodPlaylistFit           Boolean                @default(false)
+  poorTransition            Boolean                @default(false)
+  explicitFeedbackCount     Int                    @default(0)
+  skipCount                 Int                    @default(0)
+  earlySkipCount            Int                    @default(0)
+  playbackCount             Int                    @default(0)
+  listeningDurationMs       BigInt                 @default(0)
+  lastPlaybackAt            DateTime?
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
+  experiment                SmartExperiment        @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  variant                   SmartExperimentVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  track                     Track                  @relation(fields: [trackId], references: [id], onDelete: Restrict)
+
+  @@unique([variantId, trackId])
+  @@index([experimentId, trackId])
+  @@index([variantId, position])
+  @@index([trackId, experimentId])
+}
+
+model SmartExperimentEvent {
+  id           String          @id @default(uuid())
+  experimentId String
+  eventType    String
+  actorUserId  String?
+  metadata     Json?
+  createdAt    DateTime        @default(now())
+  experiment   SmartExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  actor        User?           @relation("SmartExperimentEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([experimentId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model SmartExperimentDecision {
+  id                  String          @id @default(uuid())
+  experimentId        String
+  decisionType        String
+  selectedVariant     String?
+  mergedConfiguration Json?
+  explanation         String?
+  actorUserId         String?
+  createdAt           DateTime        @default(now())
+  experiment          SmartExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  actor               User?           @relation("SmartExperimentDecisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([experimentId, createdAt])
+  @@index([decisionType, createdAt])
+}
+
+model SmartExperimentSetting {
+  id                                 String   @id @default(uuid())
+  userId                             String   @unique
+  enabled                            Boolean  @default(true)
+  defaultDurationType                String   @default("DAYS")
+  defaultDurationTarget              Int      @default(7)
+  defaultPublicationMode             String   @default("PREVIEW_ONLY")
+  minimumPlaybackSessions            Int      @default(3)
+  minimumTrackInteractions           Int      @default(10)
+  minimumDurationHours               Int      @default(24)
+  minimumResultDifference            Float    @default(5)
+  minimumConfidence                  String   @default("LOW")
+  allowPlaybackMetrics               Boolean  @default(true)
+  automaticallyEvaluate              Boolean  @default(true)
+  automaticallyPauseMissingPlaylists Boolean  @default(true)
+  historyRetentionDays               Int?
+  showAdvancedControls               Boolean  @default(false)
+  allowMultiVariableExperiments      Boolean  @default(true)
+  notificationsEnabled               Boolean  @default(true)
+  createdAt                          DateTime @default(now())
+  updatedAt                          DateTime @updatedAt
+  user                               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model CanonicalRecording {
@@ -903,6 +1109,8 @@ model GeneratedPlaylist {
   overlapSnapshotsB        PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotB")
   smartRefreshSettings     SmartRefreshSettings?
   smartRefreshEvaluations  SmartRefreshEvaluation[]
+  sourceExperiments        SmartExperiment[]               @relation("SmartExperimentSourcePlaylist")
+  experimentVariants       SmartExperimentVariant[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -1756,33 +1964,35 @@ model PlaylistRegenerationChange {
 }
 
 model PlaylistRevision {
-  id                    String                    @id @default(uuid())
-  generatedPlaylistId   String
-  revisionNumber        Int
-  regenerationId        String?
-  reason                String
-  label                 String?
-  description           String?
-  engineFamily          String?
-  engineVersion         String?
-  applicationVersion    String?
-  snapshotSchemaVersion Int                       @default(1)
-  settingsSnapshot      Json?
-  trackSnapshot         Json
-  scoreSnapshot         Json?
-  betaMetadata          Json?
-  trackCount            Int                       @default(0)
-  durationMs            Int                       @default(0)
-  restoredFromVersionId String?
-  isPinned              Boolean                   @default(false)
-  isAutomatic           Boolean                   @default(true)
-  isCurrent             Boolean                   @default(false)
-  syncStatus            String                    @default("synced")
-  snapshotSizeBytes     Int?
-  createdAt             DateTime                  @default(now())
-  generatedPlaylist     GeneratedPlaylist         @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
-  identitySnapshot      PlaylistIdentitySnapshot?
-  automationActivity    AutomationActivity?
+  id                     String                    @id @default(uuid())
+  generatedPlaylistId    String
+  revisionNumber         Int
+  regenerationId         String?
+  reason                 String
+  label                  String?
+  description            String?
+  engineFamily           String?
+  engineVersion          String?
+  applicationVersion     String?
+  snapshotSchemaVersion  Int                       @default(1)
+  settingsSnapshot       Json?
+  trackSnapshot          Json
+  scoreSnapshot          Json?
+  betaMetadata           Json?
+  trackCount             Int                       @default(0)
+  durationMs             Int                       @default(0)
+  restoredFromVersionId  String?
+  isPinned               Boolean                   @default(false)
+  isAutomatic            Boolean                   @default(true)
+  isCurrent              Boolean                   @default(false)
+  syncStatus             String                    @default("synced")
+  snapshotSizeBytes      Int?
+  createdAt              DateTime                  @default(now())
+  generatedPlaylist      GeneratedPlaylist         @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  identitySnapshot       PlaylistIdentitySnapshot?
+  automationActivity     AutomationActivity?
+  originalForExperiments SmartExperiment[]         @relation("SmartExperimentOriginalVersion")
+  experimentVariants     SmartExperimentVariant[]
 
   @@unique([generatedPlaylistId, revisionNumber])
   @@index([generatedPlaylistId, createdAt])

@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { transitionExperiment } from "@/lib/experiments/service"; import { experimentApiError, experimentUnauthorized, experimentUserId } from "@/lib/experiments/api";
+export async function POST(_request: Request, { params }: { params: { id: string } }) { const userId = experimentUserId(); if (!userId) return experimentUnauthorized(); try { return NextResponse.json(await transitionExperiment(userId, params.id, "pause")); } catch (error) { return experimentApiError(error); } }

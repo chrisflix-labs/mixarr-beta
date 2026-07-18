@@ -171,6 +171,8 @@ export const playlistConfigSchema = z.object({
   engineVersion: z.enum(smartMixEngineVersions).default(SMART_MIX_ENGINE_V1),
   scoringModel: z.string().trim().min(1).max(80).optional(),
   allowStableFallback: z.boolean().optional(),
+  personalizationEnabled: z.boolean().optional(),
+  personalizationInfluence: z.coerce.number().min(0).max(100).optional(),
   coordinationSetup: z.object({
     enabled: z.boolean().default(false),
     relationshipType: z.enum(["SISTER", "RELATED", "DISTINCT_FROM"]).default("SISTER"),
@@ -898,7 +900,7 @@ export async function generatePlaylistTracksWithStats({
     const recentPlaylistUsage = useSmartMixV2 && tuningConfig.discovery.avoidRecentlyUsedPlaylistTracks
       ? await getRecentPlaylistUsage(userId, tuningConfig.discovery.recentPlaylistLookback)
       : {};
-    const personalization = useSmartMixV2
+    const personalization = useSmartMixV2 && config.personalizationEnabled !== false
       ? await loadPersonalizationScoringContext(userId, personalizationPlaylistId)
       : undefined;
     const playlistIdentity = useSmartMixV2
@@ -1748,6 +1750,16 @@ export async function syncGeneratedPlaylistToPlex(userId: string, generatedPlayl
   if (ratingKeys.length !== playlist.tracks.length) throw new Error("Some restored tracks do not have a Plex identifier.");
   await assertPlexPlaylistExists({ server, playlistId: playlist.plexPlaylistRatingKey });
   await pushTracksToPlex({ server, name: playlist.plexPlaylistTitle, ratingKeys, playlistId: playlist.plexPlaylistRatingKey });
+}
+
+export async function syncTrackIdsToPlexPlaylist({ userId, serverId, playlistId, name, trackIds }: { userId: string; serverId: string; playlistId: string; name: string; trackIds: string[] }) {
+  const tracks = await fetchOwnedTracksInOrder(userId, trackIds);
+  if (tracks.length !== trackIds.length) throw new Error("Some experiment tracks are no longer available in the source library.");
+  const server = await prisma.server.findFirst({ where: { id: serverId, userId } });
+  if (!server) throw new Error("The Plex server is unavailable.");
+  await assertPlexPlaylistExists({ server, playlistId });
+  await pushTracksToPlex({ server, name, ratingKeys: tracks.map((track) => track.ratingKey || track.plexId), playlistId });
+  return { playlistId, trackCount: tracks.length };
 }
 
 function rulesJsonFromConfig(config: PlaylistConfigInput) {

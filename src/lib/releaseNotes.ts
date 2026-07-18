@@ -42,6 +42,7 @@ export type ReleaseNoteBadge =
   | "Notifications"
   | "Performance"
   | "Personalization"
+  | "Playback"
   | "Playlists"
   | "Popularity"
   | "Plex"
@@ -74,6 +75,21 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "2.2.6",
+    title: "Smart Experiments & Playlist A/B Testing",
+    releaseDate: "July 18, 2026",
+    badges: ["Playlists", "Smart Builder", "Personalization", "Playback", "Feedback", "History", "Plex", "Jobs", "Database", "Settings", "Performance", "Mobile", "Accessibility", "Reliability"],
+    changes: [
+      "Added protected Smart Mix v2 experiments that preserve a pinned original playlist snapshot and compare Version A and Version B without modifying Plex during setup or generation.",
+      "Added controlled discovery, base-versus-personalized scoring, scoring weight, BPM flow, mood blend, artist variety, and advanced multi-variable comparisons with visible differences, constants, warnings, snapshot references, fallback conditions, and overlap.",
+      "Added independent per-variant explicit feedback, acceptance and rejection definitions that ignore passive inactivity, bounded playback inference for variant-unique tracks, generation-quality metrics, and local-data explanations.",
+      "Added explainable suggested-winner recommendations with configurable minimum sessions, interactions, duration, result difference, and honest Very Low through High confidence labels; winners are never selected or applied automatically.",
+      "Added explicit Version A or B application, inconclusive and keep-both outcomes, side-by-side merged-setting previews, separate Plex publishing, and snapshot-based original restoration that preserves experiment history.",
+      "Added a responsive Smart Experiments dashboard, protected setup wizard, detail comparison, configuration diff, paginated track sample, feedback actions, timeline, decision panel, settings, navigation, loading/empty/error states, and Generated Playlists entry points.",
+      "Added additive indexed persistence, ownership-checked APIs, 500-track write and 400-track playback batches, idempotent draft/publication behavior, Job History visibility, migration notes, deterministic unit tests, and v2.2.6 release metadata.",
+    ],
+  },
   {
     version: "2.2.5",
     title: "Library Coverage & Rotation Intelligence",

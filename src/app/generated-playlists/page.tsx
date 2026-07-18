@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import Link from "next/link";
-import { Activity, AlertTriangle, Ban, CheckCircle2, History, ListRestart, RefreshCw, Repeat2, ShieldCheck, Sparkles, Trash2, Wand2 } from "lucide-react";
+import { Activity, AlertTriangle, Ban, CheckCircle2, FlaskConical, History, ListRestart, RefreshCw, Repeat2, ShieldCheck, Sparkles, Trash2, Wand2 } from "lucide-react";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import TrackFeedbackMenu from "@/components/TrackFeedbackMenu";
 import AdaptiveScoreBreakdown from "@/components/AdaptiveScoreBreakdown";
@@ -673,6 +673,9 @@ export default function GeneratedPlaylistsPage() {
                     <History size={15} />
                     History &amp; Restore
                   </Link>
+                  {playlist.engineVersion === "v2" && <Link href={`/experiments?new=1&playlistId=${playlist.id}`} className={styles.secondaryButton}>
+                    <FlaskConical size={15} /> Start experiment
+                  </Link>}
                   <button type="button" disabled={Boolean(busyId)} onClick={() => removeGeneratedPlaylist(playlist)} className={styles.secondaryDangerButton}>
                     <Trash2 size={15} />
                     Remove from Generated Playlists
