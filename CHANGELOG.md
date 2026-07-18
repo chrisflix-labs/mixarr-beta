@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.2.5 - Library Coverage & Rotation Intelligence
+
+- Added a responsive Library Coverage dashboard with all-time, active, 30-day, 90-day, and 12-month coverage; quality-weighted rotation fairness; used-versus-unused, trend, genre, mood, decade, and recently-added views.
+- Added paginated intelligence for never-selected and overused tracks, high-confidence neglected opportunities, unused and partially used artists and albums, and nested library segments with filter-preserving drill-down and CSV/JSON export.
+- Added explainable opportunity and overuse scoring that respects analysis, confidence, feedback, missing Plex items, duplicate suppression, live-track rules, playlist compatibility, recent rejection history, likes, locks, and intentionally preferred tracks.
+- Added resumable, cancellable, duplicate-protected background calculation jobs with 400-track batches, progress stages, persistent cached track statistics, deduplicated snapshots, retention cleanup, structured summary logging, and no startup backfill.
+- Added a guided neglected-mix workflow with conservative Safe Discovery, Balanced, Deep Library, Recently Added, and Underused High Quality presets; every draft remains preview-only until handed to Smart Builder.
+- Added conservative Library Coverage settings, reset-calculated-statistics support that preserves playlist history and personalization, and optional quality-gated coverage-aware Smart Mix scoring that is disabled for existing installations.
+- Extended Smart Mix explanations with bounded neglect bonuses and overuse penalties while preserving eligibility, feedback, identity, personalization, BPM/mood flow, transition, diversity, and existing repeat controls.
+- Added authenticated summary, tracks, artists, albums, segments, genres, moods, decades, recently-added, overuse, opportunities, history, jobs, settings, export, recalculation, cancellation, and build-mix APIs.
+- Added the additive `20260718150000_library_coverage_rotation_intelligence` migration, scoring and fairness tests, release metadata, roadmap updates, upgrade notes, and operator documentation.
+
 ## v2.2.4 - Smart Refresh Scheduling
 
 - Added per-playlist Manual Only, Fixed Schedule, Smart Refresh, Smart Refresh with Fallback, and Disabled modes with conservative migration defaults.

@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { coverageApiError, coverageSession, coverageUnauthorized, numberParam } from "@/lib/libraryCoverageApi"; import { getCoverageHistory } from "@/lib/libraryCoverage";
+export async function GET(request: Request) { const userId=coverageSession(); if(!userId)return coverageUnauthorized(); try{const p=new URL(request.url).searchParams; return NextResponse.json({data:await getCoverageHistory(userId,{libraryId:p.get("libraryId"),limit:numberParam(p,"limit",90)})});}catch(error){return coverageApiError(error);} }

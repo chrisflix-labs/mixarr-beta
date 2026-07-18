@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { coverageApiError, coverageSession, coverageUnauthorized } from "@/lib/libraryCoverageApi"; import { buildNeglectedMixDraft } from "@/lib/libraryCoverage";
+export async function POST(request: Request) { const userId=coverageSession(); if(!userId)return coverageUnauthorized(); try{const body=await request.json(); return NextResponse.json({data:await buildNeglectedMixDraft(userId,body)});}catch(error){return coverageApiError(error);} }

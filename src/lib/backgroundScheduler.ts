@@ -246,6 +246,25 @@ export async function runScheduledBackgroundSync(activeCron: string) {
       console.log(`[Scheduler] Step 6/6 completed name=smart_refresh duration=${Math.round(durationMs / 1000)}s evaluated=${smartRefresh.evaluated} refreshed=${smartRefresh.refreshed} deferred=${smartRefresh.deferred} skipped=${smartRefresh.skipped} failed=${smartRefresh.failed}`);
     }
 
+    if (remaining()) {
+      stageStartedAt = Date.now();
+      console.log("[Scheduler] Library coverage snapshot scheduling started");
+      const { getCoverageSettings, queueCoverageCalculation } = await import("./libraryCoverage");
+      const userIds = Array.from(new Set(libraries.map((library) => library.server.userId)));
+      let queued = 0;
+      for (const userId of userIds) {
+        const coverageSettings = await getCoverageSettings(userId);
+        if (!coverageSettings.snapshotsEnabled) continue;
+        const existingStatistics = await prisma.trackRotationStatistic.count({ where: { userId } });
+        if (existingStatistics === 0) continue;
+        const result = await queueCoverageCalculation({ userId, trigger: "scheduled" });
+        if (!result.duplicate) queued += 1;
+      }
+      durationMs = Date.now() - stageStartedAt;
+      stages.push({ name: "library_coverage", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, queued });
+      console.log(`[Scheduler] Library coverage snapshot scheduling completed queued=${queued}`);
+    }
+
     const durationSeconds = Math.round((Date.now() - pipelineStart) / 1000);
     const log = pipelineResult === "success" ? console.log : console.warn;
     log(`[Scheduler] Nightly sync completed status=${pipelineResult} duration=${durationSeconds}s`);

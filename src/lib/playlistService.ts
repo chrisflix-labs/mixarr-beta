@@ -59,6 +59,7 @@ import {
 import type { PlaylistGenerationControl } from "./playlistGenerationControl";
 import { PLAYLIST_GENERATION_LIMITS } from "./playlistGenerationLimits";
 import { chunkValues, queryInBatches } from "./databaseBatching";
+import { loadCoverageScoringContext } from "./libraryCoverage";
 
 const numericFields = ["popularity", "energy", "valence", "tempo", "year", "duration", "rating", "playCount"] as const;
 const booleanFields = ["isLive", "isRemaster", "isExplicit", "hasPopularity"] as const;
@@ -181,6 +182,11 @@ export const playlistConfigSchema = z.object({
     unusedTrackPreferenceStrength: z.coerce.number().min(0).max(1).default(0.5),
     crossPlaylistArtistBalancingEnabled: z.boolean().default(true),
     keepDistinct: z.boolean().default(false),
+  }).optional(),
+  coverageRotationOption: z.object({
+    enabled: z.boolean().default(false),
+    level: z.enum(["disabled", "low", "medium", "high", "custom"]).default("low"),
+    maximumBoost: z.coerce.number().min(0).max(10).optional(),
   }).optional(),
 }).merge(playlistOptionsSchema);
 
@@ -971,6 +977,14 @@ export async function generatePlaylistTracksWithStats({
         draft: config.coordinationSetup,
       });
       if (coordination) runConfig = { ...runConfig, coordination };
+    }
+    if (useSmartMixV2) {
+      const coverageRotation = await loadCoverageScoringContext(
+        userId,
+        [...effectivePinnedTracks, ...candidates].map((track) => track.id),
+        config.coverageRotationOption,
+      );
+      if (coverageRotation) runConfig = { ...runConfig, coverageRotation };
     }
     const reasons = collectRuleReasons(config.ruleTree, config.rules);
     await control?.progress("Applying filters", { initialCandidates: candidates.length, eligibleCandidates: candidates.length, selectedTracks: effectivePinnedTracks.length }, true);

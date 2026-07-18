@@ -1,0 +1,3 @@
+import { NextResponse } from "next/server"; import { coverageApiError, coverageSession, coverageUnauthorized } from "@/lib/libraryCoverageApi"; import { getCoverageSettings, updateCoverageSettings } from "@/lib/libraryCoverage";
+export async function GET(){const userId=coverageSession();if(!userId)return coverageUnauthorized();try{return NextResponse.json({data:await getCoverageSettings(userId)});}catch(error){return coverageApiError(error);}}
+export async function PATCH(request:Request){const userId=coverageSession();if(!userId)return coverageUnauthorized();try{return NextResponse.json({data:await updateCoverageSettings(userId,await request.json())});}catch(error){return coverageApiError(error);}}

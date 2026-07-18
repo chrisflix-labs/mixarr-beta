@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Settings as SettingsIcon, Ban, Brain, CalendarDays, CircleHelp, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, ListMusic, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
+import { Settings as SettingsIcon, Ban, BarChart3, Brain, CalendarDays, CircleHelp, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, ListMusic, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
 import ProviderTestButton from "@/components/ProviderTestButton";
 import BetaFeatureSettingsForm from "@/components/BetaFeatureSettingsForm";
 import ExternalApiSettingsPanel from "@/components/ExternalApiSettingsPanel";
@@ -50,6 +50,15 @@ export default async function SettingsPage() {
         <span>
           <strong>Library Health &amp; Cleanup</strong>
           <small>Verify Plex reconciliation, inspect missing tracks, export records, and run safe cleanup.</small>
+        </span>
+        <span aria-hidden="true">&rarr;</span>
+      </Link>
+
+      <Link href="/library-coverage?tab=settings" className={`glass-panel ${styles.healthLink}`}>
+        <BarChart3 size={24} />
+        <span>
+          <strong>Library Coverage &amp; Rotation</strong>
+          <small>Configure snapshots, opportunity thresholds, exclusions, cooldowns, and optional bounded Smart Mix rotation influence.</small>
         </span>
         <span aria-hidden="true">&rarr;</span>
       </Link>

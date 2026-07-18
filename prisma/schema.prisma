@@ -88,6 +88,11 @@ model User {
   playlistOverlapSnapshots       PlaylistOverlapSnapshot[]
   smartRefreshGlobalSetting      SmartRefreshGlobalSetting?
   smartRefreshEvaluations        SmartRefreshEvaluation[]
+  libraryCoverageSetting         LibraryCoverageSetting?
+  trackRotationStatistics        TrackRotationStatistic[]
+  libraryCoverageSnapshots       LibraryCoverageSnapshot[]
+  librarySegmentCoverage         LibrarySegmentCoverage[]
+  coverageCalculationJobs        CoverageCalculationJob[]
 }
 
 model SyncSettings {
@@ -173,6 +178,7 @@ model Library {
   managedPlaylists         ManagedPlaylist[]
   orchestrationJobs        PlaylistOrchestrationJob[]
   orchestrationLocks       PlaylistOrchestrationLock[]
+  coverageSnapshots        LibraryCoverageSnapshot[]
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -350,6 +356,7 @@ model Track {
   playbackProfiles           UserTrackPlaybackProfile[]
   playlistDesignations       PlaylistTrackDesignation[]
   playlistChainTransitions   PlaylistChainTransitionTrack[]
+  rotationStatistics         TrackRotationStatistic[]
 
   @@unique([libraryId, plexId])
   @@unique([plexServerId, plexLibraryId, ratingKey])
@@ -361,6 +368,181 @@ model Track {
   @@index([canonicalRecordingId, syncStatus])
   @@index([libraryId, duplicateReviewStatus])
   @@index([libraryId, plexGuid])
+}
+
+model LibraryCoverageSetting {
+  id                            String   @id @default(uuid())
+  userId                        String   @unique
+  snapshotsEnabled              Boolean  @default(true)
+  snapshotFrequencyHours        Int      @default(24)
+  snapshotRetentionDays         Int      @default(365)
+  coverageHistoryPeriodDays     Int      @default(365)
+  includeManualTracks           Boolean  @default(false)
+  includeImportedPlaylists      Boolean  @default(false)
+  includeDeletedPlaylistHistory Boolean  @default(true)
+  minimumMetadataConfidence     Float    @default(0.7)
+  minimumAudioFeatureConfidence Float    @default(0.7)
+  minimumOpportunityScore       Float    @default(70)
+  overuseThreshold              Float    @default(70)
+  selectionCooldownDays         Int      @default(14)
+  maximumRotationInfluence      Float    @default(3)
+  recentlyAddedWindowDays       Int      @default(90)
+  excludeExplicitDislikes       Boolean  @default(true)
+  excludeNeverRecommend         Boolean  @default(true)
+  excludeMissingPlexTracks      Boolean  @default(true)
+  excludeDuplicateVersions      Boolean  @default(true)
+  allowLiveTracks               Boolean  @default(false)
+  allowCompilations             Boolean  @default(true)
+  coverageAwareScoringEnabled   Boolean  @default(false)
+  coverageInfluenceLevel        String   @default("disabled")
+  customInfluenceJson           Json?
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+  user                          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TrackRotationStatistic {
+  id                           String    @id @default(uuid())
+  userId                       String
+  trackId                      String
+  eligible                     Boolean   @default(true)
+  exclusionReason              String?
+  analyzed                     Boolean   @default(false)
+  currentlySelected            Boolean   @default(false)
+  firstSelectedAt              DateTime?
+  lastSelectedAt               DateTime?
+  selectionCount               Int       @default(0)
+  acceptedSelectionCount       Int       @default(0)
+  rejectionCount               Int       @default(0)
+  removalCount                 Int       @default(0)
+  lockedCount                  Int       @default(0)
+  manualAdditionCount          Int       @default(0)
+  importedSelectionCount       Int       @default(0)
+  uniquePlaylistCount          Int       @default(0)
+  generationSelectionCount     Int       @default(0)
+  generationConsiderationCount Int       @default(0)
+  qualifiedNotSelectedCount    Int       @default(0)
+  recentSelectionCount         Int       @default(0)
+  historicalBestScore          Float?
+  averageSelectionScore        Float?
+  baseQualityScore             Float     @default(0)
+  personalizedQualityScore     Float?
+  metadataConfidence           Float     @default(0)
+  audioFeatureConfidence       Float     @default(0)
+  compatibilityPotential       Float     @default(0)
+  opportunityScore             Float     @default(0)
+  overuseScore                 Float     @default(0)
+  reasonNeverSelected          String?
+  explanationJson              Json?
+  calculatedAt                 DateTime  @default(now())
+  user                         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track                        Track     @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trackId])
+  @@index([userId, eligible, analyzed])
+  @@index([userId, opportunityScore])
+  @@index([userId, overuseScore])
+  @@index([userId, firstSelectedAt])
+  @@index([userId, lastSelectedAt])
+  @@index([trackId])
+  @@index([calculatedAt])
+}
+
+model LibraryCoverageSnapshot {
+  id                      String                   @id @default(uuid())
+  userId                  String
+  libraryId               String?
+  period                  String                   @default("all_time")
+  totalTracks             Int                      @default(0)
+  eligibleTracks          Int                      @default(0)
+  excludedTracks          Int                      @default(0)
+  analyzedTracks          Int                      @default(0)
+  usedTracks              Int                      @default(0)
+  activeTracks            Int                      @default(0)
+  neverSelectedTracks     Int                      @default(0)
+  highConfidenceNeglected Int                      @default(0)
+  overusedTracks          Int                      @default(0)
+  eligibleArtists         Int                      @default(0)
+  usedArtists             Int                      @default(0)
+  eligibleAlbums          Int                      @default(0)
+  usedAlbums              Int                      @default(0)
+  artistCoverage          Float                    @default(0)
+  albumCoverage           Float                    @default(0)
+  coveragePercentage      Float                    @default(0)
+  rotationFairnessScore   Float                    @default(0)
+  recentlyAddedCoverage   Float                    @default(0)
+  partialHistory          Boolean                  @default(false)
+  explanationJson         Json?
+  fingerprint             String
+  createdAt               DateTime                 @default(now())
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  library                 Library?                 @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  segments                LibrarySegmentCoverage[]
+
+  @@index([userId, period, createdAt])
+  @@index([libraryId, createdAt])
+  @@index([fingerprint])
+}
+
+model LibrarySegmentCoverage {
+  id                  String                  @id @default(uuid())
+  userId              String
+  snapshotId          String
+  dimension           String
+  segmentKey          String
+  label               String
+  parentKey           String?
+  eligibleTracks      Int                     @default(0)
+  analyzedTracks      Int                     @default(0)
+  selectedTracks      Int                     @default(0)
+  neverSelectedTracks Int                     @default(0)
+  playlistAppearances Int                     @default(0)
+  opportunityCount    Int                     @default(0)
+  overuseCount        Int                     @default(0)
+  coveragePercentage  Float                   @default(0)
+  averageUseCount     Float                   @default(0)
+  averageQuality      Float                   @default(0)
+  demandPercentage    Float?
+  preferenceInfluence Float?
+  lastSelectedAt      DateTime?
+  metadataJson        Json?
+  createdAt           DateTime                @default(now())
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshot            LibraryCoverageSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, dimension, segmentKey])
+  @@index([userId, dimension, coveragePercentage])
+  @@index([snapshotId, dimension])
+}
+
+model CoverageCalculationJob {
+  id                 String    @id @default(uuid())
+  userId             String
+  libraryId          String?
+  status             String    @default("queued")
+  trigger            String    @default("manual")
+  currentStage       String    @default("queued")
+  currentStageNumber Int       @default(0)
+  totalStages        Int       @default(10)
+  processedTracks    Int       @default(0)
+  totalTracks        Int       @default(0)
+  percentage         Float     @default(0)
+  cursorTrackId      String?
+  cancelRequested    Boolean   @default(false)
+  attemptCount       Int       @default(0)
+  settingsSnapshot   Json?
+  resultJson         Json?
+  error              String?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  lastHeartbeatAt    DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, createdAt])
+  @@index([status, lastHeartbeatAt])
+  @@index([libraryId, status])
 }
 
 model CanonicalRecording {
@@ -1466,37 +1648,37 @@ model SmartRefreshGlobalSetting {
 }
 
 model SmartRefreshSettings {
-  id                           String            @id @default(uuid())
-  generatedPlaylistId          String            @unique
-  refreshMode                  String            @default("MANUAL_ONLY")
-  sensitivity                  String            @default("BALANCED")
-  customSettingsJson           Json?
-  minimumEstimatedImprovement  Float             @default(5)
-  minimumCompatibleTracks      Int               @default(5)
-  weakTrackThreshold           Int               @default(50)
-  identityDriftThreshold       Float             @default(20)
-  repetitionThreshold          Float             @default(60)
-  metadataImprovementThreshold Int               @default(2)
-  evaluationIntervalHours      Int               @default(24)
-  minimumRefreshIntervalHours  Int               @default(168)
-  maximumRefreshesPerWeek      Int?               @default(1)
-  fallbackAfterHours           Int?
-  quietHoursOverrideJson       Json?
-  allowPlaylistGrowth          Boolean            @default(false)
-  allowAutomaticWeakTrackRefresh Boolean          @default(true)
-  allowAutomaticFullRegeneration Boolean          @default(false)
-  lastEvaluatedAt              DateTime?
-  lastSuccessfulRefreshAt      DateTime?
-  lastRecommendation           String?
-  lastEstimatedImprovement     Float?
-  deferredUntil                DateTime?
-  dismissedAt                  DateTime?
-  invalidationVersion          Int                @default(0)
-  evaluatedInvalidationVersion Int                @default(-1)
-  pendingTriggerSource         String?
-  createdAt                    DateTime            @default(now())
-  updatedAt                    DateTime            @updatedAt
-  generatedPlaylist            GeneratedPlaylist  @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  id                             String            @id @default(uuid())
+  generatedPlaylistId            String            @unique
+  refreshMode                    String            @default("MANUAL_ONLY")
+  sensitivity                    String            @default("BALANCED")
+  customSettingsJson             Json?
+  minimumEstimatedImprovement    Float             @default(5)
+  minimumCompatibleTracks        Int               @default(5)
+  weakTrackThreshold             Int               @default(50)
+  identityDriftThreshold         Float             @default(20)
+  repetitionThreshold            Float             @default(60)
+  metadataImprovementThreshold   Int               @default(2)
+  evaluationIntervalHours        Int               @default(24)
+  minimumRefreshIntervalHours    Int               @default(168)
+  maximumRefreshesPerWeek        Int?              @default(1)
+  fallbackAfterHours             Int?
+  quietHoursOverrideJson         Json?
+  allowPlaylistGrowth            Boolean           @default(false)
+  allowAutomaticWeakTrackRefresh Boolean           @default(true)
+  allowAutomaticFullRegeneration Boolean           @default(false)
+  lastEvaluatedAt                DateTime?
+  lastSuccessfulRefreshAt        DateTime?
+  lastRecommendation             String?
+  lastEstimatedImprovement       Float?
+  deferredUntil                  DateTime?
+  dismissedAt                    DateTime?
+  invalidationVersion            Int               @default(0)
+  evaluatedInvalidationVersion   Int               @default(-1)
+  pendingTriggerSource           String?
+  createdAt                      DateTime          @default(now())
+  updatedAt                      DateTime          @updatedAt
+  generatedPlaylist              GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
 
   @@index([refreshMode, lastEvaluatedAt])
   @@index([refreshMode, deferredUntil])
@@ -1538,13 +1720,13 @@ model SmartRefreshEvaluation {
   tracksRemoved              Int               @default(0)
   tracksReordered            Int               @default(0)
   durationMs                 Int               @default(0)
-  evaluatedAt                DateTime           @default(now())
+  evaluatedAt                DateTime          @default(now())
   executedAt                 DateTime?
   dismissedAt                DateTime?
-  createdAt                  DateTime           @default(now())
-  updatedAt                  DateTime           @updatedAt
-  user                       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  generatedPlaylist          GeneratedPlaylist  @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+  user                       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedPlaylist          GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
 
   @@index([generatedPlaylistId, evaluatedAt])
   @@index([userId, status, evaluatedAt])

@@ -50,6 +50,13 @@ export type SmartMixEngineV2Config = {
   playbackScoring?: PlaybackScoringContext;
   contextSelection?: ContextSelection | null;
   coordination?: CoordinationScoringContext;
+  coverageRotation?: {
+    enabled: boolean;
+    level: string;
+    maximumBoost: number;
+    settingsVersion: string;
+    statistics: Record<string, { opportunityScore: number; overuseScore: number; eligible: boolean; qualityPassed: boolean; explanation?: unknown }>;
+  };
   moodBlendMode?: SmartMixMoodBlendMode;
   selectedMoodPath?: string[];
   allowedMoods?: string[];
@@ -165,6 +172,8 @@ export type SmartMixScoreBreakdown = {
   playbackDiscovery?: number;
   context?: number;
   coordination?: number;
+  coverageBoost?: number;
+  overusePenalty?: number;
 };
 
 export type SmartMixScoredTrack<TTrack = any> = TTrack & {
@@ -181,6 +190,7 @@ export type SmartMixScoredTrack<TTrack = any> = TTrack & {
   playbackScore?: PlaybackScoreResult;
   contextScore?: ContextScoreResult;
   coordinationScore?: CoordinationScoreBreakdown;
+  coverageScore?: { boost: number; penalty: number; reasons: string[]; opportunityScore: number; overuseScore: number };
   baseScore?: number;
   personalizedScore?: number;
   exclusionReason?: string | null;

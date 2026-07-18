@@ -63,6 +63,8 @@ const factorDefinitions: Record<string, { code: string; label: string; category:
   playbackDiscovery: { code: "PLAYBACK_DISCOVERY", label: "Playback discovery", category: "discovery", source: "personalization" },
   context: { code: "CONTEXT_MATCH", label: "Context fit", category: "context", source: "global" },
   coordination: { code: "PLAYLIST_COORDINATION", label: "Related playlist coordination", category: "coordination", source: "global" },
+  coverageBoost: { code: "LIBRARY_COVERAGE_OPPORTUNITY", label: "Neglected library opportunity", category: "discovery", source: "global" },
+  overusePenalty: { code: "LIBRARY_ROTATION_OVERUSE", label: "Library rotation overuse", category: "recently_used", source: "global" },
 };
 
 const round = (value: number, places = 3) => Math.round(value * 10 ** places) / 10 ** places;
@@ -205,7 +207,7 @@ export function buildDecisionExplanation({ track, generationId, playlistId, deci
     ...(decision === "rejected" ? { rejectionStage: rejectionStage(rejectionCode), rejectionCode: rejectionCode || "RANKED_BELOW_CUTOFF" } : {}),
     hardFilterResults: [{ code: rejectionCode || "ELIGIBLE", passed: !hard, explanation: hard ? summary : "No retained hard filter rejected this candidate." }],
     softFilterResults: [{ code: "FINAL_RANKING", passed: decision === "selected", explanation: decision === "selected" ? "This candidate ranked inside the selected set." : summary }],
-    scores: { baseScore: round(baseScore), scoreBeforePenalties: round(scoreBeforePenalties), personalizationAdjustment: round(personalizationAdjustment), playlistIdentityAdjustment: round(identityAdjustment), transitionAdjustment: round(transitionAdjustment), penaltyAdjustment: round(penaltyAdjustment), scoreAfterPenalties: round(finalScore), personalizedScore: round(track.adaptiveScore?.personalizedScore ?? track.personalizedScore ?? finalScore), finalScore: round(finalScore) },
+    scores: { baseScore: round(baseScore), scoreBeforePenalties: round(scoreBeforePenalties), personalizationAdjustment: round(personalizationAdjustment), playlistIdentityAdjustment: round(identityAdjustment), transitionAdjustment: round(transitionAdjustment), neglectBonus: round(finite(track.scoreBreakdown?.coverageBoost)), overusePenalty: round(finite(track.scoreBreakdown?.overusePenalty)), penaltyAdjustment: round(penaltyAdjustment), scoreAfterPenalties: round(finalScore), personalizedScore: round(track.adaptiveScore?.personalizedScore ?? track.personalizedScore ?? finalScore), finalScore: round(finalScore) },
     factors, fallbacks, missingMetadata, comparisons, confidence, transition, suggestedFixes,
     personalization: { enabled: Boolean(track.adaptiveScore?.enabled || track.personalizationScore?.applied), maximumInfluence: track.adaptiveScore?.maximumInfluence ?? track.personalizationScore?.boundedBy ?? null, appliedConfidenceLimit: track.adaptiveScore?.confidence || null, adjustmentWasCapped: Boolean(track.adaptiveScore?.adjustmentWasCapped), changedSelection: null, statusMessage: track.adaptiveScore?.statusMessage || (track.personalizationScore?.applied ? "Personalization influenced this score." : "Personalization was disabled or had insufficient evidence for this generation.") },
     playlistIdentity: { applied: Boolean(track.playlistIdentityScore?.applied), influence: identityInfluence, reasons: track.playlistIdentityScore?.reasons || [] },

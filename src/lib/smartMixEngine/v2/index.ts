@@ -346,8 +346,8 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
   applyPlaylistSafetyRules,
 }: SmartMixEngineV2RunInput<TTrack>): SmartMixEngineV2RunResult<TTrack> {
   const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
-  const baseConfig = config.adaptiveScoring || config.playbackScoring || config.coordination
-    ? { ...config, personalization: undefined, playlistIdentity: undefined, adaptiveScoring: undefined, playbackScoring: undefined, coordination: undefined }
+  const baseConfig = config.adaptiveScoring || config.playbackScoring || config.coordination || config.coverageRotation
+    ? { ...config, personalization: undefined, playlistIdentity: undefined, adaptiveScoring: undefined, playbackScoring: undefined, coordination: undefined, coverageRotation: undefined }
     : config;
   const initiallyScoredPinnedTracks = pinnedTracks.map((track) => scoreSmartMixTrack(track, baseConfig));
   const initiallyScoredCandidates = candidates.map((track, index) => ({
@@ -359,7 +359,7 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
     config: tuning.discovery,
     recentUsage: config.recentPlaylistUsage,
   });
-  const fullyScoredTracks = config.adaptiveScoring || config.playbackScoring || config.coordination
+  const fullyScoredTracks = config.adaptiveScoring || config.playbackScoring || config.coordination || config.coverageRotation
     ? discoveryScoring.tracks.map((track) => applyAdaptiveScoringToTrack(track as SmartMixScoredTrack<TTrack>, config))
     : discoveryScoring.tracks;
   const scoredPinnedTracks = fullyScoredTracks.slice(0, initiallyScoredPinnedTracks.length) as SmartMixScoredTrack<TTrack>[];
@@ -503,8 +503,8 @@ export async function runSmartMixEngineV2Async<TTrack extends Record<string, any
 }: SmartMixEngineV2RunInput<TTrack> & { control: PlaylistGenerationControl }): Promise<SmartMixEngineV2RunResult<TTrack>> {
   const { config, pinnedTracks, candidates, safetyCandidateLimit, applyDuplicatePolicy, applyPlaylistSafetyRules } = input;
   const tuning = normalizeSmartMixTuningConfig(config.tuningConfig);
-  const baseConfig = config.adaptiveScoring || config.playbackScoring || config.coordination
-    ? { ...config, personalization: undefined, playlistIdentity: undefined, adaptiveScoring: undefined, playbackScoring: undefined, coordination: undefined }
+  const baseConfig = config.adaptiveScoring || config.playbackScoring || config.coordination || config.coverageRotation
+    ? { ...config, personalization: undefined, playlistIdentity: undefined, adaptiveScoring: undefined, playbackScoring: undefined, coordination: undefined, coverageRotation: undefined }
     : config;
 
   await control.setStage("scoring", `Scoring ${candidates.length.toLocaleString()} candidates`, { initialCandidates: candidates.length, processedCandidates: 0, scoringPasses: 1 });
@@ -518,7 +518,7 @@ export async function runSmartMixEngineV2Async<TTrack extends Record<string, any
   const fullyScoredTracks: Array<SmartMixScoredTrack<TTrack> & { smartMixV2OriginalIndex?: number }> = [];
   for (let index = 0; index < discoveryScoring.tracks.length; index += 1) {
     const track = discoveryScoring.tracks[index] as SmartMixScoredTrack<TTrack> & { smartMixV2OriginalIndex?: number };
-    fullyScoredTracks.push(config.adaptiveScoring || config.playbackScoring || config.coordination ? applyAdaptiveScoringToTrack(track, config) : track);
+    fullyScoredTracks.push(config.adaptiveScoring || config.playbackScoring || config.coordination || config.coverageRotation ? applyAdaptiveScoringToTrack(track, config) : track);
     await control.yield(`Scoring ${candidates.length.toLocaleString()} candidates`, { initialCandidates: candidates.length, processedCandidates: Math.min(candidates.length, index + 1), scoringPasses: 1 });
   }
   const scoredPinnedTracks = fullyScoredTracks.slice(0, initiallyScoredPinnedTracks.length) as SmartMixScoredTrack<TTrack>[];

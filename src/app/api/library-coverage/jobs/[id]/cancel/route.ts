@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { coverageApiError, coverageSession, coverageUnauthorized } from "@/lib/libraryCoverageApi"; import { cancelCoverageJob } from "@/lib/libraryCoverage";
+export async function POST(_:Request,{params}:{params:{id:string}}){const userId=coverageSession();if(!userId)return coverageUnauthorized();try{return NextResponse.json({data:await cancelCoverageJob(userId,params.id)});}catch(error){return coverageApiError(error);}}

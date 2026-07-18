@@ -2,7 +2,7 @@
 
 import styles from "./Sidebar.module.css";
 import { useEffect, useMemo, useState } from "react";
-import { AudioWaveform, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, Grid2X2, HeartPulse, History, LayoutDashboard, LifeBuoy, ListMusic, ListRestart, Map, MoreHorizontal, Network, Route, ScrollText, Settings, ShieldCheck, Sparkles, Tags, Wand2, X } from "lucide-react";
+import { AudioWaveform, BarChart3, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, Grid2X2, HeartPulse, History, LayoutDashboard, LifeBuoy, ListMusic, ListRestart, Map, MoreHorizontal, Network, Route, ScrollText, Settings, ShieldCheck, Sparkles, Tags, Wand2, X } from "lucide-react";
 import PlexLoginButton from "./PlexLoginButton";
 import LogoutButton from "./LogoutButton";
 import Link from "next/link";
@@ -25,6 +25,7 @@ const playlistLinks = [
 
 const libraryLinks = [
   { href: "/library", label: "Tracks", icon: ListMusic, isActive: (pathname: string) => pathname === "/library" },
+  { href: "/library-coverage", label: "Library Coverage", icon: BarChart3, isActive: (pathname: string) => pathname.startsWith("/library-coverage") },
   { href: "/genres", label: "Genres", icon: Tags, isActive: (pathname: string) => pathname.startsWith("/genres") },
   { href: "/data-enrichment", label: "Data Enrichment", icon: AudioWaveform, isActive: (pathname: string) => pathname.startsWith("/data-enrichment") },
   { href: "/library-health", label: "Library Health", icon: HeartPulse, isActive: (pathname: string) => pathname.startsWith("/library-health") },

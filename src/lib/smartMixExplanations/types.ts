@@ -77,6 +77,8 @@ export type SmartMixScoreExplanation = {
   personalizationAdjustment: number;
   playlistIdentityAdjustment: number;
   transitionAdjustment: number;
+  neglectBonus?: number;
+  overusePenalty?: number;
   penaltyAdjustment: number;
   scoreAfterPenalties: number;
   personalizedScore: number;

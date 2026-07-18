@@ -75,6 +75,21 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.2.5",
+    title: "Library Coverage & Rotation Intelligence",
+    releaseDate: "July 18, 2026",
+    badges: ["Library", "Dashboard", "Playlists", "Personalization", "History", "Jobs", "Database", "Settings", "Export", "Performance", "Mobile", "Accessibility", "Reliability"],
+    changes: [
+      "Added persistent all-time, active, recent-period, artist, album, genre, mood, decade, recently-added, and library-segment coverage with excluded counts and partial-history disclosure.",
+      "Added explainable quality-gated neglected-opportunity, overuse, and quality-weighted rotation-fairness scoring without rewarding random low-quality selection.",
+      "Added a responsive Library Coverage dashboard, clickable cards and charts, paginated detail views, URL-preserved filters, compact mobile tables, empty/loading/job states, and filtered CSV or JSON export.",
+      "Added a guided preview-first neglected-mix workflow with conservative presets, familiar anchors, metadata thresholds, and Smart Builder handoff; nothing is written to Plex from the dashboard.",
+      "Added bounded chunked background calculations, progress, cancellation, retry-safe cursors, duplicate-job protection, cached statistics, deduplicated snapshots, retention cleanup, indexes, and structured stage logging.",
+      "Added coverage settings and an optional capped Smart Mix layer with visible neglect and overuse score components; existing installations remain disabled and existing playlist results remain stable by default.",
+      "Added an additive migration, authenticated user-isolated APIs, tests, documentation, upgrade notes, roadmap updates, and v2.2.5 version metadata.",
+    ],
+  },
+  {
     version: "2.2.4",
     title: "Smart Refresh Scheduling",
     releaseDate: "July 18, 2026",

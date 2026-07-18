@@ -15,6 +15,7 @@ import { scoreAdaptiveSmartMixTrack } from "../../adaptiveScoring/scoring";
 import { scorePlaybackAwareTrack } from "../../playbackAwareness/scoring";
 import { scoreContextMatch } from "../../contextualMixes";
 import { scoreCrossPlaylistCandidate } from "../../playlistCoordination/scoring";
+import { applyCoverageInfluence } from "../../libraryCoverageCore";
 
 const metadataRuleFields = new Set(["tempo", "valence", "energy", "popularity"]);
 
@@ -145,17 +146,28 @@ export function applyAdaptiveScoringToTrack<TTrack extends Record<string, any>>(
   const scoreAfterCoordination = coordinationScore.hardOverlapRejected
     ? scoreAfterPlayback
     : roundScore(scoreAfterPlayback + coordinationScore.totalAdjustment);
+  const coverageStatistic = track.id ? config.coverageRotation?.statistics[String(track.id)] : undefined;
+  const coverage = coverageStatistic && !alreadyExcluded && !playbackScore?.excluded && !coordinationScore.hardOverlapRejected
+    ? applyCoverageInfluence(scoreAfterCoordination, {
+        enabled: Boolean(config.coverageRotation?.enabled), maximumBoost: config.coverageRotation?.maximumBoost || 0,
+        opportunityScore: coverageStatistic.opportunityScore, overuseScore: coverageStatistic.overuseScore,
+        eligible: coverageStatistic.eligible, qualityPassed: coverageStatistic.qualityPassed,
+      })
+    : { finalScore: scoreAfterCoordination, boost: 0, penalty: 0, reasons: [] };
+  if (coverage.boost) scoreBreakdown.coverageBoost = coverage.boost;
+  if (coverage.penalty) scoreBreakdown.overusePenalty = -coverage.penalty;
   return {
     ...track,
-    score: scoreAfterCoordination,
+    score: coverage.finalScore,
     baseScore,
-    personalizedScore: scoreAfterCoordination,
+    personalizedScore: coverage.finalScore,
     scoreBreakdown,
     ...(personalizationScore ? { personalizationScore } : {}),
     ...(identityScore.applied ? { playlistIdentityScore: identityScore } : {}),
     ...(adaptiveScore ? { adaptiveScore } : {}),
     ...(playbackScore ? { playbackScore } : {}),
     ...(config.coordination ? { coordinationScore } : {}),
+    ...(coverageStatistic ? { coverageScore: { boost: coverage.boost, penalty: coverage.penalty, reasons: coverage.reasons, opportunityScore: coverageStatistic.opportunityScore, overuseScore: coverageStatistic.overuseScore } } : {}),
     ...(alreadyExcluded || playbackScore?.excluded || coordinationScore.hardOverlapRejected
       ? { exclusionReason: adaptiveScore?.exclusionReason || personalizationScore?.exclusionReason || identityScore.exclusionReason || playbackScore?.exclusionReason || (coordinationScore.hardOverlapRejected ? "COORDINATION_HARD_MAXIMUM" : null) }
       : {}),
