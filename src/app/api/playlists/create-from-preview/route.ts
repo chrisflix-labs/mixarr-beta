@@ -206,7 +206,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ success: true, ...result, engineVersion: parsedOptions?.engineVersion || "v1" });
+    return NextResponse.json({ success: true, ...result, generatedPlaylistId: generatedPlaylist?.id || null, engineVersion: parsedOptions?.engineVersion || "v1" });
   } catch (error: any) {
     console.error("Create from preview failed:", error.response?.data || error.message);
     const message = error.message || "Failed to create playlist from preview";

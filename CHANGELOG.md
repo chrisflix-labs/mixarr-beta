@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.2.3 - Playlist Roles & Progression Chains
+
+- Added optional built-in and custom playlist roles with label-only, suggest, and apply-guidance behavior. Existing playlists receive no automatic role.
+- Expanded existing progression chains in place with descriptions, lifecycle status, explicit member roles, handoff records, shared transitions, settings, analysis snapshots, master playlist links, and restoreable versions.
+- Added real opening/ending boundary analysis for energy, BPM, half/double-time compatibility, mood tags and intensity, metadata confidence, warnings, and explainable category/overall scores.
+- Added a responsive Playlist Chains workspace with drag, keyboard/touch ordering, charts, track previews, configurable handoffs, background analysis progress, optimization review, history, onboarding, and destructive confirmations.
+- Added selected boundary optimization and shared bridge application with locked-track protection, stale-preview validation, pre-change snapshots, and incremental re-analysis.
+- Added Mixarr-private and Plex-synced master journey playlists without replacing or modifying source playlists.
+- Added authenticated, ownership-checked role, chain, member, handoff, analysis, optimization, master, settings, and version APIs with structured errors and paginated lists.
+- Added an additive migration with idempotent role seeding, batched metadata reads, indexes, cancellable Job History integration, tests, API/migration documentation, and release metadata.
+- Safety defaults: role behavior is Suggest, automatic repair and automatic Plex synchronization remain disabled, and ordinary playlist generation changes only when Apply role guidance is selected explicitly.
+
 ## v2.2.2 - Cross-Playlist Deduplication & Variety
 
 - Added canonical track overlap, both-playlist percentages, smaller-playlist enforcement, Jaccard similarity, unique-track targets, artist concentration, album concentration, compilation handling, actionable severity warnings, and retained overlap trends.

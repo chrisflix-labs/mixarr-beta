@@ -75,6 +75,23 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.2.3",
+    title: "Playlist Roles & Progression Chains",
+    releaseDate: "July 18, 2026",
+    badges: ["Playlists", "BPM", "Energy", "Mood", "Personalization", "Identity", "Preview", "Regeneration", "Plex", "Jobs", "History", "Database", "Settings", "Mobile", "Accessibility", "Performance", "Reliability"],
+    changes: [
+      "Added optional Intro, Warm-up, Main, Peak Energy, Recovery, Cooldown, Discovery, Intermission, After-Hours, Archive, and custom playlist roles with label-only, advisory, and explicit apply-guidance behavior.",
+      "Added a dedicated Playlist Chains workspace for creating, duplicating, archiving, deleting, ordering, and previewing multi-playlist journeys while every source playlist remains independently usable.",
+      "Added opening- and ending-section energy, BPM, and mood handoff analysis with intended direction, half-time and double-time compatibility, confidence, missing-metadata impact, clear quality labels, and boundary explanations.",
+      "Added explainable overall and category scores for role progression, energy, BPM, mood, boundary transitions, discovery balance, playlist identity, and metadata confidence.",
+      "Added preview-before-apply chain optimization that reorders only weak boundary tracks, preserves locked and liked tracks, supports selected shared bridge tracks, validates chain versions, and records a restore point before changes.",
+      "Added optional combined master journey playlists in Mixarr and explicit Plex synchronization without modifying or replacing source playlists; the UI clearly explains that Mixarr cannot force Plex clients to open another playlist.",
+      "Added durable chain membership, handoff, shared transition, role assignment, optimization preview, settings, and version models with ownership checks, indexed lookups, batched metadata reads, and idempotent built-in role seeding.",
+      "Added cancellable background chain analysis with visible progress and Job History summaries, conservative settings, disabled-by-default automatic repair, responsive mobile timelines, accessible ordering controls, tests, API documentation, and migration notes.",
+      "Existing playlists receive no role automatically, existing progression rows migrate in place, and ordinary playlist generation remains unchanged unless a user explicitly selects Apply role guidance.",
+    ],
+  },
+  {
     version: "2.2.2",
     title: "Cross-Playlist Deduplication & Variety",
     releaseDate: "July 17, 2026",

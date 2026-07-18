@@ -13,6 +13,7 @@ import AdvancedRegenerationWorkspace from "@/components/AdvancedRegenerationWork
 import PlaylistIdentityPanel from "@/components/PlaylistIdentityPanel";
 import PlaylistCoordinationPanel from "@/components/PlaylistCoordinationPanel";
 import PlaylistCollectionsButton from "@/components/PlaylistCollectionsButton";
+import PlaylistRolePanel from "@/components/PlaylistRolePanel";
 import { orderTracksByBpmFlow, summarizeBpmFlow, type BpmFlowMode } from "@/lib/smartMixEngine/v2/bpmFlow";
 import { normalizeSmartMixTuningConfig } from "@/lib/smartMixEngine/v2/tuning";
 import styles from "./generated-playlists.module.css";
@@ -160,6 +161,7 @@ function sourceLabel(sourceType: string) {
   if (sourceType === "recipe") return "Recipe";
   if (sourceType === "smart_builder") return "Smart Builder";
   if (sourceType === "manual_builder") return "Builder";
+  if (sourceType === "chain_master") return "Master Journey";
   return "Unknown";
 }
 
@@ -564,6 +566,7 @@ export default function GeneratedPlaylistsPage() {
                 )}
                 {playlist.contextProfileName && <p className={styles.contextSummary}>Generated with {playlist.contextProfileName} · {(playlist.contextInfluence || "BALANCED").toLowerCase()} influence · {playlist.contextOverridesJson?.length || 0} manual override{playlist.contextOverridesJson?.length === 1 ? "" : "s"}</p>}
                 <PlaylistQualityCard score={qualityScoreForDisplay(playlist.qualityScoreJson)} />
+                <PlaylistRolePanel playlistId={playlist.id} />
                 <PlaylistIdentityPanel playlistId={playlist.id} playlistName={playlist.plexPlaylistTitle} onClone={fetchPlaylists} />
                 <PlaylistCoordinationPanel playlist={playlist} />
                 <PlaylistCollectionsButton playlistId={playlist.id} />

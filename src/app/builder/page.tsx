@@ -288,6 +288,10 @@ export default function BuilderPage() {
   const [ruleGroups, setRuleGroups] = useState<RuleGroup[]>([]);
   const [limit, setLimit] = useState(50);
   const [playlistName, setPlaylistName] = useState("");
+  const [playlistRoles, setPlaylistRoles] = useState<any[]>([]);
+  const [playlistRoleId, setPlaylistRoleId] = useState("");
+  const [playlistRoleBehavior, setPlaylistRoleBehavior] = useState("SUGGEST");
+  const [customPlaylistRoleName, setCustomPlaylistRoleName] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [serverId, setServerId] = useState("");
   const [libraryId, setLibraryId] = useState("");
@@ -360,6 +364,7 @@ export default function BuilderPage() {
     fetchDefaults();
     fetchHistory();
     fetchTuningPresets();
+    axios.get("/api/playlist-roles").then((response) => setPlaylistRoles(response.data.roles || [])).catch(() => setPlaylistRoles([]));
     axios.get("/api/beta/status").then((response) => {
       setBetaStatus(response.data);
       if (!response.data?.enabled) {
@@ -1414,7 +1419,7 @@ export default function BuilderPage() {
         : "";
       if ((autoRefresh || selectedRuleId) && !savedRuleId) return;
 
-      await axios.post("/api/playlists/create-from-preview", {
+      const creation = await axios.post("/api/playlists/create-from-preview", {
         name: playlistName,
         trackIds: createTrackIds,
         savedRuleId: savedRuleId || undefined,
@@ -1430,9 +1435,17 @@ export default function BuilderPage() {
         safetyRulesApplied: playlistPreview.summary.safetyRulesApplied || false,
         discoveryResult: playlistPreview.summary.discovery || undefined,
       });
+      const targetChainId = searchParams.get("chainId");
+      if (targetChainId && creation.data.generatedPlaylistId) {
+        await axios.post(`/api/playlist-chains/${targetChainId}/members`, { playlistId: creation.data.generatedPlaylistId });
+      }
+      if (playlistRoleId && creation.data.generatedPlaylistId) {
+        const selectedRole = playlistRoles.find((role) => role.id === playlistRoleId);
+        await axios.put(`/api/playlist-roles/assignments/${creation.data.generatedPlaylistId}`, { roleDefinitionId: playlistRoleId, behaviorMode: playlistRoleBehavior, customRoleName: selectedRole?.key === "custom" ? customPlaylistRoleName : null, settingsOverride: {} });
+      }
       await fetchSavedRules();
       await fetchHistory();
-      alert("Playlist created in Plex successfully!");
+      alert(targetChainId ? "Playlist created in Plex and added to the progression chain!" : "Playlist created in Plex successfully!");
     } catch (e) {
       console.error(e);
       alert("Failed to create playlist in Plex");
@@ -2231,6 +2244,11 @@ export default function BuilderPage() {
           <button onClick={exportToPlex} disabled={exporting || !canCreateFromPreview} className={styles.btnPrimary}>
             <Upload size={16} /> {exporting ? "Creating..." : "Create Playlist"}
           </button>
+        </div>
+        <div className={styles.roleCreationRow}>
+          <label>Optional playlist role<select value={playlistRoleId} onChange={(event) => setPlaylistRoleId(event.target.value)}><option value="">No role</option>{playlistRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
+          {playlistRoleId && <label>Role behavior<select value={playlistRoleBehavior} onChange={(event) => setPlaylistRoleBehavior(event.target.value)}><option value="LABEL_ONLY">Label only</option><option value="SUGGEST">Suggest settings</option><option value="APPLY">Apply guidance during generation</option></select></label>}
+          {playlistRoles.find((role) => role.id === playlistRoleId)?.key === "custom" && <label>Custom role name<input value={customPlaylistRoleName} onChange={(event) => setCustomPlaylistRoleName(event.target.value)} maxLength={80} placeholder="Late-night bridge" /></label>}
         </div>
         {!playlistNameReady && (
           <p className={styles.helperText}>Enter a playlist name before creating the playlist.</p>

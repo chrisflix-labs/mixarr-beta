@@ -1,0 +1,16 @@
+.panel { margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,.025); }
+.panel summary { cursor: pointer; padding: 13px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.panel summary span { display: flex; align-items: center; gap: 8px; }
+.panel summary strong { color: var(--accent); font-size: .85rem; }
+.body { padding: 0 14px 14px; display: grid; gap: 12px; }
+.body > p { margin: 0; color: var(--text-muted); font-size: .88rem; }
+.grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.grid label { display: grid; gap: 5px; color: var(--text-muted); font-size: .8rem; }
+.grid select,.grid input,.copyRow select { min-height: 40px; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; color: var(--text); background: var(--surface); }
+.recommendation { display: flex; gap: 9px; padding: 11px; background: rgba(124,92,255,.09); border-radius: 9px; }
+.recommendation div { display: grid; gap: 3px; }.recommendation span,.recommendation small { color: var(--text-muted); }
+.actions,.copyRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.actions button,.copyRow button { min-height: 38px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 0 11px; background: var(--surface); color: var(--text); cursor: pointer; }
+.actions button:first-child { background: var(--accent); color: white; border-color: transparent; }.actions .danger { color: #ff8d8d; }
+.copyRow select { flex: 1; min-width: 190px; }.differences { color: #f3c969 !important; }.success { color: #7bd6a5 !important; }.error { color: #ff8d8d !important; }
+@media (max-width: 680px) { .grid { grid-template-columns: 1fr; }.actions button { flex: 1; justify-content: center; }.copyRow { align-items: stretch; }.copyRow select,.copyRow button { width: 100%; } }

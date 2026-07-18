@@ -64,6 +64,9 @@ model User {
   contextualMixSettings          ContextualMixSetting?
   playlistRelationships          PlaylistRelationship[]
   playlistProgressionChains      PlaylistProgressionChain[]
+  playlistRoleDefinitions        PlaylistRoleDefinition[]
+  playlistChainSetting           PlaylistChainSetting?
+  playlistChainVersions          PlaylistChainVersion[]            @relation("PlaylistChainVersionCreator")
   sharedCoreTracks               PlaylistSharedCoreTrack[]
   smartMixExplanationPreference  SmartMixExplanationPreference?
   smartMixExplanationGenerations SmartMixExplanationGeneration[]
@@ -344,6 +347,7 @@ model Track {
   playbackEvents             PlexPlaybackEvent[]
   playbackProfiles           UserTrackPlaybackProfile[]
   playlistDesignations       PlaylistTrackDesignation[]
+  playlistChainTransitions   PlaylistChainTransitionTrack[]
 
   @@unique([libraryId, plexId])
   @@unique([plexServerId, plexLibraryId, ratingKey])
@@ -696,6 +700,8 @@ model GeneratedPlaylist {
   relationshipTargets      PlaylistRelationship[]          @relation("PlaylistRelationshipTarget")
   sharedCoreTracks         PlaylistSharedCoreTrack[]
   progressionMemberships   PlaylistProgressionMember[]
+  roleAssignment           PlaylistRoleAssignment?
+  masterForChains          PlaylistProgressionChain[]      @relation("PlaylistChainMasterPlaylist")
   overlapSummariesA        PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryA")
   overlapSummariesB        PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryB")
   explanationGenerations   SmartMixExplanationGeneration[]
@@ -880,18 +886,38 @@ model PlaylistSharedCoreTrack {
 }
 
 model PlaylistProgressionChain {
-  id                               String                      @id @default(uuid())
+  id                               String                             @id @default(uuid())
   userId                           String
   name                             String
-  maximumAdjacentOverlapPercentage Float?                      @default(15)
-  maximumChainOverlapPercentage    Float?                      @default(20)
-  createdAt                        DateTime                    @default(now())
-  updatedAt                        DateTime                    @updatedAt
-  user                             User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  description                      String                             @default("")
+  status                           String                             @default("DRAFT")
+  guidanceEnabled                  Boolean                            @default(true)
+  autoMaintenanceEnabled           Boolean                            @default(false)
+  sharedTransitionMode             String                             @default("SUGGEST_ONLY")
+  masterPlaylistEnabled            Boolean                            @default(false)
+  masterGeneratedPlaylistId        String?
+  settingsJson                     Json                               @default("{}")
+  analysisJson                     Json?
+  qualityScore                     Float?
+  lastAnalyzedAt                   DateTime?
+  lastOptimizedAt                  DateTime?
+  archivedAt                       DateTime?
+  versionCounter                   Int                                @default(0)
+  maximumAdjacentOverlapPercentage Float?                             @default(15)
+  maximumChainOverlapPercentage    Float?                             @default(20)
+  createdAt                        DateTime                           @default(now())
+  updatedAt                        DateTime                           @updatedAt
+  user                             User                               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  masterGeneratedPlaylist          GeneratedPlaylist?                 @relation("PlaylistChainMasterPlaylist", fields: [masterGeneratedPlaylistId], references: [id], onDelete: SetNull)
   members                          PlaylistProgressionMember[]
+  handoffs                         PlaylistChainHandoff[]
+  versions                         PlaylistChainVersion[]
+  optimizationPreviews             PlaylistChainOptimizationPreview[]
 
   @@unique([userId, name])
   @@index([userId, updatedAt])
+  @@index([userId, status, archivedAt])
+  @@index([masterGeneratedPlaylistId])
 }
 
 model PlaylistProgressionMember {
@@ -899,6 +925,14 @@ model PlaylistProgressionMember {
   chainId             String
   playlistId          String
   sequencePosition    Int
+  roleDefinitionId    String?
+  roleOverrideJson    Json?
+  expectedStartEnergy Float?
+  expectedEndEnergy   Float?
+  expectedStartBpm    Float?
+  expectedEndBpm      Float?
+  handoffEnabled      Boolean                  @default(true)
+  autoHandoffGuidance Boolean                  @default(true)
   targetMood          String?
   minimumEnergy       Float?
   maximumEnergy       Float?
@@ -910,10 +944,156 @@ model PlaylistProgressionMember {
   updatedAt           DateTime                 @updatedAt
   chain               PlaylistProgressionChain @relation(fields: [chainId], references: [id], onDelete: Cascade)
   playlist            GeneratedPlaylist        @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  roleDefinition      PlaylistRoleDefinition?  @relation(fields: [roleDefinitionId], references: [id], onDelete: SetNull)
+  outgoingHandoffs    PlaylistChainHandoff[]   @relation("PlaylistChainHandoffFrom")
+  incomingHandoffs    PlaylistChainHandoff[]   @relation("PlaylistChainHandoffTo")
 
-  @@unique([chainId, playlistId])
   @@unique([chainId, sequencePosition])
   @@index([playlistId])
+  @@index([chainId, playlistId])
+  @@index([roleDefinitionId])
+}
+
+model PlaylistRoleDefinition {
+  id                     String                      @id @default(uuid())
+  userId                 String?
+  key                    String                      @unique
+  name                   String
+  description            String                      @default("")
+  isBuiltIn              Boolean                     @default(false)
+  defaultEnergyStart     Float?
+  defaultEnergyEnd       Float?
+  defaultBpmMin          Float?
+  defaultBpmMax          Float?
+  defaultDiscoveryLevel  Float?
+  defaultTransitionMode  String?
+  defaultMoodDirection   String?
+  defaultSettingsJson    Json                        @default("{}")
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  user                   User?                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments            PlaylistRoleAssignment[]
+  progressionMemberships PlaylistProgressionMember[]
+
+  @@index([userId, isBuiltIn, name])
+}
+
+model PlaylistRoleAssignment {
+  id                   String                 @id @default(uuid())
+  playlistId           String                 @unique
+  roleDefinitionId     String
+  customRoleName       String?
+  behaviorMode         String                 @default("SUGGEST")
+  settingsOverrideJson Json                   @default("{}")
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  playlist             GeneratedPlaylist      @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  roleDefinition       PlaylistRoleDefinition @relation(fields: [roleDefinitionId], references: [id], onDelete: Restrict)
+
+  @@index([roleDefinitionId])
+}
+
+model PlaylistChainHandoff {
+  id                  String                         @id @default(uuid())
+  chainId             String
+  fromMemberId        String
+  toMemberId          String
+  energyMode          String                         @default("SMOOTH_CONTINUATION")
+  bpmMode             String                         @default("SMOOTH_CONTINUATION")
+  moodMode            String                         @default("SMOOTH_CONTINUATION")
+  sharedTrackMode     String                         @default("INHERIT")
+  handoffSettingsJson Json                           @default("{}")
+  qualityScore        Float?
+  energyScore         Float?
+  bpmScore            Float?
+  moodScore           Float?
+  confidence          Float?
+  locked              Boolean                        @default(false)
+  analysisJson        Json?
+  lastAnalyzedAt      DateTime?
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+  chain               PlaylistProgressionChain       @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  fromMember          PlaylistProgressionMember      @relation("PlaylistChainHandoffFrom", fields: [fromMemberId], references: [id], onDelete: Cascade)
+  toMember            PlaylistProgressionMember      @relation("PlaylistChainHandoffTo", fields: [toMemberId], references: [id], onDelete: Cascade)
+  transitionTracks    PlaylistChainTransitionTrack[]
+
+  @@unique([chainId, fromMemberId, toMemberId])
+  @@index([chainId, updatedAt])
+  @@index([fromMemberId])
+  @@index([toMemberId])
+}
+
+model PlaylistChainTransitionTrack {
+  id              String               @id @default(uuid())
+  handoffId       String
+  trackId         String
+  placementMode   String               @default("NEXT_OPENING")
+  score           Float
+  locked          Boolean              @default(false)
+  explanationJson Json                 @default("{}")
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  handoff         PlaylistChainHandoff @relation(fields: [handoffId], references: [id], onDelete: Cascade)
+  track           Track                @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([handoffId, trackId, placementMode])
+  @@index([trackId])
+}
+
+model PlaylistChainVersion {
+  id              String                   @id @default(uuid())
+  chainId         String
+  versionNumber   Int
+  reason          String
+  snapshotJson    Json
+  createdAt       DateTime                 @default(now())
+  createdByUserId String
+  chain           PlaylistProgressionChain @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  createdByUser   User                     @relation("PlaylistChainVersionCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([chainId, versionNumber])
+  @@index([chainId, createdAt])
+  @@index([createdByUserId, createdAt])
+}
+
+model PlaylistChainOptimizationPreview {
+  id                String                   @id @default(uuid())
+  chainId           String
+  userId            String
+  baseVersionNumber Int
+  status            String                   @default("PREVIEW")
+  suggestionsJson   Json
+  expiresAt         DateTime
+  createdAt         DateTime                 @default(now())
+  appliedAt         DateTime?
+  chain             PlaylistProgressionChain @relation(fields: [chainId], references: [id], onDelete: Cascade)
+
+  @@index([chainId, status, expiresAt])
+  @@index([userId, createdAt])
+}
+
+model PlaylistChainSetting {
+  id                                 String   @id @default(uuid())
+  userId                             String   @unique
+  rolesEnabled                       Boolean  @default(true)
+  chainsEnabled                      Boolean  @default(true)
+  defaultRoleBehavior                String   @default("SUGGEST")
+  sharedTransitionTracksEnabled      Boolean  @default(true)
+  maximumSharedTransitionTracks      Int      @default(1)
+  masterJourneyPlaylistsEnabled      Boolean  @default(true)
+  automaticallyAnalyzeUpdatedChains  Boolean  @default(true)
+  automaticallyRepairWeakHandoffs    Boolean  @default(false)
+  minimumAutomaticRepairImprovement  Float    @default(10)
+  maximumTracksReplacedAutomatically Int      @default(2)
+  preserveLockedBoundaryTracks       Boolean  @default(true)
+  analysisConcurrency                Int      @default(1)
+  retainVersions                     Boolean  @default(true)
+  versionRetentionCount              Int      @default(20)
+  showExperimentalFeatures           Boolean  @default(false)
+  createdAt                          DateTime @default(now())
+  updatedAt                          DateTime @updatedAt
+  user                               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model PlaylistOverlapSummary {

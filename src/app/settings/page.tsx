@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Settings as SettingsIcon, Ban, Brain, CalendarDays, CircleHelp, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
+import { Settings as SettingsIcon, Ban, Brain, CalendarDays, CircleHelp, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, ListMusic, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
 import ProviderTestButton from "@/components/ProviderTestButton";
 import BetaFeatureSettingsForm from "@/components/BetaFeatureSettingsForm";
 import ExternalApiSettingsPanel from "@/components/ExternalApiSettingsPanel";
@@ -15,6 +15,7 @@ import PlaylistIdentitySettings from "@/components/PlaylistIdentitySettings";
 import ContextualMixSettings from "@/components/ContextualMixSettings";
 import SmartMixExplanationSettings from "@/components/SmartMixExplanationSettings";
 import OrchestrationSettings from "@/components/OrchestrationSettings";
+import PlaylistChainSettings from "@/components/PlaylistChainSettings";
 import { APP_DESCRIPTION, APP_NAME, MIXARR_GITHUB_URL } from "@/lib/appInfo";
 import { APP_VERSION } from "@/lib/appVersion";
 import { getExternalApiSettingsPayload } from "@/lib/externalApiSettings";
@@ -198,6 +199,12 @@ export default async function SettingsPage() {
         <h3 className={styles.sectionTitle}><History size={20} color="var(--accent)" /> Playlist Version History</h3>
         <p className={styles.sectionDesc}>Control automatic restore protection and conservative history retention.</p>
         <PlaylistVersionSettings />
+      </section>
+
+      <section className={`glass-panel ${styles.section}`}>
+        <h3 className={styles.sectionTitle}><ListMusic size={20} color="var(--accent)" /> Playlist Roles &amp; Chains</h3>
+        <p className={styles.sectionDesc}>Control optional role guidance, background handoff analysis, shared transitions, master journeys, maintenance safety, and chain-version retention.</p>
+        <PlaylistChainSettings />
       </section>
 
       <section className={`glass-panel ${styles.section}`}>

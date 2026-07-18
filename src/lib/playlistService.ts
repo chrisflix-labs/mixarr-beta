@@ -20,6 +20,7 @@ import { loadAdaptiveScoringContext } from "./adaptiveScoring";
 import { loadPlaybackScoringContext } from "./playbackAwareness";
 import { contextSelectionSchema } from "./contextualMixes";
 import { createPlaylistRelationship, loadCoordinationScoringContext, updateCoordinationSettings } from "./playlistCoordination";
+import { applyRoleGuidanceToPlaylistConfig } from "./playlistChains/roles";
 import { buildDecisionExplanation, buildGenerationInsights, type TraceableSmartMixTrack } from "./smartMixExplanations/collector";
 import { attachGenerationExplanationsToPlaylist, getExplanationPreference, persistGenerationExplanations } from "./smartMixExplanations/service";
 import {
@@ -1723,7 +1724,7 @@ function applyPlaylistGroupSettings(config: PlaylistConfigInput, value: unknown)
 export async function syncGeneratedPlaylistToPlex(userId: string, generatedPlaylistId: string) {
   const playlist = await prisma.generatedPlaylist.findFirst({
     where: { id: generatedPlaylistId, userId },
-    include: { tracks: { orderBy: { position: "asc" } } },
+    include: { tracks: { orderBy: { position: "asc" } }, roleAssignment: { include: { roleDefinition: true } } },
   });
   if (!playlist) throw new Error("Generated playlist not found");
   if (!playlist.serverId || !playlist.plexPlaylistRatingKey) throw new Error("The Plex playlist is unavailable for synchronization.");
@@ -2283,14 +2284,18 @@ export async function previewGeneratedPlaylistRegeneration({
   const normalizedKeepPercent = regenerationMode === "keep_some" ? validateKeepPercent(keepPercent) : 25;
   const generatedPlaylist = await prisma.generatedPlaylist.findFirst({
     where: { id: generatedPlaylistId, userId },
-    include: { tracks: { orderBy: { position: "asc" } } },
+    include: { tracks: { orderBy: { position: "asc" } }, roleAssignment: { include: { roleDefinition: true } } },
   });
 
   if (!generatedPlaylist) {
     throw new Error("Generated playlist not found");
   }
 
-  const savedConfig = applyPlaylistGroupSettings(normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson, generatedPlaylist.engineVersion), effectiveGroupSettings);
+  if (generatedPlaylist.roleAssignment?.behaviorMode === "APPLY" && generatedPlaylist.roleAssignment.roleDefinition?.key === "archive") {
+    throw new Error("Archive-role playlist generation is disabled by role guidance. Change the role behavior or assign a different role before regenerating.");
+  }
+
+  const savedConfig = applyRoleGuidanceToPlaylistConfig(applyPlaylistGroupSettings(normalizeGeneratedPlaylistConfig(generatedPlaylist.filtersJson, generatedPlaylist.engineVersion), effectiveGroupSettings), generatedPlaylist.roleAssignment);
   const snapshotTrackIds = generatedPlaylist.tracks.map((track) => track.trackId).filter((trackId): trackId is string => Boolean(trackId));
   const previousIds = new Set(snapshotTrackIds);
   const server = await resolveGeneratedPlaylistServer({ userId, generatedPlaylist, config: savedConfig });
@@ -2642,6 +2647,8 @@ export async function regenerateGeneratedPlaylistFromPreview({
         previewId: previewId || null,
       },
     });
+
+    void import("./playlistChains/service").then((module) => module.queueAffectedChainMaintenance(userId, generatedPlaylist.id)).catch(() => undefined);
 
     return {
       success: true,
@@ -3090,6 +3097,7 @@ export async function applyAdvancedPlaylistRegeneration({
     recordPlaylistIdentityEvent({ userId, playlistId: generatedPlaylistId, trackId: change.proposedTrackId, eventType: "TRACK_ADDED", eventSource: "REGENERATION", eventKey: `regeneration:${regeneration.id}:${change.position}:added`, newPosition: change.position, generationRunId: regeneration.id, engineVersion: REGENERATION_ENGINE_VERSION }).catch(() => undefined);
   }
   trainPlaylistIdentity({ userId, playlistId: generatedPlaylistId, source: "REGENERATION" }).catch(() => undefined);
+  void import("./playlistChains/service").then((module) => module.queueAffectedChainMaintenance(userId, generatedPlaylistId)).catch(() => undefined);
   console.info("[SmartMixV2:Regeneration] changes applied", { playlistId: generatedPlaylistId, regenerationId: regeneration.id, engineVersion: REGENERATION_ENGINE_VERSION, mode: regeneration.mode, replacements: acceptedChanges.length });
   return {
     success: true,

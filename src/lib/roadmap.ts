@@ -211,22 +211,33 @@ export const roadmapReleases: RoadmapRelease[] = [
     version: "2.2.2",
     title: "Cross-Playlist Deduplication & Variety",
     cycle: "2.2.x",
-    status: "current",
+    status: "completed",
     description: "Reduce excessive track, artist, and album reuse across Smart Mix playlists with configurable limits, uniqueness targets, overlap analysis, heatmaps, explainable repair suggestions, and safe preview-based replacement tools.",
     featureLabels: ["Track, artist, and album overlap", "Smaller-playlist denominator", "Global, playlist, and pair policies", "Unique-track targets", "Core and allowed shared tracks", "Playlist exclusivity", "Recent cross-playlist penalties", "Accessible overlap heatmap", "Playlist comparison", "Explainable repair previews", "Stale-preview protection", "Cancellable background analysis", "Repair version history"],
     releaseOrder: 202,
     completionDate: "2026-07-17",
     route: "/playlist-coordination",
   },
+  {
+    version: "2.2.3",
+    title: "Playlist Roles & Progression Chains",
+    cycle: "2.2.x",
+    status: "current",
+    description: "Builds coordinated multi-playlist journeys with optional roles, explicit ordered memberships, explainable energy/BPM/mood handoffs, previewed boundary optimization, shared transitions, master journeys, background analysis, and restorable versions without changing ordinary playlist generation.",
+    featureLabels: ["Playlist role presets", "Custom roles", "Advisory or applied guidance", "Ordered progression chains", "Energy handoffs", "BPM half/double-time handoffs", "Mood progression", "Explainable chain scoring", "Shared transition tracks", "Optimization previews", "Master journey playlists", "Plex compatibility", "Background progress", "Chain version restore", "Mobile chain editor"],
+    releaseOrder: 203,
+    completionDate: "2026-07-18",
+    route: "/playlist-chains",
+  },
   ...[
-    ["2.2.3", "Shared Track Pools"], ["2.2.4", "Playlist Scheduling & Run Windows"],
+    ["2.2.4", "Playlist Scheduling & Run Windows"],
     ["2.2.5", "Playlist Rotation Rules"], ["2.2.6", "Cross-Playlist Balancing"],
     ["2.2.7", "Orchestration Visual Planner"], ["2.2.8", "Failure Recovery & Repair Tools"],
     ["2.2.9", "Orchestration Insights & Optimization"],
   ].map(([version, title], index) => ({
     version, title, cycle: "2.2.x", status: "upcoming" as const,
     description: "Planned follow-on work that builds on the v2.2.0 orchestration foundation; it is not implemented in v2.2.0.",
-    featureLabels: [], releaseOrder: 203 + index,
+    featureLabels: [], releaseOrder: 204 + index,
   })),
 ];
 
@@ -249,9 +260,9 @@ export const roadmapCycles: RoadmapCycle[] = [
     id: "2.2.x",
     title: "v2.2.x — Playlist Orchestration",
     status: "current",
-    description: "v2.2.0 established deterministic playlist orchestration, v2.2.1 added reusable playlist collections, and v2.2.2 adds local cross-playlist overlap analysis, variety scoring, and safe repair previews. Later v2.2.x releases may add richer orchestration behavior without making generative AI a dependency.",
+    description: "v2.2.0 established deterministic playlist orchestration, v2.2.1 added reusable playlist collections, v2.2.2 added local cross-playlist variety, and v2.2.3 provides the multi-playlist journey foundation through roles, handoffs, optimization previews, and master journeys. Later automation and optional AI-assisted planning can build on this deterministic foundation without making an AI provider a dependency.",
     releases: roadmapReleases.filter((release) => release.cycle === "2.2.x"),
-    futureThemes: ["Playlist groups", "Cross-playlist duplicate control", "Shared track pools", "Run windows", "Rotation rules", "Balancing", "Visual planning", "Repair tools", "Operational insights"],
+    futureThemes: ["Playlist groups", "Cross-playlist duplicate control", "Progression journeys", "Run windows", "Rotation rules", "Balancing", "Visual planning", "Repair tools", "Operational insights"],
   },
 ];
 
