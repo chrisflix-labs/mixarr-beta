@@ -13,8 +13,8 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: chrisflix-labs/mixarr
-  IMAGE_TAG: beta
+  IMAGE_NAME: chrisflix-labs/mixarr-beta
+  IMAGE_TAG: latest
 
 jobs:
   build-and-push-image:
