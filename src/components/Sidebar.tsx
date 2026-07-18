@@ -13,6 +13,7 @@ const playlistLinks = [
   { href: "/builder", label: "Build Playlist", shortLabel: "Build", icon: Wand2, isActive: (pathname: string) => pathname === "/builder" },
   { href: "/smart-builder", label: "Smart Builder", shortLabel: "Smart", icon: Sparkles, isActive: (pathname: string) => pathname === "/smart-builder" },
   { href: "/smart-actions", label: "Smart Actions", shortLabel: "Actions", icon: ListChecks, isActive: (pathname: string) => pathname.startsWith("/smart-actions") },
+  { href: "/playlist-health", label: "Playlist Health", shortLabel: "Health", icon: HeartPulse, isActive: (pathname: string) => pathname.startsWith("/playlist-health") },
   { href: "/experiments", label: "Smart Experiments", shortLabel: "Tests", icon: FlaskConical, isActive: (pathname: string) => pathname.startsWith("/experiments") },
   { href: "/recipes", label: "Recipes", shortLabel: "Recipes", icon: BookMarked, isActive: (pathname: string) => pathname.startsWith("/recipes") },
   { href: "/generated-playlists", label: "Generated Playlists", icon: ListRestart, isActive: (pathname: string) => pathname.startsWith("/generated-playlists") },

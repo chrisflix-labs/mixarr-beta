@@ -36,6 +36,7 @@ export type ReleaseNoteBadge =
   | "Library Sync"
   | "Local Analysis"
   | "Matching Rules"
+  | "Metadata"
   | "Mood"
   | "Mobile"
   | "Navigation"
@@ -75,6 +76,19 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "2.2.8",
+    title: "Playlist Health Monitoring & Alerts",
+    releaseDate: "July 18, 2026",
+    badges: ["Playlists", "Health", "Identity", "BPM", "Mood", "Metadata", "Plex", "Automation", "Notifications", "Discord", "History", "Dashboard", "Settings", "Database", "Scheduler", "Security", "Reliability", "Mobile", "Accessibility"],
+    changes: [
+      "Added a continuous 0–100 health score with Excellent, Good, Attention, and Critical states for every generated playlist.",
+      "Added identity drift, track repetition, artist and album concentration, broken Plex linkage, missing tracks, unavailable media, metadata-confidence decline, excessive BPM jumps, mood conflicts, staleness, and failed automation checks.",
+      "Added persistent severity-aware alerts with occurrence counts, acknowledgment, manual resolution, automatic resolution after a healthy analysis, reopening, and complete lifecycle history.",
+      "Added encrypted Discord and generic webhook endpoints, delivery attempt history, safe HTTPS validation, configurable minimum severity, and persistent in-app alerts.",
+      "Added a responsive Playlist Health workspace, per-playlist check details and score history, dashboard health card, navigation, manual and nightly analysis, threshold settings, authenticated APIs, additive migration, tests, and operator documentation.",
+    ],
+  },
   {
     version: "2.2.7",
     title: "Smart Action Center",

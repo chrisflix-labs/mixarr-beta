@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import {
   Activity, BookMarked, ChevronDown, Clock3, FlaskConical, History, Network,
-  LifeBuoy, ListChecks, ListMusic, ListRestart, Map, ScrollText, ShieldAlert,
+  HeartPulse, LifeBuoy, ListChecks, ListMusic, ListRestart, Map, ScrollText, ShieldAlert,
   Sparkles, Wand2,
 } from "lucide-react";
 import styles from "./page.module.css";
@@ -24,6 +24,7 @@ import { getRecentlyAddedSummary } from "@/lib/recentlyAdded";
 import { getOrchestrationSettings } from "@/lib/orchestration/settings";
 import { getSmartRefreshDashboardSummary } from "@/lib/smartRefresh";
 import { getSmartActionSummary } from "@/lib/smartActions";
+import { getPlaylistHealthDashboard } from "@/lib/playlistHealth";
 
 type JobSummary = Awaited<ReturnType<typeof getRecentJobSummary>>;
 type AutomationOverview = Awaited<ReturnType<typeof getAutomationOverview>>;
@@ -141,6 +142,19 @@ function SmartActionSummaryCard({ summary }: { summary: Awaited<ReturnType<typeo
   </article>;
 }
 
+function PlaylistHealthSummaryCard({ summary }: { summary: Awaited<ReturnType<typeof getPlaylistHealthDashboard>>["summary"] }) {
+  return <article className={styles.managementCard}>
+    <div className={styles.cardTitle}><HeartPulse size={20} /><div><h3>Playlist Health</h3><p>{summary.criticalAlerts ? `${summary.criticalAlerts} critical alert${summary.criticalAlerts === 1 ? " needs" : "s need"} attention.` : "Continuous checks for playback readiness and playlist quality."}</p></div></div>
+    <div className={styles.managementMetrics}>
+      <Link href="/playlist-health"><b>{summary.averageScore ?? "—"}</b><span>Average score</span></Link>
+      <Link href="/playlist-health"><b>{summary.healthy}</b><span>Healthy</span></Link>
+      <Link href="/playlist-health"><b>{summary.attention}</b><span>Need attention</span></Link>
+      <Link href="/playlist-health"><b>{summary.openAlerts}</b><span>Open alerts</span></Link>
+    </div>
+    <div className={styles.managementFooter}><span>{summary.unmonitored ? `${summary.unmonitored} playlist${summary.unmonitored === 1 ? " is" : "s are"} awaiting first analysis.` : `${summary.monitored} playlists monitored.`}</span><Link href="/playlist-health" className={styles.secondaryAction}>Review Health</Link></div>
+  </article>;
+}
+
 function ProductPreviewPanel({ showExperimental }: { showExperimental: boolean }) {
   return <details className={styles.productPanel}>
     <summary>
@@ -185,6 +199,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
   let groupSummary = { groups: 0, groupedPlaylists: 0, attention: 0, paused: 0 };
   let smartRefresh = { monitored: 0, recommended: 0, deferred: 0, healthy: 0, fixedSchedule: 0, manualOnly: 0, playlists: [] } as Awaited<ReturnType<typeof getSmartRefreshDashboardSummary>>;
   let smartActions = { pending: 0, high: 0, medium: 0, low: 0, waiting: 0, snoozed: 0, recentlyCompleted: 0, failed: 0, byType: {} } as Awaited<ReturnType<typeof getSmartActionSummary>>;
+  let playlistHealth = { monitored: 0, unmonitored: 0, averageScore: null, healthy: 0, attention: 0, openAlerts: 0, criticalAlerts: 0, acknowledgedAlerts: 0 } as Awaited<ReturnType<typeof getPlaylistHealthDashboard>>["summary"];
 
   if (user && !developmentPreview) {
     const results = await Promise.all([
@@ -215,6 +230,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
       ]).then(([groups, groupedPlaylists, paused, attention]) => ({ groups, groupedPlaylists, paused, attention })).catch(() => ({ groups: 0, groupedPlaylists: 0, attention: 0, paused: 0 })),
       getSmartRefreshDashboardSummary(user.id).catch(() => ({ monitored: 0, recommended: 0, deferred: 0, healthy: 0, fixedSchedule: 0, manualOnly: 0, playlists: [] })),
       getSmartActionSummary(user.id).catch(() => ({ pending: 0, high: 0, medium: 0, low: 0, waiting: 0, snoozed: 0, recentlyCompleted: 0, failed: 0, byType: {} })),
+      getPlaylistHealthDashboard(user.id).then((result) => result.summary).catch(() => ({ monitored: 0, unmonitored: generatedCount, averageScore: null, healthy: 0, attention: 0, openAlerts: 0, criticalAlerts: 0, acknowledgedAlerts: 0 })),
     ]);
     [dashboardSummary, jobs, automation, recentlyAdded, recipeCount, generatedCount, versionCount] = results;
     historyCount = results[7].count;
@@ -224,6 +240,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
     groupSummary = results[10];
     smartRefresh = results[11];
     smartActions = results[12];
+    playlistHealth = results[13];
   }
 
   const quickWidgets = dashboardWidgetsForSection("quick-actions");
@@ -265,6 +282,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
         <OrchestrationSummaryCard summary={orchestration} />
         <SmartRefreshSummaryCard summary={smartRefresh} />
         <SmartActionSummaryCard summary={smartActions} />
+        <PlaylistHealthSummaryCard summary={playlistHealth} />
       </section>
 
       <section className={`${styles.dashboardSection} ${styles.lowPrioritySection}`} aria-label="Product and preview information">

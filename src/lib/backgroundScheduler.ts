@@ -285,6 +285,18 @@ export async function runScheduledBackgroundSync(activeCron: string) {
       console.log(`[Scheduler] Smart Actions completed duration=${Math.round(durationMs / 1000)}s users=${generated.length} maintenanceRuns=${maintenance.length}`);
     }
 
+    // Playlist Health runs after playlist and metadata automation so each
+    // snapshot evaluates the final state produced by this nightly pipeline.
+    if (remaining()) {
+      stageStartedAt = Date.now();
+      const { runPlaylistHealthBatch } = await import("./playlistHealth");
+      const healthRuns = await runPlaylistHealthBatch(Number(process.env.PLAYLIST_HEALTH_BATCH_SIZE || 100));
+      durationMs = Date.now() - stageStartedAt;
+      stages.push({ name: "playlist_health", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, runs: healthRuns.map((run) => ({ userId: run.userId, analyzed: run.analyzed, failed: run.failed })) });
+      if (healthRuns.some((run) => run.failed) && pipelineResult === "success") pipelineResult = "partial";
+      console.log(`[Scheduler] Playlist Health completed duration=${Math.round(durationMs / 1000)}s users=${healthRuns.length} analyzed=${healthRuns.reduce((sum, run) => sum + run.analyzed, 0)} failed=${healthRuns.reduce((sum, run) => sum + run.failed, 0)}`);
+    }
+
     const durationSeconds = Math.round((Date.now() - pipelineStart) / 1000);
     const log = pipelineResult === "success" ? console.log : console.warn;
     log(`[Scheduler] Nightly sync completed status=${pipelineResult} duration=${durationSeconds}s`);

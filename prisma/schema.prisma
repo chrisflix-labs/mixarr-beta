@@ -101,6 +101,10 @@ model User {
   smartActionAuditEvents         SmartActionAuditEvent[]           @relation("SmartActionAuditActor")
   smartActionSetting             SmartActionSetting?
   smartActionAutomationPolicies  SmartActionAutomationPolicy[]
+  playlistHealthSetting          PlaylistHealthSetting?
+  playlistHealthSnapshots        PlaylistHealthSnapshot[]
+  playlistHealthAlerts           PlaylistHealthAlert[]
+  playlistHealthAlertEvents      PlaylistHealthAlertEvent[]        @relation("PlaylistHealthAlertEventActor")
 }
 
 model SyncSettings {
@@ -1117,6 +1121,8 @@ model GeneratedPlaylist {
   sourceExperiments        SmartExperiment[]               @relation("SmartExperimentSourcePlaylist")
   experimentVariants       SmartExperimentVariant[]
   smartActions             SmartAction[]
+  healthSnapshots          PlaylistHealthSnapshot[]
+  healthAlerts             PlaylistHealthAlert[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -2126,6 +2132,113 @@ model SmartActionAutomationPolicy {
 
   @@unique([userId, actionType])
   @@index([userId, enabled])
+}
+
+model PlaylistHealthSetting {
+  id                         String   @id @default(uuid())
+  userId                     String   @unique
+  enabled                    Boolean  @default(true)
+  analyzeDuringNightlySync   Boolean  @default(true)
+  staleAfterDays             Int      @default(30)
+  artistConcentrationPercent Int      @default(30)
+  albumConcentrationPercent  Int      @default(20)
+  excessiveBpmJump           Int      @default(35)
+  moodConflictDelta          Float    @default(0.55)
+  metadataDeclinePercent     Int      @default(15)
+  minimumAlertSeverity       String   @default("WARNING")
+  inAppNotifications         Boolean  @default(true)
+  discordNotifications       Boolean  @default(false)
+  webhookNotifications       Boolean  @default(false)
+  discordWebhookEncrypted    String?
+  webhookUrlEncrypted        String?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+  user                       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PlaylistHealthSnapshot {
+  id                 String            @id @default(uuid())
+  userId             String
+  playlistId         String
+  overallScore       Int
+  status             String
+  warningCount       Int               @default(0)
+  criticalCount      Int               @default(0)
+  metadataConfidence Float?
+  identityScore      Float?
+  checksJson         Json
+  fingerprint        String
+  analyzedAt         DateTime          @default(now())
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlist           GeneratedPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  alerts             PlaylistHealthAlert[]
+
+  @@index([userId, analyzedAt])
+  @@index([playlistId, analyzedAt])
+  @@index([userId, status, analyzedAt])
+}
+
+model PlaylistHealthAlert {
+  id             String                  @id @default(uuid())
+  userId         String
+  playlistId     String
+  snapshotId     String?
+  alertType      String
+  severity       String
+  status         String                  @default("OPEN")
+  title          String
+  message        String
+  detailsJson    Json?
+  occurrenceCount Int                    @default(1)
+  firstDetectedAt DateTime               @default(now())
+  lastDetectedAt DateTime                @default(now())
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  resolvedAt     DateTime?
+  resolutionNote String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlist       GeneratedPlaylist       @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  snapshot       PlaylistHealthSnapshot? @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  events         PlaylistHealthAlertEvent[]
+  deliveries     PlaylistHealthNotificationDelivery[]
+
+  @@unique([userId, playlistId, alertType])
+  @@index([userId, status, severity, lastDetectedAt])
+  @@index([playlistId, status])
+  @@index([snapshotId])
+}
+
+model PlaylistHealthAlertEvent {
+  id             String              @id @default(uuid())
+  alertId        String
+  actorUserId    String?
+  eventType      String
+  previousStatus String?
+  newStatus      String?
+  note           String?
+  detailsJson    Json?
+  createdAt      DateTime            @default(now())
+  alert          PlaylistHealthAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  actor          User?               @relation("PlaylistHealthAlertEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([alertId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+model PlaylistHealthNotificationDelivery {
+  id           String              @id @default(uuid())
+  alertId      String
+  channel      String
+  status       String
+  responseCode Int?
+  error        String?
+  attemptedAt  DateTime            @default(now())
+  alert        PlaylistHealthAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@index([alertId, attemptedAt])
+  @@index([status, attemptedAt])
 }
 
 model PlaylistIdentity {

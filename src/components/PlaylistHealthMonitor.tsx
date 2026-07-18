@@ -1,0 +1,80 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { Activity, AlertTriangle, Bell, Check, CheckCircle2, ChevronDown, Clock3, HeartPulse, History, Loader2, Play, RefreshCw, Save, Settings2, ShieldAlert, Webhook } from "lucide-react";
+import styles from "@/app/playlist-health/playlist-health.module.css";
+
+type Alert = { id: string; playlistId: string; alertType: string; severity: string; status: string; title: string; message: string; lastDetectedAt: string; occurrenceCount: number; playlist?: { plexPlaylistTitle: string }; events?: Array<{ id: string; eventType: string; note?: string; createdAt: string }> };
+type Snapshot = { id: string; overallScore: number; status: string; warningCount: number; criticalCount: number; analyzedAt: string; checksJson: { checks?: Array<{ type: string; severity: string; title: string; message: string }>; metrics?: Record<string, number> } };
+type Dashboard = { summary: { monitored: number; unmonitored: number; averageScore: number | null; healthy: number; attention: number; openAlerts: number; criticalAlerts: number; acknowledgedAlerts: number }; playlists: Array<{ id: string; name: string; trackCount: number; health: Snapshot | null; openAlerts: number }>; alerts: Alert[] };
+
+async function json(url: string, init?: RequestInit) {
+  const response = await fetch(url, { cache: "no-store", headers: { "Content-Type": "application/json", ...(init?.headers || {}) }, ...init });
+  const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Request failed"); return payload;
+}
+const label = (value: string) => value.replaceAll("_", " ").toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
+const relative = (value: string) => { const days = Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000); return days <= 0 ? "Today" : days === 1 ? "Yesterday" : `${days} days ago`; };
+
+export default function PlaylistHealthMonitor({ initialPlaylistId }: { initialPlaylistId?: string }) {
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [tab, setTab] = useState<"overview" | "alerts" | "settings">("overview");
+  const [busy, setBusy] = useState(""); const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const [selectedId, setSelectedId] = useState(initialPlaylistId || ""); const [detail, setDetail] = useState<any>(null); const [settings, setSettings] = useState<any>(null);
+  async function load() { try { setDashboard(await json("/api/playlist-health")); } catch (error) { setMessage({ kind: "error", text: error instanceof Error ? error.message : "Unable to load playlist health" }); } }
+  useEffect(() => { void load(); }, []);
+  useEffect(() => { if (selectedId) void json(`/api/playlist-health/${selectedId}`).then(setDetail).catch((error) => setMessage({ kind: "error", text: error.message })); }, [selectedId]);
+  useEffect(() => { if (tab === "settings" && !settings) void json("/api/settings/playlist-health").then(setSettings).catch((error) => setMessage({ kind: "error", text: error.message })); }, [tab, settings]);
+
+  async function analyze(playlistId?: string) {
+    setBusy(playlistId || "all"); setMessage(null);
+    try { const result = await json("/api/playlist-health/analyze", { method: "POST", body: JSON.stringify({ playlistId, limit: 250 }) }); setMessage({ kind: result.failed ? "error" : "success", text: `${result.analyzed} playlist${result.analyzed === 1 ? "" : "s"} analyzed${result.failed ? `; ${result.failed} failed` : ""}.` }); await load(); if (playlistId) setDetail(await json(`/api/playlist-health/${playlistId}`)); }
+    catch (error) { setMessage({ kind: "error", text: error instanceof Error ? error.message : "Analysis failed" }); } finally { setBusy(""); }
+  }
+  async function alertAction(alertId: string, action: "acknowledge" | "resolve") { setBusy(alertId); try { await json(`/api/playlist-health/alerts/${alertId}/${action}`, { method: "POST", body: JSON.stringify({ note: action === "resolve" ? "Resolved from Playlist Health." : undefined }) }); setMessage({ kind: "success", text: action === "acknowledge" ? "Alert acknowledged." : "Alert resolved." }); await load(); if (selectedId) setDetail(await json(`/api/playlist-health/${selectedId}`)); } catch (error) { setMessage({ kind: "error", text: error instanceof Error ? error.message : "Alert update failed" }); } finally { setBusy(""); } }
+  async function saveSettings() { setBusy("settings"); try { const payload = { ...settings }; delete payload.id; delete payload.userId; delete payload.createdAt; delete payload.updatedAt; delete payload.discordWebhookConfigured; delete payload.webhookUrlConfigured; delete payload.discordWebhookMasked; delete payload.webhookUrlMasked; delete payload.encryptionConfigured; setSettings(await json("/api/settings/playlist-health", { method: "PATCH", body: JSON.stringify(payload) })); setMessage({ kind: "success", text: "Playlist health settings saved." }); } catch (error) { setMessage({ kind: "error", text: error instanceof Error ? error.message : "Settings save failed" }); } finally { setBusy(""); } }
+  const selected = useMemo(() => dashboard?.playlists.find((playlist) => playlist.id === selectedId), [dashboard, selectedId]);
+
+  return <div className={styles.workspace}>
+    <header className={styles.header}><div><span className={styles.eyebrow}><HeartPulse size={14} /> Continuous quality monitoring</span><h1>Playlist Health</h1><p>Catch playback, identity, variety, metadata, and automation problems before listeners do.</p></div><div className={styles.headerActions}><button className={styles.secondary} onClick={() => setTab("settings")}><Settings2 size={16} /> Settings</button><button className={styles.primary} disabled={Boolean(busy)} onClick={() => analyze()}>{busy === "all" ? <Loader2 className={styles.spin} size={16} /> : <RefreshCw size={16} />} Analyze all</button></div></header>
+    {message && <div className={message.kind === "error" ? styles.error : styles.notice}>{message.kind === "error" ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}{message.text}</div>}
+    <nav className={styles.tabs}><button className={tab === "overview" ? styles.active : ""} onClick={() => setTab("overview")}><Activity size={16} /> Overview</button><button className={tab === "alerts" ? styles.active : ""} onClick={() => setTab("alerts")}><Bell size={16} /> Alerts {dashboard?.summary.openAlerts ? <b>{dashboard.summary.openAlerts}</b> : null}</button><button className={tab === "settings" ? styles.active : ""} onClick={() => setTab("settings")}><Settings2 size={16} /> Settings</button></nav>
+
+    {!dashboard && tab !== "settings" ? <div className={styles.loading}><Loader2 className={styles.spin} /> Loading playlist health…</div> : dashboard && tab === "overview" && <>
+      <section className={styles.summaryGrid}>{[
+        [dashboard.summary.averageScore ?? "—", "Average health", HeartPulse], [dashboard.summary.healthy, "Healthy playlists", CheckCircle2], [dashboard.summary.attention, "Need attention", AlertTriangle], [dashboard.summary.criticalAlerts, "Critical alerts", ShieldAlert],
+      ].map(([value, title, Icon]: any) => <article key={title}><Icon size={19} /><strong>{value}</strong><span>{title}</span></article>)}</section>
+      {dashboard.summary.unmonitored > 0 && <div className={styles.info}><Clock3 size={16} /> {dashboard.summary.unmonitored} playlist{dashboard.summary.unmonitored === 1 ? " has" : "s have"} not been analyzed yet.</div>}
+      <section className={styles.playlistGrid}>{dashboard.playlists.map((playlist) => <article key={playlist.id} className={`${styles.playlistCard} ${selectedId === playlist.id ? styles.selected : ""}`}>
+        <button className={styles.cardMain} onClick={() => setSelectedId(selectedId === playlist.id ? "" : playlist.id)}><span className={styles.score} data-status={playlist.health?.status || "UNKNOWN"}>{playlist.health?.overallScore ?? "—"}</span><span><strong>{playlist.name}</strong><small>{playlist.trackCount} tracks · {playlist.health ? `Analyzed ${relative(playlist.health.analyzedAt)}` : "Not analyzed"}</small></span><span className={styles.alertCount}>{playlist.openAlerts ? `${playlist.openAlerts} alert${playlist.openAlerts === 1 ? "" : "s"}` : playlist.health ? "Healthy" : "Pending"}</span><ChevronDown size={17} /></button>
+        {selectedId === playlist.id && <div className={styles.cardDetail}><div className={styles.detailActions}><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => analyze(playlist.id)}>{busy === playlist.id ? <Loader2 className={styles.spin} size={15} /> : <Play size={15} />} Analyze now</button></div>{detail ? <HealthDetail detail={detail} onAction={alertAction} busy={busy} /> : <Loader2 className={styles.spin} />}</div>}
+      </article>)}</section>
+    </>}
+
+    {dashboard && tab === "alerts" && <section className={styles.alertList}>{dashboard.alerts.length ? dashboard.alerts.map((alert) => <AlertRow key={alert.id} alert={alert} busy={busy} onAction={alertAction} />) : <div className={styles.empty}><CheckCircle2 size={34} /><h2>No open health alerts</h2><p>Analyzed playlists are within their configured thresholds.</p></div>}</section>}
+    {tab === "settings" && <Settings settings={settings} setSettings={setSettings} save={saveSettings} busy={busy} />}
+  </div>;
+}
+
+function AlertRow({ alert, busy, onAction }: { alert: Alert; busy: string; onAction: (id: string, action: "acknowledge" | "resolve") => void }) {
+  return <article className={styles.alertRow} data-severity={alert.severity}><span className={styles.severity}>{alert.severity}</span><div><strong>{alert.title}</strong><p>{alert.playlist?.plexPlaylistTitle ? `${alert.playlist.plexPlaylistTitle} · ` : ""}{alert.message}</p><small>Detected {relative(alert.lastDetectedAt)} · {alert.occurrenceCount} occurrence{alert.occurrenceCount === 1 ? "" : "s"}</small></div><div className={styles.rowActions}>{alert.status === "OPEN" && <button disabled={busy === alert.id} onClick={() => onAction(alert.id, "acknowledge")}><Check size={14} /> Acknowledge</button>}<button disabled={busy === alert.id} onClick={() => onAction(alert.id, "resolve")}><CheckCircle2 size={14} /> Resolve</button></div></article>;
+}
+
+function HealthDetail({ detail, onAction, busy }: { detail: any; onAction: any; busy: string }) {
+  const snapshot = detail.healthSnapshots?.[0]; const checks = snapshot?.checksJson?.checks || [];
+  return <div className={styles.detailBody}>{snapshot ? <><div className={styles.checkGrid}>{checks.length ? checks.map((item: any) => <div key={item.type} data-severity={item.severity}><b>{item.title}</b><span>{item.message}</span></div>) : <div className={styles.healthy}><CheckCircle2 size={18} /><b>No problems detected</b><span>This playlist is within every configured health threshold.</span></div>}</div><details className={styles.history}><summary><History size={15} /> Score history ({detail.healthSnapshots.length})</summary><div>{detail.healthSnapshots.map((item: any) => <span key={item.id}><b>{item.overallScore}</b>{new Date(item.analyzedAt).toLocaleString()}</span>)}</div></details></> : <p>No health snapshot exists yet.</p>}
+    {detail.healthAlerts?.filter((alert: any) => alert.status !== "RESOLVED").map((alert: Alert) => <AlertRow key={alert.id} alert={{ ...alert, playlist: { plexPlaylistTitle: detail.plexPlaylistTitle } }} busy={busy} onAction={onAction} />)}
+  </div>;
+}
+
+function Settings({ settings, setSettings, save, busy }: { settings: any; setSettings: (value: any) => void; save: () => void; busy: string }) {
+  if (!settings) return <div className={styles.loading}><Loader2 className={styles.spin} /> Loading settings…</div>;
+  const set = (key: string, value: any) => setSettings({ ...settings, [key]: value });
+  return <section className={styles.settings}>
+    <fieldset><legend>Monitoring</legend><Toggle label="Enable playlist health monitoring" checked={settings.enabled} onChange={(value) => set("enabled", value)} /><Toggle label="Analyze during nightly sync" checked={settings.analyzeDuringNightlySync} onChange={(value) => set("analyzeDuringNightlySync", value)} /><NumberField label="Stale after days" value={settings.staleAfterDays} min={1} max={365} onChange={(value) => set("staleAfterDays", value)} /><NumberField label="Metadata decline points" value={settings.metadataDeclinePercent} min={1} max={100} onChange={(value) => set("metadataDeclinePercent", value)} /></fieldset>
+    <fieldset><legend>Variety & transitions</legend><NumberField label="Artist concentration %" value={settings.artistConcentrationPercent} min={5} max={100} onChange={(value) => set("artistConcentrationPercent", value)} /><NumberField label="Album concentration %" value={settings.albumConcentrationPercent} min={5} max={100} onChange={(value) => set("albumConcentrationPercent", value)} /><NumberField label="Maximum BPM jump" value={settings.excessiveBpmJump} min={5} max={120} onChange={(value) => set("excessiveBpmJump", value)} /><label>Mood conflict delta<input type="number" step="0.05" min="0.1" max="1" value={settings.moodConflictDelta} onChange={(event) => set("moodConflictDelta", Number(event.target.value))} /></label></fieldset>
+    <fieldset className={styles.notifications}><legend><Webhook size={16} /> Alerts & notifications</legend><label>Minimum severity<select value={settings.minimumAlertSeverity} onChange={(event) => set("minimumAlertSeverity", event.target.value)}>{["INFO", "WARNING", "ERROR", "CRITICAL"].map((value) => <option key={value}>{value}</option>)}</select></label><Toggle label="In-app notifications" checked={settings.inAppNotifications} onChange={(value) => set("inAppNotifications", value)} /><Toggle label="Discord notifications" checked={settings.discordNotifications} onChange={(value) => set("discordNotifications", value)} /><label>Discord webhook<input type="password" placeholder={settings.discordWebhookConfigured ? "Saved — enter to replace" : "https://discord.com/api/webhooks/…"} value={settings.discordWebhookUrl || ""} onChange={(event) => set("discordWebhookUrl", event.target.value)} disabled={!settings.encryptionConfigured} /></label>{settings.discordWebhookConfigured && <Toggle label="Clear saved Discord webhook" checked={Boolean(settings.clearDiscordWebhook)} onChange={(value) => set("clearDiscordWebhook", value)} />}<Toggle label="Generic webhook notifications" checked={settings.webhookNotifications} onChange={(value) => set("webhookNotifications", value)} /><label>Webhook URL<input type="password" placeholder={settings.webhookUrlConfigured ? "Saved — enter to replace" : "https://example.com/mixarr-alerts"} value={settings.webhookUrl || ""} onChange={(event) => set("webhookUrl", event.target.value)} disabled={!settings.encryptionConfigured} /></label>{settings.webhookUrlConfigured && <Toggle label="Clear saved webhook" checked={Boolean(settings.clearWebhookUrl)} onChange={(value) => set("clearWebhookUrl", value)} />}<p>{settings.encryptionConfigured ? "Endpoints are encrypted at rest. Delivery attempts are recorded with status only." : "Configure MIXARR_SECRET_KEY to save notification endpoints."}</p></fieldset>
+    <div className={styles.saveBar}><button className={styles.primary} disabled={Boolean(busy)} onClick={save}>{busy === "settings" ? <Loader2 className={styles.spin} size={16} /> : <Save size={16} />} Save settings</button></div>
+  </section>;
+}
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) { return <label className={styles.toggle}><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>; }
+function NumberField({ label: fieldLabel, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) { return <label>{fieldLabel}<input type="number" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>; }

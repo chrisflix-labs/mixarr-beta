@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.8 - Playlist Health Monitoring & Alerts
+
+- Added continuous playlist health scores across Plex linkage, missing and unavailable tracks, identity, repetition, artist and album variety, metadata confidence, BPM and mood transitions, staleness, and automation failures.
+- Added severity-aware persistent alerts with acknowledgment, resolution, automatic recovery, reopening, occurrence counts, and audit history.
+- Added in-app alerts plus encrypted Discord and generic webhook delivery with minimum-severity controls and delivery history.
+- Added the Playlist Health workspace, dashboard health card, settings, navigation, nightly monitoring, authenticated APIs, additive persistence, tests, documentation, and v2.2.8 metadata.
+
 ## v2.2.7 - Smart Action Center
 
 - Added a persistent, typed Smart Action framework and centralized review queue for playlist, library, and metadata recommendations.

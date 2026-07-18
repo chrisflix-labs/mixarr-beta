@@ -65,6 +65,15 @@ export default async function SettingsPage() {
         <span aria-hidden="true">&rarr;</span>
       </Link>
 
+      <Link id="playlist-health" href="/playlist-health" className={`glass-panel ${styles.healthLink}`}>
+        <HeartPulse size={24} />
+        <span>
+          <strong>Playlist Health Monitoring &amp; Alerts</strong>
+          <small>Configure continuous quality checks, severity thresholds, alert history, Discord, webhooks, and in-app notifications.</small>
+        </span>
+        <span aria-hidden="true">&rarr;</span>
+      </Link>
+
       <section className={`glass-panel ${styles.section} ${styles.aboutSection}`} aria-labelledby="about-mixarr">
         <div className={styles.aboutHeader}>
           <span className={styles.aboutIcon}>
