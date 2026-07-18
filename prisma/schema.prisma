@@ -78,6 +78,11 @@ model User {
   orchestrationAuditEvents       PlaylistOrchestrationAuditEvent[]
   playlistGroups                 PlaylistGroup[]
   playlistGroupActivities        PlaylistGroupActivity[]
+  crossPlaylistVarietySetting    CrossPlaylistVarietySetting?
+  playlistPairPolicies           PlaylistPairPolicy[]
+  playlistTrackDesignations      PlaylistTrackDesignation[]
+  playlistRepairPreviews         PlaylistRepairPreview[]
+  playlistOverlapSnapshots       PlaylistOverlapSnapshot[]
 }
 
 model SyncSettings {
@@ -338,6 +343,7 @@ model Track {
   PlaylistMembershipEvent    PlaylistMembershipEvent[]
   playbackEvents             PlexPlaybackEvent[]
   playbackProfiles           UserTrackPlaybackProfile[]
+  playlistDesignations       PlaylistTrackDesignation[]
 
   @@unique([libraryId, plexId])
   @@unique([plexServerId, plexLibraryId, ratingKey])
@@ -632,72 +638,79 @@ model PlaylistHistory {
 }
 
 model GeneratedPlaylist {
-  id                     String                          @id @default(uuid())
-  userId                 String
-  serverId               String?
-  plexPlaylistRatingKey  String?
-  plexPlaylistTitle      String
-  sourceType             String                          @default("unknown")
-  engineVersion          String                          @default("v1")
-  recipeId               String?
-  recipeName             String?
-  smartPresetId          String?
-  smartPresetName        String?
-  moodPresetId           String?
-  moodPresetName         String?
-  bpmPresetId            String?
-  bpmPresetName          String?
-  tuningPresetName       String?
-  tuningConfigJson       Json?
-  discoveryConfigJson    Json?
-  discoveryResultJson    Json?
-  filtersJson            Json
-  safetyRulesJson        Json?
-  qualityScoreJson       Json?
-  scoringModel           String                          @default("stable-v2")
-  scoringModelVersion    String                          @default("2")
-  betaMetadataJson       Json?
-  adaptiveScoringVersion String?
-  adaptiveSettingsJson   Json?
-  playbackSettingsJson   Json?
-  contextProfileId       String?
-  contextProfileName     String?
-  contextInfluence       String?
-  contextSnapshotJson    Json?
-  contextOverridesJson   Json?
-  trackCount             Int                             @default(0)
-  lastGeneratedAt        DateTime                        @default(now())
-  lastRegeneratedAt      DateTime?
-  createdAt              DateTime                        @default(now())
-  updatedAt              DateTime                        @updatedAt
-  revisionCounter        Int                             @default(0)
-  user                   User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tracks                 GeneratedPlaylistTrack[]
-  historyEntries         PlaylistHistoryEntry[]
-  regenerations          PlaylistRegeneration[]
-  revisions              PlaylistRevision[]
-  automationSettings     PlaylistAutomationSettings?
-  recentlyAddedMatches   RecentlyAddedPlaylistMatch[]
-  recentlyAddedChanges   RecentlyAddedAutomationChange[]
-  preferenceProfile      PlaylistPreferenceProfile?
-  interactionEvents      TrackInteractionEvent[]
-  playlistFitFeedback    PlaylistFitFeedback[]
-  transitionFeedback     TransitionFeedback[]
-  identity               PlaylistIdentity?
-  adaptiveScoringSetting AdaptivePlaylistScoringSetting?
-  coordinationSettings   PlaylistCoordinationSetting?
-  relationshipSources    PlaylistRelationship[]          @relation("PlaylistRelationshipSource")
-  relationshipTargets    PlaylistRelationship[]          @relation("PlaylistRelationshipTarget")
-  sharedCoreTracks       PlaylistSharedCoreTrack[]
-  progressionMemberships PlaylistProgressionMember[]
-  overlapSummariesA      PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryA")
-  overlapSummariesB      PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryB")
-  explanationGenerations SmartMixExplanationGeneration[]
-  decisionTraces         SmartMixDecisionTrace[]
-  automationProposals    AutomationProposal[]
-  automationActivities   AutomationActivity[]
-  managedPlaylist        ManagedPlaylist?
-  groupMemberships       PlaylistGroupMembership[]
+  id                       String                          @id @default(uuid())
+  userId                   String
+  serverId                 String?
+  plexPlaylistRatingKey    String?
+  plexPlaylistTitle        String
+  sourceType               String                          @default("unknown")
+  engineVersion            String                          @default("v1")
+  recipeId                 String?
+  recipeName               String?
+  smartPresetId            String?
+  smartPresetName          String?
+  moodPresetId             String?
+  moodPresetName           String?
+  bpmPresetId              String?
+  bpmPresetName            String?
+  tuningPresetName         String?
+  tuningConfigJson         Json?
+  discoveryConfigJson      Json?
+  discoveryResultJson      Json?
+  filtersJson              Json
+  safetyRulesJson          Json?
+  qualityScoreJson         Json?
+  scoringModel             String                          @default("stable-v2")
+  scoringModelVersion      String                          @default("2")
+  betaMetadataJson         Json?
+  adaptiveScoringVersion   String?
+  adaptiveSettingsJson     Json?
+  playbackSettingsJson     Json?
+  contextProfileId         String?
+  contextProfileName       String?
+  contextInfluence         String?
+  contextSnapshotJson      Json?
+  contextOverridesJson     Json?
+  trackCount               Int                             @default(0)
+  lastGeneratedAt          DateTime                        @default(now())
+  lastRegeneratedAt        DateTime?
+  createdAt                DateTime                        @default(now())
+  updatedAt                DateTime                        @updatedAt
+  revisionCounter          Int                             @default(0)
+  user                     User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracks                   GeneratedPlaylistTrack[]
+  historyEntries           PlaylistHistoryEntry[]
+  regenerations            PlaylistRegeneration[]
+  revisions                PlaylistRevision[]
+  automationSettings       PlaylistAutomationSettings?
+  recentlyAddedMatches     RecentlyAddedPlaylistMatch[]
+  recentlyAddedChanges     RecentlyAddedAutomationChange[]
+  preferenceProfile        PlaylistPreferenceProfile?
+  interactionEvents        TrackInteractionEvent[]
+  playlistFitFeedback      PlaylistFitFeedback[]
+  transitionFeedback       TransitionFeedback[]
+  identity                 PlaylistIdentity?
+  adaptiveScoringSetting   AdaptivePlaylistScoringSetting?
+  coordinationSettings     PlaylistCoordinationSetting?
+  relationshipSources      PlaylistRelationship[]          @relation("PlaylistRelationshipSource")
+  relationshipTargets      PlaylistRelationship[]          @relation("PlaylistRelationshipTarget")
+  sharedCoreTracks         PlaylistSharedCoreTrack[]
+  progressionMemberships   PlaylistProgressionMember[]
+  overlapSummariesA        PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryA")
+  overlapSummariesB        PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryB")
+  explanationGenerations   SmartMixExplanationGeneration[]
+  decisionTraces           SmartMixDecisionTrace[]
+  automationProposals      AutomationProposal[]
+  automationActivities     AutomationActivity[]
+  managedPlaylist          ManagedPlaylist?
+  groupMemberships         PlaylistGroupMembership[]
+  pairPoliciesA            PlaylistPairPolicy[]            @relation("PlaylistPairPolicyA")
+  pairPoliciesB            PlaylistPairPolicy[]            @relation("PlaylistPairPolicyB")
+  varietyDesignations      PlaylistTrackDesignation[]
+  repairPreviews           PlaylistRepairPreview[]         @relation("RepairPreviewPlaylist")
+  repairComparisonPreviews PlaylistRepairPreview[]         @relation("RepairPreviewComparison")
+  overlapSnapshotsA        PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotA")
+  overlapSnapshotsB        PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotB")
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -705,22 +718,22 @@ model GeneratedPlaylist {
 }
 
 model PlaylistGroup {
-  id                     String                    @id @default(uuid())
+  id                     String                       @id @default(uuid())
   userId                 String
   name                   String
-  description            String                    @default("")
+  description            String                       @default("")
   artworkUrl             String?
   artworkSource          String?
-  sortOrder              Int                       @default(0)
-  isPaused               Boolean                   @default(false)
-  settingsSchemaVersion  Int                       @default(1)
-  settingsJson           Json                      @default("{}")
+  sortOrder              Int                          @default(0)
+  isPaused               Boolean                      @default(false)
+  settingsSchemaVersion  Int                          @default(1)
+  settingsJson           Json                         @default("{}")
   scheduleJson           Json?
   lastRegeneratedAt      DateTime?
   lastHealthCalculatedAt DateTime?
-  createdAt              DateTime                  @default(now())
-  updatedAt              DateTime                  @updatedAt
-  user                   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt              DateTime                     @default(now())
+  updatedAt              DateTime                     @updatedAt
+  user                   User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
   memberships            PlaylistGroupMembership[]
   exclusionRules         PlaylistGroupExclusionRule[]
   activities             PlaylistGroupActivity[]
@@ -751,17 +764,17 @@ model PlaylistGroupMembership {
 }
 
 model PlaylistGroupExclusionRule {
-  id                String        @id @default(uuid())
-  playlistGroupId   String
-  ruleType          String
-  ruleValue         String
-  isEnabled         Boolean       @default(true)
-  reason            String?
-  source            String        @default("user")
-  allowOverride     Boolean       @default(false)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  playlistGroup     PlaylistGroup @relation(fields: [playlistGroupId], references: [id], onDelete: Cascade)
+  id              String        @id @default(uuid())
+  playlistGroupId String
+  ruleType        String
+  ruleValue       String
+  isEnabled       Boolean       @default(true)
+  reason          String?
+  source          String        @default("user")
+  allowOverride   Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  playlistGroup   PlaylistGroup @relation(fields: [playlistGroupId], references: [id], onDelete: Cascade)
 
   @@unique([playlistGroupId, ruleType, ruleValue])
   @@index([playlistGroupId, isEnabled])
@@ -825,6 +838,24 @@ model PlaylistCoordinationSetting {
   featuredArtistMatching              String            @default("PRIMARY_ONLY")
   warnBeforeExceedingOverlap          Boolean           @default(true)
   excludedPlaylistIdsJson             Json?
+  maximumSharedAlbumPercentage        Float?            @default(25)
+  maximumSharedTrackCount             Int?
+  minimumUniqueTrackPercentage        Float             @default(70)
+  minimumUniqueTrackCount             Int?
+  uniqueTargetMode                    String            @default("PREFERRED")
+  recentUsageLookbackDays             Int?              @default(30)
+  recentUsagePenaltyStrength          String            @default("MEDIUM")
+  sharedTrackAllowance                Int               @default(0)
+  coreTrackAllowance                  Int?
+  comparisonScope                     String            @default("ALL_MANAGED")
+  comparisonGroupIdsJson              Json?
+  automaticRepairEnabled              Boolean           @default(false)
+  requireRepairPreview                Boolean           @default(true)
+  excludedFromEnforcement             Boolean           @default(false)
+  exclusivityBehavior                 String            @default("OFF")
+  exclusivityLookbackDays             Int?
+  ignoreManualAdditionsForExclusivity Boolean           @default(true)
+  analysisStale                       Boolean           @default(true)
   createdAt                           DateTime          @default(now())
   updatedAt                           DateTime          @updatedAt
   playlist                            GeneratedPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
@@ -886,25 +917,166 @@ model PlaylistProgressionMember {
 }
 
 model PlaylistOverlapSummary {
-  id                     String            @id @default(uuid())
-  playlistAId            String
-  playlistBId            String
-  sharedTrackCount       Int               @default(0)
-  sharedTrackPercentage  Float             @default(0)
-  jaccardSimilarity      Float             @default(0)
-  sharedArtistCount      Int               @default(0)
-  sharedArtistPercentage Float             @default(0)
-  sharedAlbumCount       Int               @default(0)
-  sharedAlbumPercentage  Float             @default(0)
-  sharedCoreTrackCount   Int               @default(0)
-  similarityScore        Float             @default(0)
-  calculatedAt           DateTime          @default(now())
-  playlistA              GeneratedPlaylist @relation("PlaylistOverlapSummaryA", fields: [playlistAId], references: [id], onDelete: Cascade)
-  playlistB              GeneratedPlaylist @relation("PlaylistOverlapSummaryB", fields: [playlistBId], references: [id], onDelete: Cascade)
+  id                       String            @id @default(uuid())
+  playlistAId              String
+  playlistBId              String
+  sharedTrackCount         Int               @default(0)
+  sharedTrackPercentage    Float             @default(0)
+  jaccardSimilarity        Float             @default(0)
+  sharedArtistCount        Int               @default(0)
+  sharedArtistPercentage   Float             @default(0)
+  sharedAlbumCount         Int               @default(0)
+  sharedAlbumPercentage    Float             @default(0)
+  sharedCoreTrackCount     Int               @default(0)
+  similarityScore          Float             @default(0)
+  playlistASize            Int               @default(0)
+  playlistBSize            Int               @default(0)
+  overlapPercentA          Float             @default(0)
+  overlapPercentB          Float             @default(0)
+  uniquePercentA           Float             @default(100)
+  uniquePercentB           Float             @default(100)
+  policySharedTrackCount   Int               @default(0)
+  excessSharedTrackCount   Int               @default(0)
+  tracksFromSharedArtists  Int               @default(0)
+  artistConcentrationScore Float             @default(0)
+  albumsDominatingCount    Int               @default(0)
+  withinPolicy             Boolean           @default(true)
+  policySnapshotJson       Json?
+  warningsJson             Json?
+  stale                    Boolean           @default(false)
+  calculatedAt             DateTime          @default(now())
+  playlistA                GeneratedPlaylist @relation("PlaylistOverlapSummaryA", fields: [playlistAId], references: [id], onDelete: Cascade)
+  playlistB                GeneratedPlaylist @relation("PlaylistOverlapSummaryB", fields: [playlistBId], references: [id], onDelete: Cascade)
 
   @@unique([playlistAId, playlistBId])
   @@index([calculatedAt])
   @@index([sharedTrackPercentage])
+}
+
+model CrossPlaylistVarietySetting {
+  id                          String   @id @default(uuid())
+  userId                      String   @unique
+  maximumTrackOverlapPercent  Float    @default(20)
+  maximumArtistOverlapPercent Float    @default(35)
+  maximumAlbumOverlapPercent  Float    @default(25)
+  maximumSharedTrackCount     Int?
+  minimumUniqueTrackPercent   Float    @default(70)
+  minimumUniqueTrackCount     Int?
+  recentUsageLookbackDays     Int?     @default(30)
+  recentUsagePenaltyStrength  String   @default("MEDIUM")
+  sharedTrackAllowance        Int      @default(0)
+  coreTrackAllowance          Int?
+  exclusivityBehavior         String   @default("OFF")
+  automaticRepairEnabled      Boolean  @default(false)
+  requireRepairPreview        Boolean  @default(true)
+  comparisonScope             String   @default("ALL_MANAGED")
+  analysisConcurrency         Int      @default(2)
+  analysisBatchSize           Int      @default(20)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  user                        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PlaylistPairPolicy {
+  id                          String            @id @default(uuid())
+  userId                      String
+  playlistAId                 String
+  playlistBId                 String
+  ignored                     Boolean           @default(false)
+  allowedTrackOverlapPercent  Float?
+  allowedArtistOverlapPercent Float?
+  allowedAlbumOverlapPercent  Float?
+  maximumSharedTrackCount     Int?
+  sharedTrackAllowance        Int?
+  allowedArtistIdsJson        Json?
+  allowedAlbumIdsJson         Json?
+  similarPlaylistAllowance    Boolean           @default(false)
+  notes                       String?
+  createdAt                   DateTime          @default(now())
+  updatedAt                   DateTime          @updatedAt
+  user                        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlistA                   GeneratedPlaylist @relation("PlaylistPairPolicyA", fields: [playlistAId], references: [id], onDelete: Cascade)
+  playlistB                   GeneratedPlaylist @relation("PlaylistPairPolicyB", fields: [playlistBId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, playlistAId, playlistBId])
+  @@index([userId, updatedAt])
+  @@index([playlistAId])
+  @@index([playlistBId])
+}
+
+model PlaylistTrackDesignation {
+  id                      String            @id @default(uuid())
+  userId                  String
+  playlistId              String
+  trackId                 String
+  isCore                  Boolean           @default(false)
+  isSharedAllowed         Boolean           @default(false)
+  exclusivityMode         String            @default("NONE")
+  excludedPlaylistIdsJson Json?
+  exclusiveGroupId        String?
+  exclusiveUntil          DateTime?
+  ignoreWhenManuallyAdded Boolean           @default(true)
+  designationSource       String            @default("USER")
+  reason                  String?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  user                    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlist                GeneratedPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  track                   Track             @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, trackId])
+  @@index([userId, trackId])
+  @@index([playlistId, isCore])
+  @@index([playlistId, isSharedAllowed])
+  @@index([exclusivityMode, exclusiveUntil])
+}
+
+model PlaylistRepairPreview {
+  id                     String             @id @default(uuid())
+  userId                 String
+  playlistId             String
+  comparisonPlaylistId   String?
+  mode                   String
+  status                 String             @default("READY")
+  playlistRevision       Int
+  playlistContentHash    String
+  policySnapshotJson     Json
+  overlapBeforeJson      Json
+  overlapAfterJson       Json
+  proposalsJson          Json
+  relaxedConstraintsJson Json?
+  engineVersion          String             @default("2.2.2")
+  expiresAt              DateTime
+  appliedAt              DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlist               GeneratedPlaylist  @relation("RepairPreviewPlaylist", fields: [playlistId], references: [id], onDelete: Cascade)
+  comparisonPlaylist     GeneratedPlaylist? @relation("RepairPreviewComparison", fields: [comparisonPlaylistId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([playlistId, status, expiresAt])
+}
+
+model PlaylistOverlapSnapshot {
+  id                     String            @id @default(uuid())
+  userId                 String
+  playlistAId            String
+  playlistBId            String
+  sharedTrackCount       Int
+  sharedTrackPercentage  Float
+  sharedArtistPercentage Float
+  sharedAlbumPercentage  Float
+  uniquePercentA         Float
+  uniquePercentB         Float
+  withinPolicy           Boolean
+  calculatedAt           DateTime          @default(now())
+  user                   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlistA              GeneratedPlaylist @relation("PlaylistOverlapSnapshotA", fields: [playlistAId], references: [id], onDelete: Cascade)
+  playlistB              GeneratedPlaylist @relation("PlaylistOverlapSnapshotB", fields: [playlistBId], references: [id], onDelete: Cascade)
+
+  @@index([userId, calculatedAt])
+  @@index([playlistAId, playlistBId, calculatedAt])
 }
 
 model SmartMixTuningPreset {

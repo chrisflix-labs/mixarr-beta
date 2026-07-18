@@ -23,6 +23,7 @@ export function describePlaylistVersion(reason: PlaylistVersionReason, context?:
     system_migration: "Baseline version created for legacy playlist",
     recently_added_automation: `Recently Added Automation added ${count} track${count === 1 ? "" : "s"}`,
     automation_backup: "Recoverable version before an automated playlist update",
+    cross_playlist_overlap_repair: "Cross-playlist overlap repair",
   };
   return descriptions[reason];
 }

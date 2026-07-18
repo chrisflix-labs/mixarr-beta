@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.2.2 - Cross-Playlist Deduplication & Variety
+
+- Added canonical track overlap, both-playlist percentages, smaller-playlist enforcement, Jaccard similarity, unique-track targets, artist concentration, album concentration, compilation handling, actionable severity warnings, and retained overlap trends.
+- Added user defaults, per-playlist overrides, canonical pair policies, track/count allowances, allowed artists and albums, report-only playlists, core tracks, sharing designations, playlist/group/time-limited exclusivity, and clear inheritance labels.
+- Integrated bounded current-use, recent-use, unused-track, artist, album, core, allowance, and exclusivity signals into Smart Mix v2 without bypassing identity, feedback, metadata, mood, energy, BPM, transition, or score-quality rules.
+- Added an accessible paginated heatmap, mobile ranked comparisons, detailed shared/unique track views, policy details, stale-analysis indicators, background progress, cancellation, retry, and actionable repair entry points.
+- Added deterministic selectable repair previews, protected-track priorities, explicit reasons and impacts, graceful insufficient-pool behavior, revision/content-hash stale checks, transactional apply, Plex rollback, repair history, and restorable pre-repair versions.
+- Added bounded background pair processing, checkpoints, changed-result snapshots with retention, cached page reads, additive indexed data models, authenticated APIs, export/reset support, documentation, tests, and release metadata.
+- Automatic repair remains disabled and preview remains enabled by default. Migration and startup do not analyze or rewrite Plex playlists.
+
 ## v2.2.1 - Playlist Groups & Collections
 
 - Added user-owned collections with artwork, descriptions, multiple playlist memberships, group-local ordering, pause/resume, cloning, and safe deletion that never deletes playlists.

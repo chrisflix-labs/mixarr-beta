@@ -18,10 +18,14 @@ export function scoreCrossPlaylistCandidate(
   const result: CoordinationScoreBreakdown = {
     alreadyUsedInRelatedPlaylistPenalty: 0,
     globalSmartMixUsagePenalty: 0,
+    crossPlaylistRecentUsagePenalty: 0,
     crossPlaylistArtistPenalty: 0,
     crossPlaylistAlbumPenalty: 0,
+    playlistExclusivityPenalty: 0,
     unusedTrackBonus: 0,
+    uniqueCandidateBoost: 0,
     sharedCoreAdjustment: 0,
+    sharedTrackAllowanceAdjustment: 0,
     progressionFitAdjustment: 0,
     totalAdjustment: 0,
     hardOverlapRejected: false,
@@ -30,6 +34,14 @@ export function scoreCrossPlaylistCandidate(
   if (!context?.settings.coordinationEnabled) return result;
   const key = canonicalTrackKey(track);
   const sharedCore = context.settings.allowSharedCoreTracks && context.sharedCoreTrackKeys.includes(key);
+  const sharedAllowed = context.allowedSharedTrackKeys?.includes(key) || false;
+  const exclusiveConflict = context.exclusiveTrackKeys?.includes(key) || false;
+  if (exclusiveConflict && context.settings.exclusivityBehavior === "STRICT_EXCLUSIVE") {
+    result.hardOverlapRejected = true;
+    result.exclusionReason = "Track is reserved by another managed playlist's strict exclusivity rule.";
+    result.reasons.push(result.exclusionReason);
+    return result;
+  }
   if (context.excludedTrackKeys.includes(key) && !sharedCore) {
     result.hardOverlapRejected = true;
     result.exclusionReason = "Track appears in a playlist selected as an exclusion source.";
@@ -43,6 +55,9 @@ export function scoreCrossPlaylistCandidate(
   if (sharedCore) {
     result.sharedCoreAdjustment = 0;
     result.reasons.push("Shared-core status allows intentional reuse without a track-overlap penalty.");
+  } else if (sharedAllowed) {
+    result.sharedTrackAllowanceAdjustment = 0;
+    result.reasons.push("This playlist explicitly allows the track to be shared.");
   } else if (relatedUses > 0 && (context.settings.keepDistinct || !["OFF", "WARNING_ONLY"].includes(context.settings.overlapEnforcement))) {
     result.alreadyUsedInRelatedPlaylistPenalty = -Math.min(8, 4 + relatedUses * 2);
     result.reasons.push(`Already appears in ${relatedUses} related playlist${relatedUses === 1 ? "" : "s"}.`);
@@ -54,6 +69,7 @@ export function scoreCrossPlaylistCandidate(
     const strength = clamp(context.settings.unusedTrackPreferenceStrength, 0, 1);
     if (globalUses === 0) {
       result.unusedTrackBonus = 10 * strength;
+      result.uniqueCandidateBoost = result.unusedTrackBonus;
       result.reasons.push("Has not appeared in another active Smart Mix playlist.");
     } else {
       result.globalSmartMixUsagePenalty = -Math.min(10, (globalUses === 1 ? 2 : 4 + globalUses) * strength);
@@ -63,6 +79,17 @@ export function scoreCrossPlaylistCandidate(
       result.unusedTrackBonus = Math.max(result.unusedTrackBonus, 3 * strength);
       result.reasons.push("Used historically, but not in an active Smart Mix playlist.");
     }
+  }
+
+  const recentUses = context.recentTrackUsage?.[key] || 0;
+  const recentStrength = { OFF: 0, LOW: 1, MEDIUM: 2, HIGH: 3.5, STRICT: 6 }[context.settings.recentUsagePenaltyStrength || "MEDIUM"];
+  if (!sharedCore && !sharedAllowed && recentUses > 0 && recentStrength > 0) {
+    result.crossPlaylistRecentUsagePenalty = -Math.min(10, recentUses * recentStrength);
+    result.reasons.push(`Used in another generated playlist during the ${context.settings.recentUsageLookbackDays ?? 30}-day lookback period.`);
+  }
+  if (exclusiveConflict && context.settings.exclusivityBehavior === "PREFER_EXCLUSIVE") {
+    result.playlistExclusivityPenalty = -8;
+    result.reasons.push("Another playlist prefers this track to remain exclusive; fallback remains allowed.");
   }
 
   const artistUses = context.artistUsage[artistKey(track)] || 0;
@@ -93,19 +120,25 @@ export function scoreCrossPlaylistCandidate(
     const projectedShared = selectedRelatedTrackCount + 1;
     const denominator = Math.max(1, Math.min(context.targetPlaylistSize, context.maximumRelatedPlaylistSize));
     const projectedPercentage = (projectedShared / denominator) * 100;
-    if (projectedPercentage > context.settings.maximumSharedTrackPercentage) {
+    const maximumOverlap = context.settings.uniqueTargetMode === "STRICT"
+      ? Math.min(context.settings.maximumSharedTrackPercentage, 100 - (context.settings.minimumUniqueTrackPercentage ?? 70))
+      : context.settings.maximumSharedTrackPercentage;
+    if (projectedPercentage > maximumOverlap) {
       result.hardOverlapRejected = true;
-      result.exclusionReason = `Adding this track would project overlap at ${projectedPercentage.toFixed(1)}%, above the ${context.settings.maximumSharedTrackPercentage}% hard maximum.`;
+      result.exclusionReason = `Adding this track would project overlap at ${projectedPercentage.toFixed(1)}%, above the ${maximumOverlap}% hard maximum${context.settings.uniqueTargetMode === "STRICT" ? " implied by the strict uniqueness target" : ""}.`;
       result.reasons.push(result.exclusionReason);
     }
   }
 
   const rawTotal = result.alreadyUsedInRelatedPlaylistPenalty
     + result.globalSmartMixUsagePenalty
+    + result.crossPlaylistRecentUsagePenalty
     + result.crossPlaylistArtistPenalty
     + result.crossPlaylistAlbumPenalty
+    + result.playlistExclusivityPenalty
     + result.unusedTrackBonus
     + result.sharedCoreAdjustment
+    + result.sharedTrackAllowanceAdjustment
     + result.progressionFitAdjustment;
   result.totalAdjustment = rounded(clamp(rawTotal, -context.settings.maximumCoordinationInfluence, context.settings.maximumCoordinationInfluence));
   if (rawTotal !== result.totalAdjustment) result.reasons.push("Coordination influence was capped by the playlist setting.");

@@ -75,6 +75,24 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.2.2",
+    title: "Cross-Playlist Deduplication & Variety",
+    releaseDate: "July 17, 2026",
+    badges: ["Playlists", "Smart Builder", "Regeneration", "Preview", "Settings", "Database", "Jobs", "Performance", "History", "Personalization", "Safety Rules", "Mobile", "Accessibility", "Reliability"],
+    changes: [
+      "Added cross-playlist track analysis using shared canonical tracks divided by the smaller active playlist, plus both-playlist percentages, Jaccard similarity, unique-track targets, exact excess counts, and stale timestamps.",
+      "Added primary and credited-artist concentration metrics, repeated-artist ranking, album concentration, unknown-album exclusion, and compilation-safe album identities that include the primary track artist.",
+      "Added user defaults, playlist overrides, canonical playlist-pair rules, shared counts, allowed tracks/artists/albums, report-only playlists, ignored pairs, core designations, and time-limited track exclusivity.",
+      "Improved Smart Mix variety with bounded current-use, recent-use, artist, album, exclusivity, and unused-track signals while preserving feedback, metadata eligibility, playlist identity, mood, BPM, energy, transition quality, and overall score caps.",
+      "Added actionable concentration warnings, a paginated accessible heatmap with a mobile ranked view, detailed pair comparisons, shared and unique tracks, inheritance labels, and retained overlap history.",
+      "Added deterministic repair suggestions with protected locked, core, liked, manually added, and automation-protected tracks; selectable replacements; score, mood, BPM, energy, artist, and album explanations; and explicit relaxed-constraint messages.",
+      "Added preview-before-apply safeguards, one-hour preview expiry, playlist revision and content-hash validation, transactional writes, Plex synchronization rollback, restorable version history, and repair audit history.",
+      "Added cancellable and retryable background analysis with bounded batches, checkpoints, progress, changed-pair staleness, cached page reads, 180-day changed-result history, and no startup analysis.",
+      "Added variety policy/designation export, category-specific confirmed resets, authenticated ownership-checked APIs, an additive migration, tests, documentation, roadmap updates, and v2.2.2 release metadata.",
+      "Safety: automatic repair remains disabled by default; previews never modify playlists; no policy is silently relaxed or permanently changed; and previous playlist versions remain restorable.",
+    ],
+  },
+  {
     version: "2.2.1",
     title: "Playlist Groups & Collections",
     releaseDate: "July 17, 2026",

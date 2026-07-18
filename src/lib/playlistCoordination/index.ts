@@ -4,3 +4,6 @@ export * from "./scoring";
 export * from "./service";
 export * from "./actions";
 export * from "./usage";
+export * from "./policy";
+export * from "./analysis";
+export * from "./repair";

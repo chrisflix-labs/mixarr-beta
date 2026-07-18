@@ -373,6 +373,8 @@ export async function applyRecentlyAddedChanges({
           skipDuplicates: true,
         });
         await tx.generatedPlaylist.update({ where: { id: playlistId }, data: { trackCount: playlist.tracks.length + accepted.length, lastRegeneratedAt: new Date() } });
+        await tx.playlistOverlapSummary.updateMany({ where: { OR: [{ playlistAId: playlistId }, { playlistBId: playlistId }] }, data: { stale: true } });
+        await tx.playlistCoordinationSetting.updateMany({ where: { playlistId }, data: { analysisStale: true } });
         await tx.recentlyAddedAutomationChange.updateMany({ where: { id: { in: accepted.map((item) => item.id) } }, data: { status: "applied", appliedAt: new Date(), error: null } });
         await tx.recentlyAddedPlaylistMatch.updateMany({ where: { id: { in: accepted.map((item) => item.matchId).filter((id): id is string => Boolean(id)) } }, data: { status: "applied", appliedAt: new Date() } });
         await tx.recentlyAddedTrackState.updateMany({ where: { trackId: { in: accepted.map((item) => item.trackId) } }, data: { status: automatic ? "automatically_added" : "manually_added", processedAt: new Date() } });

@@ -20,9 +20,29 @@ export type PlaylistTrackFact = {
   artistName?: string | null;
   albumId?: string | null;
   albumName?: string | null;
+  albumArtistName?: string | null;
+  creditedArtistIds?: string[] | null;
+  creditedArtistNames?: string[] | null;
+  isCompilation?: boolean;
   canonicalRecordingId?: string | null;
   active?: boolean;
   deleted?: boolean;
+  available?: boolean;
+  resolved?: boolean;
+};
+
+export type PlaylistOverlapPolicy = {
+  maximumTrackOverlapPercent?: number;
+  maximumArtistOverlapPercent?: number;
+  maximumAlbumOverlapPercent?: number;
+  maximumSharedTrackCount?: number | null;
+  minimumUniqueTrackPercent?: number;
+  minimumUniqueTrackCount?: number | null;
+  sharedTrackAllowance?: number;
+  allowedSharedTrackKeys?: Iterable<string>;
+  allowedArtistKeys?: Iterable<string>;
+  allowedAlbumKeys?: Iterable<string>;
+  coreTrackKeys?: Iterable<string>;
 };
 
 export type PlaylistOverlapResult = {
@@ -30,18 +50,45 @@ export type PlaylistOverlapResult = {
   targetTrackCount: number;
   sharedTrackCount: number;
   sharedTrackPercentage: number;
+  overlapPercentOfSource: number;
+  overlapPercentOfTarget: number;
   jaccardSimilarity: number;
   sourceUniqueTrackCount: number;
   targetUniqueTrackCount: number;
+  sourceUniqueTrackPercentage: number;
+  targetUniqueTrackPercentage: number;
+  policySharedTrackCount: number;
+  allowedSharedTrackCount: number;
+  excessSharedTrackCount: number;
   sharedArtistCount: number;
+  sharedPrimaryArtistCount: number;
   sharedArtistPercentage: number;
+  policySharedArtistPercentage: number;
+  tracksFromSharedArtists: number;
+  artistConcentrationScore: number;
+  excessiveArtistKeys: string[];
+  mostRepeatedArtists: Array<{ key: string; count: number }>;
   sharedAlbumCount: number;
   sharedAlbumPercentage: number;
+  policySharedAlbumPercentage: number;
+  tracksFromSharedAlbums: number;
+  dominatingAlbumKeys: string[];
+  mostRepeatedAlbums: Array<{ key: string; count: number }>;
   sharedCoreTrackCount: number;
   similarityScore: number;
   sharedTrackKeys: string[];
   sharedArtistKeys: string[];
   sharedAlbumKeys: string[];
+  withinPolicy: boolean;
+  policy: {
+    maximumTrackOverlapPercent: number;
+    maximumArtistOverlapPercent: number;
+    maximumAlbumOverlapPercent: number;
+    maximumSharedTrackCount: number | null;
+    minimumUniqueTrackPercent: number;
+    minimumUniqueTrackCount: number | null;
+  };
+  warnings: Array<{ level: "INFORMATIONAL" | "MODERATE" | "HIGH" | "SEVERE"; code: string; message: string }>;
   enforcementCalculation: "shared / smaller active playlist";
 };
 
@@ -57,6 +104,21 @@ export type CoordinationSettings = {
   maximumCoordinationInfluence: number;
   crossPlaylistArtistBalancingEnabled: boolean;
   maximumSharedArtistPercentage?: number | null;
+  maximumSharedAlbumPercentage?: number | null;
+  maximumSharedTrackCount?: number | null;
+  minimumUniqueTrackPercentage?: number;
+  minimumUniqueTrackCount?: number | null;
+  uniqueTargetMode?: "PREFERRED" | "STRICT";
+  recentUsageLookbackDays?: number | null;
+  recentUsagePenaltyStrength?: "OFF" | "LOW" | "MEDIUM" | "HIGH" | "STRICT";
+  sharedTrackAllowance?: number;
+  coreTrackAllowance?: number | null;
+  comparisonScope?: "ALL_MANAGED" | "SELECTED_GROUPS" | "SIMILAR_IDENTITIES" | "RELATED_ONLY";
+  automaticRepairEnabled?: boolean;
+  requireRepairPreview?: boolean;
+  excludedFromEnforcement?: boolean;
+  exclusivityBehavior?: "OFF" | "PREFER_EXCLUSIVE" | "STRICT_EXCLUSIVE";
+  exclusivityLookbackDays?: number | null;
   maximumTracksPerArtistAcrossGroup?: number | null;
   warnBeforeExceedingOverlap: boolean;
 };
@@ -72,6 +134,9 @@ export type CoordinationScoringContext = {
   artistUsage: Record<string, number>;
   albumUsage: Record<string, number>;
   sharedCoreTrackKeys: string[];
+  allowedSharedTrackKeys?: string[];
+  exclusiveTrackKeys?: string[];
+  recentTrackUsage?: Record<string, number>;
   maximumRelatedPlaylistSize: number;
   progression?: {
     previousPlaylistId?: string;
@@ -84,10 +149,14 @@ export type CoordinationScoringContext = {
 export type CoordinationScoreBreakdown = {
   alreadyUsedInRelatedPlaylistPenalty: number;
   globalSmartMixUsagePenalty: number;
+  crossPlaylistRecentUsagePenalty: number;
   crossPlaylistArtistPenalty: number;
   crossPlaylistAlbumPenalty: number;
+  playlistExclusivityPenalty: number;
   unusedTrackBonus: number;
+  uniqueCandidateBoost: number;
   sharedCoreAdjustment: number;
+  sharedTrackAllowanceAdjustment: number;
   progressionFitAdjustment: number;
   totalAdjustment: number;
   hardOverlapRejected: boolean;

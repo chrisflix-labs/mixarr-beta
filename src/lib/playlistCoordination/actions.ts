@@ -84,6 +84,8 @@ async function replaceMemberships(tx: any, playlistId: string, rows: any[]) {
   await tx.generatedPlaylistTrack.deleteMany({ where: { generatedPlaylistId: playlistId } });
   if (rows.length) await tx.generatedPlaylistTrack.createMany({ data: snapshotRows(playlistId, rows) });
   await tx.generatedPlaylist.update({ where: { id: playlistId }, data: { trackCount: rows.length, lastRegeneratedAt: new Date(), revisionCounter: { increment: 1 } } });
+  await tx.playlistOverlapSummary.updateMany({ where: { OR: [{ playlistAId: playlistId }, { playlistBId: playlistId }] }, data: { stale: true } });
+  await tx.playlistCoordinationSetting.updateMany({ where: { playlistId }, data: { analysisStale: true } });
 }
 
 export async function applyMoveTrack(userId: string, sourcePlaylistId: string, rawInput: unknown) {

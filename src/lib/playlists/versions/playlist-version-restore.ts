@@ -111,6 +111,8 @@ export async function restorePlaylistVersion(input: {
         lastRegeneratedAt: new Date(),
       },
     });
+    await tx.playlistOverlapSummary.updateMany({ where: { OR: [{ playlistAId: input.generatedPlaylistId }, { playlistBId: input.generatedPlaylistId }] }, data: { stale: true } });
+    await tx.playlistCoordinationSetting.updateMany({ where: { playlistId: input.generatedPlaylistId }, data: { analysisStale: true } });
     const restored = await createPlaylistVersionInTransaction(tx, {
       generatedPlaylistId: input.generatedPlaylistId,
       reason: "restore",

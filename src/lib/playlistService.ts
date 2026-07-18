@@ -1934,6 +1934,8 @@ export async function recordGeneratedPlaylist({
       ? await tx.generatedPlaylist.update({ where: { id: existing.id }, data })
       : await tx.generatedPlaylist.create({ data });
     await replaceGeneratedPlaylistSnapshot(saved.id, scoredTracks, tx);
+    await tx.playlistOverlapSummary.updateMany({ where: { OR: [{ playlistAId: saved.id }, { playlistBId: saved.id }] }, data: { stale: true } });
+    await tx.playlistCoordinationSetting.updateMany({ where: { playlistId: saved.id }, data: { analysisStale: true } });
     await createPlaylistVersionInTransaction(tx, {
       generatedPlaylistId: saved.id,
       reason: existing ? "full_regeneration" : "initial_generation",
@@ -2538,6 +2540,8 @@ export async function regenerateGeneratedPlaylistFromPreview({
         },
       });
       await replaceGeneratedPlaylistSnapshot(generatedPlaylist.id, tracks, tx);
+      await tx.playlistOverlapSummary.updateMany({ where: { OR: [{ playlistAId: generatedPlaylist.id }, { playlistBId: generatedPlaylist.id }] }, data: { stale: true } });
+      await tx.playlistCoordinationSetting.updateMany({ where: { playlistId: generatedPlaylist.id }, data: { analysisStale: true } });
       await createPlaylistVersionInTransaction(tx, { generatedPlaylistId: generatedPlaylist.id, reason: "full_regeneration", description: "Regenerated entire playlist" });
     });
     await prisma.playlistHistory.create({
@@ -3010,6 +3014,8 @@ export async function applyAdvancedPlaylistRegeneration({
         where: { id: generatedPlaylistId },
         data: { qualityScoreJson: qualityScore as any, trackCount: tracks.length, lastRegeneratedAt: new Date(), lastGeneratedAt: new Date() },
       });
+      await tx.playlistOverlapSummary.updateMany({ where: { OR: [{ playlistAId: generatedPlaylistId }, { playlistBId: generatedPlaylistId }] }, data: { stale: true } });
+      await tx.playlistCoordinationSetting.updateMany({ where: { playlistId: generatedPlaylistId }, data: { analysisStale: true } });
       await tx.playlistRegenerationChange.updateMany({ where: { regenerationId: regeneration.id }, data: { accepted: false } });
       await tx.playlistRegenerationChange.updateMany({ where: { regenerationId: regeneration.id, position: { in: acceptedChanges.map((change) => change.position) } }, data: { accepted: true } });
       await tx.playlistRegeneration.update({

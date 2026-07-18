@@ -5,6 +5,7 @@ export const playlistVersionReasons = [
   "manual_track_add", "manual_track_remove", "manual_reorder", "manual_edit",
   "settings_change", "restore", "undo", "import", "system_migration",
   "recently_added_automation", "automation_backup",
+  "cross_playlist_overlap_repair",
 ] as const;
 
 export type PlaylistVersionReason = typeof playlistVersionReasons[number];

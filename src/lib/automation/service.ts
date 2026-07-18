@@ -339,6 +339,8 @@ export async function approveAutomationProposal(userId: string, proposalId: stri
       remaining.sort((left, right) => (desiredPositions.get(left.trackId || "") ?? left.position) - (desiredPositions.get(right.trackId || "") ?? right.position));
       for (let index = 0; index < remaining.length; index += 1) await tx.generatedPlaylistTrack.update({ where: { id: remaining[index].id }, data: { position: index + 1 } });
       await tx.generatedPlaylist.update({ where: { id: proposal.generatedPlaylistId }, data: { trackCount: remaining.length, lastRegeneratedAt: new Date() } });
+      await tx.playlistOverlapSummary.updateMany({ where: { OR: [{ playlistAId: proposal.generatedPlaylistId }, { playlistBId: proposal.generatedPlaylistId }] }, data: { stale: true } });
+      await tx.playlistCoordinationSetting.updateMany({ where: { playlistId: proposal.generatedPlaylistId }, data: { analysisStale: true } });
       await tx.automationProposalItem.updateMany({ where: { id: { in: [...allowedAdditions, ...allowedRemovals].map((item) => item.id) } }, data: { status: "APPROVED" } });
     });
     let syncError: string | null = null;

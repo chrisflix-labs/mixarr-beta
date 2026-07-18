@@ -236,7 +236,7 @@ async function boundedFindMany<T>(load: (cursor?: string) => Promise<T[]>, id: (
 export async function buildPersonalizationExport(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, plexId: true, username: true } });
   if (!user) throw new Error("User not found");
-  const [profile, adaptive, playback, playlistProfiles, trackPreferences, artistPreferences, fitFeedback, transitionFeedback, feedbackEvents, interactions, adjustments, statistics, identities, playbackProfiles] = await Promise.all([
+  const [profile, adaptive, playback, playlistProfiles, trackPreferences, artistPreferences, fitFeedback, transitionFeedback, feedbackEvents, interactions, adjustments, statistics, identities, playbackProfiles, varietySettings, playlistVarietySettings, playlistPairPolicies, playlistTrackDesignations] = await Promise.all([
     prisma.userRecommendationProfile.findUnique({ where: { userId } }), prisma.adaptiveScoringProfile.findUnique({ where: { userId } }), prisma.playbackAwarenessSetting.findUnique({ where: { userId } }),
     boundedFindMany((cursor) => prisma.playlistPreferenceProfile.findMany({ where: { userId }, orderBy: { id: "asc" }, take: 500, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) }), (row) => row.id),
     boundedFindMany((cursor) => prisma.userTrackPreference.findMany({ where: { userId }, orderBy: { id: "asc" }, take: 500, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), include: { track: { select: { ratingKey: true, title: true, artist: { select: { title: true } } } } } }), (row) => row.id),
@@ -248,6 +248,10 @@ export async function buildPersonalizationExport(userId: string) {
     prisma.personalScoringAdjustment.findMany({ where: { userId } }), prisma.adaptivePreferenceStatistic.findMany({ where: { userId } }),
     boundedFindMany((cursor) => prisma.playlistIdentity.findMany({ where: { userId }, orderBy: { id: "asc" }, take: 500, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), include: { attributes: true, artistPreferences: true, genrePreferences: true, trackMemories: { orderBy: { id: "asc" }, take: 2_000 }, snapshots: { orderBy: { createdAt: "desc" }, take: 25 } } }), (row) => row.id, 1_000),
     boundedFindMany((cursor) => prisma.userTrackPlaybackProfile.findMany({ where: { userId }, orderBy: { id: "asc" }, take: 500, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) }), (row) => row.id),
+    prisma.crossPlaylistVarietySetting.findUnique({ where: { userId } }),
+    prisma.playlistCoordinationSetting.findMany({ where: { playlist: { userId } }, orderBy: { playlistId: "asc" }, take: 10_000 }),
+    prisma.playlistPairPolicy.findMany({ where: { userId }, orderBy: { id: "asc" }, take: 10_000 }),
+    prisma.playlistTrackDesignation.findMany({ where: { userId }, orderBy: { id: "asc" }, take: EXPORT_COLLECTION_LIMIT }),
   ]);
   const strip = (value: any, keys: string[]) => Object.fromEntries(keys.filter((key) => value?.[key] !== undefined).map((key) => [key, value[key]]));
   const profileKeys = ["enabled", "learningEnabled", "profileVersion", "minimumEventsRequired", "preferredEnergyMin", "preferredEnergyMax", "preferredBpmMin", "preferredBpmMax", "preferredDiscoveryLevel", "preferredDeepCutWeight", "preferredPopularityWeight", "preferredMoodWeight", "preferredEnergyWeight", "preferredBpmWeight", "preferredArtistVariety", "preferredAlbumVariety", "avoidRecentlyPlayed", "avoidRecentlyUsedArtists", "avoidLiveRecordings", "avoidLowConfidenceMetadata", "secondaryTraits", "onboardingState", "onboardingStep", "onboardingConfigJson"];
@@ -259,9 +263,16 @@ export async function buildPersonalizationExport(userId: string) {
     playlistProfiles: playlistProfiles.rows, trackPreferences: trackPreferences.rows, artistPreferences: artistPreferences.rows, playlistFitFeedback: fitFeedback.rows, transitionFeedback: transitionFeedback.rows,
     feedbackEvents: feedbackEvents.rows, interactionEvents: interactions.rows, learnedAdjustments: adjustments, adaptiveStatistics: statistics, playlistIdentities: identities.rows,
     recommendationHistory: interactions.rows.filter((item: any) => item.eventType.includes("PREVIEW")), playbackDerivedSummaries: playbackProfiles.rows, manualOverrides: { trackRestrictions: trackPreferences.rows.filter((item: any) => item.state === "NEVER_RECOMMEND") },
+    crossPlaylistVariety: {
+      globalSettings: varietySettings,
+      playlistOverrides: playlistVarietySettings,
+      playlistPairRules: playlistPairPolicies,
+      trackDesignations: playlistTrackDesignations,
+      calculatedOverlapCachesIncluded: false,
+    },
     truncation: { playlistProfiles: playlistProfiles.truncated, trackPreferences: trackPreferences.truncated, artistPreferences: artistPreferences.truncated, playlistFitFeedback: fitFeedback.truncated, transitionFeedback: transitionFeedback.truncated, feedbackEvents: feedbackEvents.truncated, interactionEvents: interactions.truncated, playlistIdentities: identities.truncated, playbackDerivedSummaries: playbackProfiles.truncated },
   };
-  const summary = { feedbackEvents: feedbackEvents.rows.length, playlistIdentities: identities.rows.length, artistPreferences: artistPreferences.rows.length, trackPreferences: trackPreferences.rows.length, recommendationDecisions: interactions.rows.filter((item: any) => item.eventType.includes("PREVIEW")).length, truncated: Object.values(payload.truncation).some(Boolean) };
+  const summary = { feedbackEvents: feedbackEvents.rows.length, playlistIdentities: identities.rows.length, artistPreferences: artistPreferences.rows.length, trackPreferences: trackPreferences.rows.length, recommendationDecisions: interactions.rows.filter((item: any) => item.eventType.includes("PREVIEW")).length, varietyPolicies: playlistVarietySettings.length + playlistPairPolicies.length, coreAndExclusivityDesignations: playlistTrackDesignations.length, truncated: Object.values(payload.truncation).some(Boolean) };
   console.info("[PersonalizationDashboard] Export generated", { userId, ...summary });
   return { payload, summary };
 }
