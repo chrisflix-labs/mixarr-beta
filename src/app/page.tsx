@@ -22,6 +22,7 @@ import { getPlaylistHistoryDashboardSummary } from "@/lib/playlistHistory";
 import prisma from "@/lib/prisma";
 import { getRecentlyAddedSummary } from "@/lib/recentlyAdded";
 import { getOrchestrationSettings } from "@/lib/orchestration/settings";
+import { getSmartRefreshDashboardSummary } from "@/lib/smartRefresh";
 
 type JobSummary = Awaited<ReturnType<typeof getRecentJobSummary>>;
 type AutomationOverview = Awaited<ReturnType<typeof getAutomationOverview>>;
@@ -112,6 +113,19 @@ function OrchestrationSummaryCard({ summary }: { summary: { managed: number; run
   </article>;
 }
 
+function SmartRefreshSummaryCard({ summary }: { summary: Awaited<ReturnType<typeof getSmartRefreshDashboardSummary>> }) {
+  return <article className={styles.managementCard}>
+    <div className={styles.cardTitle}><Sparkles size={20} /><div><h3>Smart Refresh</h3><p>Meaningful playlist improvements, gated by estimates and safeguards.</p></div></div>
+    <div className={styles.managementMetrics}>
+      <Link href="/generated-playlists"><b>{summary.monitored}</b><span>Monitored</span></Link>
+      <Link href="/generated-playlists?smartRefresh=recommended"><b>{summary.recommended}</b><span>Recommended</span></Link>
+      <Link href="/generated-playlists?smartRefresh=deferred"><b>{summary.deferred}</b><span>Deferred</span></Link>
+      <Link href="/generated-playlists?smartRefresh=healthy"><b>{summary.healthy}</b><span>Healthy</span></Link>
+    </div>
+    {summary.playlists.length > 0 && <div className={styles.managementFooter}><span>{summary.playlists.slice(0, 3).map((playlist) => `${playlist.name} +${playlist.estimatedImprovement || 0}`).join(" · ")}</span><Link href="/generated-playlists" className={styles.secondaryAction}>Review recommendations</Link></div>}
+  </article>;
+}
+
 function ProductPreviewPanel({ showExperimental }: { showExperimental: boolean }) {
   return <details className={styles.productPanel}>
     <summary>
@@ -154,6 +168,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
   let showExperimental = false;
   let orchestration = { managed: 0, running: 0, queued: 0, blocked: 0, enabled: false };
   let groupSummary = { groups: 0, groupedPlaylists: 0, attention: 0, paused: 0 };
+  let smartRefresh = { monitored: 0, recommended: 0, deferred: 0, healthy: 0, fixedSchedule: 0, manualOnly: 0, playlists: [] } as Awaited<ReturnType<typeof getSmartRefreshDashboardSummary>>;
 
   if (user && !developmentPreview) {
     const results = await Promise.all([
@@ -182,6 +197,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
         prisma.playlistGroup.count({ where: { userId: user.id, isPaused: true } }),
         prisma.playlistGroup.count({ where: { userId: user.id, memberships: { some: { playlist: { OR: [{ trackCount: 0 }, { engineVersion: { not: "v2" } }] } } } } }),
       ]).then(([groups, groupedPlaylists, paused, attention]) => ({ groups, groupedPlaylists, paused, attention })).catch(() => ({ groups: 0, groupedPlaylists: 0, attention: 0, paused: 0 })),
+      getSmartRefreshDashboardSummary(user.id).catch(() => ({ monitored: 0, recommended: 0, deferred: 0, healthy: 0, fixedSchedule: 0, manualOnly: 0, playlists: [] })),
     ]);
     [dashboardSummary, jobs, automation, recentlyAdded, recipeCount, generatedCount, versionCount] = results;
     historyCount = results[7].count;
@@ -189,6 +205,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
     showExperimental = results[8];
     orchestration = results[9];
     groupSummary = results[10];
+    smartRefresh = results[11];
   }
 
   const quickWidgets = dashboardWidgetsForSection("quick-actions");
@@ -228,6 +245,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
         <SectionHeading id="playlist-management-heading" title="Playlist Management" description="A compact view of generated playlists, versions, history, and recipes." />
         {dashboardWidgetsForSection("playlist-management").map((widget) => <PlaylistManagementCard key={widget.id} historyCount={historyCount} generatedCount={generatedCount} versionCount={versionCount} recipeCount={recipeCount} groupSummary={groupSummary} lastEvent={lastHistoryEvent} />)}
         <OrchestrationSummaryCard summary={orchestration} />
+        <SmartRefreshSummaryCard summary={smartRefresh} />
       </section>
 
       <section className={`${styles.dashboardSection} ${styles.lowPrioritySection}`} aria-label="Product and preview information">

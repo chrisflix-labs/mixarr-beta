@@ -133,9 +133,9 @@ export async function runScheduledBackgroundSync(activeCron: string) {
   try {
     const prisma = (await import("./prisma")).default;
 
-    setJobPhase(lock.job, "Step 1/5: plex_sync");
+    setJobPhase(lock.job, "Step 1/6: plex_sync");
     let stageStartedAt = Date.now();
-    console.log("[Scheduler] Step 1/5 started name=plex_sync");
+    console.log("[Scheduler] Step 1/6 started name=plex_sync");
     const libraries = await prisma.library.findMany({ include: { server: { select: { userId: true } } } });
     const plexCounts = { scanned: 0, created: 0, missing: 0, failed: 0 };
     if (libraries.length > 0) {
@@ -152,11 +152,13 @@ export async function runScheduledBackgroundSync(activeCron: string) {
         plexCounts.created += result?.newTracks || 0;
         plexCounts.missing += result?.markedMissing || 0;
         plexCounts.failed += result?.failed || 0;
+        const { recordMajorLibrarySync } = await import("./smartRefresh");
+        await recordMajorLibrarySync({ userId: lib.server.userId, serverId: lib.serverId, libraryId: lib.id, scanned: result?.scanned || 0, newTracks: result?.newTracks || 0, missingTracks: result?.markedMissing || 0, restoredTracks: result?.restored || 0 }).catch((error) => console.warn(`[SmartRefresh] Library-change targeting failed libraryId=${lib.id}`, error instanceof Error ? error.message : error));
       }
     }
     let durationMs = Date.now() - stageStartedAt;
     stages.push({ name: "plex_sync", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, ...plexCounts });
-    console.log(`[Scheduler] Step 1/5 completed name=plex_sync duration=${Math.round(durationMs / 1000)}s scanned=${plexCounts.scanned} created=${plexCounts.created} missing=${plexCounts.missing} failed=${plexCounts.failed}`);
+    console.log(`[Scheduler] Step 1/6 completed name=plex_sync duration=${Math.round(durationMs / 1000)}s scanned=${plexCounts.scanned} created=${plexCounts.created} missing=${plexCounts.missing} failed=${plexCounts.failed}`);
 
     if (remaining()) {
       stageStartedAt = Date.now();
@@ -174,44 +176,44 @@ export async function runScheduledBackgroundSync(activeCron: string) {
       console.log(`[Scheduler] Playback history stage completed duration=${Math.round(durationMs / 1000)}s servers=${playbackResults.length}`);
     }
 
-    setJobPhase(lock.job, "Step 2/5: popularity");
+    setJobPhase(lock.job, "Step 2/6: popularity");
     stageStartedAt = Date.now();
-    console.log("[Scheduler] Step 2/5 started name=popularity");
+    console.log("[Scheduler] Step 2/6 started name=popularity");
     const { runPopularityEngine } = await import("./popularityEngine");
     const popularity = await loopEngine("PopularityEngine", runPopularityEngine, remaining);
     if (!popularity.drained) pipelineResult = "timeout";
     durationMs = Date.now() - stageStartedAt;
     stages.push({ name: "popularity", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, ...popularity });
-    console.log(`[Scheduler] Step 2/5 completed name=popularity duration=${Math.round(durationMs / 1000)}s processed=${popularity.processed} skipped=${popularity.skipped} failed=${popularity.failed}`);
+    console.log(`[Scheduler] Step 2/6 completed name=popularity duration=${Math.round(durationMs / 1000)}s processed=${popularity.processed} skipped=${popularity.skipped} failed=${popularity.failed}`);
 
-    setJobPhase(lock.job, "Step 3/5: track_tags");
+    setJobPhase(lock.job, "Step 3/6: track_tags");
     stageStartedAt = Date.now();
-    console.log("[Scheduler] Step 3/5 started name=track_tags");
+    console.log("[Scheduler] Step 3/6 started name=track_tags");
     const { runTrackTagEngine } = await import("./trackTagEngine");
     const tags = await loopEngine("TrackTagEngine", runTrackTagEngine, remaining);
     if (!tags.drained) pipelineResult = "timeout";
     durationMs = Date.now() - stageStartedAt;
     stages.push({ name: "track_tags", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, ...tags });
-    console.log(`[Scheduler] Step 3/5 completed name=track_tags duration=${Math.round(durationMs / 1000)}s processed=${tags.processed} skipped=${tags.skipped} failed=${tags.failed}`);
+    console.log(`[Scheduler] Step 3/6 completed name=track_tags duration=${Math.round(durationMs / 1000)}s processed=${tags.processed} skipped=${tags.skipped} failed=${tags.failed}`);
 
     if (remaining()) {
-      setJobPhase(lock.job, "Step 4/5: saved_playlist_refresh");
+      setJobPhase(lock.job, "Step 4/6: saved_playlist_refresh");
       stageStartedAt = Date.now();
-      console.log("[Scheduler] Step 4/5 started name=saved_playlist_refresh");
+      console.log("[Scheduler] Step 4/6 started name=saved_playlist_refresh");
       const { refreshAutoPlaylists } = await import("./playlistService");
       const refreshedCount = await refreshAutoPlaylists();
       durationMs = Date.now() - stageStartedAt;
       stages.push({ name: "saved_playlist_refresh", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, refreshed: refreshedCount });
-      console.log(`[Scheduler] Step 4/5 completed name=saved_playlist_refresh duration=${Math.round(durationMs / 1000)}s refreshed=${refreshedCount}`);
+      console.log(`[Scheduler] Step 4/6 completed name=saved_playlist_refresh duration=${Math.round(durationMs / 1000)}s refreshed=${refreshedCount}`);
     } else {
-      console.warn("[Scheduler] Pipeline deadline reached before Step 4/5; skipping playlist refresh and Audio Features.");
+      console.warn("[Scheduler] Pipeline deadline reached before Step 4/6; skipping playlist refresh, Audio Features, and Smart Refresh.");
       pipelineResult = "timeout";
     }
 
     if (remaining()) {
-      setJobPhase(lock.job, "Step 5/5: audio_features");
+      setJobPhase(lock.job, "Step 5/6: audio_features");
       stageStartedAt = Date.now();
-      console.log("[Scheduler] Step 5/5 started name=audio_features");
+      console.log("[Scheduler] Step 5/6 started name=audio_features");
       const { runAudioFeatures } = await import("./audioFeatureOrchestrator");
       const userIds = Array.from(new Set(libraries.map((library) => library.server.userId)));
       const audioTotals = { attempted: 0, processed: 0, skipped: 0, failed: 0, eligible: 0 };
@@ -229,7 +231,19 @@ export async function runScheduledBackgroundSync(activeCron: string) {
       }
       durationMs = Date.now() - stageStartedAt;
       stages.push({ name: "audio_features", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, ...audioTotals, results: audioResults });
-      console.log(`[Scheduler] Step 5/5 completed name=audio_features duration=${Math.round(durationMs / 1000)}s eligible=${audioTotals.eligible} processed=${audioTotals.processed} skipped=${audioTotals.skipped} failed=${audioTotals.failed}`);
+      console.log(`[Scheduler] Step 5/6 completed name=audio_features duration=${Math.round(durationMs / 1000)}s eligible=${audioTotals.eligible} processed=${audioTotals.processed} skipped=${audioTotals.skipped} failed=${audioTotals.failed}`);
+    }
+
+    if (remaining()) {
+      setJobPhase(lock.job, "Step 6/6: smart_refresh");
+      stageStartedAt = Date.now();
+      console.log("[Scheduler] Step 6/6 started name=smart_refresh");
+      const { runSmartRefreshBatch } = await import("./smartRefresh");
+      const smartRefresh = await runSmartRefreshBatch(Number(process.env.SMART_REFRESH_EVALUATION_BATCH_SIZE || 20));
+      durationMs = Date.now() - stageStartedAt;
+      stages.push({ name: "smart_refresh", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, ...smartRefresh });
+      if (smartRefresh.failed && pipelineResult === "success") pipelineResult = "partial";
+      console.log(`[Scheduler] Step 6/6 completed name=smart_refresh duration=${Math.round(durationMs / 1000)}s evaluated=${smartRefresh.evaluated} refreshed=${smartRefresh.refreshed} deferred=${smartRefresh.deferred} skipped=${smartRefresh.skipped} failed=${smartRefresh.failed}`);
     }
 
     const durationSeconds = Math.round((Date.now() - pipelineStart) / 1000);

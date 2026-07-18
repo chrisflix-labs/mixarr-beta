@@ -14,6 +14,7 @@ import PlaylistIdentityPanel from "@/components/PlaylistIdentityPanel";
 import PlaylistCoordinationPanel from "@/components/PlaylistCoordinationPanel";
 import PlaylistCollectionsButton from "@/components/PlaylistCollectionsButton";
 import PlaylistRolePanel from "@/components/PlaylistRolePanel";
+import SmartRefreshPanel from "@/components/SmartRefreshPanel";
 import { orderTracksByBpmFlow, summarizeBpmFlow, type BpmFlowMode } from "@/lib/smartMixEngine/v2/bpmFlow";
 import { normalizeSmartMixTuningConfig } from "@/lib/smartMixEngine/v2/tuning";
 import styles from "./generated-playlists.module.css";
@@ -52,6 +53,8 @@ type GeneratedPlaylist = {
   lastGeneratedAt: string;
   lastRegeneratedAt?: string | null;
   _count?: { tracks: number };
+  smartRefreshSettings?: { refreshMode: string } | null;
+  smartRefreshEvaluations?: Array<{ status: string; recommendation: string; shouldRefresh: boolean; estimatedImprovement?: number | null }>;
 };
 
 type PreviewState = {
@@ -314,11 +317,25 @@ export default function GeneratedPlaylistsPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [advancedPlaylist, setAdvancedPlaylist] = useState<GeneratedPlaylist | null>(null);
+  const [smartRefreshFilter, setSmartRefreshFilter] = useState("all");
 
   const selectedPlaylist = useMemo(
     () => playlists.find((playlist) => playlist.id === selectedId) || null,
     [playlists, selectedId],
   );
+  const visiblePlaylists = useMemo(() => playlists.filter((playlist) => {
+    if (smartRefreshFilter === "all") return true;
+    const mode = playlist.smartRefreshSettings?.refreshMode || "MANUAL_ONLY";
+    const latest = playlist.smartRefreshEvaluations?.[0];
+    if (smartRefreshFilter === "recommended") return latest?.status === "RECOMMENDED";
+    if (smartRefreshFilter === "deferred") return latest?.status === "DEFERRED";
+    if (smartRefreshFilter === "blocked") return latest?.status === "BLOCKED";
+    if (smartRefreshFilter === "healthy") return latest?.status === "HEALTHY";
+    if (smartRefreshFilter === "recent") return latest?.status === "EXECUTED";
+    if (smartRefreshFilter === "fixed") return mode === "FIXED_SCHEDULE";
+    if (smartRefreshFilter === "manual") return mode === "MANUAL_ONLY";
+    return true;
+  }), [playlists, smartRefreshFilter]);
 
   const fetchPlaylists = async () => {
     setLoading(true);
@@ -336,6 +353,8 @@ export default function GeneratedPlaylistsPage() {
 
   useEffect(() => {
     fetchPlaylists();
+    const requestedFilter = new URLSearchParams(window.location.search).get("smartRefresh");
+    if (["recommended", "deferred", "blocked", "healthy", "recent", "fixed", "manual"].includes(requestedFilter || "")) setSmartRefreshFilter(requestedFilter!);
   }, []);
 
   const getRegenerationOptions = (playlistId: string) => optionsByPlaylist[playlistId] || defaultRegenerationOptions;
@@ -513,8 +532,13 @@ export default function GeneratedPlaylistsPage() {
           </div>
         </section>
       ) : (
-        <section className={styles.playlistGrid} aria-label="Generated playlists">
-          {playlists.map((playlist) => {
+        <>
+        <nav className={styles.smartRefreshFilters} aria-label="Filter playlists by Smart Refresh status">
+          <label>Smart Refresh filter<select value={smartRefreshFilter} onChange={(event) => setSmartRefreshFilter(event.target.value)}><option value="all">All playlists</option><option value="recommended">Refresh recommended</option><option value="deferred">Deferred</option><option value="blocked">Blocked</option><option value="healthy">Healthy</option><option value="recent">Recently refreshed</option><option value="fixed">Fixed schedule</option><option value="manual">Manual only</option></select></label>
+          <span>{visiblePlaylists.length} of {playlists.length} playlists</span>
+        </nav>
+        {visiblePlaylists.length === 0 ? <div className={styles.statePanel}>No playlists match this Smart Refresh filter.</div> : <section className={styles.playlistGrid} aria-label="Generated playlists">
+          {visiblePlaylists.map((playlist) => {
             const isSelected = selectedId === playlist.id;
             const isBusy = busyId === playlist.id;
             const regenerationOptions = getRegenerationOptions(playlist.id);
@@ -566,6 +590,11 @@ export default function GeneratedPlaylistsPage() {
                 )}
                 {playlist.contextProfileName && <p className={styles.contextSummary}>Generated with {playlist.contextProfileName} · {(playlist.contextInfluence || "BALANCED").toLowerCase()} influence · {playlist.contextOverridesJson?.length || 0} manual override{playlist.contextOverridesJson?.length === 1 ? "" : "s"}</p>}
                 <PlaylistQualityCard score={qualityScoreForDisplay(playlist.qualityScoreJson)} />
+                {playlist.engineVersion === "v2" && <SmartRefreshPanel
+                  playlistId={playlist.id}
+                  onOpenAdvanced={() => setAdvancedPlaylist(playlist)}
+                  onChanged={(nextMessage) => { setMessage(nextMessage); setError(""); void fetchPlaylists(); }}
+                />}
                 <PlaylistRolePanel playlistId={playlist.id} />
                 <PlaylistIdentityPanel playlistId={playlist.id} playlistName={playlist.plexPlaylistTitle} onClone={fetchPlaylists} />
                 <PlaylistCoordinationPanel playlist={playlist} />
@@ -630,6 +659,7 @@ export default function GeneratedPlaylistsPage() {
                       Regenerate Playlist <span className={styles.betaBadge}>BETA</span>
                     </button>
                   )}
+                  {playlist.engineVersion === "v2" && <button type="button" onClick={() => previewRegeneration(playlist)} disabled={Boolean(busyId)} className={styles.secondaryButton}><Repeat2 size={15} />Preview full regeneration</button>}
                   {playlist.engineVersion !== "v2" && <>
                     <button type="button" onClick={() => previewRegeneration(playlist)} disabled={Boolean(busyId)} className={styles.primaryButton}>
                       {isBusy ? <RefreshCw size={15} className="animate-spin" /> : <Repeat2 size={15} />}
@@ -651,7 +681,8 @@ export default function GeneratedPlaylistsPage() {
               </article>
             );
           })}
-        </section>
+        </section>}
+        </>
       )}
 
       {selectedPlaylist && preview && (

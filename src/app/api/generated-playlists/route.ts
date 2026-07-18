@@ -20,6 +20,8 @@ export async function GET() {
       relationshipTargets: { include: { sourcePlaylist: { select: { id: true, plexPlaylistTitle: true } } } },
       overlapSummariesA: true,
       overlapSummariesB: true,
+      smartRefreshSettings: true,
+      smartRefreshEvaluations: { orderBy: { evaluatedAt: "desc" }, take: 1 },
     },
   });
 

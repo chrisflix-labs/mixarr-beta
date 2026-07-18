@@ -86,6 +86,8 @@ model User {
   playlistTrackDesignations      PlaylistTrackDesignation[]
   playlistRepairPreviews         PlaylistRepairPreview[]
   playlistOverlapSnapshots       PlaylistOverlapSnapshot[]
+  smartRefreshGlobalSetting      SmartRefreshGlobalSetting?
+  smartRefreshEvaluations        SmartRefreshEvaluation[]
 }
 
 model SyncSettings {
@@ -717,6 +719,8 @@ model GeneratedPlaylist {
   repairComparisonPreviews PlaylistRepairPreview[]         @relation("RepairPreviewComparison")
   overlapSnapshotsA        PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotA")
   overlapSnapshotsB        PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotB")
+  smartRefreshSettings     SmartRefreshSettings?
+  smartRefreshEvaluations  SmartRefreshEvaluation[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -1443,6 +1447,110 @@ model PlaylistRegeneration {
   @@index([userId, createdAt])
   @@index([generatedPlaylistId, createdAt])
   @@index([generatedPlaylistId, status])
+}
+
+model SmartRefreshGlobalSetting {
+  id                         String   @id @default(uuid())
+  userId                     String   @unique
+  quietHoursEnabled          Boolean  @default(false)
+  quietHoursStart            String   @default("22:00")
+  quietHoursEnd              String   @default("07:00")
+  timezone                   String   @default("UTC")
+  allowEvaluationsQuietHours Boolean  @default(true)
+  allowGenerationQuietHours  Boolean  @default(false)
+  allowUrgentRepairs         Boolean  @default(true)
+  runDeferredAfterQuietHours Boolean  @default(true)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+  user                       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SmartRefreshSettings {
+  id                           String            @id @default(uuid())
+  generatedPlaylistId          String            @unique
+  refreshMode                  String            @default("MANUAL_ONLY")
+  sensitivity                  String            @default("BALANCED")
+  customSettingsJson           Json?
+  minimumEstimatedImprovement  Float             @default(5)
+  minimumCompatibleTracks      Int               @default(5)
+  weakTrackThreshold           Int               @default(50)
+  identityDriftThreshold       Float             @default(20)
+  repetitionThreshold          Float             @default(60)
+  metadataImprovementThreshold Int               @default(2)
+  evaluationIntervalHours      Int               @default(24)
+  minimumRefreshIntervalHours  Int               @default(168)
+  maximumRefreshesPerWeek      Int?               @default(1)
+  fallbackAfterHours           Int?
+  quietHoursOverrideJson       Json?
+  allowPlaylistGrowth          Boolean            @default(false)
+  allowAutomaticWeakTrackRefresh Boolean          @default(true)
+  allowAutomaticFullRegeneration Boolean          @default(false)
+  lastEvaluatedAt              DateTime?
+  lastSuccessfulRefreshAt      DateTime?
+  lastRecommendation           String?
+  lastEstimatedImprovement     Float?
+  deferredUntil                DateTime?
+  dismissedAt                  DateTime?
+  invalidationVersion          Int                @default(0)
+  evaluatedInvalidationVersion Int                @default(-1)
+  pendingTriggerSource         String?
+  createdAt                    DateTime            @default(now())
+  updatedAt                    DateTime            @updatedAt
+  generatedPlaylist            GeneratedPlaylist  @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+
+  @@index([refreshMode, lastEvaluatedAt])
+  @@index([refreshMode, deferredUntil])
+  @@index([lastSuccessfulRefreshAt])
+  @@index([lastRecommendation, lastEvaluatedAt])
+}
+
+model SmartRefreshEvaluation {
+  id                         String            @id @default(uuid())
+  userId                     String
+  generatedPlaylistId        String
+  triggerSource              String
+  status                     String            @default("COMPLETED")
+  recommendation             String
+  shouldRefresh              Boolean           @default(false)
+  automatic                  Boolean           @default(false)
+  confidence                 Float             @default(0)
+  currentScore               Float?
+  estimatedScoreAfterRefresh Float?
+  estimatedImprovement       Float?
+  compatibleNewTrackCount    Int               @default(0)
+  weakTrackCount             Int               @default(0)
+  repetitivePlaybackScore    Float?
+  identityDriftScore         Float?
+  improvedMetadataTrackCount Int               @default(0)
+  reasonsJson                Json
+  blockersJson               Json
+  suggestedActionsJson       Json
+  thresholdsJson             Json
+  signalSummaryJson          Json?
+  previewId                  String?
+  playlistUpdatedAt          DateTime
+  settingsUpdatedAt          DateTime
+  invalidationVersion        Int               @default(0)
+  deferredUntil              DateTime?
+  executionAction            String?
+  actualImprovement          Float?
+  tracksAdded                Int               @default(0)
+  tracksRemoved              Int               @default(0)
+  tracksReordered            Int               @default(0)
+  durationMs                 Int               @default(0)
+  evaluatedAt                DateTime           @default(now())
+  executedAt                 DateTime?
+  dismissedAt                DateTime?
+  createdAt                  DateTime           @default(now())
+  updatedAt                  DateTime           @updatedAt
+  user                       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedPlaylist          GeneratedPlaylist  @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+
+  @@index([generatedPlaylistId, evaluatedAt])
+  @@index([userId, status, evaluatedAt])
+  @@index([status, deferredUntil])
+  @@index([recommendation, shouldRefresh, evaluatedAt])
+  @@index([previewId])
 }
 
 model PlaylistRegenerationChange {

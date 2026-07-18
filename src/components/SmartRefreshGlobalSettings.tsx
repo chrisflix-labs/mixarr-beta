@@ -1,0 +1,17 @@
+"use client";
+import { useEffect, useState } from "react";
+import axios from "axios";
+import { AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
+import styles from "./SmartRefreshGlobalSettings.module.css";
+
+export default function SmartRefreshGlobalSettings() {
+  const [value, setValue] = useState<any>(null); const [busy, setBusy] = useState(false); const [message, setMessage] = useState(""); const [error, setError] = useState("");
+  useEffect(() => { axios.get("/api/settings/smart-refresh").then((response) => setValue(response.data)).catch((requestError) => setError(requestError.response?.data?.error || "Smart Refresh defaults are unavailable.")); }, []);
+  const save = async () => { setBusy(true); setError(""); setMessage(""); try { const response = await axios.patch("/api/settings/smart-refresh", { quietHoursEnabled: value.quietHoursEnabled, quietHoursStart: value.quietHoursStart, quietHoursEnd: value.quietHoursEnd, timezone: value.timezone, allowEvaluationsQuietHours: value.allowEvaluationsQuietHours, allowGenerationQuietHours: value.allowGenerationQuietHours, allowUrgentRepairs: value.allowUrgentRepairs, runDeferredAfterQuietHours: value.runDeferredAfterQuietHours }); setValue(response.data); setMessage("Smart Refresh defaults saved."); } catch (requestError: any) { setError(requestError.response?.data?.error || "Unable to save Smart Refresh defaults."); } finally { setBusy(false); } };
+  if (!value) return <div className={styles.state}>{error || "Loading Smart Refresh defaults…"}</div>;
+  return <div className={styles.panel}>
+    <div className={styles.grid}><label><span>Start time</span><input type="time" value={value.quietHoursStart} onChange={(event) => setValue({ ...value, quietHoursStart: event.target.value })} /></label><label><span>End time</span><input type="time" value={value.quietHoursEnd} onChange={(event) => setValue({ ...value, quietHoursEnd: event.target.value })} /></label><label><span>Time zone</span><input value={value.timezone} onChange={(event) => setValue({ ...value, timezone: event.target.value })} placeholder="America/New_York" /></label></div>
+    <div className={styles.checks}><label><input type="checkbox" checked={value.quietHoursEnabled} onChange={(event) => setValue({ ...value, quietHoursEnabled: event.target.checked })} /> Enable global quiet hours</label><label><input type="checkbox" checked={value.allowEvaluationsQuietHours} onChange={(event) => setValue({ ...value, allowEvaluationsQuietHours: event.target.checked })} /> Allow read-only evaluations during quiet hours</label><label><input type="checkbox" checked={value.allowGenerationQuietHours} onChange={(event) => setValue({ ...value, allowGenerationQuietHours: event.target.checked })} /> Allow playlist changes during quiet hours</label><label><input type="checkbox" checked={value.allowUrgentRepairs} onChange={(event) => setValue({ ...value, allowUrgentRepairs: event.target.checked })} /> Allow urgent missing-track repairs</label><label><input type="checkbox" checked={value.runDeferredAfterQuietHours} onChange={(event) => setValue({ ...value, runDeferredAfterQuietHours: event.target.checked })} /> Run deferred work after quiet hours</label></div>
+    {error && <p className={styles.error}><AlertTriangle size={14} />{error}</p>}{message && <p className={styles.success}><CheckCircle2 size={14} />{message}</p>}<button onClick={save} disabled={busy}>{busy ? <RefreshCw className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}Save quiet-hour defaults</button>
+  </div>;
+}

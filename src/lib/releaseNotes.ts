@@ -75,6 +75,22 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.2.4",
+    title: "Smart Refresh Scheduling",
+    releaseDate: "July 18, 2026",
+    badges: ["Playlists", "Refresh", "Scheduler", "Regeneration", "Preview", "Identity", "Personalization", "History", "Job History", "Database", "Settings", "Dashboard", "Performance", "Mobile", "Accessibility", "Reliability"],
+    changes: [
+      "Added Manual Only, Fixed Schedule, Smart Refresh, Smart Refresh with Fallback, and Disabled modes per Smart Mix v2 playlist; every existing playlist remains Manual Only after migration.",
+      "Added a testable evaluation layer that combines existing playlist scoring and weakness analysis with compatible Recently Added matches, normalized playback repetition, saved identity drift, relevant metadata improvements, unavailable tracks, and targeted major library-sync invalidation.",
+      "Added bounded Smart Mix v2 candidate previews that estimate current score, projected score, expected improvement, confidence, identity impact, exact proposed replacements, and the least disruptive recommended action before Plex can change.",
+      "Added conservative Low, Balanced, High, and bounded Custom sensitivity, minimum improvement, compatible-track thresholds, evaluation frequency, cooldowns, successful-refresh weekly limits, fallback age, playlist-growth intent, and automatic-action guardrails.",
+      "Added global and per-playlist time-zone quiet-hour behavior, overnight-window handling, deferred eligibility, duplicate evaluation suppression, active-job protection, analysis-in-progress checks, stale settings/content rejection, and automatic full-regeneration approval gating.",
+      "Added Check for improvements, explainable signal and blocker displays, exact preview review, explicit execution and dismissal, advanced action handoff, responsive playlist settings, and a compact dashboard summary.",
+      "Smart Refresh execution reuses advanced regeneration, lock/like preservation, identity safeguards, Plex availability checks, stale previews, version snapshots, rollback-capable history, and Job History rather than introducing a second generation engine.",
+      "Added indexed additive persistence, bounded ID batching, scheduler batch limits, major-sync targeting, evaluation/execution audit summaries, API routes, tests, migration notes, and operator documentation.",
+    ],
+  },
+  {
     version: "2.2.3",
     title: "Playlist Roles & Progression Chains",
     releaseDate: "July 18, 2026",

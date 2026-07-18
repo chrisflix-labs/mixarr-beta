@@ -11,6 +11,7 @@ import TrackExclusionsManager from "@/components/TrackExclusionsManager";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
 import PlaylistVersionSettings from "@/components/PlaylistVersionSettings";
 import PersonalizationProfilePanel from "@/components/PersonalizationProfilePanel";
+import SmartRefreshGlobalSettings from "@/components/SmartRefreshGlobalSettings";
 import PlaylistIdentitySettings from "@/components/PlaylistIdentitySettings";
 import ContextualMixSettings from "@/components/ContextualMixSettings";
 import SmartMixExplanationSettings from "@/components/SmartMixExplanationSettings";
@@ -241,6 +242,12 @@ export default async function SettingsPage() {
         </p>
         <WorkerHealthCard />
         <BackgroundSchedulerSettings />
+      </section>
+
+      <section className={`glass-panel ${styles.section}`}>
+        <h3 className={styles.sectionTitle}><RefreshCw size={20} color="var(--accent)" /> Smart Refresh Quiet Hours</h3>
+        <p className={styles.sectionDesc}>Set safe global quiet-hour defaults. Each playlist can inherit these settings or use a validated override.</p>
+        <SmartRefreshGlobalSettings />
       </section>
 
       <section className={`glass-panel ${styles.section}`}>

@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.2.4 - Smart Refresh Scheduling
+
+- Added per-playlist Manual Only, Fixed Schedule, Smart Refresh, Smart Refresh with Fallback, and Disabled modes with conservative migration defaults.
+- Added explainable evaluation of existing Smart Mix quality, weak tracks, compatible new tracks, playback repetition, identity drift, relevant metadata improvements, unavailable tracks, and major library changes.
+- Added bounded candidate previews, predicted score improvement, confidence, identity-damage rejection, minimum-improvement gating, and least-disruptive action selection.
+- Added Low, Balanced, High, and bounded Custom sensitivity; cooldowns; successful-refresh weekly limits; evaluation frequency; fallback age; and global/per-playlist time-zone quiet hours.
+- Added manual Check for improvements, exact preview, explicit apply/dismiss, responsive settings, dashboard summaries, Job History audit, stale-safe execution, and automatic restorable version snapshots.
+- Integrated bounded Smart Refresh evaluation as the final background pipeline stage after audio analysis, with major-sync targeting, batching, duplicate suppression, active-job safeguards, and no parallel generation engine.
+- Added the additive `20260718030000_smart_refresh_scheduling` migration, authenticated APIs, documentation, and deterministic evaluation/scheduling tests.
+
 ## v2.2.3 - Playlist Roles & Progression Chains
 
 - Added optional built-in and custom playlist roles with label-only, suggest, and apply-guidance behavior. Existing playlists receive no automatic role.

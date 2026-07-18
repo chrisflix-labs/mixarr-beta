@@ -3555,12 +3555,21 @@ export async function refreshAutoPlaylists() {
       plexPlaylistId: { not: null },
       serverId: { not: null },
     },
-    select: { id: true },
+    select: { id: true, userId: true, plexPlaylistId: true },
   });
 
+  let refreshed = 0;
   for (const rule of rules) {
+    const tracked = await prisma.generatedPlaylist.findFirst({
+      where: { userId: rule.userId, plexPlaylistRatingKey: rule.plexPlaylistId },
+      select: { smartRefreshSettings: { select: { refreshMode: true } } },
+    });
+    // No v2.2.4 settings row means this is an existing fixed schedule and remains
+    // backward compatible. An explicit Smart/Manual/Disabled mode owns the decision.
+    if (tracked?.smartRefreshSettings && tracked.smartRefreshSettings.refreshMode !== "FIXED_SCHEDULE") continue;
     await refreshSavedPlaylist(rule.id, "auto");
+    refreshed += 1;
   }
 
-  return rules.length;
+  return refreshed;
 }
