@@ -1,13 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import prisma from "@/lib/prisma";
-import {
-  buildImportPreview,
-  INVALID_RECIPE_EXPORT_MESSAGE,
-  UNSUPPORTED_RECIPE_EXPORT_VERSION_MESSAGE,
-} from "@/lib/playlistRecipeImportExport";
-
-const maxImportBytes = 5 * 1024 * 1024;
+import { stageRecipeImport } from "@/lib/mixRecipes/transferService";
 
 export async function POST(req: Request) {
   const userId = cookies().get("mixarr_session")?.value;
@@ -19,21 +12,10 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const content = typeof body.content === "string" ? body.content : JSON.stringify(body.content);
-    if (Buffer.byteLength(content, "utf8") > maxImportBytes) {
-      return NextResponse.json({ error: "Recipe import file is too large." }, { status: 413 });
-    }
-
-    const existingRecipes = await prisma.playlistRecipe.findMany({
-      where: { userId, isArchived: false },
-      select: { name: true },
-    });
-    const preview = buildImportPreview(content, existingRecipes.map((recipe) => recipe.name));
-
-    return NextResponse.json({ preview });
-  } catch (error: any) {
-    const message = error.message === UNSUPPORTED_RECIPE_EXPORT_VERSION_MESSAGE
-      ? UNSUPPORTED_RECIPE_EXPORT_VERSION_MESSAGE
-      : INVALID_RECIPE_EXPORT_MESSAGE;
-    return NextResponse.json({ error: message }, { status: 400 });
+    const result = await stageRecipeImport({ userId, filename: typeof body.filename === "string" ? body.filename : "mixarr-recipe-import.json", content, encoding: body.encoding === "base64" ? "base64" : "utf8" });
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    const caught = error as Error & { code?: string; status?: number };
+    return NextResponse.json({ error: caught.message, code: caught.code || "IMPORT_PREVIEW_FAILED" }, { status: caught.status || 400 });
   }
 }

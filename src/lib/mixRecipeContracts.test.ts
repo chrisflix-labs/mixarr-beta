@@ -56,13 +56,14 @@ describe("Mix Recipe API and privacy contracts", () => {
     assert.match(conversion, /sourcePlaylistId: playlist\.id/);
   });
 
-  it("exports canonical recipes without local library and track IDs", () => {
-    const portable = read("src", "lib", "playlistRecipeImportExport.ts");
-    assert.match(portable, /format: "mixarr-recipes"/);
-    assert.match(portable, /serverId: null/);
-    assert.match(portable, /libraryId: null/);
-    assert.match(portable, /pinnedTrackIds: \[\]/);
-    assert.match(portable, /excludedTrackIds: \[\]/);
+  it("exports allowlisted recipes without serializing local library and track identities", () => {
+    const portable = read("src", "lib", "mixRecipes", "transfer.ts");
+    assert.match(portable, /RECIPE_EXPORT_FORMAT = "mixarr-recipe"/);
+    assert.match(portable, /function portableGeneration/);
+    assert.doesNotMatch(portable.slice(portable.indexOf("function portableGeneration"), portable.indexOf("export function portableRecipePayloadFromDocument")), /serverId:/);
+    assert.doesNotMatch(portable.slice(portable.indexOf("function portableGeneration"), portable.indexOf("export function portableRecipePayloadFromDocument")), /libraryId:/);
+    assert.doesNotMatch(portable.slice(portable.indexOf("function portableGeneration"), portable.indexOf("export function portableRecipePayloadFromDocument")), /pinnedTrackIds:/);
+    assert.match(portable, /assertExportIsSafe/);
   });
 
   it("requires explicit automation confirmation", () => {
@@ -70,6 +71,35 @@ describe("Mix Recipe API and privacy contracts", () => {
     assert.match(service, /confirmAutomation = false/);
     assert.match(service, /automationPolicy\.enabled && confirmAutomation/);
     assert.match(service, /refreshMode: confirmAutomation \? "SCHEDULED" : "MANUAL_ONLY"/);
+  });
+});
+
+describe("Mix Recipe v2.3.1 transfer contracts", () => {
+  const schema = read("prisma", "schema.prisma");
+  const migration = read("prisma", "migrations", "20260719190000_recipe_import_export_v231", "migration.sql");
+  const transfer = read("src", "lib", "mixRecipes", "transfer.ts");
+  const service = read("src", "lib", "mixRecipes", "transferService.ts");
+
+  it("adds owner-scoped expiring stages and sanitized import/export history additively", () => {
+    for (const model of ["RecipeImportStage", "RecipeImportHistory", "RecipeExportHistory"]) assert.match(schema, new RegExp(`model ${model} \\{`));
+    assert.match(schema, /expiresAt\s+DateTime/);
+    assert.match(migration, /RecipeImportStage_userId_fkey/);
+    assert.match(migration, /RecipeImportHistory_userId_startedAt_idx/);
+    assert.doesNotMatch(migration, /DROP TABLE|DROP COLUMN|TRUNCATE/i);
+  });
+
+  it("revalidates server-held staged content before transactional import", () => {
+    assert.match(service, /revalidateCandidate/);
+    assert.match(service, /recipeChecksum\(candidate\.portable\)/);
+    assert.match(service, /scanSensitiveData\(candidate\.portable\)/);
+    assert.match(service, /validateRecipe\(candidate\.normalizedRecipe\)/);
+    assert.match(service, /prisma\.\$transaction/);
+  });
+
+  it("keeps unsupported settings visible and imported automation disabled", () => {
+    assert.match(transfer, /classification: "unsupported"/);
+    assert.match(transfer, /Imported automation cannot be activated/);
+    assert.match(service, /automationPolicy: \{ \.\.\.recipe\.automationPolicy, enabled: false, libraryId: null \}/);
   });
 });
 

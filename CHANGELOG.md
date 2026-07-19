@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.3.1 - Recipe Import & Export
+
+### Added
+
+- Versioned `mixarr-recipe` and `mixarr-recipe-bundle` envelopes with explicit portable-field allowlists, deterministic canonical JSON, per-recipe SHA-256 checksums, and bundle-level integrity validation.
+- Expiring, owner-scoped staged imports with checksum validation, sensitive-data scanning, schema migration, compatibility/adaptation analysis, duplicate-content and naming conflict detection, and server-side revalidation at confirmation.
+- Rename, replace, skip, and use-existing conflict actions; administrator-only replacement; atomic and independent bundle transactions; recipe revision preservation; and no automatic playlist or automation creation.
+- Optional `.mixarr-recipe.zip` and `.mixarr-bundle.zip` archives with controlled artwork files, path/symlink/executable/nested-archive defenses, compressed/expanded/file-count limits, content-based PNG/JPEG/WebP validation, and dimension/size limits.
+- Persistent import/export audit history, sanitized support diagnostics, clear-history authorization, structured privacy-safe logs, and short-lived upload disposal.
+- Responsive Recipe Library selection and bulk export, drag-and-drop six-step import wizard, human-readable recipe summaries, compatibility/security badges, per-recipe resolutions, progress/results state, and transfer history.
+- Additive `20260719190000_recipe_import_export_v231` migration, security/unit/regression coverage, transfer format documentation, release notes, and Roadmap updates.
+
+### Security and compatibility
+
+- Valid exports cannot contain credentials, Plex server/library/media identifiers, database or installation IDs, local paths, hostnames, listening/playback history, learned preferences, likes/dislikes/rejections, generated playlist membership, or notification destinations.
+- Existing v2.3.0 recipes remain valid. Older checksum-less canonical files use an explicit warning path; unsupported or corrupted integrity data is blocked.
+- Exporting never changes recipe configuration. Importing never creates a generated playlist and never activates imported automation.
+
 ## v2.3.0 - Mix Recipe Foundation
 
 ### Added

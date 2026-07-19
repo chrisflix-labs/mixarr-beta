@@ -1,66 +1,17 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import prisma from "@/lib/prisma";
-import { createPlaylistRecipeData, parsePlaylistRecipe } from "@/lib/playlistRecipes";
-import {
-  INVALID_RECIPE_EXPORT_MESSAGE,
-  prepareImportedRecipes,
-  type RecipeConflictStrategy,
-  UNSUPPORTED_RECIPE_EXPORT_VERSION_MESSAGE,
-} from "@/lib/playlistRecipeImportExport";
-
-const maxImportBytes = 5 * 1024 * 1024;
-const conflictStrategies: RecipeConflictStrategy[] = ["rename", "skip"];
+import { confirmRecipeImport } from "@/lib/mixRecipes/transferService";
 
 export async function POST(req: Request) {
   const userId = cookies().get("mixarr_session")?.value;
-
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await req.json();
-    const content = typeof body.content === "string" ? body.content : JSON.stringify(body.content);
-    if (Buffer.byteLength(content, "utf8") > maxImportBytes) {
-      return NextResponse.json({ error: "Recipe import file is too large." }, { status: 413 });
-    }
-
-    const conflictStrategy = conflictStrategies.includes(body.conflictStrategy)
-      ? body.conflictStrategy
-      : "rename";
-    const existingRecipes = await prisma.playlistRecipe.findMany({
-      where: { userId, isArchived: false },
-      select: { name: true },
-    });
-    const prepared = prepareImportedRecipes(
-      content,
-      existingRecipes.map((recipe) => recipe.name),
-      conflictStrategy,
-    );
-
-    const createdRecipes = [];
-    for (const recipe of prepared.recipes) {
-      const created = await prisma.playlistRecipe.create({
-        data: createPlaylistRecipeData(userId, recipe),
-      });
-      createdRecipes.push(parsePlaylistRecipe(created));
-    }
-
-    return NextResponse.json({
-      summary: {
-        imported: prepared.imported,
-        renamed: prepared.renamed,
-        skipped: prepared.skipped,
-        failed: prepared.failed,
-        failures: prepared.failures,
-      },
-      recipes: createdRecipes,
-    }, { status: 201 });
-  } catch (error: any) {
-    const message = error.message === UNSUPPORTED_RECIPE_EXPORT_VERSION_MESSAGE
-      ? UNSUPPORTED_RECIPE_EXPORT_VERSION_MESSAGE
-      : INVALID_RECIPE_EXPORT_MESSAGE;
-    return NextResponse.json({ error: message }, { status: 400 });
+    if (typeof body.stageId !== "string") return NextResponse.json({ error: "Preview and stage the import before confirming it.", code: "IMPORT_STAGE_REQUIRED" }, { status: 400 });
+    const result = await confirmRecipeImport({ userId, stageId: body.stageId, mode: body.mode, decisions: Array.isArray(body.decisions) ? body.decisions : [] });
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    const caught = error as Error & { code?: string; status?: number };
+    return NextResponse.json({ error: caught.message, code: caught.code || "IMPORT_FAILED" }, { status: caught.status || 400 });
   }
 }

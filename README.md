@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.3.0 adds first-class recipe entities, revisions, validated configuration sections, and immutable generation snapshots; existing playlists, enrollment, automation flags, settings, personalization, playback data, experiments, Smart Actions, Plex mappings, and version history remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.3.1 adds secure staged recipe transfer, checksums, compatibility previews, archives, and audit history on top of the v2.3.0 recipe foundation; existing recipes, playlists, automation flags, personalization, playback data, Plex mappings, and version history remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -55,7 +55,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.3.0 introduces reusable Mix Recipes. A recipe describes what a Smart Mix should be and how Mixarr should generate it; a playlist is the concrete result with tracks, identity, feedback, history, experiments, and Plex state. See [Mix Recipe Foundation](docs/MIX_RECIPES_V230.md), [Orchestration Dashboard](docs/ORCHESTRATION_DASHBOARD_V229.md), and [Smart Experiments](docs/SMART_EXPERIMENTS_V226.md).
+Mixarr v2.3.1 makes reusable Mix Recipes safely portable between installations. A recipe describes what a Smart Mix should be and how Mixarr should generate it; a playlist is the concrete result with tracks, identity, feedback, history, experiments, and Plex state. See [Recipe Import & Export](docs/RECIPE_IMPORT_EXPORT_V231.md), [Mix Recipe Foundation](docs/MIX_RECIPES_V230.md), and [Orchestration Dashboard](docs/ORCHESTRATION_DASHBOARD_V229.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 

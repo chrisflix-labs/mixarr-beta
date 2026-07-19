@@ -4,7 +4,7 @@
 .header p, .back { color: var(--muted); font-size: .82rem; }
 .back { display: inline-flex; align-items: center; gap: .35rem; }
 .headerActions, .actions { display: flex; flex-wrap: wrap; gap: .5rem; }
-.headerActions button, .actions button, .actions a, .section > button, .danger button {
+.headerActions button, .headerActions a, .actions button, .actions a, .section > button, .danger button {
   display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
   min-height: 2.35rem; padding: .55rem .75rem; border: 1px solid var(--line);
   border-radius: var(--radius-md); color: var(--fg); background: rgba(255,255,255,.04);
@@ -58,7 +58,7 @@
   .two, .three { grid-template-columns: 1fr; }
 }
 @media (max-width: 600px) {
-  .headerActions, .headerActions button, .actions, .actions > * { width: 100%; }
+  .headerActions, .headerActions button, .headerActions a, .actions, .actions > * { width: 100%; }
   .danger { grid-template-columns: 1fr; }
   .message { grid-template-columns: 1fr; }
   .playlistList a { flex-direction: column; }

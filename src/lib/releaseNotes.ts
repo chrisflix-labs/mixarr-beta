@@ -77,6 +77,20 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.3.1",
+    title: "Recipe Import & Export",
+    releaseDate: "July 19, 2026",
+    badges: ["Recipes", "Import", "Export", "History", "Security", "Database", "Reliability", "Mobile", "Accessibility"],
+    changes: [
+      "Added sanitized, versioned single-recipe and deterministic multi-recipe bundle exports with explicit portable-field allowlists, canonical SHA-256 integrity checks, human-readable summaries, and export auditing.",
+      "Added expiring owner-scoped import staging, checksum and sensitive-data validation, shared recipe schema validation/migration, capability analysis, visible safe adaptations, unsupported-setting reporting, and server-side revalidation before persistence.",
+      "Added exact/normalized-name and equivalent-content conflict detection with rename, administrator-only replacement, skip, and use-existing actions plus atomic or independent bundle transactions.",
+      "Added optional artwork archives with controlled paths and filenames, traversal/symlink/executable/nested-archive defenses, decompression limits, content-based PNG/JPEG/WebP validation, dimension and byte limits, and optional artwork omission without blocking a recipe.",
+      "Added persistent import/export history, sanitized diagnostic downloads, structured privacy-safe logs, an additive migration, and a responsive six-step Recipe Library import wizard with selection and bulk export.",
+      "Privacy: valid recipe exports exclude credentials, Plex and database identifiers, filesystem/server data, generated tracks, playback/listening history, feedback, learned profiles, and local automation destinations. Importing never creates a playlist or activates automation.",
+    ],
+  },
+  {
     version: "2.3.0",
     title: "Mix Recipe Foundation",
     releaseDate: "July 19, 2026",

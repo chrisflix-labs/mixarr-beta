@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
-import { AlertCircle, ArrowLeft, CheckCircle2, Copy, Loader2, Play, Save, Trash2, Wand2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle2, Copy, Download, Loader2, Play, Save, Trash2, Wand2 } from "lucide-react";
 import styles from "./recipe-detail.module.css";
 
 const categories = ["Driving", "Workout", "Party", "Focus", "Chill", "Sleep", "Discovery", "Mood", "Decade", "Genre", "Artist", "Seasonal", "Custom"];
@@ -136,7 +136,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
   return <main className={styles.page}>
     <header className={styles.header}>
       <div><Link href="/recipes" className={styles.back}><ArrowLeft size={15} /> Recipe Library</Link><h2>{draft.name}</h2><p>Schema v{draft.schemaVersion} · Recipe v{draft.recipeVersion} · {draft.category}</p></div>
-      <div className={styles.headerActions}><button onClick={duplicate}><Copy size={15} /> Duplicate</button><button onClick={validate} disabled={validating}>{validating ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} Validate</button><button className={styles.primary} onClick={save} disabled={!dirty || saving}>{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Save</button></div>
+      <div className={styles.headerActions}><a href={`/api/playlist-recipes/${draft.id}/export`} download><Download size={15} /> Export recipe</a><button onClick={duplicate}><Copy size={15} /> Duplicate</button><button onClick={validate} disabled={validating}>{validating ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} Validate</button><button className={styles.primary} onClick={save} disabled={!dirty || saving}>{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Save</button></div>
     </header>
     {notice && <div className={styles.notice}><CheckCircle2 size={16} /> {notice}</div>}
     {error && <div className={styles.error}><AlertCircle size={16} /> {error}</div>}
@@ -223,4 +223,3 @@ function Section({ title, hint, children }: { title: string; hint: string; child
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className={styles.field}><span>{label}</span>{children}</label>; }
 function NumberField({ label, value, onChange, step = "1" }: { label: string; value: any; onChange: (value: number | null) => void; step?: string }) { return <Field label={label}><input type="number" step={step} value={value ?? ""} onChange={(event) => onChange(numberOrNull(event.target.value))} /></Field>; }
 function Slider({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <label className={styles.slider}><span>{label}<b>{value}%</b></span><input type="range" min="0" max="100" value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
-

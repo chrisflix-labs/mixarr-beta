@@ -39,9 +39,9 @@ RUN \
 FROM base AS runner
 WORKDIR /app
 ARG TARGETARCH
-ARG NEXT_PUBLIC_APP_VERSION=2.3.0
+ARG NEXT_PUBLIC_APP_VERSION=2.3.1
 LABEL org.opencontainers.image.title="Mixarr" \
-      org.opencontainers.image.version="2.3.0" \
+      org.opencontainers.image.version="2.3.1" \
       org.opencontainers.image.description="Smart Plex playlist engine with controlled Smart Mix experiments"
 
 RUN apt-get update && apt-get install -y openssl ffmpeg aubio-tools python3 python3-venv && rm -rf /var/lib/apt/lists/*

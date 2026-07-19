@@ -23,6 +23,9 @@ model User {
   servers                        Server[]
   playlistRules                  PlaylistRule[]
   playlistRecipes                PlaylistRecipe[]
+  recipeImportStages             RecipeImportStage[]
+  recipeImportHistory            RecipeImportHistory[]
+  recipeExportHistory            RecipeExportHistory[]
   playlistHistory                PlaylistHistory[]
   playlistHistoryEntries         PlaylistHistoryEntry[]
   generatedPlaylists             GeneratedPlaylist[]
@@ -1034,6 +1037,10 @@ model PlaylistRecipe {
   deletedAt            DateTime?
   lastUsedAt           DateTime?
   useCount             Int                      @default(0)
+  portableChecksum     String?
+  portableContentChecksum String?
+  importedAt           DateTime?
+  lastExportedAt       DateTime?
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
   user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1046,6 +1053,75 @@ model PlaylistRecipe {
   @@index([userId, category, updatedAt])
   @@index([userId, lastUsedAt])
   @@index([sourcePlaylistId])
+  @@index([userId, portableChecksum])
+  @@index([userId, portableContentChecksum])
+}
+
+model RecipeImportStage {
+  id                   String   @id @default(uuid())
+  userId               String
+  originalFilename     String
+  detectedFormat       String
+  formatVersion        Int
+  sourceDigest         String
+  sanitizedPayloadJson Json
+  previewJson          Json
+  status               String   @default("STAGED")
+  expiresAt            DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, expiresAt])
+  @@index([expiresAt])
+}
+
+model RecipeImportHistory {
+  id                      String    @id @default(uuid())
+  userId                  String
+  startedAt               DateTime  @default(now())
+  completedAt             DateTime?
+  originalFilename        String
+  detectedFormat          String
+  formatVersion           Int
+  importMode              String
+  recipeCount             Int       @default(0)
+  importedCount           Int       @default(0)
+  adaptedCount            Int       @default(0)
+  replacedCount           Int       @default(0)
+  renamedCount            Int       @default(0)
+  skippedCount            Int       @default(0)
+  failedCount             Int       @default(0)
+  checksumResult          String
+  sensitiveDataScanResult String
+  warningCount            Int       @default(0)
+  errorCount              Int       @default(0)
+  resultSummaryJson       Json
+  diagnosticJson          Json?
+  status                  String
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@index([userId, status, startedAt])
+}
+
+model RecipeExportHistory {
+  id                 String   @id @default(uuid())
+  userId             String
+  createdAt          DateTime @default(now())
+  exportType         String
+  recipeCount        Int
+  recipeNamesJson    Json
+  formatVersion      Int
+  includedArtwork    Boolean  @default(false)
+  sanitizationResult String
+  warningCount       Int      @default(0)
+  status             String
+  diagnosticJson     Json?
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, status, createdAt])
 }
 
 model PlaylistRecipeRevision {
