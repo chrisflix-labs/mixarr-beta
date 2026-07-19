@@ -297,6 +297,19 @@ export async function runScheduledBackgroundSync(activeCron: string) {
       console.log(`[Scheduler] Playlist Health completed duration=${Math.round(durationMs / 1000)}s users=${healthRuns.length} analyzed=${healthRuns.reduce((sum, run) => sum + run.analyzed, 0)} failed=${healthRuns.reduce((sum, run) => sum + run.failed, 0)}`);
     }
 
+    // v2.2.9 ecosystem snapshots are lightweight aggregates over the cached
+    // domain snapshots produced above. They never rescan library tracks.
+    if (remaining()) {
+      stageStartedAt = Date.now();
+      const { captureOrchestrationTrendSnapshot } = await import("./orchestration/dashboard");
+      const userIds = Array.from(new Set(libraries.map((library) => library.server.userId)));
+      const snapshots = [];
+      for (const userId of userIds) snapshots.push({ userId, ...(await captureOrchestrationTrendSnapshot(userId, true)) });
+      durationMs = Date.now() - stageStartedAt;
+      stages.push({ name: "orchestration_trends", startedAt: new Date(stageStartedAt).toISOString(), completedAt: new Date().toISOString(), durationMs, snapshots: snapshots.length });
+      console.log(`[Scheduler] Orchestration trend snapshots completed duration=${Math.round(durationMs / 1000)}s users=${snapshots.length}`);
+    }
+
     const durationSeconds = Math.round((Date.now() - pipelineStart) / 1000);
     const log = pipelineResult === "success" ? console.log : console.warn;
     log(`[Scheduler] Nightly sync completed status=${pipelineResult} duration=${durationSeconds}s`);

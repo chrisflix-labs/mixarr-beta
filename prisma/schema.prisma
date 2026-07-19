@@ -105,6 +105,9 @@ model User {
   playlistHealthSnapshots        PlaylistHealthSnapshot[]
   playlistHealthAlerts           PlaylistHealthAlert[]
   playlistHealthAlertEvents      PlaylistHealthAlertEvent[]        @relation("PlaylistHealthAlertEventActor")
+  orchestrationPreference        OrchestrationPreference?
+  orchestrationTrendSnapshots    OrchestrationTrendSnapshot[]
+  orchestrationBackupValidations OrchestrationBackupValidation[]
 }
 
 model SyncSettings {
@@ -611,6 +614,7 @@ model SmartExperiment {
 
   @@unique([userId, idempotencyKey])
   @@index([userId, status, updatedAt])
+  @@index([userId, status, completedAt])
   @@index([sourcePlaylistId, createdAt])
   @@index([status, plannedEndAt])
   @@index([status, publicationMode, lastRotatedAt])
@@ -2062,6 +2066,7 @@ model SmartAction {
 
   @@index([userId, deduplicationKey])
   @@index([userId, status, createdAt])
+  @@index([userId, status, priority, createdAt])
   @@index([libraryId, status])
   @@index([playlistId, status])
   @@index([actionType])
@@ -2157,20 +2162,20 @@ model PlaylistHealthSetting {
 }
 
 model PlaylistHealthSnapshot {
-  id                 String            @id @default(uuid())
+  id                 String                @id @default(uuid())
   userId             String
   playlistId         String
   overallScore       Int
   status             String
-  warningCount       Int               @default(0)
-  criticalCount      Int               @default(0)
+  warningCount       Int                   @default(0)
+  criticalCount      Int                   @default(0)
   metadataConfidence Float?
   identityScore      Float?
   checksJson         Json
   fingerprint        String
-  analyzedAt         DateTime          @default(now())
-  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  playlist           GeneratedPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  analyzedAt         DateTime              @default(now())
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlist           GeneratedPlaylist     @relation(fields: [playlistId], references: [id], onDelete: Cascade)
   alerts             PlaylistHealthAlert[]
 
   @@index([userId, analyzedAt])
@@ -2179,30 +2184,30 @@ model PlaylistHealthSnapshot {
 }
 
 model PlaylistHealthAlert {
-  id             String                  @id @default(uuid())
-  userId         String
-  playlistId     String
-  snapshotId     String?
-  alertType      String
-  severity       String
-  status         String                  @default("OPEN")
-  title          String
-  message        String
-  detailsJson    Json?
-  occurrenceCount Int                    @default(1)
-  firstDetectedAt DateTime               @default(now())
-  lastDetectedAt DateTime                @default(now())
-  acknowledgedAt DateTime?
-  acknowledgedBy String?
-  resolvedAt     DateTime?
-  resolutionNote String?
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
-  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  playlist       GeneratedPlaylist       @relation(fields: [playlistId], references: [id], onDelete: Cascade)
-  snapshot       PlaylistHealthSnapshot? @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
-  events         PlaylistHealthAlertEvent[]
-  deliveries     PlaylistHealthNotificationDelivery[]
+  id              String                               @id @default(uuid())
+  userId          String
+  playlistId      String
+  snapshotId      String?
+  alertType       String
+  severity        String
+  status          String                               @default("OPEN")
+  title           String
+  message         String
+  detailsJson     Json?
+  occurrenceCount Int                                  @default(1)
+  firstDetectedAt DateTime                             @default(now())
+  lastDetectedAt  DateTime                             @default(now())
+  acknowledgedAt  DateTime?
+  acknowledgedBy  String?
+  resolvedAt      DateTime?
+  resolutionNote  String?
+  createdAt       DateTime                             @default(now())
+  updatedAt       DateTime                             @updatedAt
+  user            User                                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlist        GeneratedPlaylist                    @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  snapshot        PlaylistHealthSnapshot?              @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  events          PlaylistHealthAlertEvent[]
+  deliveries      PlaylistHealthNotificationDelivery[]
 
   @@unique([userId, playlistId, alertType])
   @@index([userId, status, severity, lastDetectedAt])
@@ -3747,6 +3752,7 @@ model PlaylistOrchestrationJob {
   @@index([managedPlaylistId, status])
   @@index([playlistPriority, priority, requestedAt])
   @@index([userId, status])
+  @@index([userId, status, scheduledFor])
   @@index([libraryId, status])
   @@index([lockedAt])
   @@index([heartbeatAt])
@@ -3784,6 +3790,11 @@ model PlaylistOrchestrationAuditEvent {
   userId            String?
   managedPlaylistId String?
   jobId             String?
+  playlistGroupId   String?
+  smartActionId     String?
+  experimentId      String?
+  operationType     String?
+  outcome           String?
   eventType         String
   severity          String                    @default("INFO")
   actorType         String                    @default("SYSTEM")
@@ -3799,5 +3810,76 @@ model PlaylistOrchestrationAuditEvent {
   @@index([managedPlaylistId, createdAt])
   @@index([jobId, createdAt])
   @@index([eventType, createdAt])
+  @@index([userId, severity, createdAt])
+  @@index([userId, actorType, createdAt])
+  @@index([playlistGroupId, createdAt])
+  @@index([smartActionId, createdAt])
+  @@index([experimentId, createdAt])
+  @@index([operationType, createdAt])
+  @@index([outcome, createdAt])
   @@index([createdAt])
+}
+
+// v2.2.9 dashboard preferences and onboarding state are isolated from the
+// existing runtime settings so an upgrade cannot enable automation.
+model OrchestrationPreference {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  dashboardTimeRange String   @default("30d")
+  onboardingStep     Int      @default(1)
+  onboardingComplete Boolean  @default(false)
+  automationLevel    String   @default("OBSERVE_ONLY")
+  goalsJson          Json     @default("[]")
+  safetySettingsJson Json     @default("{}")
+  dashboardJson      Json     @default("{}")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([onboardingComplete, updatedAt])
+}
+
+// Cached ecosystem snapshots prevent full playlist/library recalculation on
+// dashboard requests and provide truthful missing-data-aware history.
+model OrchestrationTrendSnapshot {
+  id                        String   @id @default(uuid())
+  userId                    String
+  managedPlaylistCount      Int      @default(0)
+  healthyPlaylistCount      Int      @default(0)
+  attentionPlaylistCount    Int      @default(0)
+  pausedPlaylistCount       Int      @default(0)
+  averageHealthScore        Float?
+  libraryCoveragePercentage Float?
+  averageOverlapPercentage  Float?
+  automationSuccessRate     Float?
+  pendingSmartActionCount   Int      @default(0)
+  activeExperimentCount     Int      @default(0)
+  failedJobCount            Int      @default(0)
+  metadataConfidence        Float?
+  identityMatch             Float?
+  capturedAt                DateTime @default(now())
+  metadataJson              Json?
+  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, capturedAt])
+}
+
+// Validation history stores only section-level evidence, never backup payloads.
+model OrchestrationBackupValidation {
+  id                    String   @id @default(uuid())
+  userId                String
+  sourceName            String?
+  status                String
+  backupSchemaVersion   String?
+  restoreCompatible     Boolean  @default(false)
+  estimatedRestoreScope Int      @default(0)
+  missingSectionsJson   Json     @default("[]")
+  corruptSectionsJson   Json     @default("[]")
+  warningsJson          Json     @default("[]")
+  errorsJson            Json     @default("[]")
+  validatedAt           DateTime @default(now())
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, validatedAt])
+  @@index([status, validatedAt])
 }

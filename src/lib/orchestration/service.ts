@@ -30,10 +30,14 @@ function safeMetadata(value: unknown): Prisma.InputJsonValue | undefined {
 
 export async function auditOrchestration(input: {
   userId?: string | null; managedPlaylistId?: string | null; jobId?: string | null; eventType: string;
+  playlistGroupId?: string | null; smartActionId?: string | null; experimentId?: string | null;
+  operationType?: string | null; outcome?: string | null;
   severity?: string; actorType?: string; actorId?: string | null; message: string; metadata?: unknown;
 }) {
   return prisma.playlistOrchestrationAuditEvent.create({ data: {
     userId: input.userId || null, managedPlaylistId: input.managedPlaylistId || null, jobId: input.jobId || null,
+    playlistGroupId: input.playlistGroupId || null, smartActionId: input.smartActionId || null, experimentId: input.experimentId || null,
+    operationType: input.operationType || null, outcome: input.outcome || null,
     eventType: input.eventType, severity: input.severity || "INFO", actorType: input.actorType || "SYSTEM",
     actorId: input.actorId || null, message: input.message.slice(0, 2_000), metadataJson: safeMetadata(input.metadata),
   } });

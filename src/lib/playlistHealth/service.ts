@@ -76,7 +76,7 @@ async function deliverNotification(alert: any, settings: any, playlistName: stri
     try {
       const endpoint = decryptSecret(destination.encrypted!);
       safeHttpsUrl(endpoint, destination.channel === "DISCORD" ? "discord" : "webhook");
-      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", "User-Agent": "Mixarr-Playlist-Health/2.2.8" }, body: JSON.stringify(destination.body), signal: AbortSignal.timeout(8000), redirect: "error" });
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", "User-Agent": "Mixarr-Playlist-Health/2.2.9" }, body: JSON.stringify(destination.body), signal: AbortSignal.timeout(8000), redirect: "error" });
       responseCode = response.status; status = response.ok ? "DELIVERED" : "FAILED"; if (!response.ok) error = `Endpoint returned HTTP ${response.status}`;
     } catch (caught) { error = caught instanceof Error ? caught.message.slice(0, 500) : "Notification delivery failed"; }
     await prisma.playlistHealthNotificationDelivery.create({ data: { alertId: alert.id, channel: destination.channel, status, responseCode, error } });

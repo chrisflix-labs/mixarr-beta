@@ -77,6 +77,21 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.2.9",
+    title: "Orchestration Dashboard & Release Polish",
+    releaseDate: "July 18, 2026",
+    badges: ["Playlists", "Automation", "Dashboard", "Health", "Library", "Jobs", "History", "Import", "Export", "Backup", "Database", "Performance", "Scheduler", "Security", "Reliability", "Mobile", "Accessibility", "Readiness", "Roadmap"],
+    changes: [
+      "Added the Playlist Ecosystem operations console with real managed-playlist health, group status, coverage, overlap, Smart Action, experiment, job, automation-success, activity, and warning summaries that link to their management views.",
+      "Added a bounded playlist relationship graph with an accessible table, a configurable overlap heatmap with policy context, group health rollups, independently loaded coverage segments, and mobile list/table alternatives.",
+      "Added persisted time-range preferences, cached historical ecosystem snapshots captured after the nightly health stage, missing-data-aware trends, and summary queries that reuse cached v2.2.x records instead of rescanning the library.",
+      "Added upcoming-job controls, administrator queue-maintenance previews, stale/interrupted recovery, retention-aware cleanup that preserves audit events, and expanded paginated audit filtering across actor, severity, outcome, operation, group, playlist, job, action, and experiment linkage.",
+      "Added resumable orchestration onboarding and configuration review, explicit enrollment with automation remaining disabled by default, bounded safety settings, and capability-aware controls.",
+      "Added versioned secret-free JSON configuration export, schema validation and conflict preview, confirmed merge or orchestration-only replacement, transactional application, missing-reference reporting, and import auditing.",
+      "Added non-destructive backup-manifest validation, restore-readiness evidence, v2.2.x migration/index/link checks, additive schema/index migration, large-result bounds, structured summary logging, tests, and final v2.2.x documentation and Roadmap updates.",
+    ],
+  },
+  {
     version: "2.2.8",
     title: "Playlist Health Monitoring & Alerts",
     releaseDate: "July 18, 2026",

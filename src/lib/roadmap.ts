@@ -277,20 +277,24 @@ export const roadmapReleases: RoadmapRelease[] = [
     version: "2.2.8",
     title: "Playlist Health Monitoring & Alerts",
     cycle: "2.2.x",
-    status: "current",
+    status: "completed",
     description: "Continuously scores playlist quality and surfaces identity, repetition, concentration, Plex, media, metadata, transition, staleness, and automation problems before playback.",
     featureLabels: ["Playlist health score", "Identity drift", "Repetition warnings", "Artist concentration", "Album concentration", "Broken Plex playlists", "Missing tracks", "Unavailable media", "Metadata confidence decline", "BPM jumps", "Mood conflicts", "Stale playlists", "Failed automation", "Dashboard health cards", "Discord", "Webhooks", "In-app alerts", "Configurable severity", "Acknowledgment", "Resolution history"],
     releaseOrder: 208,
     completionDate: "2026-07-18",
     route: "/playlist-health",
   },
-  ...[
-    ["2.2.9", "Orchestration Insights & Optimization"],
-  ].map(([version, title], index) => ({
-    version, title, cycle: "2.2.x", status: "upcoming" as const,
-    description: "Planned follow-on work that builds on the v2.2.0 orchestration foundation; it is not implemented in v2.2.0.",
-    featureLabels: [], releaseOrder: 209 + index,
-  })),
+  {
+    version: "2.2.9",
+    title: "Orchestration Dashboard & Release Polish",
+    cycle: "2.2.x",
+    status: "current",
+    description: "Completes the v2.2.x series with one Playlist Ecosystem control center for managed playlist health, groups, relationships, overlap, coverage, automation, Smart Actions, experiments, trends, onboarding, configuration portability, backup validation, queue maintenance, audit search, and upgrade readiness.",
+    featureLabels: ["Playlist Ecosystem dashboard", "Group health overview", "Relationship graph and accessible table", "Overlap heatmap", "Coverage drill-down", "Upcoming jobs", "Explainable activity", "Pending Smart Actions", "Experiment results", "Historical snapshots", "Resumable onboarding", "Safe queue cleanup", "Audit filtering", "Secret-free JSON export", "Previewed transactional import", "Backup validation", "Migration readiness", "Large-library bounds", "Mobile operations console"],
+    releaseOrder: 209,
+    completionDate: "2026-07-18",
+    route: "/orchestration",
+  },
 ];
 
 export const roadmapCycles: RoadmapCycle[] = [
@@ -312,9 +316,17 @@ export const roadmapCycles: RoadmapCycle[] = [
     id: "2.2.x",
     title: "v2.2.x — Playlist Orchestration",
     status: "current",
-    description: "v2.2.0 established deterministic playlist orchestration, followed by collections, cross-playlist variety, playlist journeys, Smart Refresh, coverage intelligence, protected experiments, Smart Actions, and continuous Playlist Health monitoring through v2.2.8.",
+    description: "The completed v2.2.x system coordinates playlist groups, cross-playlist intelligence, Smart Actions, automation, experiments, health monitoring, coverage management, and safety controls through one Playlist Ecosystem dashboard.",
     releases: roadmapReleases.filter((release) => release.cycle === "2.2.x"),
-    futureThemes: ["Playlist groups", "Cross-playlist duplicate control", "Progression journeys", "Run windows", "Rotation rules", "Balancing", "Visual planning", "Repair tools", "Operational insights"],
+    futureThemes: ["Operational refinement", "Provider-neutral optional assistance", "Deeper explainability", "No AI provider required for Smart Mix"],
+  },
+  {
+    id: "future-2x",
+    title: "Later 2.x and the path toward 3.0",
+    status: "upcoming",
+    description: "Future planning may explore optional AI-assisted workflows and broader ecosystem integrations after the deterministic orchestration foundation is proven. No release date is promised, and current Smart Mix functionality does not require an AI provider.",
+    releases: [],
+    futureThemes: ["Local Ollama models", "OpenRouter", "OpenAI-compatible APIs", "Anthropic-compatible APIs", "Other configurable providers", "Explicit consent, cost controls, and reviewable output"],
   },
 ];
 

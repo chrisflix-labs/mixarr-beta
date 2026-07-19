@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.2.9 - Orchestration Dashboard & Release Polish
+
+- Added the unified Playlist Ecosystem dashboard with real health, group, overlap, coverage, Smart Action, experiment, job, activity, trend, and warning data.
+- Added a bounded relationship graph, accessible relationship table, configurable overlap heatmap, group health overview, coverage segment drill-down, and mobile alternatives.
+- Added independently loaded orchestration summary APIs, cached nightly ecosystem snapshots, persisted dashboard ranges, and bounded/paginated detailed payloads for large libraries.
+- Added upcoming-job actions, retention-aware administrator queue cleanup, stale-job recovery, and audit filtering while preserving explanatory audit records.
+- Added resumable onboarding/configuration review and explicit playlist enrollment that keeps automation disabled until separately enabled.
+- Added versioned allowlisted JSON export, validated conflict preview, confirmed merge/replace import, missing-reference handling, transactions, and import auditing without importing secrets.
+- Added backup-manifest validation, restore-readiness evidence, v2.2.x migration/index/link checks, and actionable non-blocking warnings.
+- Added the additive `20260719010000_orchestration_dashboard_v229` migration, query indexes, tests, documentation, release notes, and final v2.2.x Roadmap updates.
+
 ## v2.2.8 - Playlist Health Monitoring & Alerts
 
 - Added continuous playlist health scores across Plex linkage, missing and unavailable tracks, identity, repetition, artist and album variety, metadata confidence, BPM and mood transitions, staleness, and automation failures.

@@ -102,11 +102,14 @@ test("orchestration API routes enforce sessions and central service boundaries",
   assert.match(worker, /job\.dryRun/);
 });
 
-test("orchestration UI exposes registration, dependencies, queue, audit, and non-destructive unregister copy", () => {
-  const page = readFileSync(join(process.cwd(), "src", "app", "orchestration", "page.tsx"), "utf8");
-  assert.match(page, /Register a Mixarr playlist/);
-  assert.match(page, /Dependencies/);
-  assert.match(page, /Queue/);
-  assert.match(page, /Audit activity/);
-  assert.match(page, /does not delete the playlist from Plex/);
+test("orchestration UI exposes the v2.2.9 ecosystem console and accessible alternatives", () => {
+  const page = readFileSync(join(process.cwd(), "src", "components", "OrchestrationDashboard.tsx"), "utf8");
+  assert.match(page, /Playlist Ecosystem/);
+  assert.match(page, /Group health overview/);
+  assert.match(page, /Playlist relationship graph/);
+  assert.match(page, /RelationshipTable/);
+  assert.match(page, /Cross-playlist overlap heatmap/);
+  assert.match(page, /Pending Smart Actions/);
+  assert.match(page, /Orchestration onboarding and configuration review/);
+  assert.match(page, /audit history will be preserved/i);
 });

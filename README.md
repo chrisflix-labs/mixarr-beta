@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.2.8 adds only Playlist Health settings, snapshots, alerts, lifecycle events, and notification-delivery records; existing playlists, settings, personalization, playback data, Plex mappings, and version history remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.2.9 adds orchestration dashboard preferences, cached trend snapshots, backup-validation evidence, audit linkage, and targeted indexes; existing playlists, enrollment, automation flags, settings, personalization, playback data, experiments, Smart Actions, Plex mappings, and version history remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -43,6 +43,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 | Smart Refresh Scheduling | Evaluates quality, compatible tracks, playback repetition, identity drift, relevant metadata, and safeguards before previewing or applying a meaningful refresh. |
 | Smart Experiments | Compares protected Smart Mix variants, tracks independent feedback and optional playback signals, suggests an explainable winner, merges settings, and restores the original snapshot. |
 | Playlist Health | Continuously scores generated playlists and alerts on identity drift, repetition, concentration, broken Plex links, unavailable tracks, metadata decline, BPM or mood conflicts, staleness, and failed automation. |
+| Playlist Ecosystem | Unifies managed-playlist health, group status, relationships, overlap, coverage, jobs, Smart Actions, experiments, trends, audit activity, onboarding, configuration transfer, and backup readiness. |
 | Recently Added Automation | Detects new Plex tracks once, scores readiness, quarantines incomplete analysis, suggests Smart Mix matches, and optionally applies version-protected additions after explicit opt-in. |
 | BPM detection and backfill | Uses API metadata where available, with local fallback support for missing or partial BPM data. |
 | Audio feature analysis | Stores energy, mood/valence, danceability, acousticness, tempo, source, status, and confidence fields. |
@@ -54,7 +55,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.2.8 adds continuous Playlist Health scores, persistent alerts, lifecycle history, and optional Discord/webhook delivery. See [Playlist Health Monitoring](docs/PLAYLIST_HEALTH_V228.md), [Smart Action Center](docs/SMART_ACTION_CENTER_V227.md), and [Smart Experiments](docs/SMART_EXPERIMENTS_V226.md).
+Mixarr v2.2.9 completes the v2.2.x orchestration cycle with the Playlist Ecosystem dashboard. See [Orchestration Dashboard](docs/ORCHESTRATION_DASHBOARD_V229.md), [Playlist Health Monitoring](docs/PLAYLIST_HEALTH_V228.md), [Smart Action Center](docs/SMART_ACTION_CENTER_V227.md), and [Smart Experiments](docs/SMART_EXPERIMENTS_V226.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 
