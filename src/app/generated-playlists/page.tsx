@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import Link from "next/link";
-import { Activity, AlertTriangle, Ban, CheckCircle2, FlaskConical, History, ListRestart, RefreshCw, Repeat2, ShieldCheck, Sparkles, Trash2, Wand2 } from "lucide-react";
+import { Activity, AlertTriangle, Ban, BookMarked, CheckCircle2, FlaskConical, History, ListRestart, RefreshCw, Repeat2, ShieldCheck, Sparkles, Trash2, Wand2 } from "lucide-react";
 import TrackPreviewButton from "@/components/TrackPreviewButton";
 import TrackFeedbackMenu from "@/components/TrackFeedbackMenu";
 import AdaptiveScoreBreakdown from "@/components/AdaptiveScoreBreakdown";
@@ -489,6 +489,18 @@ export default function GeneratedPlaylistsPage() {
     }
   };
 
+  const createRecipeFromPlaylist = async (playlist: GeneratedPlaylist) => {
+    const name = window.prompt("Recipe name", `${playlist.plexPlaylistTitle} Recipe`)?.trim();
+    if (!name) return;
+    setBusyId(playlist.id); setError("");
+    try {
+      const response = await axios.post(`/api/playlist-recipes/from-playlist/${playlist.id}`, { metadata: { name, category: "Custom" } });
+      window.location.href = `/recipes/${response.data.recipe.id}`;
+    } catch (requestError: any) {
+      setError(requestError.response?.data?.error || "Failed to create recipe from playlist.");
+    } finally { setBusyId(""); }
+  };
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -676,6 +688,7 @@ export default function GeneratedPlaylistsPage() {
                   {playlist.engineVersion === "v2" && <Link href={`/experiments?new=1&playlistId=${playlist.id}`} className={styles.secondaryButton}>
                     <FlaskConical size={15} /> Start experiment
                   </Link>}
+                  <button type="button" disabled={Boolean(busyId)} onClick={() => createRecipeFromPlaylist(playlist)} className={styles.secondaryButton}><BookMarked size={15} /> Create recipe</button>
                   <button type="button" disabled={Boolean(busyId)} onClick={() => removeGeneratedPlaylist(playlist)} className={styles.secondaryDangerButton}>
                     <Trash2 size={15} />
                     Remove from Generated Playlists

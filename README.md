@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.2.9 adds orchestration dashboard preferences, cached trend snapshots, backup-validation evidence, audit linkage, and targeted indexes; existing playlists, enrollment, automation flags, settings, personalization, playback data, experiments, Smart Actions, Plex mappings, and version history remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.3.0 adds first-class recipe entities, revisions, validated configuration sections, and immutable generation snapshots; existing playlists, enrollment, automation flags, settings, personalization, playback data, experiments, Smart Actions, Plex mappings, and version history remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -55,7 +55,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.2.9 completes the v2.2.x orchestration cycle with the Playlist Ecosystem dashboard. See [Orchestration Dashboard](docs/ORCHESTRATION_DASHBOARD_V229.md), [Playlist Health Monitoring](docs/PLAYLIST_HEALTH_V228.md), [Smart Action Center](docs/SMART_ACTION_CENTER_V227.md), and [Smart Experiments](docs/SMART_EXPERIMENTS_V226.md).
+Mixarr v2.3.0 introduces reusable Mix Recipes. A recipe describes what a Smart Mix should be and how Mixarr should generate it; a playlist is the concrete result with tracks, identity, feedback, history, experiments, and Plex state. See [Mix Recipe Foundation](docs/MIX_RECIPES_V230.md), [Orchestration Dashboard](docs/ORCHESTRATION_DASHBOARD_V229.md), and [Smart Experiments](docs/SMART_EXPERIMENTS_V226.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 

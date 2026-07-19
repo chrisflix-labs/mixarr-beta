@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.3.0 - Mix Recipe Foundation
+
+### Added
+
+- First-class Smart Mix recipes with metadata, artwork, independent ownership, enabled state, source traceability, and indexed generated-playlist relationships.
+- Canonical `mixarr-recipe` schema v1 covering scoring, mood and energy, BPM flow, discovery, variety, playlist identity defaults, refresh, automation, and generation settings.
+- Recipe revision tracking, centralized validation, schema migration infrastructure, create-from-playlist conversion, create-playlist-from-recipe generation, duplication, rename, soft deletion, and canonical export/import.
+- Immutable resolved recipe snapshots and playlist-only override snapshots on generated playlists and regeneration records.
+- Responsive Recipe Library, sectioned editor, validation UI, generated-playlist listing, and explicit automation confirmation.
+
+### Compatibility
+
+- Existing playlists and Smart Mix workflows do not require recipes.
+- Recipes never contain track membership or personal feedback/history.
+- Deleting a recipe retains every generated playlist and its historical snapshot.
+
 ## v2.2.9 - Orchestration Dashboard & Release Polish
 
 - Added the unified Playlist Ecosystem dashboard with real health, group, overlap, coverage, Smart Action, experiment, job, activity, trend, and warning data.

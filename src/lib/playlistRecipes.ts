@@ -3,6 +3,22 @@ import type { Prisma } from "@prisma/client";
 import prisma from "./prisma";
 import { APP_VERSION } from "./appVersion";
 import { playlistConfigSchema, summarizePlaylistSafetyRules, type PlaylistConfigInput, type PlaylistRuleInput } from "./playlistService";
+import {
+  defaultMixRecipeDocument,
+  mixRecipeMetadataSchema,
+  recipeAutomationPolicySchema,
+  recipeBpmFlowSchema,
+  recipeDiscoverySchema,
+  recipeIdentityDefaultsSchema,
+  recipeRefreshPolicySchema,
+  recipeScoringSchema,
+  recipeTargetsSchema,
+  recipeVarietySchema,
+  slugifyRecipeName,
+  resolveRecipeGenerationConfig,
+  type MixRecipeDocument,
+} from "./mixRecipes/schema";
+import { validateRecipe } from "./mixRecipes/validation";
 
 type RuleNode = PlaylistRuleInput | {
   type: "group";
@@ -12,8 +28,20 @@ type RuleNode = PlaylistRuleInput | {
 
 export const playlistRecipeSchema = z.object({
   name: z.string().trim().min(1, "Recipe name is required.").max(120),
-  description: z.string().trim().max(500).optional().nullable(),
+  description: z.string().trim().max(1000).optional().nullable(),
+  category: z.string().trim().min(1).max(80).default("Custom"),
+  artworkUrl: z.string().trim().max(500).optional().nullable(),
+  enabled: z.boolean().default(true),
+  sourcePlaylistId: z.string().uuid().optional().nullable(),
   filters: playlistConfigSchema,
+  scoring: recipeScoringSchema.optional(),
+  targets: recipeTargetsSchema.optional(),
+  bpmFlow: recipeBpmFlowSchema.optional(),
+  discovery: recipeDiscoverySchema.optional(),
+  variety: recipeVarietySchema.optional(),
+  playlistIdentity: recipeIdentityDefaultsSchema.optional(),
+  refreshPolicy: recipeRefreshPolicySchema.optional(),
+  automationPolicy: recipeAutomationPolicySchema.optional(),
 });
 
 export type PlaylistRecipeInput = z.infer<typeof playlistRecipeSchema>;
@@ -86,14 +114,61 @@ export function summarizePlaylistRecipeFilters(filters: PlaylistConfigInput) {
   return parts.join(" · ");
 }
 
-export function parsePlaylistRecipe(recipe: any) {
+export function portableRecipeFromRecord(recipe: any): MixRecipeDocument {
   const filters = playlistConfigSchema.parse(recipe.filtersJson);
+  const base = defaultMixRecipeDocument({
+    name: recipe.name,
+    slug: recipe.slug || slugifyRecipeName(recipe.name),
+    description: recipe.description,
+    category: recipe.category || "Custom",
+    artworkUrl: recipe.artworkUrl || null,
+    sourcePlaylistId: recipe.sourcePlaylistId || null,
+  }, filters);
+  const document = {
+    ...base,
+    schemaVersion: recipe.schemaVersion || 1,
+    recipeVersion: recipe.recipeVersion || 1,
+    scoring: recipeScoringSchema.parse(recipe.scoringJson || base.scoring),
+    targets: recipeTargetsSchema.parse(recipe.targetsJson || base.targets),
+    bpmFlow: recipeBpmFlowSchema.parse(recipe.bpmFlowJson || base.bpmFlow),
+    discovery: recipeDiscoverySchema.parse(recipe.discoveryJson || base.discovery),
+    variety: recipeVarietySchema.parse(recipe.varietyJson || base.variety),
+    playlistIdentity: recipeIdentityDefaultsSchema.parse(recipe.identityDefaultsJson || base.playlistIdentity),
+    refreshPolicy: recipeRefreshPolicySchema.parse(recipe.refreshPolicyJson || base.refreshPolicy),
+    automationPolicy: recipeAutomationPolicySchema.parse(recipe.automationPolicyJson || base.automationPolicy),
+  };
+  const validation = validateRecipe(document);
+  if (!validation.normalizedRecipe) throw new Error(validation.errors[0]?.message || "Stored recipe is invalid.");
+  return validation.normalizedRecipe;
+}
+
+export function parsePlaylistRecipe(recipe: any) {
+  const portable = portableRecipeFromRecord(recipe);
+  const validation = validateRecipe(portable);
+  const resolvedFilters = resolveRecipeGenerationConfig(portable);
   return {
     id: recipe.id,
     name: recipe.name,
+    slug: recipe.slug || portable.metadata.slug,
     description: recipe.description,
-    filters,
-    filterSummary: summarizePlaylistRecipeFilters(filters),
+    category: recipe.category || "Custom",
+    artworkUrl: recipe.artworkUrl || null,
+    enabled: recipe.enabled !== false,
+    schemaVersion: portable.schemaVersion,
+    recipeVersion: portable.recipeVersion,
+    sourcePlaylistId: recipe.sourcePlaylistId || null,
+    filters: resolvedFilters,
+    scoring: portable.scoring,
+    targets: portable.targets,
+    bpmFlow: portable.bpmFlow,
+    discovery: portable.discovery,
+    variety: portable.variety,
+    playlistIdentity: portable.playlistIdentity,
+    refreshPolicy: portable.refreshPolicy,
+    automationPolicy: portable.automationPolicy,
+    portableRecipe: portable,
+    validation: { valid: validation.valid, errors: validation.errors, warnings: validation.warnings },
+    filterSummary: summarizePlaylistRecipeFilters(resolvedFilters),
     createdAt: recipe.createdAt,
     updatedAt: recipe.updatedAt,
     lastUsedAt: recipe.lastUsedAt,
@@ -101,24 +176,112 @@ export function parsePlaylistRecipe(recipe: any) {
     createdFromVersion: recipe.createdFromVersion,
     isFavorite: recipe.isFavorite,
     isArchived: recipe.isArchived,
+    deletedAt: recipe.deletedAt || null,
+    playlistCount: recipe._count?.generatedPlaylists ?? recipe.playlistCount ?? 0,
   };
 }
 
 export function createPlaylistRecipeData(userId: string, input: PlaylistRecipeInput): Prisma.PlaylistRecipeCreateInput {
+  const document = defaultMixRecipeDocument({
+    name: input.name,
+    description: input.description || null,
+    category: input.category,
+    artworkUrl: input.artworkUrl || null,
+    sourcePlaylistId: input.sourcePlaylistId || null,
+  }, input.filters);
+  const resolved = {
+    ...document,
+    scoring: input.scoring || document.scoring,
+    targets: input.targets || document.targets,
+    bpmFlow: input.bpmFlow || document.bpmFlow,
+    discovery: input.discovery || document.discovery,
+    variety: input.variety || document.variety,
+    playlistIdentity: input.playlistIdentity || document.playlistIdentity,
+    refreshPolicy: input.refreshPolicy || document.refreshPolicy,
+    automationPolicy: input.automationPolicy || document.automationPolicy,
+  };
+  const validation = validateRecipe(resolved);
+  if (!validation.normalizedRecipe) throw new Error(validation.errors[0]?.message || "Invalid recipe.");
+  const recipe = validation.normalizedRecipe;
   return {
     user: { connect: { id: userId } },
     name: input.name,
+    slug: `${slugifyRecipeName(input.name)}-${crypto.randomUUID().slice(0, 8)}`,
     description: input.description || null,
-    filtersJson: input.filters as Prisma.InputJsonValue,
+    category: input.category,
+    artworkUrl: input.artworkUrl || null,
+    enabled: input.enabled,
+    schemaVersion: recipe.schemaVersion,
+    recipeVersion: recipe.recipeVersion,
+    filtersJson: recipe.generation as Prisma.InputJsonValue,
+    scoringJson: recipe.scoring as Prisma.InputJsonValue,
+    targetsJson: recipe.targets as Prisma.InputJsonValue,
+    bpmFlowJson: recipe.bpmFlow as Prisma.InputJsonValue,
+    discoveryJson: recipe.discovery as Prisma.InputJsonValue,
+    varietyJson: recipe.variety as Prisma.InputJsonValue,
+    identityDefaultsJson: recipe.playlistIdentity as Prisma.InputJsonValue,
+    refreshPolicyJson: recipe.refreshPolicy as Prisma.InputJsonValue,
+    automationPolicyJson: recipe.automationPolicy as Prisma.InputJsonValue,
+    ...(input.sourcePlaylistId ? { sourcePlaylist: { connect: { id: input.sourcePlaylistId } } } : {}),
     createdFromVersion: APP_VERSION,
+    revisions: {
+      create: {
+        recipeVersion: 1,
+        schemaVersion: recipe.schemaVersion,
+        changeType: input.sourcePlaylistId ? "CREATED_FROM_PLAYLIST" : "CREATED",
+        portableSnapshotJson: recipe as Prisma.InputJsonValue,
+      },
+    },
   };
 }
 
-export function updatePlaylistRecipeData(input: PlaylistRecipeInput): Prisma.PlaylistRecipeUpdateInput {
+export function updatePlaylistRecipeData(input: PlaylistRecipeInput, existing?: any): Prisma.PlaylistRecipeUpdateInput {
+  const currentVersion = existing?.recipeVersion || 1;
+  const document = defaultMixRecipeDocument({
+    name: input.name, slug: existing?.slug || slugifyRecipeName(input.name), description: input.description,
+    category: input.category, artworkUrl: input.artworkUrl, sourcePlaylistId: input.sourcePlaylistId,
+  }, input.filters);
+  const recipe = validateRecipe({
+    ...document,
+    recipeVersion: currentVersion + 1,
+    scoring: input.scoring || document.scoring,
+    targets: input.targets || document.targets,
+    bpmFlow: input.bpmFlow || document.bpmFlow,
+    discovery: input.discovery || document.discovery,
+    variety: input.variety || document.variety,
+    playlistIdentity: input.playlistIdentity || document.playlistIdentity,
+    refreshPolicy: input.refreshPolicy || document.refreshPolicy,
+    automationPolicy: input.automationPolicy || document.automationPolicy,
+  });
+  if (!recipe.normalizedRecipe) throw new Error(recipe.errors[0]?.message || "Invalid recipe.");
+  const normalized = recipe.normalizedRecipe;
+  const behaviorChanged = !existing || [
+    [existing.filtersJson, normalized.generation], [existing.scoringJson, normalized.scoring], [existing.targetsJson, normalized.targets],
+    [existing.bpmFlowJson, normalized.bpmFlow], [existing.discoveryJson, normalized.discovery], [existing.varietyJson, normalized.variety],
+    [existing.identityDefaultsJson, normalized.playlistIdentity], [existing.refreshPolicyJson, normalized.refreshPolicy],
+    [existing.automationPolicyJson, normalized.automationPolicy],
+  ].some(([left, right]) => JSON.stringify(left) !== JSON.stringify(right));
+  const nextVersion = behaviorChanged ? currentVersion + 1 : currentVersion;
+  const snapshot = { ...normalized, recipeVersion: nextVersion };
   return {
     name: input.name,
     description: input.description || null,
-    filtersJson: input.filters as Prisma.InputJsonValue,
+    category: input.category,
+    artworkUrl: input.artworkUrl || null,
+    enabled: input.enabled,
+    filtersJson: normalized.generation as Prisma.InputJsonValue,
+    scoringJson: normalized.scoring as Prisma.InputJsonValue,
+    targetsJson: normalized.targets as Prisma.InputJsonValue,
+    bpmFlowJson: normalized.bpmFlow as Prisma.InputJsonValue,
+    discoveryJson: normalized.discovery as Prisma.InputJsonValue,
+    varietyJson: normalized.variety as Prisma.InputJsonValue,
+    identityDefaultsJson: normalized.playlistIdentity as Prisma.InputJsonValue,
+    refreshPolicyJson: normalized.refreshPolicy as Prisma.InputJsonValue,
+    automationPolicyJson: normalized.automationPolicy as Prisma.InputJsonValue,
+    ...(behaviorChanged ? {
+      recipeVersion: nextVersion,
+      revisions: { create: { recipeVersion: nextVersion, schemaVersion: normalized.schemaVersion, changeType: "UPDATED", portableSnapshotJson: snapshot as Prisma.InputJsonValue } },
+    } : {}),
   };
 }
 

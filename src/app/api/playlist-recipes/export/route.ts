@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
-import { buildRecipesExport } from "@/lib/playlistRecipeImportExport";
+import { buildCanonicalRecipesExport } from "@/lib/playlistRecipeImportExport";
 
 function exportFilename() {
   return `mixarr-recipes-export-${new Date().toISOString().slice(0, 10)}.json`;
@@ -18,7 +18,7 @@ export async function GET() {
     where: { userId, isArchived: false },
     orderBy: [{ name: "asc" }, { updatedAt: "desc" }],
   });
-  const payload = buildRecipesExport(recipes);
+  const payload = buildCanonicalRecipesExport(recipes);
 
   return new NextResponse(JSON.stringify(payload, null, 2), {
     headers: {

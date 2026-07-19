@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
@@ -16,6 +16,14 @@ type PlaylistRecipe = {
   updatedAt: string;
   lastUsedAt?: string | null;
   useCount: number;
+  category: string;
+  enabled: boolean;
+  recipeVersion: number;
+  schemaVersion: number;
+  playlistCount: number;
+  validation: { valid: boolean; errors: unknown[]; warnings: unknown[] };
+  automationPolicy?: { enabled: boolean };
+  artworkUrl?: string | null;
 };
 
 type ImportPreviewRecipe = {
@@ -96,6 +104,17 @@ export default function RecipesPage() {
   const [conflictStrategy, setConflictStrategy] = useState<"rename" | "skip">("rename");
   const [error, setError] = useState("");
   const [importError, setImportError] = useState("");
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [sort, setSort] = useState("updated");
+
+  const displayedRecipes = useMemo(() => recipes
+    .filter((recipe) => !search || `${recipe.name} ${recipe.description || ""}`.toLowerCase().includes(search.toLowerCase()))
+    .filter((recipe) => category === "all" || recipe.category === category)
+    .filter((recipe) => status === "all" || recipe.enabled === (status === "enabled"))
+    .sort((left, right) => sort === "name" ? left.name.localeCompare(right.name) : sort === "used" ? new Date(right.lastUsedAt || 0).getTime() - new Date(left.lastUsedAt || 0).getTime() : new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()),
+  [recipes, search, category, status, sort]);
 
   const fetchRecipes = async () => {
     setLoading(true);
@@ -201,7 +220,7 @@ export default function RecipesPage() {
   };
 
   const deleteRecipe = async (recipe: PlaylistRecipe) => {
-    if (!window.confirm(`Delete recipe "${recipe.name}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete recipe "${recipe.name}"? ${recipe.playlistCount || 0} generated playlist(s) will be retained.`)) return;
     try {
       await axios.delete(`/api/playlist-recipes/${recipe.id}`);
       setRecipes(recipes.filter((item) => item.id !== recipe.id));
@@ -216,7 +235,7 @@ export default function RecipesPage() {
     try {
       const res = await axios.post(`/api/playlist-recipes/${recipe.id}/duplicate`);
       alert(res.data.message || `Duplicated recipe "${recipe.name}".`);
-      router.push(`/builder?recipeId=${res.data.recipe.id}&edit=1`);
+      router.push(`/recipes/${res.data.recipe.id}`);
     } catch (e: any) {
       console.error(e);
       alert(e.response?.data?.error || "Failed to duplicate playlist recipe");
@@ -231,10 +250,10 @@ export default function RecipesPage() {
         <div>
           <span className={styles.kicker}>
             <BookMarked size={14} />
-            Saved Recipes
+            Mix Recipe Library
           </span>
-          <h2>Playlist Recipes</h2>
-          <p>Save, reuse, export, and import playlist builder filter setups.</p>
+          <h2>Mix Recipes</h2>
+          <p>Reusable Smart Mix strategies, independent from the playlists and tracks they generate.</p>
         </div>
         <div className={styles.headerActions}>
           <input
@@ -262,6 +281,13 @@ export default function RecipesPage() {
           </Link>
         </div>
       </header>
+
+      <section className={styles.filters} aria-label="Recipe filters">
+        <input aria-label="Search recipes" placeholder="Search recipes" value={search} onChange={(event) => setSearch(event.target.value)} />
+        <select aria-label="Category" value={category} onChange={(event) => setCategory(event.target.value)}><option value="all">All categories</option>{Array.from(new Set(recipes.map((recipe) => recipe.category))).sort().map((value) => <option key={value}>{value}</option>)}</select>
+        <select aria-label="Status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Enabled and disabled</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select>
+        <select aria-label="Sort recipes" value={sort} onChange={(event) => setSort(event.target.value)}><option value="updated">Recently updated</option><option value="used">Recently used</option><option value="name">Name</option></select>
+      </section>
 
       {(importing || importFileName || importPreview || importError || importSummary) && (
         <section className={styles.importPanel} aria-label="Import recipe preview">
@@ -388,14 +414,15 @@ export default function RecipesPage() {
         </section>
       ) : (
         <section className={styles.recipeGrid} aria-label="Saved playlist recipes">
-          {recipes.map((recipe) => (
+          {displayedRecipes.map((recipe) => (
             <article key={recipe.id} className={styles.recipeCard}>
+              <div className={styles.artwork} style={recipe.artworkUrl ? { backgroundImage: `url("${recipe.artworkUrl.replace(/["\\()]/g, "")}")` } : undefined} role="img" aria-label={recipe.artworkUrl ? `${recipe.name} artwork` : `${recipe.category} recipe artwork fallback`}><span>{recipe.artworkUrl ? "" : recipe.category.slice(0, 1).toUpperCase()}</span></div>
               <div className={styles.cardTop}>
                 <div>
                   <h3>{recipe.name}</h3>
                   {recipe.description && <p>{recipe.description}</p>}
                 </div>
-                <span>{recipe.useCount} use{recipe.useCount === 1 ? "" : "s"}</span>
+                <span>{recipe.validation.valid ? "Valid" : "Needs attention"}</span>
               </div>
 
               <dl className={styles.metaGrid}>
@@ -411,9 +438,11 @@ export default function RecipesPage() {
                   <dt>Last used</dt>
                   <dd>{formatDate(recipe.lastUsedAt)}</dd>
                 </div>
+                <div><dt>Recipe</dt><dd>{recipe.category} · v{recipe.recipeVersion} · {recipe.playlistCount} playlist{recipe.playlistCount === 1 ? "" : "s"}</dd></div>
               </dl>
 
               <p className={styles.summary}>{recipe.filterSummary || "No filters saved."}</p>
+              <p className={styles.automationSummary}>{recipe.automationPolicy?.enabled ? "Automation offered with explicit confirmation" : "Automation disabled"} · {recipe.enabled ? "Enabled" : "Disabled"}</p>
 
               <div className={styles.actions}>
                 <Link href={`/builder?recipeId=${recipe.id}`} className={styles.secondaryButton}>
@@ -424,7 +453,7 @@ export default function RecipesPage() {
                   <Play size={15} />
                   Preview
                 </Link>
-                <Link href={`/builder?recipeId=${recipe.id}&edit=1`} className={styles.secondaryButton}>
+                <Link href={`/recipes/${recipe.id}`} className={styles.secondaryButton}>
                   <Edit3 size={15} />
                   Edit
                 </Link>

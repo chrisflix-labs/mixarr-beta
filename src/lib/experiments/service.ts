@@ -59,6 +59,7 @@ export async function createExperiment(userId: string, input: CreateInput) {
       alternatingIntervalHours: input.alternatingIntervalHours,
       constantConfiguration: json({
         source: stableConfigurationSnapshot(source.filtersJson),
+        recipe: source.recipeId ? { id: source.recipeId, name: source.recipeName, recipeVersion: source.recipeVersionUsed, schemaVersion: source.recipeSchemaVersionUsed, resolvedSnapshot: source.resolvedRecipeSnapshotJson, playlistOverrides: source.playlistOverridesJson } : null,
         identity: source.identity?.effectiveProfileJson || null,
         lockedTrackIds: source.tracks.filter((track) => track.locked).map((track) => track.trackId).filter(Boolean),
         requiredTrackIds: source.tracks.filter((track) => track.locked || track.automationProtected).map((track) => track.trackId).filter(Boolean),
@@ -66,7 +67,7 @@ export async function createExperiment(userId: string, input: CreateInput) {
         differences: controlled.differences,
         warnings: controlled.warnings,
       }),
-      originalSnapshot: json({ schemaVersion: 1, playlistVersionId: originalVersion.id, snapshot: originalSnapshot }),
+      originalSnapshot: json({ schemaVersion: 1, playlistVersionId: originalVersion.id, snapshot: originalSnapshot, recipeId: source.recipeId, recipeVersion: source.recipeVersionUsed, resolvedRecipeSnapshot: source.resolvedRecipeSnapshotJson, playlistOverrides: source.playlistOverridesJson }),
       variants: {
         create: [
           { variant: "A", engineVersion: source.engineVersion, randomSeed: crypto.randomUUID(), configurationSnapshot: json(stableConfigurationSnapshot(input.configurationA)) },

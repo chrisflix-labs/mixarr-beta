@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { APP_VERSION } from "@/lib/appVersion";
-import { parsePlaylistRecipe } from "@/lib/playlistRecipes";
+import { createPlaylistRecipeData, parsePlaylistRecipe } from "@/lib/playlistRecipes";
 import {
   INVALID_RECIPE_EXPORT_MESSAGE,
   prepareImportedRecipes,
@@ -44,15 +42,7 @@ export async function POST(req: Request) {
     const createdRecipes = [];
     for (const recipe of prepared.recipes) {
       const created = await prisma.playlistRecipe.create({
-        data: {
-          user: { connect: { id: userId } },
-          name: recipe.name,
-          description: recipe.description || null,
-          filtersJson: recipe.filters as Prisma.InputJsonValue,
-          createdFromVersion: APP_VERSION,
-          useCount: 0,
-          lastUsedAt: null,
-        },
+        data: createPlaylistRecipeData(userId, recipe),
       });
       createdRecipes.push(parsePlaylistRecipe(created));
     }

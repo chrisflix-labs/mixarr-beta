@@ -77,6 +77,21 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.3.0",
+    title: "Mix Recipe Foundation",
+    releaseDate: "July 19, 2026",
+    badges: ["Recipes", "Playlists", "Smart Builder", "Identity", "Mood", "Energy", "BPM", "Personalization", "Automation", "Refresh", "History", "Database", "Security", "Reliability", "Mobile", "Accessibility"],
+    changes: [
+      "Added first-class Smart Mix recipes as reusable strategies that remain independent from generated playlist tracks, feedback, playback history, personalization data, experiments, Plex synchronization, and manual edits.",
+      "Added the canonical mixarr-recipe schema v1 with distinct recipe revisions, metadata and artwork, scoring, mood and energy targets, BPM flow, discovery, artist and album variety, playlist identity defaults, refresh policy, automation policy, and validated generation configuration.",
+      "Added centralized field-specific validation, warning reporting, defensive unknown-field handling, unsupported-future-schema rejection, and an ordered, immutable, idempotent recipe schema migration framework with legacy saved-filter migration.",
+      "Added create-from-playlist conversion that excludes tracks and private learning history, playlist generation from recipes with explicit one-time overrides, immutable resolved recipe snapshots, independent playlist identities, and automation confirmation that is off by default.",
+      "Added ownership-scoped paginated recipe APIs, soft deletion that retains generated playlists, duplicate and rename actions, validation, generated-playlist relationship listing, canonical secret-free export/import, job-history auditing, and indexed counts without loading tracks.",
+      "Added the responsive Recipe Library and sectioned recipe editor with search, category/status filtering, validation messages, human-readable summaries, generated-playlist history, Plex library selection, preview, and direct creation workflows.",
+      "Compatibility: existing playlists do not require recipes; existing Smart Mix generation, regeneration, version history, experiments, personalization, and Plex synchronization remain supported; deleting a recipe never deletes playlists created from it.",
+    ],
+  },
+  {
     version: "2.2.9",
     title: "Orchestration Dashboard & Release Polish",
     releaseDate: "July 18, 2026",

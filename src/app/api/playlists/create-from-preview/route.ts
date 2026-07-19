@@ -4,7 +4,7 @@ import { exportTracksToPlex, playlistConfigSchema, recordGeneratedPlaylist, roll
 import { safeRecordJobHistory } from "@/lib/jobHistory";
 import { recordPlaylistHistoryEntry } from "@/lib/playlistHistory";
 import prisma from "@/lib/prisma";
-import { markPlaylistRecipeUsed } from "@/lib/playlistRecipes";
+import { markPlaylistRecipeUsed, portableRecipeFromRecord } from "@/lib/playlistRecipes";
 
 function collectRules(node: any, fallbackRules: any[] = []): any[] {
   if (!node) return fallbackRules;
@@ -39,11 +39,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid preview payload" }, { status: 400 });
     }
 
-    let ownedRecipe: { id: string; name: string } | null = null;
+    let ownedRecipe: any = null;
     if (recipeId) {
       ownedRecipe = await prisma.playlistRecipe.findFirst({
         where: { id: recipeId, userId, isArchived: false },
-        select: { id: true, name: true },
       });
 
       if (!ownedRecipe) {
@@ -104,6 +103,10 @@ export async function POST(req: Request) {
           sourceType: resolvedSourceType,
           recipeId: ownedRecipe?.id || recipeId || null,
           recipeName: resolvedRecipeName,
+          recipeVersion: ownedRecipe?.recipeVersion || null,
+          recipeSchemaVersion: ownedRecipe?.schemaVersion || null,
+          resolvedRecipeSnapshot: ownedRecipe ? portableRecipeFromRecord(ownedRecipe) : null,
+          playlistOverrides: ownedRecipe ? { generation: generationFilters } : null,
           filters: generationFilters,
           trackIds: result.exportedTrackIds || trackIds,
           discoveryResult,

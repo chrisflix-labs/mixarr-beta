@@ -8,9 +8,11 @@ import {
 } from "./playlistService";
 import {
   playlistRecipeSchema,
+  portableRecipeFromRecord,
   summarizePlaylistRecipeFilters,
   type PlaylistRecipeInput,
 } from "./playlistRecipes";
+import { CURRENT_RECIPE_SCHEMA_VERSION, MIX_RECIPE_FORMAT, mixRecipeDocumentSchema } from "./mixRecipes/schema";
 
 export const MIXARR_RECIPE_FORMAT = "mixarr.recipe";
 export const MIXARR_RECIPES_FORMAT = "mixarr.recipes";
@@ -106,6 +108,30 @@ export type ImportResult = {
 };
 
 const supportedFormats = [MIXARR_RECIPE_FORMAT, MIXARR_RECIPES_FORMAT];
+
+function canonicalRecipeForExport(recipe: StoredRecipe & Record<string, any>) {
+  const document = portableRecipeFromRecord(recipe);
+  return mixRecipeDocumentSchema.parse({
+    ...document,
+    metadata: { ...document.metadata, sourcePlaylistId: null },
+    generation: {
+      ...document.generation,
+      serverId: null,
+      libraryId: null,
+      pinnedTrackIds: [],
+      excludedTrackIds: [],
+      coordinationSetup: undefined,
+    },
+  });
+}
+
+export function buildCanonicalSingleRecipeExport(recipe: StoredRecipe & Record<string, any>) {
+  return canonicalRecipeForExport(recipe);
+}
+
+export function buildCanonicalRecipesExport(recipes: Array<StoredRecipe & Record<string, any>>) {
+  return { format: "mixarr-recipes", schemaVersion: CURRENT_RECIPE_SCHEMA_VERSION, recipes: recipes.map(canonicalRecipeForExport) };
+}
 
 function isoDate(value?: Date | string | null) {
   if (!value) return null;
@@ -247,6 +273,17 @@ function parseImportContent(content: unknown) {
 
 function extractRecipeItems(content: unknown): { format: string; formatVersion: number; items: unknown[] } {
   const payload = parseImportContent(content);
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const canonical = payload as any;
+    if (canonical.format === MIX_RECIPE_FORMAT) {
+      if (Number(canonical.schemaVersion) > CURRENT_RECIPE_SCHEMA_VERSION) throw new Error(UNSUPPORTED_RECIPE_EXPORT_VERSION_MESSAGE);
+      return { format: canonical.format, formatVersion: Number(canonical.schemaVersion) || 1, items: [canonical] };
+    }
+    if (canonical.format === "mixarr-recipes" && Array.isArray(canonical.recipes)) {
+      if (Number(canonical.schemaVersion) > CURRENT_RECIPE_SCHEMA_VERSION) throw new Error(UNSUPPORTED_RECIPE_EXPORT_VERSION_MESSAGE);
+      return { format: canonical.format, formatVersion: Number(canonical.schemaVersion) || 1, items: canonical.recipes };
+    }
+  }
   const base = z.object({
     format: z.string(),
     formatVersion: z.number().int(),
@@ -310,17 +347,20 @@ function normalizeImportedRecipe(rawRecipe: unknown) {
   const errors: string[] = [];
   const warnings: string[] = [];
   const recipe = rawRecipe && typeof rawRecipe === "object" ? rawRecipe as any : {};
-  const name = typeof recipe.name === "string" ? recipe.name.trim() : "";
-  const description = typeof recipe.description === "string" ? recipe.description.trim() : null;
+  const canonical = recipe.format === MIX_RECIPE_FORMAT;
+  const name = typeof (canonical ? recipe.metadata?.name : recipe.name) === "string" ? (canonical ? recipe.metadata.name : recipe.name).trim() : "";
+  const descriptionValue = canonical ? recipe.metadata?.description : recipe.description;
+  const description = typeof descriptionValue === "string" ? descriptionValue.trim() : null;
 
   if (!name) errors.push("Missing name");
 
   let filters: PlaylistConfigInput | null = null;
-  if (!recipe.filters || typeof recipe.filters !== "object" || Array.isArray(recipe.filters)) {
+  const rawFilters = canonical ? recipe.generation : recipe.filters;
+  if (!rawFilters || typeof rawFilters !== "object" || Array.isArray(rawFilters)) {
     errors.push("Invalid filters");
   } else {
     try {
-      const candidate = applyPresetMetadata(recipe.filters, recipe);
+      const candidate = applyPresetMetadata(rawFilters, recipe);
       filters = playlistConfigSchema.parse({
         ...candidate,
         serverId: null,
@@ -358,6 +398,18 @@ function normalizeImportedRecipe(rawRecipe: unknown) {
     name,
     description,
     filters,
+    ...(canonical ? {
+      category: recipe.metadata?.category,
+      artworkUrl: recipe.metadata?.artworkUrl,
+      scoring: recipe.scoring,
+      targets: recipe.targets,
+      bpmFlow: recipe.bpmFlow,
+      discovery: recipe.discovery,
+      variety: recipe.variety,
+      playlistIdentity: recipe.playlistIdentity,
+      refreshPolicy: recipe.refreshPolicy,
+      automationPolicy: { ...recipe.automationPolicy, enabled: false, libraryId: null },
+    } : {}),
   });
 
   return {

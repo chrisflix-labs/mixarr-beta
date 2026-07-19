@@ -1008,22 +1008,59 @@ model PlaylistRule {
 }
 
 model PlaylistRecipe {
-  id                 String    @id @default(uuid())
-  userId             String
-  name               String
-  description        String?
-  filtersJson        Json
-  createdFromVersion String?
-  isFavorite         Boolean   @default(false)
-  isArchived         Boolean   @default(false)
-  lastUsedAt         DateTime?
-  useCount           Int       @default(0)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String                   @id @default(uuid())
+  userId               String
+  name                 String
+  slug                 String
+  description          String?
+  category             String                   @default("Custom")
+  artworkUrl           String?
+  schemaVersion        Int                      @default(1)
+  recipeVersion        Int                      @default(1)
+  enabled              Boolean                  @default(true)
+  filtersJson          Json
+  scoringJson          Json                     @default("{}")
+  targetsJson          Json                     @default("{}")
+  bpmFlowJson          Json                     @default("{}")
+  discoveryJson        Json                     @default("{}")
+  varietyJson          Json                     @default("{}")
+  identityDefaultsJson Json                     @default("{}")
+  refreshPolicyJson    Json                     @default("{}")
+  automationPolicyJson Json                     @default("{}")
+  createdFromVersion   String?
+  sourcePlaylistId     String?
+  isFavorite           Boolean                  @default(false)
+  isArchived           Boolean                  @default(false)
+  deletedAt            DateTime?
+  lastUsedAt           DateTime?
+  useCount             Int                      @default(0)
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourcePlaylist       GeneratedPlaylist?       @relation("RecipeSourcePlaylist", fields: [sourcePlaylistId], references: [id], onDelete: SetNull)
+  generatedPlaylists   GeneratedPlaylist[]      @relation("RecipeGeneratedPlaylists")
+  revisions            PlaylistRecipeRevision[]
 
-  @@index([userId, updatedAt])
+  @@unique([userId, slug])
+  @@index([userId, enabled, updatedAt])
+  @@index([userId, category, updatedAt])
   @@index([userId, lastUsedAt])
+  @@index([sourcePlaylistId])
+}
+
+model PlaylistRecipeRevision {
+  id                   String         @id @default(uuid())
+  recipeId             String
+  recipeVersion        Int
+  schemaVersion        Int
+  changeType           String
+  changedFieldsJson    Json?
+  portableSnapshotJson Json
+  createdAt            DateTime       @default(now())
+  recipe               PlaylistRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([recipeId, recipeVersion])
+  @@index([recipeId, createdAt])
 }
 
 model PlaylistHistory {
@@ -1045,92 +1082,99 @@ model PlaylistHistory {
 }
 
 model GeneratedPlaylist {
-  id                       String                          @id @default(uuid())
-  userId                   String
-  serverId                 String?
-  plexPlaylistRatingKey    String?
-  plexPlaylistTitle        String
-  sourceType               String                          @default("unknown")
-  engineVersion            String                          @default("v1")
-  recipeId                 String?
-  recipeName               String?
-  smartPresetId            String?
-  smartPresetName          String?
-  moodPresetId             String?
-  moodPresetName           String?
-  bpmPresetId              String?
-  bpmPresetName            String?
-  tuningPresetName         String?
-  tuningConfigJson         Json?
-  discoveryConfigJson      Json?
-  discoveryResultJson      Json?
-  filtersJson              Json
-  safetyRulesJson          Json?
-  qualityScoreJson         Json?
-  scoringModel             String                          @default("stable-v2")
-  scoringModelVersion      String                          @default("2")
-  betaMetadataJson         Json?
-  adaptiveScoringVersion   String?
-  adaptiveSettingsJson     Json?
-  playbackSettingsJson     Json?
-  contextProfileId         String?
-  contextProfileName       String?
-  contextInfluence         String?
-  contextSnapshotJson      Json?
-  contextOverridesJson     Json?
-  trackCount               Int                             @default(0)
-  lastGeneratedAt          DateTime                        @default(now())
-  lastRegeneratedAt        DateTime?
-  createdAt                DateTime                        @default(now())
-  updatedAt                DateTime                        @updatedAt
-  revisionCounter          Int                             @default(0)
-  user                     User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tracks                   GeneratedPlaylistTrack[]
-  historyEntries           PlaylistHistoryEntry[]
-  regenerations            PlaylistRegeneration[]
-  revisions                PlaylistRevision[]
-  automationSettings       PlaylistAutomationSettings?
-  recentlyAddedMatches     RecentlyAddedPlaylistMatch[]
-  recentlyAddedChanges     RecentlyAddedAutomationChange[]
-  preferenceProfile        PlaylistPreferenceProfile?
-  interactionEvents        TrackInteractionEvent[]
-  playlistFitFeedback      PlaylistFitFeedback[]
-  transitionFeedback       TransitionFeedback[]
-  identity                 PlaylistIdentity?
-  adaptiveScoringSetting   AdaptivePlaylistScoringSetting?
-  coordinationSettings     PlaylistCoordinationSetting?
-  relationshipSources      PlaylistRelationship[]          @relation("PlaylistRelationshipSource")
-  relationshipTargets      PlaylistRelationship[]          @relation("PlaylistRelationshipTarget")
-  sharedCoreTracks         PlaylistSharedCoreTrack[]
-  progressionMemberships   PlaylistProgressionMember[]
-  roleAssignment           PlaylistRoleAssignment?
-  masterForChains          PlaylistProgressionChain[]      @relation("PlaylistChainMasterPlaylist")
-  overlapSummariesA        PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryA")
-  overlapSummariesB        PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryB")
-  explanationGenerations   SmartMixExplanationGeneration[]
-  decisionTraces           SmartMixDecisionTrace[]
-  automationProposals      AutomationProposal[]
-  automationActivities     AutomationActivity[]
-  managedPlaylist          ManagedPlaylist?
-  groupMemberships         PlaylistGroupMembership[]
-  pairPoliciesA            PlaylistPairPolicy[]            @relation("PlaylistPairPolicyA")
-  pairPoliciesB            PlaylistPairPolicy[]            @relation("PlaylistPairPolicyB")
-  varietyDesignations      PlaylistTrackDesignation[]
-  repairPreviews           PlaylistRepairPreview[]         @relation("RepairPreviewPlaylist")
-  repairComparisonPreviews PlaylistRepairPreview[]         @relation("RepairPreviewComparison")
-  overlapSnapshotsA        PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotA")
-  overlapSnapshotsB        PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotB")
-  smartRefreshSettings     SmartRefreshSettings?
-  smartRefreshEvaluations  SmartRefreshEvaluation[]
-  sourceExperiments        SmartExperiment[]               @relation("SmartExperimentSourcePlaylist")
-  experimentVariants       SmartExperimentVariant[]
-  smartActions             SmartAction[]
-  healthSnapshots          PlaylistHealthSnapshot[]
-  healthAlerts             PlaylistHealthAlert[]
+  id                         String                          @id @default(uuid())
+  userId                     String
+  serverId                   String?
+  plexPlaylistRatingKey      String?
+  plexPlaylistTitle          String
+  sourceType                 String                          @default("unknown")
+  engineVersion              String                          @default("v1")
+  recipeId                   String?
+  recipeName                 String?
+  recipeVersionUsed          Int?
+  recipeSchemaVersionUsed    Int?
+  resolvedRecipeSnapshotJson Json?
+  playlistOverridesJson      Json?
+  smartPresetId              String?
+  smartPresetName            String?
+  moodPresetId               String?
+  moodPresetName             String?
+  bpmPresetId                String?
+  bpmPresetName              String?
+  tuningPresetName           String?
+  tuningConfigJson           Json?
+  discoveryConfigJson        Json?
+  discoveryResultJson        Json?
+  filtersJson                Json
+  safetyRulesJson            Json?
+  qualityScoreJson           Json?
+  scoringModel               String                          @default("stable-v2")
+  scoringModelVersion        String                          @default("2")
+  betaMetadataJson           Json?
+  adaptiveScoringVersion     String?
+  adaptiveSettingsJson       Json?
+  playbackSettingsJson       Json?
+  contextProfileId           String?
+  contextProfileName         String?
+  contextInfluence           String?
+  contextSnapshotJson        Json?
+  contextOverridesJson       Json?
+  trackCount                 Int                             @default(0)
+  lastGeneratedAt            DateTime                        @default(now())
+  lastRegeneratedAt          DateTime?
+  createdAt                  DateTime                        @default(now())
+  updatedAt                  DateTime                        @updatedAt
+  revisionCounter            Int                             @default(0)
+  user                       User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe                     PlaylistRecipe?                 @relation("RecipeGeneratedPlaylists", fields: [recipeId], references: [id], onDelete: SetNull)
+  sourceRecipes              PlaylistRecipe[]                @relation("RecipeSourcePlaylist")
+  tracks                     GeneratedPlaylistTrack[]
+  historyEntries             PlaylistHistoryEntry[]
+  regenerations              PlaylistRegeneration[]
+  revisions                  PlaylistRevision[]
+  automationSettings         PlaylistAutomationSettings?
+  recentlyAddedMatches       RecentlyAddedPlaylistMatch[]
+  recentlyAddedChanges       RecentlyAddedAutomationChange[]
+  preferenceProfile          PlaylistPreferenceProfile?
+  interactionEvents          TrackInteractionEvent[]
+  playlistFitFeedback        PlaylistFitFeedback[]
+  transitionFeedback         TransitionFeedback[]
+  identity                   PlaylistIdentity?
+  adaptiveScoringSetting     AdaptivePlaylistScoringSetting?
+  coordinationSettings       PlaylistCoordinationSetting?
+  relationshipSources        PlaylistRelationship[]          @relation("PlaylistRelationshipSource")
+  relationshipTargets        PlaylistRelationship[]          @relation("PlaylistRelationshipTarget")
+  sharedCoreTracks           PlaylistSharedCoreTrack[]
+  progressionMemberships     PlaylistProgressionMember[]
+  roleAssignment             PlaylistRoleAssignment?
+  masterForChains            PlaylistProgressionChain[]      @relation("PlaylistChainMasterPlaylist")
+  overlapSummariesA          PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryA")
+  overlapSummariesB          PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryB")
+  explanationGenerations     SmartMixExplanationGeneration[]
+  decisionTraces             SmartMixDecisionTrace[]
+  automationProposals        AutomationProposal[]
+  automationActivities       AutomationActivity[]
+  managedPlaylist            ManagedPlaylist?
+  groupMemberships           PlaylistGroupMembership[]
+  pairPoliciesA              PlaylistPairPolicy[]            @relation("PlaylistPairPolicyA")
+  pairPoliciesB              PlaylistPairPolicy[]            @relation("PlaylistPairPolicyB")
+  varietyDesignations        PlaylistTrackDesignation[]
+  repairPreviews             PlaylistRepairPreview[]         @relation("RepairPreviewPlaylist")
+  repairComparisonPreviews   PlaylistRepairPreview[]         @relation("RepairPreviewComparison")
+  overlapSnapshotsA          PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotA")
+  overlapSnapshotsB          PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotB")
+  smartRefreshSettings       SmartRefreshSettings?
+  smartRefreshEvaluations    SmartRefreshEvaluation[]
+  sourceExperiments          SmartExperiment[]               @relation("SmartExperimentSourcePlaylist")
+  experimentVariants         SmartExperimentVariant[]
+  smartActions               SmartAction[]
+  healthSnapshots            PlaylistHealthSnapshot[]
+  healthAlerts               PlaylistHealthAlert[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
   @@index([userId, sourceType])
+  @@index([recipeId, createdAt])
 }
 
 model PlaylistGroup {
@@ -1826,29 +1870,31 @@ model SmartMixDecisionTrace {
 }
 
 model PlaylistRegeneration {
-  id                  String                       @id @default(uuid())
-  userId              String
-  generatedPlaylistId String
-  mode                String
-  status              String                       @default("preview")
-  settingsJson        Json
-  warningsJson        Json?
-  originalScore       Float?
-  proposedScore       Float?
-  appliedScore        Float?
-  originalDurationMs  Int                          @default(0)
-  proposedDurationMs  Int                          @default(0)
-  tracksAnalyzed      Int                          @default(0)
-  tracksProposed      Int                          @default(0)
-  tracksApplied       Int                          @default(0)
-  engineVersion       String                       @default("v2.0.8")
-  playlistUpdatedAt   DateTime
-  createdAt           DateTime                     @default(now())
-  appliedAt           DateTime?
-  undoneAt            DateTime?
-  user                User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  generatedPlaylist   GeneratedPlaylist            @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
-  changes             PlaylistRegenerationChange[]
+  id                         String                       @id @default(uuid())
+  userId                     String
+  generatedPlaylistId        String
+  mode                       String
+  status                     String                       @default("preview")
+  settingsJson               Json
+  resolvedRecipeSnapshotJson Json?
+  playlistOverridesJson      Json?
+  warningsJson               Json?
+  originalScore              Float?
+  proposedScore              Float?
+  appliedScore               Float?
+  originalDurationMs         Int                          @default(0)
+  proposedDurationMs         Int                          @default(0)
+  tracksAnalyzed             Int                          @default(0)
+  tracksProposed             Int                          @default(0)
+  tracksApplied              Int                          @default(0)
+  engineVersion              String                       @default("v2.0.8")
+  playlistUpdatedAt          DateTime
+  createdAt                  DateTime                     @default(now())
+  appliedAt                  DateTime?
+  undoneAt                   DateTime?
+  user                       User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedPlaylist          GeneratedPlaylist            @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  changes                    PlaylistRegenerationChange[]
 
   @@index([userId, createdAt])
   @@index([generatedPlaylistId, createdAt])

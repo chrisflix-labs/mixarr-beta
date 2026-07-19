@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
-import { buildSingleRecipeExport, sanitizeRecipeFilename } from "@/lib/playlistRecipeImportExport";
+import { buildCanonicalSingleRecipeExport, sanitizeRecipeFilename } from "@/lib/playlistRecipeImportExport";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const userId = cookies().get("mixarr_session")?.value;
@@ -18,7 +18,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "Playlist recipe not found" }, { status: 404 });
   }
 
-  const payload = buildSingleRecipeExport(recipe);
+  const payload = buildCanonicalSingleRecipeExport(recipe);
   const filename = `mixarr-recipe-${sanitizeRecipeFilename(recipe.name)}.json`;
 
   return new NextResponse(JSON.stringify(payload, null, 2), {

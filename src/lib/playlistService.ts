@@ -1804,6 +1804,10 @@ export async function recordGeneratedPlaylist({
   sourceType,
   recipeId,
   recipeName,
+  recipeVersion,
+  recipeSchemaVersion,
+  resolvedRecipeSnapshot,
+  playlistOverrides,
   filters,
   trackIds,
   discoveryResult: suppliedDiscoveryResult,
@@ -1816,6 +1820,10 @@ export async function recordGeneratedPlaylist({
   sourceType?: GeneratedPlaylistSourceType | string | null;
   recipeId?: string | null;
   recipeName?: string | null;
+  recipeVersion?: number | null;
+  recipeSchemaVersion?: number | null;
+  resolvedRecipeSnapshot?: unknown;
+  playlistOverrides?: unknown;
   filters: unknown;
   trackIds: string[];
   discoveryResult?: unknown;
@@ -1907,6 +1915,10 @@ export async function recordGeneratedPlaylist({
     sourceType: resolvedSourceType,
     recipeId: recipeId || null,
     recipeName: recipeName || null,
+    recipeVersionUsed: recipeVersion || null,
+    recipeSchemaVersionUsed: recipeSchemaVersion || null,
+    resolvedRecipeSnapshotJson: resolvedRecipeSnapshot as any,
+    playlistOverridesJson: playlistOverrides as any,
     smartPresetId: config.smartPresetId || null,
     smartPresetName: config.smartPresetName || null,
     moodPresetId: config.moodPresetId || null,
@@ -2854,6 +2866,8 @@ export async function previewAdvancedPlaylistRegeneration({ userId, generatedPla
       mode: request.mode,
       status: "preview",
       settingsJson: request as any,
+      resolvedRecipeSnapshotJson: generatedPlaylist.resolvedRecipeSnapshotJson as any,
+      playlistOverridesJson: generatedPlaylist.playlistOverridesJson as any,
       warningsJson: preview.warnings as any,
       originalScore: preview.originalPlaylistScore,
       proposedScore: preview.proposedPlaylistScore,

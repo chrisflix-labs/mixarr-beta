@@ -63,3 +63,60 @@ BEGIN
   CREATE UNIQUE INDEX IF NOT EXISTS "Track_plexServerId_plexLibraryId_ratingKey_key"
     ON "Track"("plexServerId", "plexLibraryId", "ratingKey");
 END $$;
+
+-- Mixarr v2.3.0 adds a required, per-user unique recipe slug. Prepare it in
+-- additive steps so existing Docker installations never need a broad
+-- `--accept-data-loss` acknowledgement just to add the unique index.
+DO $$
+DECLARE
+  duplicate_slug_count BIGINT;
+BEGIN
+  IF to_regclass('"PlaylistRecipe"') IS NULL THEN
+    -- Fresh database: db push will create the complete table and index.
+    RETURN;
+  END IF;
+
+  ALTER TABLE "PlaylistRecipe" ADD COLUMN IF NOT EXISTS "slug" TEXT;
+
+  UPDATE "PlaylistRecipe"
+  SET "slug" = CONCAT(
+    LEFT(COALESCE(NULLIF(TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER("name"), '[^a-z0-9]+', '-', 'g')), ''), 'recipe'), 100),
+    '-',
+    LOWER("id")
+  )
+  WHERE "slug" IS NULL OR BTRIM("slug") = '';
+
+  -- Preserve an already-valid slug. If a partially upgraded installation has
+  -- duplicates, disambiguate only the later rows using their immutable IDs.
+  WITH duplicate_slugs AS (
+    SELECT "id", ROW_NUMBER() OVER (
+      PARTITION BY "userId", "slug"
+      ORDER BY "id"
+    ) AS occurrence
+    FROM "PlaylistRecipe"
+  )
+  UPDATE "PlaylistRecipe" recipe
+  SET "slug" = CONCAT(LEFT(recipe."slug", 100), '-', LOWER(recipe."id"))
+  FROM duplicate_slugs duplicate
+  WHERE recipe."id" = duplicate."id"
+    AND duplicate.occurrence > 1;
+
+  SELECT count(*) INTO duplicate_slug_count
+  FROM (
+    SELECT 1
+    FROM "PlaylistRecipe"
+    GROUP BY "userId", "slug"
+    HAVING count(*) > 1
+  ) duplicate_slugs;
+
+  IF duplicate_slug_count > 0 THEN
+    RAISE EXCEPTION
+      'Mixarr v2.3.0 found % unresolved duplicate recipe slugs; no unique constraint was forced',
+      duplicate_slug_count;
+  END IF;
+
+  ALTER TABLE "PlaylistRecipe" ALTER COLUMN "slug" SET NOT NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS "PlaylistRecipe_userId_slug_key"
+    ON "PlaylistRecipe"("userId", "slug");
+END $$;
