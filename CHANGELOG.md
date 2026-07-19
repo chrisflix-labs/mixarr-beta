@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.3.3 - Preset Inheritance & Overrides
+
+### Added
+
+- Deterministic centralized recipe resolution across built-in/global defaults, categories, multi-level base recipes, transition/discovery/variety/automation presets, recipe/group/playlist/user overrides, and authoritative locks.
+- Per-field provenance, suppressed-value and conflict explanations, stable fingerprints, cycle/depth protection, field and section resets, dependency/impact previews, versioned presets, and four inheritance-aware clone modes.
+- Additive normalized persistence for presets, categories, overrides, group policies, user preferences, locks, effective snapshots, conflicts, and audit events; generated playlists now capture exact resolver snapshots for reproducible retries.
+- Responsive Presets & Inheritance management and recipe-editor foundation/effective-configuration views with accessible state labels, mobile inheritance chains, lock details, conflict guidance, and reset controls.
+
+### Compatibility and safety
+
+- Existing recipes remain legacy-explicit after the non-destructive migration and retain equivalent generation behavior. Inheritance is opt-in, false/zero/empty values remain explicit, and preset changes never trigger automatic regeneration.
+- Server-side resolution and validation remain authoritative. Base/preset deletion is dependency-checked, group precedence is explicit, and administrator/user permissions reuse Mixarr authentication.
+
 ## v2.3.2 - Adaptive Recipe Mapping
 
 ### Added

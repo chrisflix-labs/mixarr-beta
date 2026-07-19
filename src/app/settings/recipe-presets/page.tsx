@@ -1,0 +1,38 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import axios from "axios";
+import { AlertCircle, ArrowLeft, Archive, CheckCircle2, GitBranch, Layers3, Loader2, LockKeyhole, Plus, Save } from "lucide-react";
+import styles from "./recipe-presets.module.css";
+
+const types = ["CATEGORY", "TRANSITION", "DISCOVERY", "VARIETY", "AUTOMATION"];
+const examples: Record<string, object> = {
+  CATEGORY: { targets: { targetEnergy: 0.75 }, generation: { limit: 50 } },
+  TRANSITION: { bpmFlow: { mode: "RAMP_UP", maximumBpmGap: 8, allowBpmJumps: false } },
+  DISCOVERY: { discovery: { level: "medium", deepCutPercentage: 35 } },
+  VARIETY: { variety: { maximumTracksPerArtist: 3, minimumArtistSpacing: 1 } },
+  AUTOMATION: { refreshPolicy: { mode: "manual", preserveLikedTracks: true } },
+};
+
+export default function RecipePresetSettingsPage() {
+  const [presets, setPresets] = useState<any[]>([]); const [categories, setCategories] = useState<any[]>([]); const [defaults, setDefaults] = useState<any>(null); const [locks, setLocks] = useState<any[]>([]);
+  const [type, setType] = useState("TRANSITION"); const [name, setName] = useState(""); const [description, setDescription] = useState(""); const [config, setConfig] = useState(JSON.stringify(examples.TRANSITION, null, 2)); const [lockJson, setLockJson] = useState("{}");
+  const [busy, setBusy] = useState(true); const [notice, setNotice] = useState(""); const [error, setError] = useState("");
+  const grouped = useMemo(() => Object.fromEntries(types.map((item) => [item, presets.filter((preset) => preset.type === item)])), [presets]);
+  async function load() { setBusy(true); try { const [p,c,d,l] = await Promise.all([axios.get("/api/recipe-presets"), axios.get("/api/recipe-categories"), axios.get("/api/recipe-inheritance/global-defaults"), axios.get("/api/recipe-inheritance/locks")]); setPresets(p.data.presets || []); setCategories(c.data.categories || []); setDefaults(d.data.defaults); setLocks(l.data.locks || []); } catch (caught: any) { setError(caught.response?.data?.error || "Preset settings could not be loaded."); } finally { setBusy(false); } }
+  useEffect(() => { load(); }, []);
+  function parse(value: string) { try { const parsed = JSON.parse(value); if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error(); return parsed; } catch { throw new Error("Configuration and locks must be valid JSON objects."); } }
+  async function createPreset() { setError(""); try { await axios.post("/api/recipe-presets", { name, description, type, config: parse(config), locks: parse(lockJson) }); setName(""); setNotice(`Created ${name}.`); await load(); } catch (caught: any) { setError(caught.response?.data?.error || caught.message || "Preset could not be created."); } }
+  async function archivePreset(preset: any) { if (!window.confirm(`Archive “${preset.name}”? Existing references remain visible until migrated.`)) return; try { await axios.patch(`/api/recipe-presets/${preset.id}`, { isArchived: true, confirmImpact: true }); await load(); } catch (caught: any) { setError(caught.response?.data?.error || "Preset could not be archived."); } }
+  async function saveDefaults() { try { await axios.put("/api/recipe-inheritance/global-defaults", { config: parse(config), locks: parse(lockJson), reason: "Updated in preset management" }); setNotice("Global defaults were versioned and saved."); await load(); } catch (caught: any) { setError(caught.response?.data?.error || caught.message || "Administrator permission is required."); } }
+  if (busy) return <main className={styles.state}><Loader2 className="animate-spin" /> Loading inheritance policies…</main>;
+  return <main className={styles.page}>
+    <header className={styles.header}><div><Link href="/recipes"><ArrowLeft size={15} /> Recipe Library</Link><span><GitBranch size={14} /> Mixarr v2.3.3</span><h2>Presets &amp; Inheritance</h2><p>Reusable recipe layers, categories, policy locks, versions, and dependency-aware changes.</p></div></header>
+    {notice && <div className={styles.notice}><CheckCircle2 size={16} /> {notice}</div>}{error && <div className={styles.error}><AlertCircle size={16} /> {error}</div>}
+    <section className={styles.metrics}><div><strong>{presets.length}</strong><span>Active presets</span></div><div><strong>{categories.length}</strong><span>Categories</span></div><div><strong>{locks.length + Object.keys(defaults?.locksJson || {}).length}</strong><span>Locked fields</span></div><div><strong>10</strong><span>Maximum base depth</span></div></section>
+    <div className={styles.layout}><section className={styles.panel}><header><div><h3>Create a reusable preset</h3><p>Only configured fields are contributed. False, zero, and empty lists remain explicit.</p></div><Plus /></header><div className={styles.two}><label>Preset type<select value={type} onChange={(event) => { setType(event.target.value); setConfig(JSON.stringify(examples[event.target.value], null, 2)); }}>{types.map((item) => <option key={item}>{item}</option>)}</select></label><label>Name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Smooth Ramp" /></label></div><label>Description<textarea rows={2} value={description} onChange={(event) => setDescription(event.target.value)} /></label><label>Configured fields<textarea className={styles.code} rows={12} value={config} onChange={(event) => setConfig(event.target.value)} spellCheck={false} /></label><label>Preset locks <small>Optional path-value structure using the same shape.</small><textarea className={styles.code} rows={5} value={lockJson} onChange={(event) => setLockJson(event.target.value)} spellCheck={false} /></label><div className={styles.actions}><button onClick={createPreset} disabled={!name.trim()}><Plus size={15} /> Create preset</button><button onClick={saveDefaults}><Save size={15} /> Save JSON as global defaults</button></div></section>
+    <section className={styles.panel}><header><div><h3>Resolution priority</h3><p>Lowest to highest. Policy locks enforce the final allowed value.</p></div><Layers3 /></header><ol className={styles.chain}>{["Built-in system defaults","Administrator global defaults","Category preset","Base recipe chain","Transition, discovery, variety & automation presets","Recipe-specific overrides","Primary group policy","Playlist-specific overrides","Eligible user preferences","Locked policy enforcement"].map((item) => <li key={item}>{item}</li>)}</ol><div className={styles.callout}><LockKeyhole /><p><strong>Locks are enforcement.</strong> Suppressed values remain visible in effective configuration.</p></div></section></div>
+    {types.map((presetType) => <section className={styles.panel} key={presetType}><header><div><h3>{presetType.charAt(0) + presetType.slice(1).toLowerCase()} presets</h3><p>{grouped[presetType].length} active preset(s)</p></div></header><div className={styles.cards}>{grouped[presetType].length ? grouped[presetType].map((preset: any) => <article key={preset.id}><div><span>{preset.type}</span><strong>{preset.name}</strong><p>{preset.description || "No description"}</p></div><dl><div><dt>Version</dt><dd>{preset.version}</dd></div><div><dt>Dependents</dt><dd>{preset.dependentCount}</dd></div><div><dt>Locks</dt><dd>{preset.lockedFieldCount}</dd></div><div><dt>Updated</dt><dd>{new Date(preset.updatedAt).toLocaleDateString()}</dd></div></dl><details><summary>Configured fields</summary><pre>{JSON.stringify(preset.configJson, null, 2)}</pre></details><button onClick={() => archivePreset(preset)}><Archive size={14} /> Archive</button></article>) : <p className={styles.empty}>No {presetType.toLowerCase()} presets yet.</p>}</div></section>)}
+  </main>;
+}

@@ -17,6 +17,7 @@ import {
 } from "../playlistRecipes";
 import { resolveRecipeGenerationConfig } from "./schema";
 import { validateRecipe } from "./validation";
+import { persistEffectiveSnapshot, resolveOwnedRecipe } from "../recipeInheritance/service";
 
 function json(value: unknown): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
@@ -135,10 +136,11 @@ export async function createPlaylistFromRecipe({
   if (!trimmedName || trimmedName.length > 120) throw new Error("Playlist name is required and must be 120 characters or fewer.");
   const stored = await getOwnedRecipe(userId, recipeId);
   if (!stored.enabled) throw new Error("This recipe is disabled.");
-  const portable = portableRecipeFromRecord(stored);
-  const validation = validateRecipe(portable);
-  if (!validation.valid || !validation.normalizedRecipe) throw new Error(validation.errors[0]?.message || "Recipe is invalid.");
-  const config = resolveRecipeGenerationConfig(validation.normalizedRecipe, overrides);
+  const playlistOverrides = overrides && typeof overrides === "object" && !Array.isArray(overrides) ? overrides as Record<string, unknown> : {};
+  const resolution = await resolveOwnedRecipe(userId, stored.id, { proposedChanges: { playlistOverrides: { generation: playlistOverrides } } });
+  if (!resolution.valid) throw new Error(resolution.errors[0]?.message || "The effective recipe configuration is invalid.");
+  const portable = resolution.normalizedRecipe;
+  const config = resolveRecipeGenerationConfig(portable);
   let plexResult: Awaited<ReturnType<typeof exportTracksToPlex>> | null = null;
   let createdGeneratedPlaylistId: string | null = null;
   try {
@@ -156,13 +158,17 @@ export async function createPlaylistFromRecipe({
       recipeName: stored.name,
       recipeVersion: stored.recipeVersion,
       recipeSchemaVersion: stored.schemaVersion,
-      resolvedRecipeSnapshot: validation.normalizedRecipe,
+      resolvedRecipeSnapshot: portable,
       playlistOverrides: overrides || {},
       filters: config,
       trackIds: plexResult.exportedTrackIds || trackIds,
       discoveryResult: generated.engine.diagnostics?.discovery || null,
     });
     createdGeneratedPlaylistId = playlist.id;
+    if (Object.keys(playlistOverrides).length) {
+      await prisma.playlistRecipeOverride.createMany({ data: Object.entries(playlistOverrides).map(([field, value]) => ({ playlistId: playlist.id, fieldPath: `generation.${field}`, valueJson: json(value), createdById: userId })) });
+    }
+    await persistEffectiveSnapshot({ recipeId: stored.id, playlistId: playlist.id, contextType: "generation", resolution });
     const identity = await ensurePlaylistIdentity(userId, playlist.id, "RECIPE");
     await prisma.playlistIdentity.update({
       where: { id: identity.id },
@@ -198,7 +204,7 @@ export async function createPlaylistFromRecipe({
       userId, type: "mix_recipe", name: "Playlist generated from recipe", status: "completed", trigger: "manual",
       summary: `Created playlist "${trimmedName}" from recipe "${stored.name}" v${stored.recipeVersion}.`,
       counts: { attempted: config.limit, processed: playlist.trackCount, skipped: Math.max(0, config.limit - playlist.trackCount) },
-      metadata: { recipeId: stored.id, recipeVersion: stored.recipeVersion, schemaVersion: stored.schemaVersion, generatedPlaylistId: playlist.id, automationConfirmed: confirmAutomation },
+      metadata: { recipeId: stored.id, recipeVersion: stored.recipeVersion, schemaVersion: stored.schemaVersion, generatedPlaylistId: playlist.id, automationConfirmed: confirmAutomation, resolverVersion: resolution.resolverVersion, configurationFingerprint: resolution.fingerprint, retryBehavior: "original_effective_configuration" },
     });
     return { playlist, trackCount: playlist.trackCount, automationActivated: portable.automationPolicy.enabled && confirmAutomation };
   } catch (error) {

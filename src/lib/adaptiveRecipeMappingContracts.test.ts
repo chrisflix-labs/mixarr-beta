@@ -51,10 +51,10 @@ test("mapping UI exposes responsive controls, warnings, reset, and cancellable d
   assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.mappingRow \{ grid-template-columns: 1fr/);
 });
 
-test("release metadata identifies v2.3.2 as current and complete", () => {
-  assert.equal(JSON.parse(read("package.json")).version, "2.3.2");
+test("release metadata retains v2.3.2 after the v2.3.3 release", () => {
+  assert.equal(JSON.parse(read("package.json")).version, "2.3.3");
   assert.match(read("src/lib/releaseNotes.ts"), /version: "2\.3\.2"/);
-  assert.match(read("src/lib/roadmap.ts"), /version: "2\.3\.2"[\s\S]*status: "current"/);
+  assert.match(read("src/lib/roadmap.ts"), /version: "2\.3\.2"[\s\S]*status: "completed"/);
   assert.match(read("CHANGELOG.md"), /v2\.3\.2 - Adaptive Recipe Mapping/);
   assert.match(read("docs/ADAPTIVE_RECIPE_MAPPING_V232.md"), /weighted harmonic/);
 });

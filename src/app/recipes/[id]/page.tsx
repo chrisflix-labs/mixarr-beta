@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
-import { AlertCircle, ArrowLeft, CheckCircle2, Copy, Download, Loader2, Play, Save, Trash2, Wand2 } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowLeft, CheckCircle2, Copy, Download, GitBranch, Layers3, Loader2, LockKeyhole, Play, RotateCcw, Save, ShieldAlert, Trash2, Wand2, X } from "lucide-react";
 import styles from "./recipe-detail.module.css";
 
 const categories = ["Driving", "Workout", "Party", "Focus", "Chill", "Sleep", "Discovery", "Mood", "Decade", "Genre", "Artist", "Seasonal", "Custom"];
-const sections = ["Overview", "Mood and Energy", "BPM Flow", "Discovery", "Scoring", "Artist and Album Variety", "Playlist Identity", "Refresh and Automation", "Import Mapping", "Validation", "Generated Playlists"];
+const sections = ["Recipe Foundation", "Overview", "Mood and Energy", "BPM Flow", "Discovery", "Scoring", "Artist and Album Variety", "Playlist Identity", "Refresh and Automation", "Effective Configuration", "Import Mapping", "Validation", "Generated Playlists"];
 
 type Message = { path: string; code: string; message: string };
 type Recipe = Record<string, any> & { id: string; name: string; slug: string; validation: { valid: boolean; errors: Message[]; warnings: Message[] } };
@@ -47,14 +47,19 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
   const [playlistName, setPlaylistName] = useState("");
   const [libraryId, setLibraryId] = useState("");
   const [confirmAutomation, setConfirmAutomation] = useState(false);
+  const [resolution, setResolution] = useState<any>(null);
+  const [recipeOptions, setRecipeOptions] = useState<any[]>([]);
+  const [presetOptions, setPresetOptions] = useState<any[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<any[]>([]);
+  const [showClone, setShowClone] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
       axios.get(`/api/playlist-recipes/${params.id}`),
       axios.get(`/api/playlist-recipes/${params.id}/playlists`),
-      axios.get("/api/plex/servers"),
-    ]).then(([recipeResponse, playlistResponse, serverResponse]) => {
+      axios.get("/api/plex/servers"), axios.get("/api/playlist-recipes?pageSize=100"), axios.get("/api/recipe-presets"), axios.get("/api/recipe-categories"), axios.get(`/api/playlist-recipes/${params.id}/effective-configuration`),
+    ]).then(([recipeResponse, playlistResponse, serverResponse, recipesResponse, presetsResponse, categoriesResponse, effectiveResponse]) => {
       if (cancelled) return;
       const loaded = recipeResponse.data.recipe as Recipe;
       setRecipe(loaded); setDraft(structuredClone(loaded)); setPlaylistName(loaded.name);
@@ -62,6 +67,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
       const options = (serverResponse.data.servers || []).flatMap((server: any) => (server.libraries || []).filter((library: any) => library.type === "artist" || !library.type).map((library: any) => ({ id: library.id, serverId: server.id, label: `${server.name} — ${library.name}`, tracks: library._count?.tracks || 0 })));
       setLibraries(options);
       setLibraryId(loaded.filters?.libraryId || options[0]?.id || "");
+      setRecipeOptions(recipesResponse.data.recipes || []); setPresetOptions(presetsResponse.data.presets || []); setCategoryOptions(categoriesResponse.data.categories || []); setResolution(effectiveResponse.data);
     }).catch((caught) => setError(caught.response?.data?.error || "Unable to load this recipe.")).finally(() => setLoading(false));
     return () => { cancelled = true; };
   }, [params.id]);
@@ -81,8 +87,13 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
         enabled: draft.enabled, filters: draft.filters, scoring: draft.scoring, targets: draft.targets,
         bpmFlow: draft.bpmFlow, discovery: draft.discovery, variety: draft.variety,
         playlistIdentity: draft.playlistIdentity, refreshPolicy: draft.refreshPolicy, automationPolicy: draft.automationPolicy,
+        ...(draft.inheritanceEnabled || draft.baseRecipeId || draft.recipeCategoryId || draft.transitionPresetId || draft.discoveryPresetId || draft.varietyPresetId || draft.automationPresetId ? {
+          baseRecipeId: draft.baseRecipeId, recipeCategoryId: draft.recipeCategoryId, transitionPresetId: draft.transitionPresetId,
+          discoveryPresetId: draft.discoveryPresetId, varietyPresetId: draft.varietyPresetId, automationPresetId: draft.automationPresetId,
+        } : {}),
       });
       setRecipe(response.data.recipe); setDraft(structuredClone(response.data.recipe)); setNotice(`Saved recipe v${response.data.recipe.recipeVersion}.`);
+      setResolution((await axios.get(`/api/playlist-recipes/${draft.id}/effective-configuration`)).data);
     } catch (caught: any) { setError(caught.response?.data?.error || "Unable to save this recipe."); }
     finally { setSaving(false); }
   }
@@ -100,10 +111,22 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
     finally { setValidating(false); }
   }
 
-  async function duplicate() {
+  async function duplicate(mode = "independent") {
     if (!draft) return;
-    const response = await axios.post(`/api/playlist-recipes/${draft.id}/duplicate`);
+    const response = await axios.post(`/api/playlist-recipes/${draft.id}/duplicate`, { mode });
     router.push(`/recipes/${response.data.recipe.id}`);
+  }
+
+  async function previewInheritance() {
+    if (!draft) return; setError("");
+    try { const response = await axios.post(`/api/playlist-recipes/${draft.id}/effective-configuration`, { proposedChanges: { baseRecipeId: draft.baseRecipeId, recipeCategoryId: draft.recipeCategoryId, transitionPresetId: draft.transitionPresetId, discoveryPresetId: draft.discoveryPresetId, varietyPresetId: draft.varietyPresetId, automationPresetId: draft.automationPresetId } }); setResolution(response.data); setActiveSection("Effective Configuration"); }
+    catch (caught: any) { setError(caught.response?.data?.error || "Inheritance preview failed."); }
+  }
+
+  async function resetField(fieldPath: string) {
+    if (!draft) return;
+    try { const response = await axios.delete(`/api/playlist-recipes/${draft.id}/overrides`, { data: { fieldPaths: [fieldPath] } }); setResolution(response.data); setNotice(`${fieldPath} now follows its inherited source.`); }
+    catch (caught: any) { setError(caught.response?.data?.error || "Could not reset that field."); }
   }
 
   async function remove() {
@@ -136,13 +159,19 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
   return <main className={styles.page}>
     <header className={styles.header}>
       <div><Link href="/recipes" className={styles.back}><ArrowLeft size={15} /> Recipe Library</Link><h2>{draft.name}</h2><p>Schema v{draft.schemaVersion} · Recipe v{draft.recipeVersion} · {draft.category}</p></div>
-      <div className={styles.headerActions}><a href={`/api/playlist-recipes/${draft.id}/export`} download><Download size={15} /> Export recipe</a><button onClick={duplicate}><Copy size={15} /> Duplicate</button><button onClick={validate} disabled={validating}>{validating ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} Validate</button><button className={styles.primary} onClick={save} disabled={!dirty || saving}>{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Save</button></div>
+      <div className={styles.headerActions}><a href={`/api/playlist-recipes/${draft.id}/export`} download><Download size={15} /> Export recipe</a><button onClick={() => setShowClone(true)}><Copy size={15} /> Clone</button><button onClick={validate} disabled={validating}>{validating ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} Validate</button><button className={styles.primary} onClick={save} disabled={!dirty || saving}>{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Save</button></div>
     </header>
     {notice && <div className={styles.notice}><CheckCircle2 size={16} /> {notice}</div>}
     {error && <div className={styles.error}><AlertCircle size={16} /> {error}</div>}
     <div className={styles.workspace}>
       <nav className={styles.tabs} aria-label="Recipe editor sections">{sections.map((section) => <button key={section} data-active={activeSection === section} onClick={() => setActiveSection(section)}>{section}</button>)}</nav>
       <section className={styles.editor}>
+        {activeSection === "Recipe Foundation" && <Section title="Recipe Foundation" hint="Build this recipe from reusable layers. Previewing never saves changes.">
+          <div className={styles.two}><Field label="Base recipe"><select value={draft.baseRecipeId || ""} onChange={(event) => updateRoot("baseRecipeId", event.target.value || null)}><option value="">No base recipe</option>{recipeOptions.filter((item) => item.id !== draft.id).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></Field><Field label="Category preset"><select value={draft.recipeCategoryId || ""} onChange={(event) => updateRoot("recipeCategoryId", event.target.value || null)}><option value="">No category preset</option>{categoryOptions.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></Field></div>
+          <div className={styles.two}>{[["transitionPresetId","Transition preset","TRANSITION"],["discoveryPresetId","Discovery preset","DISCOVERY"],["varietyPresetId","Variety preset","VARIETY"],["automationPresetId","Automation policy","AUTOMATION"]].map(([key,label,type]) => <Field label={label} key={key}><select value={draft[key] || ""} onChange={(event) => updateRoot(key, event.target.value || null)}><option value="">No {label.toLowerCase()}</option>{presetOptions.filter((item) => item.type === type).map((item) => <option value={item.id} key={item.id}>{item.name} · v{item.version}</option>)}</select></Field>)}</div>
+          <div className={styles.actions}><button onClick={previewInheritance}><Layers3 size={15} /> Preview effective settings</button><Link href="/settings/recipe-presets"><GitBranch size={15} /> Manage presets and policies</Link></div>
+          <div className={styles.summary}><strong>Inheritance summary</strong><p>{resolution?.fields?.filter((field: any) => field.state === "inherited").length || 0} inherited · {resolution?.fields?.filter((field: any) => field.isCustomized).length || 0} customized · {resolution?.lockedFields?.length || 0} locked · {resolution?.conflicts?.length || 0} conflicts</p></div>
+        </Section>}
         {activeSection === "Overview" && <>
           <Section title="Overview" hint="Recipe metadata never changes generated playlist tracks.">
             <Field label="Name"><input value={draft.name} onChange={(event) => updateRoot("name", event.target.value)} /></Field>
@@ -205,6 +234,12 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
           {[['preserveLockedTracks','Preserve locked tracks'],['preserveLikedTracks','Preserve liked tracks'],['preservePlaylistLength','Preserve playlist length'],['preserveMoodCurve','Preserve mood curve'],['preserveBpmCurve','Preserve BPM curve']].map(([key,label]) => <label className={styles.toggle} key={key}><input type="checkbox" checked={draft.refreshPolicy[key]} onChange={(event) => update("refreshPolicy", key, event.target.checked)} /> {label}</label>)}
           <hr /><label className={styles.toggle}><input type="checkbox" checked={draft.automationPolicy.enabled} onChange={(event) => update("automationPolicy", "enabled", event.target.checked)} /> Offer automation when creating a playlist (explicit confirmation still required)</label>
         </Section>}
+        {activeSection === "Effective Configuration" && <Section title="Effective Configuration" hint="This is the exact validated configuration the Smart Mix Engine receives, with every source explained.">
+          {resolution && <><div className={resolution.valid ? styles.valid : styles.invalid}>{resolution.valid ? <CheckCircle2 /> : <ShieldAlert />}<div><strong>{resolution.valid ? "Effective configuration is valid" : "Blocking conflicts must be resolved"}</strong><p>Resolver {resolution.resolverVersion} · fingerprint {resolution.fingerprint?.slice(0, 16)}…</p></div></div>
+          <div className={styles.chain} aria-label="Inheritance chain">{resolution.inheritanceChain?.map((layer: any, index: number) => <div key={`${layer.type}-${layer.id}-${index}`}><span><Layers3 size={14} /> {layer.name}</span><small>{layer.type.replaceAll("_", " ")} {layer.version ? `· v${layer.version}` : ""}</small>{index < resolution.inheritanceChain.length - 1 && <ArrowDown size={14} />}</div>)}</div>
+          {(resolution.conflicts || []).map((conflict: any) => <div className={styles.message} data-error={conflict.severity === "blocking"} key={`${conflict.code}-${conflict.fields.join()}`}><code>{conflict.severity} · {conflict.fields.join(", ")}</code><span>{conflict.message}<small>{conflict.suggestion}</small></span></div>)}
+          <div className={styles.fieldProvenance}>{resolution.fields?.map((field: any) => <div key={field.field} data-state={field.state}><div><code>{field.field}</code><span className={styles.badge}>{field.state.replaceAll("_", " ")}</span>{field.isLocked && <LockKeyhole size={13} />}</div><strong>{typeof field.effectiveValue === "object" ? JSON.stringify(field.effectiveValue) : String(field.effectiveValue)}</strong><small>Source: {field.source.name}{field.inheritedFrom ? ` · inherited value ${JSON.stringify(field.inheritedValue)} from ${field.inheritedFrom.name}` : ""}</small>{field.isCustomized && <button onClick={() => resetField(field.field)}><RotateCcw size={13} /> Reset to inherited value</button>}</div>)}</div></>}
+        </Section>}
         {activeSection === "Import Mapping" && <Section title="Import Compatibility & Mapping" hint="The original imported definition is preserved for comparison. Editing this recipe does not rewrite its import audit.">
           {draft.importAnalysis ? <><div className={styles.two}><div className={styles.valid}><CheckCircle2 /><div><strong>{draft.importAnalysis.compatibilityScore}% compatibility</strong><p>{draft.importAnalysis.library?.name || "Local library"} · {draft.importAnalysis.identityImpact.replaceAll("_", " ")} identity impact</p></div></div><div className={styles.valid}><CheckCircle2 /><div><strong>{draft.importAnalysis.adaptedCandidateEstimate} adapted candidates</strong><p>{draft.importAnalysis.originalCandidateEstimate} using the original definition</p></div></div></div>
           {draft.importAnalysis.mappings.map((mapping: any) => <div className={styles.message} key={mapping.id}><code>{mapping.mappingType}</code><span><b>{mapping.originalValue}</b> → {(mapping.mappedValuesJson || []).join(", ") || "No local mapping"}<small>{mapping.matchStatus.replaceAll("_", " ")} · {Math.round(mapping.confidence * 100)}% · {mapping.reason}</small></span></div>)}
@@ -221,6 +256,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
         <div className={styles.danger}><div><strong>Delete recipe</strong><p>Generated playlists, history, feedback, and Plex data are retained.</p></div><button onClick={remove}><Trash2 size={15} /> Delete</button></div>
       </section>
     </div>
+    {showClone && <div className={styles.modalBackdrop} role="dialog" aria-modal="true" aria-label="Clone recipe"><div className={styles.cloneDialog}><button className={styles.close} onClick={() => setShowClone(false)} aria-label="Close"><X /></button><h3>Clone with inheritance</h3><p>Choose how future changes should flow into the clone.</p>{[["linked","Linked Clone","Retain the same base, presets, and explicit overrides."],["child","Child Recipe","Use this recipe as the new base and start with no overrides."],["independent","Independent Copy","Store today’s effective values explicitly; future parent changes do not flow in."],["structure_only","Structure-Only Clone","Retain base and preset references without local overrides."]].map(([mode,label,description]) => <button key={mode} onClick={() => duplicate(mode)}><strong>{label}</strong><small>{description}</small></button>)}</div></div>}
   </main>;
 }
 

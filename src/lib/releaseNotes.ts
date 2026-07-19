@@ -77,6 +77,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.3.3",
+    title: "Preset Inheritance & Overrides",
+    releaseDate: "July 19, 2026",
+    badges: ["Recipes", "Settings", "Automation", "History", "Database", "Security", "Reliability", "Mobile", "Accessibility"],
+    changes: [
+      "Added centralized deterministic effective-recipe resolution across global and category defaults, multi-level base recipes, focused presets, explicit recipe/group/playlist/user overrides, and authoritative policy locks.",
+      "Added field provenance, inherited/customized/legacy/locked/conflicting states, suppressed values, individual reset, cycle and maximum-depth detection, conflict validation, dependency lists, impact previews, and stable configuration fingerprints.",
+      "Added versioned transition, discovery, variety, category, and automation presets; custom categories; group policies; eligible user preferences; administrator defaults and locks; and audit records.",
+      "Added linked, child, independent, and structure-only clone modes plus exact effective snapshots on generated playlists for reproducible original-configuration retries.",
+      "Compatibility: existing recipes remain legacy-explicit after the additive migration, existing playlist output is unchanged unless inheritance is adopted, and shared preset changes do not trigger automatic regeneration.",
+    ],
+  },
+  {
     version: "2.3.2",
     title: "Adaptive Recipe Mapping",
     releaseDate: "July 19, 2026",

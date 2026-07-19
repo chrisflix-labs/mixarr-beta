@@ -177,6 +177,7 @@ export default function RecipesPage() {
 
   return <main className={styles.page}>
     <header className={styles.header}><div><span className={styles.kicker}><BookMarked size={14} /> Mix Recipe Library</span><h2>Mix Recipes</h2><p>Portable Smart Mix strategies—separate from Plex playlists, tracks, and listening history.</p></div><div className={styles.headerActions}>
+      <Link className={styles.secondaryButton} href="/settings/recipe-presets"><ShieldCheck size={16} /> Presets &amp; Inheritance</Link>
       <button className={styles.secondaryButton} onClick={() => { resetWizard(false); setWizardOpen(true); }}><Upload size={16} /> Import Recipe</button>
       <button className={styles.secondaryButton} onClick={loadHistory}><History size={16} /> Transfer History</button>
       <Link href="/settings/recipe-mappings" className={styles.secondaryButton}><RefreshCw size={16} /> Saved Mappings</Link>

@@ -42,6 +42,12 @@ export const playlistRecipeSchema = z.object({
   playlistIdentity: recipeIdentityDefaultsSchema.optional(),
   refreshPolicy: recipeRefreshPolicySchema.optional(),
   automationPolicy: recipeAutomationPolicySchema.optional(),
+  baseRecipeId: z.string().uuid().optional().nullable(),
+  recipeCategoryId: z.string().uuid().optional().nullable(),
+  transitionPresetId: z.string().uuid().optional().nullable(),
+  discoveryPresetId: z.string().uuid().optional().nullable(),
+  varietyPresetId: z.string().uuid().optional().nullable(),
+  automationPresetId: z.string().uuid().optional().nullable(),
 });
 
 export type PlaylistRecipeInput = z.infer<typeof playlistRecipeSchema>;
@@ -187,6 +193,18 @@ export function parsePlaylistRecipe(recipe: any) {
     isArchived: recipe.isArchived,
     deletedAt: recipe.deletedAt || null,
     playlistCount: recipe._count?.generatedPlaylists ?? recipe.playlistCount ?? 0,
+    inheritanceEnabled: recipe.inheritanceEnabled === true,
+    baseRecipeId: recipe.baseRecipeId || null,
+    baseRecipe: recipe.baseRecipe ? { id: recipe.baseRecipe.id, name: recipe.baseRecipe.name, recipeVersion: recipe.baseRecipe.recipeVersion } : null,
+    recipeCategoryId: recipe.recipeCategoryId || null,
+    recipeCategory: recipe.recipeCategory || null,
+    transitionPresetId: recipe.transitionPresetId || null,
+    discoveryPresetId: recipe.discoveryPresetId || null,
+    varietyPresetId: recipe.varietyPresetId || null,
+    automationPresetId: recipe.automationPresetId || null,
+    presetReferences: { transition: recipe.transitionPreset || null, discovery: recipe.discoveryPreset || null, variety: recipe.varietyPreset || null, automation: recipe.automationPreset || null },
+    localOverrides: recipe.recipeOverrides || [],
+    dependentRecipeCount: recipe._count?.childRecipes ?? 0,
   };
 }
 
@@ -232,6 +250,12 @@ export function createPlaylistRecipeData(userId: string, input: PlaylistRecipeIn
     refreshPolicyJson: recipe.refreshPolicy as Prisma.InputJsonValue,
     automationPolicyJson: recipe.automationPolicy as Prisma.InputJsonValue,
     ...(input.sourcePlaylistId ? { sourcePlaylist: { connect: { id: input.sourcePlaylistId } } } : {}),
+    ...(input.baseRecipeId ? { baseRecipe: { connect: { id: input.baseRecipeId } }, inheritanceEnabled: true } : {}),
+    ...(input.recipeCategoryId ? { recipeCategory: { connect: { id: input.recipeCategoryId } }, inheritanceEnabled: true } : {}),
+    ...(input.transitionPresetId ? { transitionPreset: { connect: { id: input.transitionPresetId } }, inheritanceEnabled: true } : {}),
+    ...(input.discoveryPresetId ? { discoveryPreset: { connect: { id: input.discoveryPresetId } }, inheritanceEnabled: true } : {}),
+    ...(input.varietyPresetId ? { varietyPreset: { connect: { id: input.varietyPresetId } }, inheritanceEnabled: true } : {}),
+    ...(input.automationPresetId ? { automationPreset: { connect: { id: input.automationPresetId } }, inheritanceEnabled: true } : {}),
     createdFromVersion: APP_VERSION,
     revisions: {
       create: {
@@ -291,6 +315,12 @@ export function updatePlaylistRecipeData(input: PlaylistRecipeInput, existing?: 
       recipeVersion: nextVersion,
       revisions: { create: { recipeVersion: nextVersion, schemaVersion: normalized.schemaVersion, changeType: "UPDATED", portableSnapshotJson: snapshot as Prisma.InputJsonValue } },
     } : {}),
+    ...(input.baseRecipeId !== undefined ? { baseRecipe: input.baseRecipeId ? { connect: { id: input.baseRecipeId } } : { disconnect: true }, inheritanceEnabled: true } : {}),
+    ...(input.recipeCategoryId !== undefined ? { recipeCategory: input.recipeCategoryId ? { connect: { id: input.recipeCategoryId } } : { disconnect: true }, inheritanceEnabled: true } : {}),
+    ...(input.transitionPresetId !== undefined ? { transitionPreset: input.transitionPresetId ? { connect: { id: input.transitionPresetId } } : { disconnect: true }, inheritanceEnabled: true } : {}),
+    ...(input.discoveryPresetId !== undefined ? { discoveryPreset: input.discoveryPresetId ? { connect: { id: input.discoveryPresetId } } : { disconnect: true }, inheritanceEnabled: true } : {}),
+    ...(input.varietyPresetId !== undefined ? { varietyPreset: input.varietyPresetId ? { connect: { id: input.varietyPresetId } } : { disconnect: true }, inheritanceEnabled: true } : {}),
+    ...(input.automationPresetId !== undefined ? { automationPreset: input.automationPresetId ? { connect: { id: input.automationPresetId } } : { disconnect: true }, inheritanceEnabled: true } : {}),
   };
 }
 

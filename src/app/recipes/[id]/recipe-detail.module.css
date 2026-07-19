@@ -50,6 +50,26 @@
 .danger button { color: #ffb0b0; border-color: rgba(215,91,91,.3); background: rgba(215,91,91,.08); }
 .state { display: flex; align-items: center; justify-content: center; gap: .6rem; min-height: 300px; color: var(--muted); }
 .section hr { width: 100%; border: 0; border-top: 1px solid var(--line); }
+.chain { display: grid; gap: .35rem; padding: .8rem; border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(0,0,0,.12); }
+.chain > div { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: .3rem .7rem; }
+.chain span { display: inline-flex; align-items: center; gap: .4rem; font-weight: 750; }
+.chain small { color: var(--muted); }
+.chain svg:last-child { grid-column: 1 / -1; margin-left: .1rem; color: var(--muted); }
+.fieldProvenance { display: grid; gap: .5rem; max-height: 46rem; overflow: auto; }
+.fieldProvenance > div { display: grid; gap: .3rem; padding: .7rem; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.fieldProvenance > div[data-state="locked"] { border-color: rgba(215,173,91,.5); }
+.fieldProvenance > div[data-state="invalid"], .fieldProvenance > div[data-state="conflicting"] { border-color: rgba(215,91,91,.5); }
+.fieldProvenance > div > div { display: flex; align-items: center; gap: .45rem; }
+.fieldProvenance code { overflow-wrap: anywhere; color: var(--muted); }
+.fieldProvenance small, .message small { display: block; color: var(--muted); }
+.fieldProvenance button { justify-self: start; display: inline-flex; align-items: center; gap: .35rem; border: 0; color: var(--accent); background: transparent; cursor: pointer; padding: .2rem 0; }
+.badge { padding: .15rem .4rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: .66rem; font-weight: 800; text-transform: capitalize; }
+.modalBackdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 1rem; background: rgba(0,0,0,.72); }
+.cloneDialog { position: relative; display: grid; gap: .7rem; width: min(520px,100%); padding: 1.2rem; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--shadow); }
+.cloneDialog h3, .cloneDialog p { margin: 0; }
+.cloneDialog p, .cloneDialog small { color: var(--muted); }
+.cloneDialog > button:not(.close) { display: grid; gap: .2rem; padding: .75rem; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--fg); background: rgba(255,255,255,.04); text-align: left; cursor: pointer; }
+.cloneDialog .close { position: absolute; top: .65rem; right: .65rem; border: 0; color: var(--muted); background: transparent; cursor: pointer; }
 @media (max-width: 900px) {
   .workspace { grid-template-columns: 1fr; }
   .tabs { position: static; display: flex; overflow-x: auto; }

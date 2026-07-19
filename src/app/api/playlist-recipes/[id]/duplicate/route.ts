@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { duplicateRecipeName, parsePlaylistRecipe, portableRecipeFromRecord } from "@/lib/playlistRecipes";
+import { duplicateRecipeName, parsePlaylistRecipe } from "@/lib/playlistRecipes";
 import { slugifyRecipeName } from "@/lib/mixRecipes/schema";
 import { APP_VERSION } from "@/lib/appVersion";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
+import { resolveOwnedRecipe } from "@/lib/recipeInheritance/service";
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   const userId = cookies().get("mixarr_session")?.value;
 
   if (!userId) {
@@ -17,6 +18,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   try {
     const source = await prisma.playlistRecipe.findFirst({
       where: { id: params.id, userId, isArchived: false, deletedAt: null },
+      include: { recipeOverrides: true },
     });
 
     if (!source) {
@@ -28,6 +30,15 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       select: { name: true },
     });
     const newName = duplicateRecipeName(source.name, existingRecipes.map((recipe) => recipe.name));
+    const body = await req.json().catch(() => ({}));
+    const cloneMode = ["linked", "child", "independent", "structure_only"].includes(body.mode) ? body.mode : "independent";
+    const resolution = await resolveOwnedRecipe(userId, source.id);
+    const snapshot = resolution.normalizedRecipe;
+    const independent = cloneMode === "independent";
+    const child = cloneMode === "child";
+    const retainStructure = cloneMode === "linked" || cloneMode === "structure_only";
+    const copyOverrides = cloneMode === "linked";
+    const cloneBaseRecipeId = child ? source.id : retainStructure ? source.baseRecipeId : null;
 
     const recipe = await prisma.playlistRecipe.create({
       data: {
@@ -40,26 +51,34 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         schemaVersion: source.schemaVersion,
         recipeVersion: 1,
         enabled: source.enabled,
-        filtersJson: source.filtersJson as Prisma.InputJsonValue,
-        scoringJson: source.scoringJson as Prisma.InputJsonValue,
-        targetsJson: source.targetsJson as Prisma.InputJsonValue,
-        bpmFlowJson: source.bpmFlowJson as Prisma.InputJsonValue,
-        discoveryJson: source.discoveryJson as Prisma.InputJsonValue,
-        varietyJson: source.varietyJson as Prisma.InputJsonValue,
-        identityDefaultsJson: source.identityDefaultsJson as Prisma.InputJsonValue,
-        refreshPolicyJson: source.refreshPolicyJson as Prisma.InputJsonValue,
-        automationPolicyJson: source.automationPolicyJson as Prisma.InputJsonValue,
+        filtersJson: (independent ? snapshot.generation : source.filtersJson) as Prisma.InputJsonValue,
+        scoringJson: (independent ? snapshot.scoring : source.scoringJson) as Prisma.InputJsonValue,
+        targetsJson: (independent ? snapshot.targets : source.targetsJson) as Prisma.InputJsonValue,
+        bpmFlowJson: (independent ? snapshot.bpmFlow : source.bpmFlowJson) as Prisma.InputJsonValue,
+        discoveryJson: (independent ? snapshot.discovery : source.discoveryJson) as Prisma.InputJsonValue,
+        varietyJson: (independent ? snapshot.variety : source.varietyJson) as Prisma.InputJsonValue,
+        identityDefaultsJson: (independent ? snapshot.playlistIdentity : source.identityDefaultsJson) as Prisma.InputJsonValue,
+        refreshPolicyJson: (independent ? snapshot.refreshPolicy : source.refreshPolicyJson) as Prisma.InputJsonValue,
+        automationPolicyJson: (independent ? snapshot.automationPolicy : source.automationPolicyJson) as Prisma.InputJsonValue,
+        inheritanceEnabled: !independent,
+        ...(cloneBaseRecipeId ? { baseRecipe: { connect: { id: cloneBaseRecipeId } } } : {}),
+        ...(retainStructure && source.recipeCategoryId ? { recipeCategory: { connect: { id: source.recipeCategoryId } } } : {}),
+        ...(retainStructure && source.transitionPresetId ? { transitionPreset: { connect: { id: source.transitionPresetId } } } : {}),
+        ...(retainStructure && source.discoveryPresetId ? { discoveryPreset: { connect: { id: source.discoveryPresetId } } } : {}),
+        ...(retainStructure && source.varietyPresetId ? { varietyPreset: { connect: { id: source.varietyPresetId } } } : {}),
+        ...(retainStructure && source.automationPresetId ? { automationPreset: { connect: { id: source.automationPresetId } } } : {}),
+        ...(copyOverrides && source.recipeOverrides.length ? { recipeOverrides: { create: source.recipeOverrides.map((override) => ({ fieldPath: override.fieldPath, valueJson: override.valueJson as Prisma.InputJsonValue, schemaVersion: override.schemaVersion, reason: override.reason, createdById: userId, updatedById: userId })) } } : {}),
         createdFromVersion: APP_VERSION,
         useCount: 0,
         lastUsedAt: null,
-        revisions: { create: { recipeVersion: 1, schemaVersion: source.schemaVersion, changeType: "DUPLICATED", portableSnapshotJson: { ...portableRecipeFromRecord(source), recipeVersion: 1, metadata: { ...portableRecipeFromRecord(source).metadata, name: newName, slug: slugifyRecipeName(newName) } } as Prisma.InputJsonValue } },
+        revisions: { create: { recipeVersion: 1, schemaVersion: source.schemaVersion, changeType: `CLONED_${cloneMode.toUpperCase()}`, portableSnapshotJson: { ...snapshot, recipeVersion: 1, metadata: { ...snapshot.metadata, name: newName, slug: slugifyRecipeName(newName) } } as Prisma.InputJsonValue, inheritanceSnapshotJson: { mode: cloneMode, baseRecipeId: cloneBaseRecipeId, fingerprint: resolution.fingerprint, chain: resolution.inheritanceChain } as Prisma.InputJsonValue, resolverVersion: resolution.resolverVersion, configurationFingerprint: resolution.fingerprint } },
       },
     });
-    await safeRecordJobHistory({ userId, type: "mix_recipe", name: "Recipe duplicated", status: "completed", trigger: "manual", summary: `Duplicated recipe "${source.name}" as "${recipe.name}".`, counts: { attempted: 1, processed: 1 }, metadata: { sourceRecipeId: source.id, recipeId: recipe.id, schemaVersion: recipe.schemaVersion, recipeVersion: recipe.recipeVersion } });
+    await safeRecordJobHistory({ userId, type: "mix_recipe", name: "Recipe cloned", status: "completed", trigger: "manual", summary: `Cloned recipe "${source.name}" as "${recipe.name}" using ${cloneMode.replaceAll("_", " ")} mode.`, counts: { attempted: 1, processed: 1 }, metadata: { sourceRecipeId: source.id, recipeId: recipe.id, cloneMode, schemaVersion: recipe.schemaVersion, recipeVersion: recipe.recipeVersion, configurationFingerprint: resolution.fingerprint } });
 
     return NextResponse.json({
       recipe: parsePlaylistRecipe(recipe),
-      message: `Duplicated recipe "${source.name}" as "${newName}".`,
+      message: `Cloned recipe "${source.name}" as "${newName}" (${cloneMode.replaceAll("_", " ")}).`,
     }, { status: 201 });
   } catch (error) {
     console.error("Duplicate playlist recipe error:", error);

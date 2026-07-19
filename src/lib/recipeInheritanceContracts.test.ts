@@ -1,0 +1,8 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+const read = (path: string) => readFileSync(path, "utf8");
+test("v2.3.3 migration is additive and preserves legacy recipes explicitly", () => { const sql = read("prisma/migrations/20260720010000_recipe_inheritance_v233/migration.sql"); assert.match(sql, /inheritanceEnabled[^;]+DEFAULT false/); assert.match(sql, /CREATE TABLE "RecipePreset"/); assert.match(sql, /CREATE TABLE "EffectiveRecipeSnapshot"/); assert.doesNotMatch(sql, /DROP TABLE|TRUNCATE|force-reset/i); });
+test("effective configuration is centralized and generation persists fingerprints", () => { const resolver = read("src/lib/recipeInheritance/resolver.ts"); const service = read("src/lib/mixRecipes/service.ts"); assert.match(resolver, /RECIPE_LAYER_PRIORITY/); assert.match(resolver, /LOCKED_FIELD_OVERRIDE/); assert.match(service, /persistEffectiveSnapshot/); assert.match(service, /configurationFingerprint/); });
+test("preset and recipe editor experiences expose provenance, reset, clone, and policy language", () => { const editor = read("src/app/recipes/[id]/page.tsx"); const presets = read("src/app/settings/recipe-presets/page.tsx"); assert.match(editor, /Effective Configuration/); assert.match(editor, /Reset to inherited value/); assert.match(editor, /Linked Clone/); assert.match(presets, /Resolution priority/); assert.match(presets, /Locks are enforcement/); });
+test("documentation and changelog identify v2.3.3", () => { assert.match(read("docs/RECIPE_INHERITANCE_V233.md"), /Understanding Effective Recipe Settings/); assert.match(read("CHANGELOG.md"), /v2\.3\.3/); });

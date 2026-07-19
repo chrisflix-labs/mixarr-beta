@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     : sort === "used" ? [{ lastUsedAt: "desc" as const }, { updatedAt: "desc" as const }]
     : [{ updatedAt: "desc" as const }, { createdAt: "desc" as const }];
   const [recipes, total] = await Promise.all([
-    prisma.playlistRecipe.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize, include: { _count: { select: { generatedPlaylists: true } } } }),
+    prisma.playlistRecipe.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize, include: { baseRecipe: { select: { id: true, name: true, recipeVersion: true } }, _count: { select: { generatedPlaylists: true, childRecipes: true } } } }),
     prisma.playlistRecipe.count({ where }),
   ]);
 
