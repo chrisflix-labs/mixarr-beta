@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
-import { AlertCircle, ArrowDown, ArrowLeft, CheckCircle2, Copy, Download, GitBranch, Layers3, Loader2, LockKeyhole, Play, RotateCcw, Save, ShieldAlert, Trash2, Wand2, X } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowLeft, CheckCircle2, Copy, Download, GitBranch, Layers3, Loader2, LockKeyhole, Play, RotateCcw, Save, ShieldAlert, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import styles from "./recipe-detail.module.css";
 
-const categories = ["Driving", "Workout", "Party", "Focus", "Chill", "Sleep", "Discovery", "Mood", "Decade", "Genre", "Artist", "Seasonal", "Custom"];
+const categories = ["Driving", "Workout", "Party", "Focus", "Chill", "Relaxation", "Sleep", "Discovery", "Deep Cuts", "Recently Added", "Forgotten Favorites", "Decade Mixes", "Seasonal Mixes", "Genre Journeys", "Artist Radio", "Album Exploration", "Mood Progressions", "Mood", "Decade", "Genre", "Artist", "Seasonal", "Custom"];
 const sections = ["Recipe Foundation", "Overview", "Mood and Energy", "BPM Flow", "Discovery", "Scoring", "Artist and Album Variety", "Playlist Identity", "Refresh and Automation", "Effective Configuration", "Import Mapping", "Validation", "Generated Playlists"];
 
 type Message = { path: string; code: string; message: string };
@@ -52,6 +52,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
   const [presetOptions, setPresetOptions] = useState<any[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<any[]>([]);
   const [showClone, setShowClone] = useState(false);
+  const [sourceDetails, setSourceDetails] = useState<any>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +64,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
       if (cancelled) return;
       const loaded = recipeResponse.data.recipe as Recipe;
       setRecipe(loaded); setDraft(structuredClone(loaded)); setPlaylistName(loaded.name);
+      if (loaded.sourceRecipeId) axios.get(`/api/recipes/library/${encodeURIComponent(loaded.sourceRecipeId)}`).then((response) => setSourceDetails(response.data.recipe)).catch(() => setSourceDetails(null));
       setPlaylists(playlistResponse.data.playlists || []);
       const options = (serverResponse.data.servers || []).flatMap((server: any) => (server.libraries || []).filter((library: any) => library.type === "artist" || !library.type).map((library: any) => ({ id: library.id, serverId: server.id, label: `${server.name} — ${library.name}`, tracks: library._count?.tracks || 0 })));
       setLibraries(options);
@@ -135,6 +137,17 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
     router.push("/recipes");
   }
 
+  async function restoreBuiltIn() {
+    if (!draft?.sourceRecipeId || !window.confirm(`Restore “${draft.name}” to the current built-in defaults? Your customized recipe settings will be replaced. Existing playlists will not change.`)) return;
+    setSaving(true); setError("");
+    try {
+      const response = await axios.post(`/api/playlist-recipes/${draft.id}/restore-built-in`);
+      setRecipe(response.data.recipe); setDraft(structuredClone(response.data.recipe));
+      setNotice(`Restored built-in defaults from source version ${response.data.recipe.sourceRecipeVersion}.`);
+    } catch (caught: any) { setError(caught.response?.data?.error || "Built-in defaults could not be restored."); }
+    finally { setSaving(false); }
+  }
+
   async function generate() {
     if (!draft || !playlistName.trim()) return;
     if (dirty) { setError("Save recipe changes before creating a playlist."); return; }
@@ -161,6 +174,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
       <div><Link href="/recipes" className={styles.back}><ArrowLeft size={15} /> Recipe Library</Link><h2>{draft.name}</h2><p>Schema v{draft.schemaVersion} · Recipe v{draft.recipeVersion} · {draft.category}</p></div>
       <div className={styles.headerActions}><a href={`/api/playlist-recipes/${draft.id}/export`} download><Download size={15} /> Export recipe</a><button onClick={() => setShowClone(true)}><Copy size={15} /> Clone</button><button onClick={validate} disabled={validating}>{validating ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} Validate</button><button className={styles.primary} onClick={save} disabled={!dirty || saving}>{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Save</button></div>
     </header>
+    {draft.sourceRecipeId && <div className={styles.sourceBanner}><Sparkles size={18} /><div><strong>Started from {sourceDetails?.name || draft.sourceRecipeId}</strong><p>Installed source v{draft.sourceRecipeVersion || "unknown"}{sourceDetails ? ` · Bundled source v${sourceDetails.version}` : ""}. Your customizations are never overwritten automatically.</p></div>{sourceDetails?.installedRecipe?.updateStatus === "update_available" && <span>Update available</span>}<Link href={`/recipes/library`}>View built-in</Link><button onClick={restoreBuiltIn} disabled={saving}><RotateCcw size={15} /> Restore original</button></div>}
     {notice && <div className={styles.notice}><CheckCircle2 size={16} /> {notice}</div>}
     {error && <div className={styles.error}><AlertCircle size={16} /> {error}</div>}
     <div className={styles.workspace}>

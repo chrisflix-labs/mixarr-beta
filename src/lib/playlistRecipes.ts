@@ -189,6 +189,8 @@ export function parsePlaylistRecipe(recipe: any) {
     portableChecksum: recipe.portableChecksum || null,
     useCount: recipe.useCount,
     createdFromVersion: recipe.createdFromVersion,
+    sourceRecipeId: recipe.sourceRecipeId || null,
+    sourceRecipeVersion: recipe.sourceRecipeVersion || null,
     isFavorite: recipe.isFavorite,
     isArchived: recipe.isArchived,
     deletedAt: recipe.deletedAt || null,

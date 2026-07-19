@@ -77,6 +77,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.3.4",
+    title: "Curated Recipe Library",
+    releaseDate: "July 19, 2026",
+    badges: ["Recipes", "Library", "Metadata", "Playback", "Preview", "Database", "Performance", "Mobile", "Accessibility", "Reliability"],
+    changes: [
+      "Added a bundled offline catalog of 28 ready-to-use playlist recipes across 16 categories, each with a stable ID, version history, difficulty, metadata declaration, discovery level, behavior preview, expected shape, and validated Smart Mix configuration.",
+      "Added a responsive Recipe Library with search, multi-category filters, difficulty/metadata/compatibility filters, favorites, recently used recipes, reversible hidden-recipe management, loading and empty states, and lazy plain-language details.",
+      "Added deterministic library compatibility from actual aggregate metadata coverage and candidate-pool estimates, plus exact on-demand primary-filter counts through the existing Smart Mix query builder and short library-aware caching.",
+      "Added duplicate-safe one-click installation, source recipe/version tracking, customization in the existing editor, update indicators, recipe-level change summaries, explicit restore-original confirmation, usage tracking, and structured job/audit events.",
+      "Compatibility: all catalog definitions ship with Mixarr and work offline; existing personal recipes and playlists are unchanged, recommended metadata never blocks use, and customized installed recipes are never overwritten automatically.",
+    ],
+  },
+  {
     version: "2.3.3",
     title: "Preset Inheritance & Overrides",
     releaseDate: "July 19, 2026",

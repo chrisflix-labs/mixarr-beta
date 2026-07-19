@@ -4,7 +4,7 @@ import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "re
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
-import { AlertCircle, Archive, BookMarked, CheckCircle2, ChevronRight, Copy, Download, Edit3, FileJson, History, Info, Loader2, Play, RefreshCw, ShieldCheck, Trash2, Upload, Wand2, X } from "lucide-react";
+import { AlertCircle, Archive, BookMarked, CheckCircle2, ChevronRight, Copy, Download, Edit3, FileJson, History, Info, Loader2, Play, RefreshCw, ShieldCheck, Sparkles, Trash2, Upload, Wand2, X } from "lucide-react";
 import styles from "./recipes.module.css";
 
 type PlaylistRecipe = {
@@ -177,6 +177,7 @@ export default function RecipesPage() {
 
   return <main className={styles.page}>
     <header className={styles.header}><div><span className={styles.kicker}><BookMarked size={14} /> Mix Recipe Library</span><h2>Mix Recipes</h2><p>Portable Smart Mix strategies—separate from Plex playlists, tracks, and listening history.</p></div><div className={styles.headerActions}>
+      <Link className={styles.primaryButton} href="/recipes/library"><Sparkles size={16} /> Browse Starter Recipes</Link>
       <Link className={styles.secondaryButton} href="/settings/recipe-presets"><ShieldCheck size={16} /> Presets &amp; Inheritance</Link>
       <button className={styles.secondaryButton} onClick={() => { resetWizard(false); setWizardOpen(true); }}><Upload size={16} /> Import Recipe</button>
       <button className={styles.secondaryButton} onClick={loadHistory}><History size={16} /> Transfer History</button>

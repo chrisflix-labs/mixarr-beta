@@ -18,6 +18,8 @@ import {
 import { resolveRecipeGenerationConfig } from "./schema";
 import { validateRecipe } from "./validation";
 import { persistEffectiveSnapshot, resolveOwnedRecipe } from "../recipeInheritance/service";
+import { getBuiltInRecipe } from "../builtInRecipes/catalog";
+import { markBuiltInRecipeUsed } from "../builtInRecipes/preferences";
 
 function json(value: unknown): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
@@ -200,6 +202,10 @@ export async function createPlaylistFromRecipe({
       });
     }
     await markPlaylistRecipeUsed(userId, stored.id);
+    if (stored.sourceRecipeId) {
+      const source = getBuiltInRecipe(stored.sourceRecipeId);
+      await markBuiltInRecipeUsed(userId, stored.sourceRecipeId, source?.version || stored.sourceRecipeVersion || 1);
+    }
     await safeRecordJobHistory({
       userId, type: "mix_recipe", name: "Playlist generated from recipe", status: "completed", trigger: "manual",
       summary: `Created playlist "${trimmedName}" from recipe "${stored.name}" v${stored.recipeVersion}.`,

@@ -14,6 +14,11 @@
 .notice, .error { display: flex; align-items: center; gap: .45rem; padding: .7rem .8rem; border-radius: var(--radius-md); font-size: .84rem; }
 .notice { border: 1px solid rgba(53,174,234,.3); background: rgba(53,174,234,.08); color: #b9e9ff; }
 .error { border: 1px solid rgba(215,91,91,.35); background: rgba(215,91,91,.08); color: #ffc4c4; }
+.sourceBanner { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto auto; align-items: center; gap: .7rem; padding: .8rem; border: 1px solid rgba(124,111,247,.35); border-radius: var(--radius-md); background: rgba(124,111,247,.08); }
+.sourceBanner > svg { color: var(--accent); }
+.sourceBanner p { margin: .15rem 0 0; color: var(--muted); font-size: .76rem; }
+.sourceBanner span { padding: .2rem .4rem; border-radius: 999px; background: rgba(215,173,91,.12); color: #ffda8a; font-size: .68rem; font-weight: 800; }
+.sourceBanner a, .sourceBanner button { display: inline-flex; align-items: center; gap: .35rem; min-height: 2.2rem; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(255,255,255,.035); color: var(--fg); font-size: .74rem; font-weight: 750; cursor: pointer; }
 .workspace { display: grid; grid-template-columns: 230px minmax(0,1fr); gap: 1rem; }
 .tabs { position: sticky; top: 1rem; align-self: start; display: grid; padding: .55rem; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); }
 .tabs button { padding: .65rem .7rem; border: 0; border-radius: var(--radius-md); color: var(--muted); background: transparent; text-align: left; cursor: pointer; }
@@ -76,6 +81,8 @@
   .tabs button { white-space: nowrap; }
   .header { flex-direction: column; }
   .two, .three { grid-template-columns: 1fr; }
+  .sourceBanner { grid-template-columns: auto 1fr; }
+  .sourceBanner > span, .sourceBanner > a, .sourceBanner > button { grid-column: 2; justify-self: start; }
 }
 @media (max-width: 600px) {
   .headerActions, .headerActions button, .headerActions a, .actions, .actions > * { width: 100%; }

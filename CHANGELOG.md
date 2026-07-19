@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.3.4 - Curated Recipe Library
+
+### Added
+
+- A bundled, offline catalog of 28 versioned starter recipes covering Workout, Driving, Focus, Party, Relaxation, Sleep, Discovery, Deep Cuts, Recently Added, Forgotten Favorites, Decade Mixes, Seasonal Mixes, Genre Journeys, Artist Radio, Album Exploration, and Mood Progressions.
+- A responsive `/recipes/library` browser with search, multi-category chips, difficulty, metadata, compatibility, favorites, hidden-recipe management, sorting, recently used recipes, loading and empty states, behavior previews, exact on-demand candidate counts, and accessible mobile details.
+- One-click installation into the existing Mix Recipe model, safe duplicate prevention, source recipe/version tracking, customize-before-create handoff to the established editor, update status, explicit restore-original controls, and recipe-level version history.
+- Deterministic compatibility estimates based on aggregate coverage of playback history, ratings, BPM, mood, energy, genres, artist/album metadata, date added, release year, popularity, and local analysis, with required/recommended distinctions and plain-language reasons.
+- Normalized per-user favorite, hidden, last-used, source-version, and use-count persistence through the additive `20260720040000_curated_recipe_library_v234` migration.
+
+### Compatibility, privacy, and performance
+
+- Existing recipes, playlists, automation, inheritance, imports, and settings remain unchanged; built-in definitions are version-controlled application data and never overwrite an installed customization automatically.
+- Card compatibility uses cached aggregate/count queries and never loads full track records. Exact primary-filter counts are lazy-loaded only for the opened recipe details view and reuse the current Smart Mix query builder.
+- The complete catalog works without internet access, GitHub, external metadata requests, a marketplace, or a remote recipe service. Compatibility is an estimate, not a playlist guarantee.
+
 ## v2.3.3 - Preset Inheritance & Overrides
 
 ### Added
