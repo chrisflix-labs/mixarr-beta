@@ -179,6 +179,15 @@ function flattenedRules(node: any): PlaylistConfigInput["rules"] {
   return (node.children || []).flatMap(flattenedRules);
 }
 
+function withoutRangeRules(node: any): any | null {
+  if (!node) return null;
+  if (node.type !== "group") return ["tempo", "energy"].includes(node.field) ? null : node;
+  const children = (node.children || []).map(withoutRangeRules).filter(Boolean);
+  if (!children.length) return null;
+  if (children.length === 1) return children[0];
+  return { ...node, children };
+}
+
 function rulesFor(config: PlaylistConfigInput, field: string) {
   const rules = config.ruleTree ? flattenedRules(config.ruleTree) : config.rules;
   return rules.filter((rule) => rule.field === field);
@@ -269,7 +278,9 @@ export function resolveRecipeGenerationConfig(recipe: MixRecipeDocument, overrid
     ...recipe.generation,
     engineVersion: "v2",
     rules: [...withoutRecipeRanges, ...rangeRules],
-    ruleTree: undefined,
+    ruleTree: recipe.generation.ruleTree
+      ? { type: "group" as const, combinator: "AND" as const, children: [withoutRangeRules(recipe.generation.ruleTree), ...rangeRules].filter(Boolean) }
+      : undefined,
     moodBlendMode: recipe.targets.strictMoodMatching ? "strict_matching" : recipe.targets.moodBlendMode,
     allowedMoods: recipe.targets.selectedMoods,
     selectedMoodPath: [recipe.targets.primaryMood, ...recipe.targets.secondaryMoods].filter((mood): mood is string => Boolean(mood)),

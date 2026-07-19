@@ -26,6 +26,8 @@ model User {
   recipeImportStages             RecipeImportStage[]
   recipeImportHistory            RecipeImportHistory[]
   recipeExportHistory            RecipeExportHistory[]
+  recipeImportAnalyses           RecipeImportAnalysis[]
+  savedRecipeMappingRules        SavedRecipeMappingRule[]
   playlistHistory                PlaylistHistory[]
   playlistHistoryEntries         PlaylistHistoryEntry[]
   generatedPlaylists             GeneratedPlaylist[]
@@ -198,6 +200,8 @@ model Library {
   orchestrationLocks       PlaylistOrchestrationLock[]
   coverageSnapshots        LibraryCoverageSnapshot[]
   smartActions             SmartAction[]
+  recipeImportAnalyses     RecipeImportAnalysis[]
+  savedRecipeMappingRules  SavedRecipeMappingRule[]
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
 
@@ -1040,6 +1044,11 @@ model PlaylistRecipe {
   portableChecksum     String?
   portableContentChecksum String?
   importedAt           DateTime?
+  originalImportedRecipeJson Json?
+  adaptedFromImport    Boolean                  @default(false)
+  importSchemaVersion  Int?
+  importEngineVersion  String?
+  importWarningsJson   Json?
   lastExportedAt       DateTime?
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
@@ -1047,6 +1056,7 @@ model PlaylistRecipe {
   sourcePlaylist       GeneratedPlaylist?       @relation("RecipeSourcePlaylist", fields: [sourcePlaylistId], references: [id], onDelete: SetNull)
   generatedPlaylists   GeneratedPlaylist[]      @relation("RecipeGeneratedPlaylists")
   revisions            PlaylistRecipeRevision[]
+  importAnalysis       RecipeImportAnalysis?
 
   @@unique([userId, slug])
   @@index([userId, enabled, updatedAt])
@@ -1071,9 +1081,94 @@ model RecipeImportStage {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analyses             RecipeImportAnalysis[]
 
   @@index([userId, status, expiresAt])
   @@index([expiresAt])
+}
+
+model RecipeImportAnalysis {
+  id                        String    @id @default(uuid())
+  userId                    String
+  libraryId                 String
+  stageId                   String?
+  recipeId                  String?   @unique
+  recipeIndex               Int       @default(0)
+  originalRecipeJson        Json
+  adaptedRecipeJson         Json
+  compatibilityScore        Int
+  compatibilityBreakdownJson Json
+  originalCandidateEstimate Int
+  adaptedCandidateEstimate  Int
+  coverageEstimate          Float
+  warningSummaryJson        Json
+  identityImpact            String
+  status                    String    @default("READY")
+  schemaVersion             Int
+  engineVersion             String
+  mappingStateHash          String
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  completedAt               DateTime?
+  user                      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  library                   Library   @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  stage                     RecipeImportStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  recipe                    PlaylistRecipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  mappings                  RecipeValueMapping[]
+
+  @@unique([stageId, recipeIndex, mappingStateHash])
+  @@index([userId, status, createdAt])
+  @@index([libraryId, status, updatedAt])
+  @@index([stageId, recipeIndex])
+}
+
+model RecipeValueMapping {
+  id                            String   @id @default(uuid())
+  analysisId                    String
+  mappingType                   String
+  originalValue                 String
+  originalValueNormalized       String
+  mappedValuesJson              Json
+  matchStatus                   String
+  confidence                    Float
+  reason                        String
+  originalCandidateContribution Int     @default(0)
+  adaptedCandidateContribution  Int     @default(0)
+  manuallyModified              Boolean @default(false)
+  accepted                      Boolean @default(false)
+  saveForFuture                 Boolean @default(false)
+  identityImpact                String  @default("identity_preserving")
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+  analysis                      RecipeImportAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId, mappingType])
+  @@index([mappingType, originalValueNormalized])
+}
+
+model SavedRecipeMappingRule {
+  id                    String   @id @default(uuid())
+  userId                String
+  libraryId             String?
+  mappingType           String
+  sourceValueNormalized String
+  sourceValueDisplay    String
+  destinationValuesJson Json
+  confidence            Float    @default(1)
+  source                String   @default("manual_import")
+  manuallyConfirmed     Boolean  @default(true)
+  enabled               Boolean  @default(true)
+  usageCount            Int      @default(0)
+  lastUsedAt            DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  library               Library? @relation(fields: [libraryId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, libraryId, mappingType, sourceValueNormalized])
+  @@index([userId, mappingType, sourceValueNormalized, enabled])
+  @@index([libraryId, mappingType, enabled])
+  @@index([userId, enabled, updatedAt])
 }
 
 model RecipeImportHistory {

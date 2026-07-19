@@ -13,7 +13,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   const recipe = await prisma.playlistRecipe.findFirst({
     where: { userId, isArchived: false, deletedAt: null, OR: [{ id: params.id }, { slug: params.id }] },
-    include: { _count: { select: { generatedPlaylists: true } }, revisions: { orderBy: { recipeVersion: "desc" }, take: 20 } },
+    include: { _count: { select: { generatedPlaylists: true } }, revisions: { orderBy: { recipeVersion: "desc" }, take: 20 }, importAnalysis: { include: { mappings: { orderBy: [{ mappingType: "asc" }, { createdAt: "asc" }] }, library: { select: { id: true, name: true } } } } },
   });
 
   if (!recipe) {

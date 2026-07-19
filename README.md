@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.3.1 adds secure staged recipe transfer, checksums, compatibility previews, archives, and audit history on top of the v2.3.0 recipe foundation; existing recipes, playlists, automation flags, personalization, playback data, Plex mappings, and version history remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.3.2 adds adaptive receiving-library mapping, explainable compatibility and candidate estimates, and reusable confirmed mapping rules to the secure v2.3.1 recipe transfer workflow; existing recipes, playlists, automation flags, personalization, playback data, Plex mappings, and version history remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -55,7 +55,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.3.1 makes reusable Mix Recipes safely portable between installations. A recipe describes what a Smart Mix should be and how Mixarr should generate it; a playlist is the concrete result with tracks, identity, feedback, history, experiments, and Plex state. See [Recipe Import & Export](docs/RECIPE_IMPORT_EXPORT_V231.md), [Mix Recipe Foundation](docs/MIX_RECIPES_V230.md), and [Orchestration Dashboard](docs/ORCHESTRATION_DASHBOARD_V229.md).
+Mixarr v2.3.2 makes shared Mix Recipes adapt safely to the receiving Plex music library while preserving their original definition and identity. A recipe describes what a Smart Mix should be and how Mixarr should generate it; a playlist is the concrete result with tracks, identity, feedback, history, experiments, and Plex state. See [Adaptive Recipe Mapping](docs/ADAPTIVE_RECIPE_MAPPING_V232.md), [Recipe Import & Export](docs/RECIPE_IMPORT_EXPORT_V231.md), and [Mix Recipe Foundation](docs/MIX_RECIPES_V230.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 

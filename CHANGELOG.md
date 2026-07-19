@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.3.2 - Adaptive Recipe Mapping
+
+### Added
+
+- Receiving-library analysis for staged recipe imports, including genres, moods, artists, BPM, energy, popularity, audio-feature coverage, sync state, total tracks, and reusable saved mappings.
+- Exact, normalized, saved, conservative alias/related, one-to-many, relaxed, unavailable, unsupported, and no-mapping-required decisions with confidence, reasons, local counts, candidate impact, and manual review.
+- Deterministic weighted compatibility scoring and breakdowns, original/adapted count-only candidate estimates through the existing Smart Mix query builder, library coverage, candidate-pool health, warnings, and relaxation recommendations.
+- Responsive Recipe Compatibility & Mapping UI with original/adapted comparison, searchable local vocabulary controls, debounced/cancellable recalculation, accept/reset actions, import-original choice, and explicit high-impact confirmation.
+- Owner- and library-scoped analysis, mapping-decision, and saved-rule persistence; a mapping management page; later review from recipe details; and additive indexed migration `20260719230000_adaptive_recipe_mapping_v232`.
+
+### Compatibility and safety
+
+- The original imported recipe is preserved beside the adapted local definition. Existing v2.3.0/v2.3.1 recipes remain supported, imported automation remains disabled, and import never creates or modifies a Plex playlist.
+- Candidate estimates use the same rule-to-Prisma query builder as playlist generation, grouped one-to-many OR rules remain grouped, manual/effective BPM sources retain existing precedence, and count queries do not load full track records.
+- Major recipe-identity changes and low-compatibility original imports require explicit confirmation. Missing energy, BPM, or mood values are never fabricated.
+
 ## v2.3.1 - Recipe Import & Export
 
 ### Added

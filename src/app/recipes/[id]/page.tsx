@@ -8,7 +8,7 @@ import { AlertCircle, ArrowLeft, CheckCircle2, Copy, Download, Loader2, Play, Sa
 import styles from "./recipe-detail.module.css";
 
 const categories = ["Driving", "Workout", "Party", "Focus", "Chill", "Sleep", "Discovery", "Mood", "Decade", "Genre", "Artist", "Seasonal", "Custom"];
-const sections = ["Overview", "Mood and Energy", "BPM Flow", "Discovery", "Scoring", "Artist and Album Variety", "Playlist Identity", "Refresh and Automation", "Validation", "Generated Playlists"];
+const sections = ["Overview", "Mood and Energy", "BPM Flow", "Discovery", "Scoring", "Artist and Album Variety", "Playlist Identity", "Refresh and Automation", "Import Mapping", "Validation", "Generated Playlists"];
 
 type Message = { path: string; code: string; message: string };
 type Recipe = Record<string, any> & { id: string; name: string; slug: string; validation: { valid: boolean; errors: Message[]; warnings: Message[] } };
@@ -204,6 +204,11 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
           <Slider label="Weak-track threshold" value={draft.refreshPolicy.weakTrackScoreThreshold} onChange={(value) => update("refreshPolicy", "weakTrackScoreThreshold", value)} />
           {[['preserveLockedTracks','Preserve locked tracks'],['preserveLikedTracks','Preserve liked tracks'],['preservePlaylistLength','Preserve playlist length'],['preserveMoodCurve','Preserve mood curve'],['preserveBpmCurve','Preserve BPM curve']].map(([key,label]) => <label className={styles.toggle} key={key}><input type="checkbox" checked={draft.refreshPolicy[key]} onChange={(event) => update("refreshPolicy", key, event.target.checked)} /> {label}</label>)}
           <hr /><label className={styles.toggle}><input type="checkbox" checked={draft.automationPolicy.enabled} onChange={(event) => update("automationPolicy", "enabled", event.target.checked)} /> Offer automation when creating a playlist (explicit confirmation still required)</label>
+        </Section>}
+        {activeSection === "Import Mapping" && <Section title="Import Compatibility & Mapping" hint="The original imported definition is preserved for comparison. Editing this recipe does not rewrite its import audit.">
+          {draft.importAnalysis ? <><div className={styles.two}><div className={styles.valid}><CheckCircle2 /><div><strong>{draft.importAnalysis.compatibilityScore}% compatibility</strong><p>{draft.importAnalysis.library?.name || "Local library"} · {draft.importAnalysis.identityImpact.replaceAll("_", " ")} identity impact</p></div></div><div className={styles.valid}><CheckCircle2 /><div><strong>{draft.importAnalysis.adaptedCandidateEstimate} adapted candidates</strong><p>{draft.importAnalysis.originalCandidateEstimate} using the original definition</p></div></div></div>
+          {draft.importAnalysis.mappings.map((mapping: any) => <div className={styles.message} key={mapping.id}><code>{mapping.mappingType}</code><span><b>{mapping.originalValue}</b> → {(mapping.mappedValuesJson || []).join(", ") || "No local mapping"}<small>{mapping.matchStatus.replaceAll("_", " ")} · {Math.round(mapping.confidence * 100)}% · {mapping.reason}</small></span></div>)}
+          <details><summary>Compare preserved original recipe JSON</summary><pre>{JSON.stringify(draft.originalImportedRecipe, null, 2)}</pre></details></> : <p className={styles.empty}>This recipe was created locally or predates adaptive import analysis.</p>}
         </Section>}
         {activeSection === "Validation" && <Section title="Validation" hint="Validation does not load tracks or run playlist generation.">
           <div className={draft.validation.valid ? styles.valid : styles.invalid}>{draft.validation.valid ? <CheckCircle2 /> : <AlertCircle />}<div><strong>{draft.validation.valid ? "Recipe is valid" : "Recipe needs attention"}</strong><p>{draft.validation.errors.length} error(s), {draft.validation.warnings.length} warning(s)</p></div></div>

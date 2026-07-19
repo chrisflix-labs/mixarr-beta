@@ -77,6 +77,20 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.3.2",
+    title: "Adaptive Recipe Mapping",
+    releaseDate: "July 19, 2026",
+    badges: ["Recipes", "Import", "Genres", "Mood", "Energy", "BPM", "Metadata", "Preview", "Database", "Performance", "Mobile", "Reliability"],
+    changes: [
+      "Added receiving-library analysis for imported recipes with cached genre, mood, artist, BPM, energy, popularity, audio-feature, library-size, sync-state, and saved-mapping statistics.",
+      "Added exact, normalized, confirmed-saved, conservative alias, one-to-many, relaxed, unavailable, and no-mapping-required decisions with manual local-value selectors, per-value confidence, track counts, reasons, and future-mapping persistence.",
+      "Added deterministic weighted compatibility scoring, score breakdowns, original/adapted count-only candidate estimates through the existing Smart Mix query builder, coverage estimates, metadata warnings, restrictiveness detection, and concrete relaxation recommendations.",
+      "Added original-versus-adapted comparison, identity-impact classification, explicit major-change and low-compatibility confirmation, reset/recalculation with cancellation and debouncing, and imported-recipe mapping review after save.",
+      "Added owner/library-scoped import analysis, value mapping, and saved mapping persistence with additive indexes, management APIs and UI, preserved original recipe JSON, and no playlist creation during import.",
+      "Preserved grouped OR rules when resolving recipes so one-to-many mappings use the existing Smart Mix engine without becoming unintended AND filters. Earlier recipe formats and unadapted import remain supported.",
+    ],
+  },
+  {
     version: "2.3.1",
     title: "Recipe Import & Export",
     releaseDate: "July 19, 2026",

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { APP_VERSION, APP_VERSION_NUMBER } from "../appVersion";
+import type { AdaptiveRecipeAnalysis } from "../adaptiveRecipeMapping";
 import { playlistConfigSchema } from "../playlistService";
 import { portableRecipeFromRecord } from "../playlistRecipes";
 import {
@@ -125,6 +126,7 @@ export type ImportCandidate = {
   recommendedAction: ConflictAction;
   artworkDataBase64?: string | null;
   artworkMimeType?: string | null;
+  adaptiveAnalysis?: AdaptiveRecipeAnalysis & { analysisId?: string; mappingStateHash?: string; libraries?: Array<{ id: string; name: string; serverId: string; updatedAt: Date | string; _count: { tracks: number } }> };
 };
 
 export type ParsedTransfer = {
@@ -707,6 +709,7 @@ export function publicImportPreview(parsed: ParsedTransfer) {
     proposedName: candidate.proposedName,
     recommendedAction: candidate.recommendedAction,
     summary: candidate.summary,
+    adaptiveAnalysis: candidate.adaptiveAnalysis || null,
     ready: candidate.validationErrors.length === 0,
   }));
   return {
