@@ -1,0 +1,16 @@
+{
+  "format": "mixarr-community-recipe",
+  "formatVersion": 1,
+  "recipeId": "com.example.traversal-fixture",
+  "name": "Traversal Fixture",
+  "version": "1.0.0",
+  "description": "Must be rejected.",
+  "author": { "name": "Fixture Author", "url": null },
+  "license": "MIT",
+  "minimumMixarrVersion": "2.3.5",
+  "tags": ["Fixture"],
+  "artwork": "../outside.webp",
+  "screenshots": [],
+  "changelog": null,
+  "recipe": "../recipe.json"
+}

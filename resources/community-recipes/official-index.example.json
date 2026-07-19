@@ -1,0 +1,16 @@
+{
+  "format": "mixarr-community-index",
+  "formatVersion": 1,
+  "recipes": [
+    {
+      "recipeId": "com.example.smooth-morning",
+      "name": "Smooth Morning",
+      "version": "1.0.0",
+      "description": "A relaxed morning playlist with a gradual energy curve.",
+      "author": "Example Author",
+      "tags": ["Morning", "Relaxed"],
+      "minimumMixarrVersion": "2.3.5",
+      "path": "recipes/smooth-morning.mixarr-recipe.json"
+    }
+  ]
+}

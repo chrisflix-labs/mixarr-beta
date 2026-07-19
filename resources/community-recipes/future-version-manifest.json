@@ -1,0 +1,16 @@
+{
+  "format": "mixarr-community-recipe",
+  "formatVersion": 1,
+  "recipeId": "com.example.future-recipe",
+  "name": "Future Recipe",
+  "version": "2.0.0",
+  "description": "Compatibility-block fixture.",
+  "author": { "name": "Fixture Author", "url": null },
+  "license": "MIT",
+  "minimumMixarrVersion": "99.0.0",
+  "tags": ["Fixture"],
+  "artwork": null,
+  "screenshots": [],
+  "changelog": null,
+  "recipe": "recipe.json"
+}

@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.3.5 - Community Recipe Sharing
+
+- Added portable community recipe JSON, `.mixarr-recipe.zip` bundles, and checksum-protected `MXR1:` share codes.
+- Added secure HTTPS URL, copy-and-paste, share-code, and upload import through one staged validation and approval pipeline.
+- Added author, license, compatibility, changelog, tags, artwork, screenshots, source attribution, trust warnings, update conflicts, and local-modification detection.
+- Added strict SSRF, redirect, archive, image, executable-content, credential, environment-variable, size, and path-traversal protections.
+- Added decentralized sanitized reporting and optional read-only official GitHub repository browsing.
+- Community recipes are data-only: Mixarr never executes recipe scripts, commands, plugins, hooks, or imported secrets.
+
 ## v2.3.4 - Curated Recipe Library
 
 ### Added

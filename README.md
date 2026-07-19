@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.3.4 adds a bundled Curated Recipe Library with compatibility estimates, one-click installation, customization, favorites, hidden recipes, usage tracking, and restore-original controls; existing recipes and playlists remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.3.5 adds portable, data-only community recipe sharing with secure URL, paste, share-code, and bundle import plus mandatory local approval; existing recipes and playlists remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -55,7 +55,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.3.4 includes 28 offline starter recipes that install into the existing Mix Recipe workflow without replacing its engine or editor. See [Curated Recipe Library](docs/CURATED_RECIPE_LIBRARY_V234.md), [Recipe Inheritance & Overrides](docs/RECIPE_INHERITANCE_V233.md), [Adaptive Recipe Mapping](docs/ADAPTIVE_RECIPE_MAPPING_V232.md), [Recipe Import & Export](docs/RECIPE_IMPORT_EXPORT_V231.md), and [Mix Recipe Foundation](docs/MIX_RECIPES_V230.md).
+Mixarr v2.3.5 supports decentralized community recipe exchange without a hosted social network. See [Community Recipe Sharing](docs/COMMUNITY_RECIPE_SHARING_V235.md), [Curated Recipe Library](docs/CURATED_RECIPE_LIBRARY_V234.md), [Recipe Inheritance & Overrides](docs/RECIPE_INHERITANCE_V233.md), [Adaptive Recipe Mapping](docs/ADAPTIVE_RECIPE_MAPPING_V232.md), [Recipe Import & Export](docs/RECIPE_IMPORT_EXPORT_V231.md), and [Mix Recipe Foundation](docs/MIX_RECIPES_V230.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 

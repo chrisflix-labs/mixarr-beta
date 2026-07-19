@@ -77,6 +77,20 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.3.5",
+    title: "Community Recipe Sharing",
+    releaseDate: "July 19, 2026",
+    badges: ["Recipes", "Sharing", "Import", "Export", "Security", "Preview", "Mobile", "Accessibility"],
+    changes: [
+      "Added portable community recipe JSON, full .mixarr-recipe.zip bundles, and compact MXR1 share codes with corruption-detecting checksums.",
+      "Added secure HTTPS URL, paste, share-code, and upload imports through one server-side validation pipeline with mandatory local preview and explicit approval.",
+      "Added author and license attribution, minimum-version checks, changelogs, screenshots, managed artwork, community tags, trust states, conflict handling, and local-modification detection.",
+      "Added SSRF-safe redirects, archive traversal and bomb defenses, image signature validation, strict data allowlisting, and rejection of scripts, executable content, credentials, and environment variables.",
+      "Added decentralized sanitized reporting and optional read-only browsing of a configured static GitHub recipe index; no Mixarr-hosted social service is required.",
+      "Security: community recipes are data-only. Mixarr never executes scripts, commands, plugins, hooks, or imported secrets, and no import generates or schedules a playlist automatically.",
+    ],
+  },
+  {
     version: "2.3.4",
     title: "Curated Recipe Library",
     releaseDate: "July 19, 2026",

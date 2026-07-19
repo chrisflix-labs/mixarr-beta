@@ -1,10 +1,11 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
-import { AlertCircle, ArrowDown, ArrowLeft, CheckCircle2, Copy, Download, GitBranch, Layers3, Loader2, LockKeyhole, Play, RotateCcw, Save, ShieldAlert, Sparkles, Trash2, Wand2, X } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowLeft, CheckCircle2, Copy, Download, Flag, GitBranch, Layers3, Loader2, LockKeyhole, Play, RefreshCw, RotateCcw, Save, Share2, ShieldAlert, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import styles from "./recipe-detail.module.css";
 
 const categories = ["Driving", "Workout", "Party", "Focus", "Chill", "Relaxation", "Sleep", "Discovery", "Deep Cuts", "Recently Added", "Forgotten Favorites", "Decade Mixes", "Seasonal Mixes", "Genre Journeys", "Artist Radio", "Album Exploration", "Mood Progressions", "Mood", "Decade", "Genre", "Artist", "Seasonal", "Custom"];
@@ -148,6 +149,42 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
     finally { setSaving(false); }
   }
 
+  function communityMetadata() {
+    if (!draft) return null;
+    const authorName = window.prompt("Community recipe author name", draft.community?.author?.name || "")?.trim();
+    if (!authorName) return null;
+    const license = window.prompt("License identifier", draft.community?.license || "MIT")?.trim();
+    if (!license) return null;
+    const version = window.prompt("Community recipe version", draft.community?.version || "1.0.0")?.trim();
+    if (!version) return null;
+    const authorUrl = window.prompt("Author HTTPS URL (optional)", draft.community?.author?.url || "")?.trim() || null;
+    const minimumMixarrVersion = window.prompt("Minimum Mixarr version", draft.community?.minimumMixarrVersion || "2.3.5")?.trim() || null;
+    const homepage = window.prompt("Homepage HTTPS URL (optional)", draft.community?.homepageUrl || "")?.trim() || null;
+    const documentationUrl = window.prompt("Documentation HTTPS URL (optional)", draft.community?.documentationUrl || "")?.trim() || null;
+    const sourceUrl = window.prompt("Source HTTPS URL (optional)", draft.community?.sourceUrl || "")?.trim() || null;
+    const tags = (window.prompt("Community tags, separated by commas", (draft.community?.tags || []).join(", ")) || "").split(",").map((value) => value.trim()).filter(Boolean);
+    const changelog = window.prompt("Changelog text (optional)", draft.community?.changelog || "")?.trim() || null;
+    return { author: { name: authorName, url: authorUrl }, license, version, recipeId: draft.community?.recipeId || `local.mixarr.${draft.slug}`, description: draft.description || "", homepage, tags, minimumMixarrVersion, documentationUrl, sourceUrl, changelog };
+  }
+
+  async function exportCommunity(type: "json" | "bundle") {
+    if (!draft) return; const metadata = communityMetadata(); if (!metadata) return; setSaving(true); setError("");
+    try { const response = await axios.post(`/api/playlist-recipes/${draft.id}/community/export`, { type, metadata }, { responseType: "blob" }); const disposition = response.headers["content-disposition"] || ""; const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `${draft.slug}.mixarr-recipe.${type === "bundle" ? "zip" : "json"}`; const href = URL.createObjectURL(response.data); const anchor = document.createElement("a"); anchor.href = href; anchor.download = filename; anchor.click(); URL.revokeObjectURL(href); setNotice(`Community ${type === "bundle" ? "bundle" : "JSON"} exported.`); }
+    catch { setError("Community export failed."); } finally { setSaving(false); }
+  }
+
+  async function copyShareCode() {
+    if (!draft) return; const metadata = communityMetadata(); if (!metadata) return; setSaving(true); setError("");
+    try { const response = await axios.post(`/api/playlist-recipes/${draft.id}/community/code`, { metadata }); await navigator.clipboard.writeText(response.data.code); setNotice(`Share code copied (${response.data.characterCount} characters). Its checksum detects corruption but does not prove authorship.`); }
+    catch (caught: any) { setError(caught.response?.data?.error || "Share code could not be copied."); } finally { setSaving(false); }
+  }
+
+  async function reportCommunity() {
+    if (!draft?.community) return; const category = window.prompt("Report category (for example: Suspicious content or Broken recipe)", "Broken recipe"); if (!category) return; const description = window.prompt("Optional description", "") || "";
+    try { const response = await axios.post(`/api/playlist-recipes/${draft.id}/community/report`, { category, description }); await navigator.clipboard.writeText(response.data.text); if (response.data.issueUrl && window.confirm("Sanitized report copied. Open a prefilled GitHub issue too?")) window.open(response.data.issueUrl, "_blank", "noopener,noreferrer"); else setNotice("Sanitized community recipe report copied. It excludes credentials, paths, server details, and logs."); }
+    catch (caught: any) { setError(caught.response?.data?.error || "The report could not be created."); }
+  }
+
   async function generate() {
     if (!draft || !playlistName.trim()) return;
     if (dirty) { setError("Save recipe changes before creating a playlist."); return; }
@@ -172,9 +209,11 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
   return <main className={styles.page}>
     <header className={styles.header}>
       <div><Link href="/recipes" className={styles.back}><ArrowLeft size={15} /> Recipe Library</Link><h2>{draft.name}</h2><p>Schema v{draft.schemaVersion} · Recipe v{draft.recipeVersion} · {draft.category}</p></div>
-      <div className={styles.headerActions}><a href={`/api/playlist-recipes/${draft.id}/export`} download><Download size={15} /> Export recipe</a><button onClick={() => setShowClone(true)}><Copy size={15} /> Clone</button><button onClick={validate} disabled={validating}>{validating ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} Validate</button><button className={styles.primary} onClick={save} disabled={!dirty || saving}>{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Save</button></div>
+      <div className={styles.headerActions}><button onClick={() => exportCommunity("json")}><Share2 size={15} /> Community JSON</button><button onClick={() => exportCommunity("bundle")}><Download size={15} /> Community bundle</button><button onClick={copyShareCode}><Copy size={15} /> Copy share code</button><button onClick={() => setShowClone(true)}><Copy size={15} /> Clone</button><button onClick={validate} disabled={validating}>{validating ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} Validate</button><button className={styles.primary} onClick={save} disabled={!dirty || saving}>{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Save</button></div>
     </header>
     {draft.sourceRecipeId && <div className={styles.sourceBanner}><Sparkles size={18} /><div><strong>Started from {sourceDetails?.name || draft.sourceRecipeId}</strong><p>Installed source v{draft.sourceRecipeVersion || "unknown"}{sourceDetails ? ` · Bundled source v${sourceDetails.version}` : ""}. Your customizations are never overwritten automatically.</p></div>{sourceDetails?.installedRecipe?.updateStatus === "update_available" && <span>Update available</span>}<Link href={`/recipes/library`}>View built-in</Link><button onClick={restoreBuiltIn} disabled={saving}><RotateCcw size={15} /> Restore original</button></div>}
+    {draft.community && <section className={styles.communityBanner} aria-label="Community recipe attribution"><ShieldAlert size={20} /><div><strong>{draft.community.trustState.replaceAll("_", " ")} community recipe{draft.community.locallyModified ? " · locally modified" : ""}</strong><p>Created by {draft.community.author?.name || "Unknown author"} · v{draft.community.version || "unknown"} · {draft.community.license || "license not declared"} · imported {draft.importedAt ? new Date(draft.importedAt).toLocaleDateString() : "date unknown"}. Mixarr did not create, endorse, or guarantee this third-party recipe.</p><div className={styles.communityLinks}>{draft.community.sourceUrl && <a href={draft.community.sourceUrl} target="_blank" rel="noopener noreferrer">Source</a>}{draft.community.documentationUrl && <a href={draft.community.documentationUrl} target="_blank" rel="noopener noreferrer">Documentation</a>}{draft.community.homepageUrl && <a href={draft.community.homepageUrl} target="_blank" rel="noopener noreferrer">Homepage</a>}{(draft.community.tags || []).map((tag: string) => <span key={tag}>{tag}</span>)}</div></div><div className={styles.communityActions}>{draft.community.sourceUrl && <Link href={`/recipes/community?url=${encodeURIComponent(draft.community.sourceUrl)}`}><RefreshCw size={14} /> Check for update</Link>}<button onClick={reportCommunity}><Flag size={14} /> Report Recipe</button></div></section>}
+    {draft.community && ((draft.community.screenshots || []).length > 0 || draft.community.changelog) && <section className={styles.communityMedia} aria-label="Community recipe media and changelog">{(draft.community.screenshots || []).length > 0 && <div className={styles.communityGallery}>{draft.community.screenshots.map((screenshot: string, index: number) => <img key={screenshot} src={screenshot} loading="lazy" alt={`${draft.name} community screenshot ${index + 1}`} />)}</div>}{draft.community.changelog && <details><summary>Community recipe changelog</summary><pre>{draft.community.changelog}</pre></details>}</section>}
     {notice && <div className={styles.notice}><CheckCircle2 size={16} /> {notice}</div>}
     {error && <div className={styles.error}><AlertCircle size={16} /> {error}</div>}
     <div className={styles.workspace}>

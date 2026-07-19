@@ -54,6 +54,7 @@
 .filters {display:grid;grid-template-columns:minmax(220px,1fr) repeat(3,minmax(150px,auto));gap:.65rem;padding:.8rem;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--panel)}
 .filters input,.filters select{min-height:2.35rem;padding:.55rem .65rem;border:1px solid var(--line);border-radius:var(--radius-md);color:var(--fg);background:rgba(0,0,0,.2)}
 .automationSummary{margin:0;color:var(--muted);font-size:.75rem}
+.communityTags{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;font-size:.72rem}.communityTags b{text-transform:capitalize;color:#ffd37a}.communityTags span{color:var(--muted)}.communityTags em{padding:.15rem .35rem;border-radius:999px;background:rgba(53,174,234,.12);font-style:normal}
 
 .recipeCard,
 .emptyState,

@@ -1072,6 +1072,26 @@ model PlaylistRecipe {
   discoveryPresetId          String?
   varietyPresetId            String?
   automationPresetId         String?
+  communityRecipeId          String?
+  communityVersion           String?
+  communityFormatVersion     Int?
+  communityAuthorName        String?
+  communityAuthorUrl         String?
+  communityLicense           String?
+  minimumMixarrVersion       String?
+  communityHomepageUrl       String?
+  communityDocumentationUrl  String?
+  communitySourceUrl         String?
+  communityTagsJson          Json?
+  communityChangelog         String?
+  communityScreenshotsJson   Json?
+  communityImportSource      String?
+  communityImportMethod      String?
+  communityTrustState        String?
+  communityValidationJson    Json?
+  communityOriginalChecksum  String?
+  communityImportedVersion   String?
+  communityUpdatedAt         DateTime?
   localOverridesJson         Json                      @default("{}")
   inheritanceSchemaVersion   Int                       @default(1)
   baseRecipe                 PlaylistRecipe?           @relation("RecipeBaseInheritance", fields: [baseRecipeId], references: [id], onDelete: Restrict)
@@ -1092,6 +1112,7 @@ model PlaylistRecipe {
   @@index([sourcePlaylistId])
   @@index([userId, portableChecksum])
   @@index([userId, portableContentChecksum])
+  @@index([userId, communityRecipeId])
   @@index([baseRecipeId])
   @@index([recipeCategoryId])
   @@index([transitionPresetId])

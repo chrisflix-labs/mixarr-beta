@@ -1,0 +1,23 @@
+{
+  "format": "mixarr-community-recipe",
+  "formatVersion": 1,
+  "recipeId": "com.example.smooth-morning",
+  "name": "Smooth Morning",
+  "version": "1.0.0",
+  "description": "A relaxed morning playlist with a gradual energy curve.",
+  "author": {
+    "name": "Example Author",
+    "url": "https://example.com/"
+  },
+  "license": "MIT",
+  "minimumMixarrVersion": "2.3.5",
+  "homepage": "https://example.com/smooth-morning",
+  "documentationUrl": "https://example.com/smooth-morning/docs",
+  "sourceUrl": "https://github.com/example/mixarr-recipes",
+  "supportUrl": "https://github.com/example/mixarr-recipes/issues",
+  "tags": ["Morning", "Relaxed", "Mood blend"],
+  "artwork": "artwork/cover.webp",
+  "screenshots": ["screenshots/screenshot-1.webp"],
+  "changelog": "CHANGELOG.md",
+  "recipe": "recipe.json"
+}

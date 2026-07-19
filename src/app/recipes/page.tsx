@@ -12,6 +12,7 @@ type PlaylistRecipe = {
   lastUsedAt?: string | null; lastExportedAt?: string | null; useCount: number; category: string; enabled: boolean;
   recipeVersion: number; schemaVersion: number; playlistCount: number; validation: { valid: boolean; errors: unknown[]; warnings: unknown[] };
   automationPolicy?: { enabled: boolean }; artworkUrl?: string | null; importedAt?: string | null;
+  community?: { trustState: string; locallyModified: boolean; tags: string[]; author: { name?: string }; version?: string } | null;
 };
 
 type ConflictAction = "import" | "rename" | "replace" | "skip" | "use_existing";
@@ -178,6 +179,7 @@ export default function RecipesPage() {
   return <main className={styles.page}>
     <header className={styles.header}><div><span className={styles.kicker}><BookMarked size={14} /> Mix Recipe Library</span><h2>Mix Recipes</h2><p>Portable Smart Mix strategies—separate from Plex playlists, tracks, and listening history.</p></div><div className={styles.headerActions}>
       <Link className={styles.primaryButton} href="/recipes/library"><Sparkles size={16} /> Browse Starter Recipes</Link>
+      <Link className={styles.secondaryButton} href="/recipes/community"><ShieldCheck size={16} /> Community Recipes</Link>
       <Link className={styles.secondaryButton} href="/settings/recipe-presets"><ShieldCheck size={16} /> Presets &amp; Inheritance</Link>
       <button className={styles.secondaryButton} onClick={() => { resetWizard(false); setWizardOpen(true); }}><Upload size={16} /> Import Recipe</button>
       <button className={styles.secondaryButton} onClick={loadHistory}><History size={16} /> Transfer History</button>
@@ -199,7 +201,7 @@ export default function RecipesPage() {
       <div className={styles.artwork} style={recipe.artworkUrl ? { backgroundImage: `url("${recipe.artworkUrl.replace(/["\\()]/g, "")}")` } : undefined}><span>{recipe.artworkUrl ? "" : recipe.category.slice(0, 1).toUpperCase()}</span></div>
       <div className={styles.cardTop}><div><h3>{recipe.name}</h3>{recipe.description && <p>{recipe.description}</p>}</div><span data-valid={recipe.validation.valid}>{recipe.validation.valid ? "Valid" : "Needs attention"}</span></div>
       <dl className={styles.metaGrid}><div><dt>Recipe</dt><dd>{recipe.category} · v{recipe.recipeVersion}</dd></div><div><dt>Playlists</dt><dd>{recipe.playlistCount}</dd></div><div><dt>Updated</dt><dd>{formatDate(recipe.updatedAt)}</dd></div><div><dt>Last used</dt><dd>{formatDate(recipe.lastUsedAt)}</dd></div></dl>
-      <p className={styles.summary}>{recipe.filterSummary || "No filters saved."}</p><p className={styles.automationSummary}>{recipe.importedAt ? "Imported recipe" : "Local recipe"} · {recipe.automationPolicy?.enabled ? "Automation requires confirmation" : "Automation disabled"}</p>
+      <p className={styles.summary}>{recipe.filterSummary || "No filters saved."}</p>{recipe.community && <div className={styles.communityTags}><b>{recipe.community.trustState.replaceAll("_", " ")}</b><span>{recipe.community.author?.name || "Unknown author"} · v{recipe.community.version || "unknown"}</span>{recipe.community.tags.slice(0, 4).map((tag) => <em key={tag}>{tag}</em>)}</div>}<p className={styles.automationSummary}>{recipe.importedAt ? "Imported recipe" : "Local recipe"} · {recipe.automationPolicy?.enabled ? "Automation requires confirmation" : "Automation disabled"}</p>
       <div className={styles.actions}><Link href={`/builder?recipeId=${recipe.id}&preview=1`} className={styles.secondaryButton}><Play size={15} /> Create playlist</Link><Link href={`/recipes/${recipe.id}`} className={styles.secondaryButton}><Edit3 size={15} /> Details</Link><button className={styles.secondaryButton} onClick={() => duplicateRecipe(recipe)} disabled={busyId === recipe.id}>{busyId === recipe.id ? <Loader2 size={15} className="animate-spin" /> : <Copy size={15} />} Duplicate</button><button className={styles.secondaryButton} onClick={() => exportRecipes([recipe.id])} disabled={exporting}><Download size={15} /> Export JSON</button><button className={styles.dangerButton} onClick={() => deleteRecipe(recipe)}><Trash2 size={15} /> Delete</button></div>
     </article>)}</section>}
 

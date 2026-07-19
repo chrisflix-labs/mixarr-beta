@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import prisma from "./prisma";
 import { APP_VERSION } from "./appVersion";
@@ -152,6 +153,9 @@ export function parsePlaylistRecipe(recipe: any) {
   const portable = portableRecipeFromRecord(recipe);
   const validation = validateRecipe(portable);
   const resolvedFilters = resolveRecipeGenerationConfig(portable);
+  const { metadata: _communityMetadata, format: _communityFormat, schemaVersion: _communitySchemaVersion, recipeVersion: _communityRecipeVersion, ...communityPortableBehavior } = portable;
+  const communityCurrentChecksum = recipe.communityRecipeId ? createHash("sha256").update(JSON.stringify(communityPortableBehavior)).digest("hex") : null;
+  const locallyModified = Boolean(recipe.communityOriginalChecksum && communityCurrentChecksum !== recipe.communityOriginalChecksum);
   return {
     id: recipe.id,
     name: recipe.name,
@@ -207,6 +211,27 @@ export function parsePlaylistRecipe(recipe: any) {
     presetReferences: { transition: recipe.transitionPreset || null, discovery: recipe.discoveryPreset || null, variety: recipe.varietyPreset || null, automation: recipe.automationPreset || null },
     localOverrides: recipe.recipeOverrides || [],
     dependentRecipeCount: recipe._count?.childRecipes ?? 0,
+    community: recipe.communityRecipeId ? {
+      recipeId: recipe.communityRecipeId,
+      version: recipe.communityVersion,
+      formatVersion: recipe.communityFormatVersion,
+      author: { name: recipe.communityAuthorName, url: recipe.communityAuthorUrl },
+      license: recipe.communityLicense,
+      minimumMixarrVersion: recipe.minimumMixarrVersion,
+      homepageUrl: recipe.communityHomepageUrl,
+      documentationUrl: recipe.communityDocumentationUrl,
+      sourceUrl: recipe.communitySourceUrl,
+      tags: recipe.communityTagsJson || [],
+      changelog: recipe.communityChangelog,
+      screenshots: recipe.communityScreenshotsJson || [],
+      importSource: recipe.communityImportSource,
+      importMethod: recipe.communityImportMethod,
+      trustState: locallyModified ? "modified" : recipe.communityTrustState || "unknown",
+      validation: recipe.communityValidationJson || [],
+      importedVersion: recipe.communityImportedVersion,
+      locallyModified,
+      updatedAt: recipe.communityUpdatedAt,
+    } : null,
   };
 }
 
