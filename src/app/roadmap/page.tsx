@@ -1,54 +1,18 @@
 import Link from "next/link";
-import { Bot, CalendarCheck, CheckCircle2, FlaskConical, HeartHandshake, MessageCircle, Rocket, ShieldCheck, Sparkles } from "lucide-react";
+import { Archive, ArrowRight, CalendarCheck, CheckCircle2, FlaskConical, Map, MessageCircle, Rocket, ShieldCheck, Sparkles } from "lucide-react";
 import { MIXARR_BETA_DISCORD_URL } from "@/lib/releaseNotes";
-import { aiExploration, currentRoadmapRelease, roadmapCycles, type RoadmapStatus } from "@/lib/roadmap";
+import { roadmapReleaseGroups, type RoadmapRelease } from "@/lib/roadmap";
 import styles from "./roadmap.module.css";
 
-export const metadata = { title: "Roadmap | Mixarr", description: "Mixarr product roadmap and current release cycle." };
+export const metadata = { title: "Roadmap | Mixarr", description: "Current, next, future, and completed Mixarr releases." };
 
-const statusLabels: Record<RoadmapStatus, string> = { completed: "Completed", current: "Current cycle", upcoming: "Upcoming" };
+function releaseId(version:string){return `release-${version.replaceAll(".","-")}`;}
+function ReleaseCard({release,compact=false}:{release:RoadmapRelease;compact?:boolean}){return <article id={releaseId(release.version)} className={styles.releaseCard} data-status={release.status} data-compact={compact}><header><div><span className={styles.versionPill}>{release.version.includes("x")?"Release line":"Patch"} · v{release.version}</span><h3>{release.title}</h3></div><span className={styles.statusPill}>{release.status==="current"?"Current release":release.status==="completed"?"Completed":"Next"}</span></header>{!compact&&<p>{release.description}</p>}{release.progress!=null&&!compact&&<div className={styles.progress}><span><b>Progress</b><em>{release.progress}%</em></span><i aria-label={`${release.progress}% complete`}><u style={{width:`${release.progress}%`}}/></i></div>}{!compact&&release.featureLabels.length>0&&<div className={styles.featureGroups}>{release.featureLabels.map((feature)=><span key={feature}>{feature}</span>)}</div>}<footer>{release.completionDate&&<span><CalendarCheck size={14}/>{release.completionDate}</span>}{release.target&&<span>{release.target}</span>}{release.route&&<Link href={release.route}>Open feature <ArrowRight size={14}/></Link>}</footer></article>}
 
-export default function RoadmapPage() {
-  const current = currentRoadmapRelease();
-  return (
-    <main className={styles.page}>
-      <header className={styles.header}><div><span className={styles.kicker}><Rocket size={14} /> Product roadmap</span><h2>Mixarr Product Roadmap</h2><p>Completed work, the active release, and future themes—kept in one versioned roadmap source.</p></div></header>
-
-      {roadmapCycles.map((cycle) => (
-        <section key={cycle.id} className={`${styles.cycleCard} ${styles[cycle.status]}`} aria-labelledby={`cycle-${cycle.id}`}>
-          <div className={styles.cycleHeader}>
-            <span className={styles.panelIcon}>{cycle.status === "completed" ? <CheckCircle2 size={20} /> : <Sparkles size={20} />}</span>
-            <div><span className={styles.badge}>{statusLabels[cycle.status]}</span><h3 id={`cycle-${cycle.id}`}>{cycle.title}</h3></div>
-          </div>
-          <p className={styles.cycleDescription}>{cycle.description}</p>
-          <div className={styles.releaseList}>
-            {cycle.releases.map((release) => (
-              <article key={release.version} className={styles.releaseItem} data-status={release.status}>
-                <div><span className={styles.versionPill}>v{release.version}</span><span className={styles.releaseStatus}>{release.status === "current" ? "Current" : release.status === "upcoming" ? "Proposed" : "Completed"}</span></div>
-                <h4>{release.title}</h4>
-                {release.status === "current" && <p>{release.description}</p>}
-                {release.featureLabels.length > 0 && <div className={styles.ideaGrid}>{release.featureLabels.map((feature) => <span key={feature}>{feature}</span>)}</div>}
-              </article>
-            ))}
-          </div>
-          {cycle.futureThemes && <div className={styles.futureThemes}><h4>Later in this cycle</h4><p>No version numbers are assigned until scope is confirmed.</p><div className={styles.featureGrid}>{cycle.futureThemes.map((theme) => <article key={theme} className={styles.featureCard}><span aria-hidden="true" /><p>{theme}</p></article>)}</div></div>}
-        </section>
-      ))}
-
-      <section className={styles.teaser} aria-labelledby="ai-exploration">
-        <div className={styles.teaserTop}><span className={styles.teaserIcon}><Bot size={20} /></span><span className={styles.versionPill}>Exploratory · no committed version</span></div>
-        <h3 id="ai-exploration">{aiExploration.title}</h3><p><strong>{aiExploration.timing}.</strong> {aiExploration.description}</p>
-        <div className={styles.ideaGrid}>{aiExploration.ideas.map((idea) => <span key={idea}>{idea}</span>)}</div>
-        <div className={styles.aiSafeguards}><h4><ShieldCheck size={17} /> Non-negotiable safeguards</h4><ul>{aiExploration.safeguards.map((item) => <li key={item}>{item}</li>)}</ul></div>
-      </section>
-
-      {current && <section className={styles.releasePanel} aria-labelledby="current-release"><div className={styles.panelIcon}><CalendarCheck size={20} /></div><div><span className={styles.badge}>Latest completed release</span><h3 id="current-release">v{current.version} — {current.title}</h3><p>{current.description}</p><Link href={current.route || "/release-notes"}>Open release feature</Link></div></section>}
-
-      <section className={styles.communityGrid} aria-label="Community and beta access">
-        <article className={styles.callout}><div className={styles.calloutIcon}><MessageCircle size={18} /></div><div><h3>Community feedback</h3><p>Follow development, report bugs, and suggest roadmap ideas.</p>{MIXARR_BETA_DISCORD_URL ? <a href={MIXARR_BETA_DISCORD_URL} target="_blank" rel="noopener noreferrer">Open Discord</a> : <Link href="/support">Open Beta Support</Link>}</div></article>
-        <article className={styles.callout}><div className={styles.calloutIcon}><HeartHandshake size={18} /></div><div><h3>Safe beta defaults</h3><p>Beta builds prioritize explicit opt-in, local storage, explainable behavior, and graceful fallbacks.</p></div></article>
-      </section>
-      <div className={styles.footerActions}><Link href="/release-notes" className={styles.secondaryButton}><FlaskConical size={16} /> Release Notes</Link><Link href="/" className={styles.primaryButton}>Back to Dashboard</Link></div>
-    </main>
-  );
-}
+export default function RoadmapPage(){const groups=roadmapReleaseGroups();return <main className={styles.page}><header className={styles.hero}><div><span className={styles.kicker}><Rocket size={14}/> Product roadmap</span><h1>Mixarr Product Roadmap</h1><p>The active release and next direction stay prominent. Historical details remain available in a compact archive instead of one continuous feature wall.</p></div><Map size={34}/></header><nav className={styles.controls} aria-label="Roadmap sections"><a href="#current">Current</a><a href="#next">Next</a><a href="#future">Future</a><a href="#completed">Completed</a><a href="#all-releases">All releases</a></nav>
+  <section id="current" className={styles.section}><div className={styles.sectionHeading}><span><Sparkles size={19}/></span><div><small>Current release</small><h2>Finishing the active line</h2></div></div>{groups.current.map((release)=><ReleaseCard release={release} key={release.version}/>)}</section>
+  <section id="next" className={styles.section}><div className={styles.sectionHeading}><span><Rocket size={19}/></span><div><small>Next release line</small><h2>What comes next</h2></div></div>{groups.next.map((release)=><ReleaseCard release={release} key={release.version}/>) }<div className={styles.boundary}><ShieldCheck size={18}/><p><strong>Roadmap only in v2.3.9.</strong> No generative AI, provider calls, or placeholder intelligence is implemented as part of Recipe Studio &amp; Release Polish.</p></div></section>
+  <section id="future" className={styles.section}><div className={styles.sectionHeading}><span><FlaskConical size={19}/></span><div><small>Future releases</small><h2>Compact planning themes</h2></div></div><div className={styles.futureGrid}>{groups.future.map((cycle)=><article key={cycle.id}><span>Release line</span><h3>{cycle.title}</h3><p>{cycle.description}</p>{cycle.futureThemes&&<details><summary>Planning themes</summary><ul>{cycle.futureThemes.map((theme)=><li key={theme}>{theme}</li>)}</ul></details>}</article>)}</div></section>
+  <section id="completed" className={styles.section}><div className={styles.sectionHeading}><span><Archive size={19}/></span><div><small>Completed releases</small><h2>Historical archive</h2></div></div><p className={styles.archiveIntro}>All completed roadmap information is preserved and grouped by release line. Expand only the history you need.</p><div className={styles.archive}>{groups.completed.map((cycle)=><details key={cycle.id}><summary><span><CheckCircle2 size={17}/><strong>{cycle.title}</strong></span><em>{cycle.releases.length} completed release{cycle.releases.length===1?"":"s"}</em></summary><p>{cycle.description}</p><div className={styles.archiveGrid}>{cycle.releases.map((release)=><ReleaseCard release={release} compact key={release.version}/>)}</div></details>)}</div></section>
+  <section id="all-releases" className={styles.community}><MessageCircle size={20}/><div><h2>Feedback and release notes</h2><p>Release notes retain full shipped detail; the roadmap stays focused on navigation and planning state.</p><div>{MIXARR_BETA_DISCORD_URL?<a href={MIXARR_BETA_DISCORD_URL} target="_blank" rel="noopener noreferrer">Share roadmap feedback</a>:<Link href="/support">Open Beta Support</Link>}<Link href="/release-notes">Browse release notes</Link></div></div></section>
+</main>}

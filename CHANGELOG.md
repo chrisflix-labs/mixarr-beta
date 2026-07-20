@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.3.9 - Recipe Studio & Release Polish
+
+- Added `/recipes/new` and `/recipes/:id/edit` as one responsive Recipe Studio with Guided, Beginner, and Advanced modes over the existing recipe schema.
+- Added debounced and cancellable live candidate estimates, actionable compatibility analysis, scoring impact, discovery/variety previews, cached aggregate library profiles, and explicit estimate/stale/error states.
+- Added accessible energy curve presets and control-point tables, expanded BPM flow controls, keyboard-native inputs, reduced-motion behavior, mobile collapse, and sticky mobile Validate/Save actions.
+- Added unsaved-change detection, save progress, structured validation messaging, optimistic `expectedUpdatedAt` conflicts, recipe create/edit/archive audit events, and confirmed section copying from side-by-side comparison.
+- Added recipe usage analytics, first-time onboarding, dedicated import routing, Recipe Library Studio links, and documentation covering safety, troubleshooting, migration, backup, keyboard, and mobile behavior.
+- Added additive indexes for installed recipe lists, recipe playlist usage, and operational job aggregation in migration `20260721010000_recipe_studio_v239`.
+- Reorganized Roadmap into Current, Next, Future, and collapsed Completed views while preserving historical data; added **Mixarr v2.4.x — AI-Assisted Mix Intelligence** as a roadmap-only next release line.
+- Existing v2.3.x recipe documents, playlist associations, trust state, signatures, audit history, inheritance, snapshots, imports, and backups remain backward compatible and are not silently rewritten.
+
 ## v2.3.8 - Recipe Safety, Compatibility & Governance
 
 - Added recipe schema v3 with explicit permission reasons, dependencies and safe fallbacks, semantic Mixarr-version compatibility, deprecation-aware migration output, deterministic canonical signing payloads, and Ed25519 public-key verification.

@@ -77,6 +77,21 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.3.9",
+    title: "Recipe Studio & Release Polish",
+    releaseDate: "July 20, 2026",
+    badges: ["Recipes", "UI", "Accessibility", "Mobile", "Performance", "Database", "Safety Rules", "Import", "Export", "Dashboard", "Roadmap", "Reliability"],
+    changes: [
+      "Added one section-based Recipe Studio for new and existing recipes with Guided, Beginner, and Advanced modes editing the same portable recipe strategy without dropping advanced values.",
+      "Added debounced, cancellable, aggregate-backed candidate estimates, compatibility remediation, scoring impact, discovery and variety previews, stale/error states, and 30-second bounded caching without loading the library into frontend memory.",
+      "Added preset and keyboard-accessible energy curves, BPM flow controls, unsaved-change detection, explicit validation, draft save status, optimistic revision conflicts, structured advanced editing, and sticky mobile actions.",
+      "Added side-by-side recipe comparison with grouped diffs and confirmed section copying, privacy-minimized cached usage analytics, first-time onboarding, dedicated Studio routes, and clearer Recipe Library navigation.",
+      "Preserved the v2.3.8 governance, quarantine, approval, signature, dependency, audit, snapshot, backup, restore, import, export, inheritance, household, and protected-playlist enforcement paths; Recipe Studio does not bypass them.",
+      "Reorganized the roadmap into Current, Next, Future, and collapsed Completed sections and added Mixarr v2.4.x — AI-Assisted Mix Intelligence as a roadmap-only next release line.",
+      "Upgrade: apply migration 20260721010000_recipe_studio_v239 for additive Recipe Studio list, usage, and analytics indexes. No recipe JSON or playlist association is rewritten.",
+    ],
+  },
+  {
     version: "2.3.8",
     title: "Recipe Safety, Compatibility & Governance",
     releaseDate: "July 19, 2026",

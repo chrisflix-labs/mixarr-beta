@@ -1188,6 +1188,8 @@ model PlaylistRecipe {
   @@index([userId, quarantineState, updatedAt])
   @@index([signatureKeyId])
   @@index([riskLevel, updatedAt])
+  @@index([userId, isArchived, deletedAt, updatedAt])
+  @@index([userId, recipeSource, updatedAt])
 }
 
 model RecipeSigningKey {
@@ -1793,6 +1795,7 @@ model GeneratedPlaylist {
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
   @@index([userId, sourceType])
+  @@index([userId, recipeId, updatedAt])
   @@index([recipeId, createdAt])
   @@index([externalChangeState, updatedAt])
   @@index([plexOwnerAccountId])
@@ -3526,6 +3529,7 @@ model JobHistory {
   user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId, startedAt])
+  @@index([userId, type, status, startedAt])
   @@index([status, startedAt])
   @@index([type, startedAt])
   @@index([workerId, status])

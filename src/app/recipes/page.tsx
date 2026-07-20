@@ -4,8 +4,9 @@ import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "re
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
-import { AlertCircle, Archive, BookMarked, CheckCircle2, ChevronRight, Copy, Download, Edit3, FileJson, History, Info, Loader2, Play, RefreshCw, ShieldCheck, Sparkles, Trash2, Upload, Wand2, X } from "lucide-react";
+import { AlertCircle, Archive, BarChart3, BookMarked, CheckCircle2, ChevronRight, Copy, Download, Edit3, FileJson, History, Info, Loader2, Play, RefreshCw, ShieldCheck, Sparkles, Trash2, Upload, Wand2, X } from "lucide-react";
 import styles from "./recipes.module.css";
+import RecipeOnboardingPrompt from "@/components/RecipeOnboardingPrompt";
 
 type PlaylistRecipe = {
   id: string; name: string; description?: string | null; filterSummary: string; createdAt: string; updatedAt: string;
@@ -81,6 +82,7 @@ export default function RecipesPage() {
 
   const fetchRecipes = async () => { setLoading(true); setError(""); try { const response = await axios.get("/api/playlist-recipes"); setRecipes(response.data.recipes || []); } catch { setError("Unable to load Mix Recipes."); } finally { setLoading(false); } };
   useEffect(() => { fetchRecipes(); }, []);
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("import") === "1") setWizardOpen(true); }, []);
 
   const toggleSelected = (id: string) => setSelected((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const selectVisible = () => setSelected((current) => displayed.every((recipe) => current.has(recipe.id)) ? new Set() : new Set(displayed.map((recipe) => recipe.id)));
@@ -180,15 +182,22 @@ export default function RecipesPage() {
 
   return <main className={styles.page}>
     <header className={styles.header}><div><span className={styles.kicker}><BookMarked size={14} /> Mix Recipe Library</span><h2>Mix Recipes</h2><p>Portable Smart Mix strategies—separate from Plex playlists, tracks, and listening history.</p></div><div className={styles.headerActions}>
-      <Link className={styles.primaryButton} href="/recipes/library"><Sparkles size={16} /> Browse Starter Recipes</Link>
+      <Link className={styles.primaryButton} href="/recipes/new"><Wand2 size={16} /> New in Recipe Studio</Link>
+      <Link className={styles.secondaryButton} href="/recipes/analytics"><BarChart3 size={16} /> Analytics</Link>
+      <Link className={styles.secondaryButton} href="/recipes/collaboration">Collaboration</Link>
+      <Link className={styles.secondaryButton} href="/recipes/integrations">Integrations</Link>
+      <Link className={styles.secondaryButton} href="/recipes/onboarding"><Info size={16} /> Getting Started</Link>
+      <Link className={styles.secondaryButton} href="/recipes/library"><Sparkles size={16} /> Starter Recipes</Link>
       <Link className={styles.secondaryButton} href="/recipes/community"><ShieldCheck size={16} /> Community Recipes</Link>
       <Link className={styles.secondaryButton} href="/recipes/quarantine"><AlertCircle size={16} /> Quarantine</Link>
       <Link className={styles.secondaryButton} href="/settings/recipe-presets"><ShieldCheck size={16} /> Presets &amp; Inheritance</Link>
       <button className={styles.secondaryButton} onClick={() => { resetWizard(false); setWizardOpen(true); }}><Upload size={16} /> Import Recipe</button>
       <button className={styles.secondaryButton} onClick={loadHistory}><History size={16} /> Transfer History</button>
       <Link href="/settings/recipe-mappings" className={styles.secondaryButton}><RefreshCw size={16} /> Saved Mappings</Link>
-      <Link href="/smart-builder" className={styles.primaryButton}><Wand2 size={16} /> Create Recipe</Link>
+      <Link href="/recipes/new" className={styles.primaryButton}><Wand2 size={16} /> Create Recipe</Link>
     </div></header>
+
+    <RecipeOnboardingPrompt />
 
     {notice && <div className={styles.importSuccess}><CheckCircle2 size={17} /><span>{notice}</span><button onClick={() => setNotice("")} aria-label="Dismiss"><X size={15} /></button></div>}
     {error && <div className={styles.importError}><AlertCircle size={17} /><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss"><X size={15} /></button></div>}
@@ -199,14 +208,14 @@ export default function RecipesPage() {
 
     {recipes.length > 0 && <section className={styles.bulkBar}><label><input type="checkbox" checked={displayed.length > 0 && displayed.every((recipe) => selected.has(recipe.id))} onChange={selectVisible} /> Select all visible</label><span>{selected.size} selected</span><label><input type="checkbox" checked={exportArchive} onChange={(event) => setExportArchive(event.target.checked)} /> Archive (.zip)</label><label><input type="checkbox" checked={includeArtwork} disabled={!exportArchive} onChange={(event) => setIncludeArtwork(event.target.checked)} /> Include artwork</label><button className={styles.secondaryButton} disabled={!selected.size || exporting} onClick={() => exportRecipes(Array.from(selected), { archive: exportArchive, includeArtwork })}>{exporting ? <Loader2 size={15} className="animate-spin" /> : exportArchive ? <Archive size={15} /> : <Download size={15} />} Export selected</button></section>}
 
-    {loading ? <div className={styles.statePanel}>Loading Mix Recipes…</div> : recipes.length === 0 ? <section className={styles.emptyState}><BookMarked size={28} /><h3>No Mix Recipes yet</h3><p>Create one or import a sanitized recipe file. Importing never creates a Plex playlist automatically.</p><Link href="/smart-builder" className={styles.primaryButton}><Wand2 size={16} /> Create Recipe</Link></section> : <section className={styles.recipeGrid}>{displayed.map((recipe) => <article key={recipe.id} className={styles.recipeCard}>
+    {loading ? <div className={styles.statePanel}>Loading Mix Recipes…</div> : recipes.length === 0 ? <section className={styles.emptyState}><BookMarked size={28} /><h3>No Mix Recipes yet</h3><p>Create one or import a sanitized recipe file. Importing never creates a Plex playlist automatically.</p><Link href="/recipes/new" className={styles.primaryButton}><Wand2 size={16} /> Create Recipe</Link></section> : <section className={styles.recipeGrid}>{displayed.map((recipe) => <article key={recipe.id} className={styles.recipeCard}>
       <label className={styles.cardSelect}><input type="checkbox" checked={selected.has(recipe.id)} onChange={() => toggleSelected(recipe.id)} /><span>Select {recipe.name}</span></label>
       <div className={styles.artwork} style={recipe.artworkUrl ? { backgroundImage: `url("${recipe.artworkUrl.replace(/["\\()]/g, "")}")` } : undefined}><span>{recipe.artworkUrl ? "" : recipe.category.slice(0, 1).toUpperCase()}</span></div>
       <div className={styles.cardTop}><div><h3>{recipe.name}</h3>{recipe.description && <p>{recipe.description}</p>}</div><span data-valid={recipe.validation.valid}>{recipe.validation.valid ? "Valid" : "Needs attention"}</span></div>
       {recipe.governance && <div className={styles.governanceBadges}><span>{recipe.governance.official ? "Official Recipe" : recipe.governance.trustState.replaceAll("_", " ")}</span><span>{recipe.governance.approvalState.replaceAll("_", " ")}</span><span>{recipe.governance.compatibilityStatus.replaceAll("_", " ")}</span><span data-risk={recipe.governance.riskLevel.toLowerCase()}>{recipe.governance.riskLevel} risk</span>{recipe.governance.quarantineState !== "NONE" && <span data-risk="high">Quarantined</span>}</div>}
       <dl className={styles.metaGrid}><div><dt>Recipe</dt><dd>{recipe.category} · v{recipe.recipeVersion}</dd></div><div><dt>Playlists</dt><dd>{recipe.playlistCount}</dd></div><div><dt>Updated</dt><dd>{formatDate(recipe.updatedAt)}</dd></div><div><dt>Last used</dt><dd>{formatDate(recipe.lastUsedAt)}</dd></div></dl>
       <p className={styles.summary}>{recipe.filterSummary || "No filters saved."}</p>{recipe.community && <div className={styles.communityTags}><b>{recipe.community.trustState.replaceAll("_", " ")}</b><span>{recipe.community.author?.name || "Unknown author"} · v{recipe.community.version || "unknown"}</span>{recipe.community.tags.slice(0, 4).map((tag) => <em key={tag}>{tag}</em>)}</div>}<p className={styles.automationSummary}>{recipe.importedAt ? "Imported recipe" : "Local recipe"} · {recipe.automationPolicy?.enabled ? "Automation requires confirmation" : "Automation disabled"}</p>
-      <div className={styles.actions}><Link href={`/builder?recipeId=${recipe.id}&preview=1`} className={styles.secondaryButton}><Play size={15} /> Create playlist</Link><Link href={`/recipes/${recipe.id}`} className={styles.secondaryButton}><Edit3 size={15} /> Details</Link><button className={styles.secondaryButton} onClick={() => duplicateRecipe(recipe)} disabled={busyId === recipe.id}>{busyId === recipe.id ? <Loader2 size={15} className="animate-spin" /> : <Copy size={15} />} Duplicate</button><button className={styles.secondaryButton} onClick={() => exportRecipes([recipe.id])} disabled={exporting}><Download size={15} /> Export JSON</button><button className={styles.dangerButton} onClick={() => deleteRecipe(recipe)}><Trash2 size={15} /> Delete</button></div>
+      <div className={styles.actions}><Link href={`/builder?recipeId=${recipe.id}&preview=1`} className={styles.secondaryButton}><Play size={15} /> Create playlist</Link><Link href={`/recipes/${recipe.id}/edit`} className={styles.primaryButton}><Edit3 size={15} /> Open Studio</Link><Link href={`/recipes/${recipe.id}`} className={styles.secondaryButton}>Details</Link><button className={styles.secondaryButton} onClick={() => duplicateRecipe(recipe)} disabled={busyId === recipe.id}>{busyId === recipe.id ? <Loader2 size={15} className="animate-spin" /> : <Copy size={15} />} Duplicate</button><button className={styles.secondaryButton} onClick={() => exportRecipes([recipe.id])} disabled={exporting}><Download size={15} /> Export JSON</button><button className={styles.dangerButton} onClick={() => deleteRecipe(recipe)}><Trash2 size={15} /> Delete</button></div>
     </article>)}</section>}
 
     {wizardOpen && <div className={styles.wizardBackdrop} role="dialog" aria-modal="true" aria-labelledby="import-title"><section className={styles.wizard}>

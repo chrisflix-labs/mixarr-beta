@@ -202,7 +202,7 @@ Prefer lowering job concurrency and avoiding overlapping syncs before raising th
 
 Mixarr v2.3.7 adds Plex ownership and collection workflows, manual-change reconciliation, scan/mount safety, Tautulli playback signals, Discord and Notifiarr delivery, signed webhooks, scoped dashboard tokens, Homepage, Home Assistant, Prometheus, and improved health endpoints. See [the v2.3.7 integration guide](docs/MEDIA_ECOSYSTEM_INTEGRATIONS_V237.md) for migration, configuration, endpoint, and troubleshooting examples.
 
-Mixarr v2.3.8 adds recipe permission review, Ed25519 origin verification, server-derived official status, trust and local approval states, quarantine, compatibility and dependency checks, safety limits, explainable risk analysis, immutable audit history, transactional snapshots, and atomic restore. See [Recipe Safety, Compatibility & Governance](docs/RECIPE_GOVERNANCE_V238.md) and the [Recipe Author Guide](docs/RECIPE_AUTHOR_GUIDE_V238.md).
+Mixarr v2.3.9 adds a unified Recipe Studio with guided and advanced editing, live candidate and compatibility estimates, accessible energy/BPM tools, scoring and discovery previews, comparison, operational analytics, onboarding, optimistic save conflicts, mobile polish, and a reorganized roadmap. See [Recipe Studio & Release Polish](docs/RECIPE_STUDIO_V239.md). The v2.3.8 permission, signature, quarantine, governance, audit, snapshot, and restore systems remain authoritative; see [Recipe Safety, Compatibility & Governance](docs/RECIPE_GOVERNANCE_V238.md) and the [Recipe Author Guide](docs/RECIPE_AUTHOR_GUIDE_V238.md).
 
 ## Discord Community
 

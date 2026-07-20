@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
 import { createPlaylistRecipeData, parsePlaylistRecipe, playlistRecipeSchema } from "@/lib/playlistRecipes";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
+import { writeRecipeAudit } from "@/lib/mixRecipes/governanceService";
 
 export async function GET(req: Request) {
   const userId = cookies().get("mixarr_session")?.value;
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
       data: createPlaylistRecipeData(userId, parsed),
     });
     await safeRecordJobHistory({ userId, type: "mix_recipe", name: "Recipe created", status: "completed", trigger: "manual", summary: `Created recipe "${recipe.name}".`, counts: { attempted: 1, processed: 1 }, metadata: { recipeId: recipe.id, schemaVersion: recipe.schemaVersion, recipeVersion: recipe.recipeVersion } });
+    await writeRecipeAudit({ recipeId: recipe.id, recipeVersion: recipe.recipeVersion, eventType: "RECIPE_CREATED", actorId: userId, description: `Recipe "${recipe.name}" was created in Recipe Studio.`, newState: { enabled: recipe.enabled, category: recipe.category }, trustState: recipe.trustState, riskLevel: recipe.riskLevel }).catch((auditError) => console.warn("[RecipeStudio] Create audit failed", { recipeId: recipe.id, reason: auditError instanceof Error ? auditError.message : "unknown" }));
 
     return NextResponse.json({ recipe: parsePlaylistRecipe(recipe) }, { status: 201 });
   } catch (error: any) {

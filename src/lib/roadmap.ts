@@ -10,6 +10,9 @@ export type RoadmapRelease = {
   releaseOrder: number;
   completionDate?: string;
   route?: string;
+  releaseType?: "release-line" | "patch";
+  progress?: number;
+  target?: string;
 };
 
 export type RoadmapCycle = {
@@ -387,12 +390,38 @@ export const roadmapReleases: RoadmapRelease[] = [
     version: "2.3.8",
     title: "Recipe Safety, Compatibility & Governance",
     cycle: "2.3.x",
-    status: "current",
+    status: "completed",
     description: "Makes shared recipes permission-scoped, signed, risk-analyzed, compatibility-aware, quarantinable, auditable, transactional, and restorable without granting destructive playlist powers.",
     featureLabels: ["Recipe permissions", "Ed25519 signatures", "Official badges", "Trust states", "Local approval", "Quarantine", "Safety limits", "Risk analysis", "Dependency validation", "Semantic compatibility", "Migration assistant", "Immutable audit", "Import snapshots", "Atomic restore", "Protected playlists"],
     releaseOrder: 308,
     completionDate: "2026-07-19",
     route: "/recipes/quarantine",
+  },
+  {
+    version: "2.3.9",
+    title: "Recipe Studio & Release Polish",
+    cycle: "2.3.x",
+    status: "current",
+    description: "Completes the v2.3.x recipe platform with one approachable, powerful workspace for guided creation, advanced editing, live estimates, compatibility, comparison, governance, maintenance, analytics, accessibility, and mobile use.",
+    featureLabels: ["Visual Recipe Studio", "Guided builder", "Beginner and advanced modes", "Live candidate estimate", "Compatibility remediation", "Scoring impact preview", "Accessible energy and BPM editors", "Discovery and variety preview", "Recipe comparison", "Import and export center", "Usage analytics", "First-time onboarding", "Optimistic save conflicts", "Mobile and keyboard polish", "Roadmap archive"],
+    releaseOrder: 309,
+    releaseType: "patch",
+    progress: 100,
+    completionDate: "2026-07-20",
+    route: "/recipes",
+  },
+  {
+    version: "2.4.x",
+    title: "AI-Assisted Mix Intelligence",
+    cycle: "2.4.x",
+    status: "upcoming",
+    description: "Use explainable, user-controlled intelligence to help analyze libraries, recommend recipe improvements, identify playlist opportunities, and assist with mix design without removing user control.",
+    featureLabels: ["Explainable assistance", "User-controlled recommendations", "Library opportunity analysis", "Recipe improvement suggestions", "Reviewable mix-design help", "Deterministic generation remains authoritative"],
+    releaseOrder: 400,
+    releaseType: "release-line",
+    progress: 0,
+    target: "Next release line",
+    route: "/roadmap#release-2-4-x",
   },
 ];
 
@@ -425,7 +454,15 @@ export const roadmapCycles: RoadmapCycle[] = [
     status: "current",
     description: "The recipe foundation makes Smart Mix strategies portable, reusable, versioned, and independent from the concrete playlists they create.",
     releases: roadmapReleases.filter((release) => release.cycle === "2.3.x"),
-    futureThemes: ["Built-in templates", "Recipe sharing and community catalogs", "Recipe comparison", "Recipe history and rollback", "Recipe inheritance", "Recipe scheduling", "Recipe recommendations", "Optional AI-assisted recipe creation"],
+    futureThemes: ["Maintenance and compatibility fixes", "Recipe provider extensibility", "No AI behavior is included in v2.3.9"],
+  },
+  {
+    id: "2.4.x",
+    title: "v2.4.x — AI-Assisted Mix Intelligence",
+    status: "upcoming",
+    description: "Explainable, user-controlled assistance for library analysis and mix design. This roadmap entry does not enable or simulate AI features in v2.3.9.",
+    releases: roadmapReleases.filter((release) => release.cycle === "2.4.x"),
+    futureThemes: ["Provider-neutral interfaces", "Explicit consent and data previews", "Cost and usage controls", "Reviewable suggestions", "Deterministic scoring remains authoritative"],
   },
   {
     id: "future-2x",
@@ -449,4 +486,13 @@ export function currentRoadmapRelease() {
   return roadmapReleases.find((release) => release.status === "current")
     || [...roadmapReleases].filter((release) => release.status === "completed").sort((left, right) => right.releaseOrder - left.releaseOrder)[0]
     || null;
+}
+
+export function roadmapReleaseGroups() {
+  return {
+    current: roadmapReleases.filter((release) => release.status === "current").sort((left, right) => right.releaseOrder - left.releaseOrder),
+    next: roadmapReleases.filter((release) => release.status === "upcoming" && release.releaseType === "release-line").sort((left, right) => left.releaseOrder - right.releaseOrder),
+    future: roadmapCycles.filter((cycle) => cycle.status === "upcoming" && cycle.id !== "2.4.x"),
+    completed: roadmapCycles.map((cycle) => ({ ...cycle, releases: cycle.releases.filter((release) => release.status === "completed") })).filter((cycle) => cycle.releases.length > 0),
+  };
 }

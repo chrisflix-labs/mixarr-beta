@@ -25,6 +25,7 @@ import { getOrchestrationSettings } from "@/lib/orchestration/settings";
 import { getSmartRefreshDashboardSummary } from "@/lib/smartRefresh";
 import { getSmartActionSummary } from "@/lib/smartActions";
 import { getPlaylistHealthDashboard } from "@/lib/playlistHealth";
+import { getRecipeAnalytics } from "@/lib/recipeStudioService";
 
 type JobSummary = Awaited<ReturnType<typeof getRecentJobSummary>>;
 type AutomationOverview = Awaited<ReturnType<typeof getAutomationOverview>>;
@@ -43,13 +44,14 @@ function SmartBuilderCard() {
   </article>;
 }
 
-function PlaylistRecipesCard({ count }: { count: number }) {
+function PlaylistRecipesCard({ summary }: { summary: { installed: number; builtIn: number; custom: number; community: number; activePlaylists: number; recipesRequiringUpdates: number; importWarnings: number; averageCompatibility: number } }) {
   return <article className={styles.actionCard}>
     <span className={styles.actionIcon}><BookMarked size={19} /></span>
     <h3>Playlist Recipes</h3>
     <p>Reuse, import, and share saved playlist configurations.</p>
-    <span className={styles.cardMeta}>{count.toLocaleString()} saved recipe{count === 1 ? "" : "s"}</span>
-    <div className={styles.cardActions}><Link href="/recipes" className={styles.primaryAction}>View Recipes</Link></div>
+    <span className={styles.cardMeta}>{summary.installed.toLocaleString()} installed · {summary.builtIn} built-in · {summary.custom} custom · {summary.community} community</span>
+    <div className={styles.managementMetrics}><Link href="/recipes/analytics"><b>{summary.activePlaylists}</b><span>Active playlists</span></Link><Link href="/recipes/library?updates=true"><b>{summary.recipesRequiringUpdates}</b><span>Updates</span></Link><Link href="/recipes/quarantine"><b>{summary.importWarnings}</b><span>Import warnings</span></Link><Link href="/recipes/analytics"><b>{summary.averageCompatibility}%</b><span>Compatibility</span></Link></div>
+    <div className={styles.cardActions}><Link href="/recipes" className={styles.primaryAction}>Recipe Library</Link><Link href="/recipes/new" className={styles.secondaryAction}>Open Studio</Link></div>
   </article>;
 }
 
@@ -190,6 +192,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
   let automation: AutomationOverview | null = null;
   let recentlyAdded: RecentlyAddedSummary | null = null;
   let recipeCount = 0;
+  let recipeSummary = { installed: 0, builtIn: 0, custom: 0, community: 0, activePlaylists: 0, recipesRequiringUpdates: 0, importWarnings: 0, averageCompatibility: 0 };
   let generatedCount = 0;
   let versionCount = 0;
   let historyCount = 0;
@@ -231,6 +234,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
       getSmartRefreshDashboardSummary(user.id).catch(() => ({ monitored: 0, recommended: 0, deferred: 0, healthy: 0, fixedSchedule: 0, manualOnly: 0, playlists: [] })),
       getSmartActionSummary(user.id).catch(() => ({ pending: 0, high: 0, medium: 0, low: 0, waiting: 0, snoozed: 0, recentlyCompleted: 0, failed: 0, byType: {} })),
       getPlaylistHealthDashboard(user.id).then((result) => result.summary).catch(() => ({ monitored: 0, unmonitored: generatedCount, averageScore: null, healthy: 0, attention: 0, openAlerts: 0, criticalAlerts: 0, acknowledgedAlerts: 0 })),
+      getRecipeAnalytics(user.id).then((result) => result.summary).catch(() => recipeSummary),
     ]);
     [dashboardSummary, jobs, automation, recentlyAdded, recipeCount, generatedCount, versionCount] = results;
     historyCount = results[7].count;
@@ -241,6 +245,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
     smartRefresh = results[11];
     smartActions = results[12];
     playlistHealth = results[13];
+    recipeSummary = results[14];
   }
 
   const quickWidgets = dashboardWidgetsForSection("quick-actions");
@@ -264,7 +269,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
         <div className={styles.quickActionsGrid}>{quickWidgets.map((widget) => {
           if (widget.component === "SmartBuilder") return <SmartBuilderCard key={widget.id} />;
           if (widget.component === "RecentlyAddedDiscovery") return <RecentlyAddedDiscoveryCard key={widget.id} summary={recentlyAdded} />;
-          if (widget.component === "PlaylistRecipes") return <PlaylistRecipesCard key={widget.id} count={recipeCount} />;
+          if (widget.component === "PlaylistRecipes") return <PlaylistRecipesCard key={widget.id} summary={recipeSummary} />;
           return <PlaylistRegenerationCard key={widget.id} count={generatedCount} />;
         })}</div>
       </section>

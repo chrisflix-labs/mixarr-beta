@@ -5,6 +5,7 @@ import { parsePlaylistRecipe, playlistRecipeSchema, updatePlaylistRecipeData } f
 import { safeRecordJobHistory } from "@/lib/jobHistory";
 import { legacyRecipeOverrideRows, resolveOwnedRecipe } from "@/lib/recipeInheritance/service";
 import { flattenRecipeValues } from "@/lib/recipeInheritance/resolver";
+import { writeRecipeAudit } from "@/lib/mixRecipes/governanceService";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const userId = cookies().get("mixarr_session")?.value;
@@ -41,6 +42,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   }
   await prisma.playlistRecipe.update({ where: { id: recipe.id }, data: { isArchived: true, enabled: false, deletedAt: new Date() } });
   await safeRecordJobHistory({ userId, type: "mix_recipe", name: "Recipe deleted", status: "completed", trigger: "manual", summary: `Deleted recipe "${recipe.name}"; ${recipe._count.generatedPlaylists} generated playlist(s) were retained.`, counts: { attempted: 1, processed: 1 }, metadata: { recipeId: recipe.id, schemaVersion: recipe.schemaVersion, recipeVersion: recipe.recipeVersion, retainedPlaylistCount: recipe._count.generatedPlaylists } });
+  await writeRecipeAudit({ recipeId: recipe.id, recipeVersion: recipe.recipeVersion, eventType: "RECIPE_ARCHIVED", actorId: userId, description: `Recipe "${recipe.name}" was archived; generated playlists were retained.`, previousState: { enabled: recipe.enabled, archived: recipe.isArchived }, newState: { enabled: false, archived: true }, trustState: recipe.trustState, riskLevel: recipe.riskLevel }).catch((auditError) => console.warn("[RecipeStudio] Archive audit failed", { recipeId: recipe.id, reason: auditError instanceof Error ? auditError.message : "unknown" }));
   return NextResponse.json({ success: true, retainedPlaylistCount: recipe._count.generatedPlaylists });
 }
 
@@ -61,6 +63,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     const body = await req.json();
+    if (body.expectedUpdatedAt) {
+      const expected = new Date(body.expectedUpdatedAt);
+      if (!Number.isFinite(expected.getTime())) return NextResponse.json({ error: "The expected recipe revision is invalid.", code: "RECIPE_REVISION_INVALID" }, { status: 400 });
+      if (expected.getTime() !== existing.updatedAt.getTime()) return NextResponse.json({ error: "This recipe changed while you were editing it.", code: "RECIPE_SAVE_CONFLICT", currentRevision: existing.updatedAt.toISOString(), recipeId: existing.id, remediation: "Reload or compare the current recipe before saving again." }, { status: 409 });
+    }
     const parsed = playlistRecipeSchema.parse({
       name: existing.name, description: existing.description, category: existing.category, artworkUrl: existing.artworkUrl,
       enabled: existing.enabled, sourcePlaylistId: existing.sourcePlaylistId, filters: existing.filtersJson,
@@ -92,6 +99,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       });
     });
     await safeRecordJobHistory({ userId, type: "mix_recipe", name: "Recipe updated", status: "completed", trigger: "manual", summary: `Updated recipe "${recipe.name}".`, counts: { attempted: 1, processed: 1 }, metadata: { recipeId: recipe.id, schemaVersion: recipe.schemaVersion, recipeVersion: recipe.recipeVersion } });
+    await writeRecipeAudit({ recipeId: recipe.id, recipeVersion: recipe.recipeVersion, eventType: "RECIPE_EDITED", actorId: userId, description: `Recipe "${recipe.name}" was edited.`, previousState: { recipeVersion: existing.recipeVersion, updatedAt: existing.updatedAt.toISOString() }, newState: { recipeVersion: recipe.recipeVersion, updatedAt: recipe.updatedAt.toISOString() }, trustState: recipe.trustState, riskLevel: recipe.riskLevel }).catch((auditError) => console.warn("[RecipeStudio] Edit audit failed", { recipeId: recipe.id, reason: auditError instanceof Error ? auditError.message : "unknown" }));
 
     return NextResponse.json({ recipe: parsePlaylistRecipe(recipe) });
   } catch (error: any) {
