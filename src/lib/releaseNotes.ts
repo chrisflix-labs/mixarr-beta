@@ -79,6 +79,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.2",
+    title: "Natural-Language Playlist Requests",
+    releaseDate: "July 20, 2026",
+    badges: ["AI", "Security", "Database", "Accessibility", "Mobile", "Recipes", "Privacy", "Reliability"],
+    changes: [
+      "Added Ask Mixarr: privacy/cost preflight, strict structured interpretation, explicit and inferred constraints, assumptions, ambiguities, conversational revisions, Recipe Studio editing, candidate analysis, compatibility, and deterministic preview.",
+      "Added revision-bound explicit approval, automatic approval invalidation after edits, current-analysis checks, idempotent execution, and separate save-recipe and create-playlist actions.",
+      "AI output cannot select tracks, enable automation, request mutation permissions, or bypass the canonical recipe schema; only the existing deterministic recipe engine can create the final Plex playlist.",
+      "Added local permission-scoped entity resolution and similar-playlist analysis with source track IDs removed and overlap protection enabled.",
+      "Upgrade: apply migration 20260721180000_natural_language_playlist_requests and explicitly enable the Natural-language playlist requests AI feature after reviewing its provider, privacy, token, and budget policy.",
+    ],
+  },
+  {
     version: "2.4.1",
     title: "AI Privacy, Cost and Token Controls",
     releaseDate: "July 20, 2026",

@@ -2,7 +2,7 @@
 
 import styles from "./Sidebar.module.css";
 import { useEffect, useMemo, useState } from "react";
-import { AudioWaveform, BarChart3, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, Grid2X2, HeartPulse, History, Home, LayoutDashboard, LifeBuoy, ListChecks, ListMusic, ListRestart, Map, MoreHorizontal, Network, Route, ScrollText, Settings, ShieldCheck, Sparkles, Tags, Wand2, X } from "lucide-react";
+import { AudioWaveform, BarChart3, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, Grid2X2, HeartPulse, History, Home, LayoutDashboard, LifeBuoy, ListChecks, ListMusic, ListRestart, Map, MessageSquareText, MoreHorizontal, Network, Route, ScrollText, Settings, ShieldCheck, Sparkles, Tags, Wand2, X } from "lucide-react";
 import PlexLoginButton from "./PlexLoginButton";
 import LogoutButton from "./LogoutButton";
 import Link from "next/link";
@@ -10,6 +10,7 @@ import { usePathname } from "next/navigation";
 import { MIXARR_GITHUB_URL } from "@/lib/appInfo";
 
 const playlistLinks = [
+  { href: "/ask-mixarr", label: "Ask Mixarr", shortLabel: "Ask", icon: MessageSquareText, isActive: (pathname: string) => pathname.startsWith("/ask-mixarr") },
   { href: "/builder", label: "Build Playlist", shortLabel: "Build", icon: Wand2, isActive: (pathname: string) => pathname === "/builder" },
   { href: "/smart-builder", label: "Smart Builder", shortLabel: "Smart", icon: Sparkles, isActive: (pathname: string) => pathname === "/smart-builder" },
   { href: "/smart-actions", label: "Smart Actions", shortLabel: "Actions", icon: ListChecks, isActive: (pathname: string) => pathname.startsWith("/smart-actions") },
@@ -84,6 +85,7 @@ export default function Sidebar({ user, appVersion }: { user: any; appVersion: s
   const isMoreActive = !(
     pathname === "/" ||
     pathname === "/builder" ||
+    pathname.startsWith("/ask-mixarr") ||
     pathname === "/smart-builder" ||
     pathname.startsWith("/recipes")
   );

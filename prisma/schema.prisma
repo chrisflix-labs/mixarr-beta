@@ -132,6 +132,9 @@ model User {
   householdApprovals             PlaylistApproval[]                @relation("PlaylistApprovalUser")
   apiTokens                      ApiToken[]                        @relation("ApiTokenOwner")
   createdApiTokens               ApiToken[]                        @relation("ApiTokenCreator")
+  naturalLanguageRequests        NaturalLanguageRequest[]          @relation("NaturalLanguageRequestOwner")
+  naturalLanguageApprovals       NaturalLanguageRequest[]          @relation("NaturalLanguageRequestApprover")
+  naturalLanguageRequestAudits   NaturalLanguageRequestAudit[]
 }
 
 model SyncSettings {
@@ -1167,6 +1170,7 @@ model PlaylistRecipe {
   importSnapshots            RecipeImportSnapshot[]
   recipeOverrides            RecipeOverride[]
   inheritanceSnapshots       EffectiveRecipeSnapshot[]
+  naturalLanguageRequests    NaturalLanguageRequest[]
 
   @@unique([userId, slug])
   @@index([userId, sourceRecipeId])
@@ -1190,6 +1194,97 @@ model PlaylistRecipe {
   @@index([riskLevel, updatedAt])
   @@index([userId, isArchived, deletedAt, updatedAt])
   @@index([userId, recipeSource, updatedAt])
+}
+
+// Review artifacts are deliberately separate from executable recipes. Only the
+// approved current revision may be saved or passed to deterministic execution.
+model NaturalLanguageRequest {
+  id                      String                           @id @default(uuid())
+  ownerId                 String
+  originalRequest         String?
+  originalRequestHash     String
+  originalRequestRetained Boolean                          @default(true)
+  detectedLanguage        String?
+  intent                  String?
+  status                  String                           @default("DRAFT")
+  providerConfigId        String?
+  providerDisplayName     String?
+  model                   String?
+  privacyMode             String                           @default("METADATA_LIMITED")
+  currentRevision         Int                              @default(1)
+  interpretationJson      Json?
+  draftRecipeJson         Json?
+  validationJson          Json?
+  candidateEstimateJson   Json?
+  compatibilityJson       Json?
+  previewJson             Json?
+  analysisRevision        Int?
+  previewRevision         Int?
+  previewGeneratedAt      DateTime?
+  approvalRevision        Int?
+  approvedById            String?
+  approvedAt              DateTime?
+  finalRecipeId           String?
+  executionId             String?
+  executionIdempotencyKey String?                          @unique
+  estimatedCost           Decimal?                         @db.Decimal(18, 6)
+  actualCost              Decimal?                         @db.Decimal(18, 6)
+  inputTokenCount         Int?
+  outputTokenCount        Int?
+  errorCode               String?
+  errorMessage            String?
+  expiresAt               DateTime?
+  cancelledAt             DateTime?
+  createdAt               DateTime                         @default(now())
+  updatedAt               DateTime                         @updatedAt
+  owner                   User                             @relation("NaturalLanguageRequestOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  approvedBy              User?                            @relation("NaturalLanguageRequestApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  finalRecipe             PlaylistRecipe?                  @relation(fields: [finalRecipeId], references: [id], onDelete: SetNull)
+  revisions               NaturalLanguageRequestRevision[]
+  auditEvents             NaturalLanguageRequestAudit[]
+
+  @@index([ownerId, status, updatedAt])
+  @@index([approvedById, approvedAt])
+  @@index([finalRecipeId])
+  @@index([expiresAt])
+}
+
+model NaturalLanguageRequestRevision {
+  id                    String                 @id @default(uuid())
+  requestId             String
+  revision              Int
+  revisionText          String?
+  interpretationJson    Json
+  draftRecipeJson       Json
+  validationJson        Json
+  candidateEstimateJson Json?
+  compatibilityJson     Json?
+  previewJson           Json?
+  changeSummaryJson     Json?
+  createdById           String
+  createdAt             DateTime               @default(now())
+  request               NaturalLanguageRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, revision])
+  @@index([requestId, createdAt])
+  @@index([createdById, createdAt])
+}
+
+model NaturalLanguageRequestAudit {
+  id          String                 @id @default(uuid())
+  requestId   String
+  actorId     String?
+  revision    Int
+  action      String
+  result      String                 @default("SUCCESS")
+  detailsJson Json?
+  createdAt   DateTime               @default(now())
+  request     NaturalLanguageRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actor       User?                  @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([requestId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
 }
 
 model RecipeSigningKey {

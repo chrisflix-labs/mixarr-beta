@@ -29,11 +29,17 @@ function inputNumber(value: string, fallback: number | null = null) { return val
 function list(value: string) { return value.split(",").map((item) => item.trim()).filter(Boolean); }
 function humanStatus(value: string) { return value.replaceAll("_", " ").replace(/^./, (character) => character.toUpperCase()); }
 
-export default function RecipeStudio({ recipeId }: { recipeId?: string }) {
+function studioDraftFromNaturalLanguage(request: any) {
+  const recipe = request.draftRecipe;
+  if (!recipe) throw new Error("The natural-language request has no recipe draft yet.");
+  return { name: recipe.metadata.name, description: recipe.metadata.description, category: recipe.metadata.category, artworkUrl: recipe.metadata.artworkUrl, enabled: false, filters: recipe.generation, scoring: recipe.scoring, targets: recipe.targets, bpmFlow: recipe.bpmFlow, discovery: recipe.discovery, variety: recipe.variety, playlistIdentity: recipe.playlistIdentity, refreshPolicy: recipe.refreshPolicy, automationPolicy: { ...recipe.automationPolicy, enabled: false }, updatedAt: request.updatedAt, naturalLanguageRevision: request.currentRevision };
+}
+
+export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { recipeId?: string; naturalLanguageRequestId?: string }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Record<string, any>>(() => defaultRecipeStudioDraft());
   const [baseline, setBaseline] = useState("");
-  const [mode, setMode] = useState<RecipeStudioMode>(recipeId ? "beginner" : "guided");
+  const [mode, setMode] = useState<RecipeStudioMode>(recipeId || naturalLanguageRequestId ? "beginner" : "guided");
   const [active, setActive] = useState("identity");
   const [guidedStep, setGuidedStep] = useState(0);
   const [answers, setAnswers] = useState<GuidedRecipeAnswers>(initialAnswers);
@@ -41,7 +47,7 @@ export default function RecipeStudio({ recipeId }: { recipeId?: string }) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [analysisState, setAnalysisState] = useState<"loading" | "ready" | "stale" | "error" | "unavailable">("loading");
   const [libraries, setLibraries] = useState<LibraryOption[]>([]);
-  const [loading, setLoading] = useState(Boolean(recipeId));
+  const [loading, setLoading] = useState(Boolean(recipeId || naturalLanguageRequestId));
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState("");
@@ -53,7 +59,7 @@ export default function RecipeStudio({ recipeId }: { recipeId?: string }) {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      recipeId ? fetch(`/api/playlist-recipes/${encodeURIComponent(recipeId)}`).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error || "Recipe not found."); return body.recipe; }) : Promise.resolve(null),
+      naturalLanguageRequestId ? fetch(`/api/natural-language-requests/${encodeURIComponent(naturalLanguageRequestId)}`).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || "Request not found."); return studioDraftFromNaturalLanguage(body.request); }) : recipeId ? fetch(`/api/playlist-recipes/${encodeURIComponent(recipeId)}`).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error || "Recipe not found."); return body.recipe; }) : Promise.resolve(null),
       fetch("/api/plex/servers").then((response) => response.ok ? response.json() : { servers: [] }),
     ]).then(([recipe, servers]) => {
       if (cancelled) return;
@@ -69,7 +75,7 @@ export default function RecipeStudio({ recipeId }: { recipeId?: string }) {
       }
     }).catch((caught) => setError(caught instanceof Error ? caught.message : "Recipe Studio could not load.")).finally(() => setLoading(false));
     return () => { cancelled = true; };
-  }, [recipeId]);
+  }, [recipeId, naturalLanguageRequestId]);
 
   const dirty = useMemo(() => Boolean(baseline) ? JSON.stringify(draft) !== baseline : draft.name !== "Untitled Mix Recipe" || draft.description || mode !== "guided", [baseline, draft, mode]);
   const advanced = useMemo(() => hasAdvancedRecipeSettings(draft), [draft]);
@@ -134,13 +140,14 @@ export default function RecipeStudio({ recipeId }: { recipeId?: string }) {
     setSaving(true); setError(""); setNotice("");
     try {
       const payload = { name: draft.name, description: draft.description, category: draft.category, artworkUrl: draft.artworkUrl || null, enabled: draft.enabled, filters: draft.filters, scoring: draft.scoring, targets: draft.targets, bpmFlow: draft.bpmFlow, discovery: draft.discovery, variety: draft.variety, playlistIdentity: draft.playlistIdentity, refreshPolicy: draft.refreshPolicy, automationPolicy: draft.automationPolicy, expectedUpdatedAt: draft.updatedAt };
-      const response = await fetch(recipeId ? `/api/playlist-recipes/${encodeURIComponent(recipeId)}` : "/api/playlist-recipes", { method: recipeId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const response = await fetch(naturalLanguageRequestId ? `/api/natural-language-requests/${encodeURIComponent(naturalLanguageRequestId)}` : recipeId ? `/api/playlist-recipes/${encodeURIComponent(recipeId)}` : "/api/playlist-recipes", { method: recipeId || naturalLanguageRequestId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(naturalLanguageRequestId ? { draft: payload } : payload) });
       const body = await response.json();
       if (!response.ok) {
         if (response.status === 409) throw new Error("This recipe changed while you were editing it. Open the latest version in another tab, compare it, then retry your changes.");
-        throw new Error(body.error || "Recipe save failed. No changes were saved.");
+        throw new Error(body.error?.message || body.error || "Recipe save failed. No changes were saved.");
       }
-      setDraft(body.recipe); setBaseline(JSON.stringify(body.recipe)); setNotice(`Saved recipe v${body.recipe.recipeVersion}.`);
+      const savedDraft = naturalLanguageRequestId ? studioDraftFromNaturalLanguage(body.request) : body.recipe;
+      setDraft(savedDraft); setBaseline(JSON.stringify(savedDraft)); setNotice(naturalLanguageRequestId ? `Saved request revision ${body.request.currentRevision}. Any previous approval was invalidated.` : `Saved recipe v${body.recipe.recipeVersion}.`);
       if (!recipeId) router.replace(`/recipes/${body.recipe.id}/edit`);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Recipe save failed. No changes were saved."); } finally { setSaving(false); }
   }
@@ -149,11 +156,11 @@ export default function RecipeStudio({ recipeId }: { recipeId?: string }) {
   function applyRaw() { try { const parsed = JSON.parse(raw); if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(); setDraft((current) => ({ ...current, ...parsed })); setNotice("Structured settings applied to the current draft. Nothing has been saved yet."); } catch { setError("Structured settings must be a valid JSON object."); } }
 
   if (loading) return <main className={styles.state} aria-busy="true"><Loader2 className="animate-spin" /> Loading Recipe Studio…</main>;
-  if (error && recipeId && !draft.id) return <main className={styles.state}><AlertTriangle /> {error}</main>;
+  if (error && (recipeId || naturalLanguageRequestId) && !baseline) return <main className={styles.state}><AlertTriangle /> {error}</main>;
 
   return <main className={styles.page}>
     <header className={styles.header}>
-      <div><Link href={recipeId ? `/recipes/${recipeId}` : "/recipes"} className={styles.back}><ArrowLeft size={15} /> Recipe Library</Link><span className={styles.kicker}><Wand2 size={14} /> Recipe Studio</span><h1>{recipeId ? draft.name : "Create a Mix Recipe"}</h1><p>Guided and advanced tools edit one portable, governed recipe document.</p></div>
+      <div><Link href={naturalLanguageRequestId ? `/ask-mixarr/${naturalLanguageRequestId}` : recipeId ? `/recipes/${recipeId}` : "/recipes"} className={styles.back}><ArrowLeft size={15} /> {naturalLanguageRequestId ? "Request review" : "Recipe Library"}</Link><span className={styles.kicker}><Wand2 size={14} /> Recipe Studio</span><h1>{recipeId || naturalLanguageRequestId ? draft.name : "Create a Mix Recipe"}</h1><p>{naturalLanguageRequestId ? "Edit the canonical draft. Saving creates a new request revision and invalidates approval." : "Guided and advanced tools edit one portable, governed recipe document."}</p></div>
       <div className={styles.headerActions}><button type="button" onClick={() => void validate()} disabled={validating}>{validating ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Validate</button><button type="button" className={styles.primary} onClick={() => void save()} disabled={saving || !dirty}>{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} {saving ? "Saving…" : dirty ? "Save draft" : "Saved"}</button></div>
     </header>
 

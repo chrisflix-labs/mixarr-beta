@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.2 - Natural-Language Playlist Requests
+
+- Added `/ask-mixarr` with provider privacy/cost preflight, structured interpretation review, explicit versus inferred constraints, assumptions, ambiguity resolution, conversational revisions, revision diffs, Recipe Studio editing, candidate/compatibility analysis, and deterministic track previews.
+- Added strict Zod provider output contracts and canonical recipe normalization. Provider output cannot supply track IDs, enable automation, request recipe permissions, or reach a Plex mutation path.
+- Added revision-bound approval, server-validated status transitions, automatic approval invalidation after edits, stale analysis/preview checks, idempotent execution, and separate save-recipe versus create-playlist operations.
+- Added locally scoped entity resolution for libraries, recipes, artists, albums, genres, and accessible playlists. Similar-playlist drafts remove selected track IDs and enforce a deterministic overlap limit instead of copying the source.
+- Added additive migration `20260721180000_natural_language_playlist_requests`, request/revision/audit persistence, owner/admin permission enforcement, AI governance integration, responsive accessible UI, tests, API documentation, and upgrade notes.
+- Safety boundary: AI interprets intent. The existing deterministic engine selects and orders tracks, and no Plex mutation occurs before explicit approval and a separate create action.
+
 ## v2.4.1 - AI Privacy, Cost and Token Controls
 
 - Added one backend AI governance preflight for global/feature/user privacy, metadata transformation, prompt/token/response limits, configured model pricing, request limits, provider/user/global budgets, background policy, fallback eligibility, retry cost, and context trimming before provider dispatch.
