@@ -68,7 +68,7 @@ export default async function SettingsPage() {
       <Link href="/settings/ai" className={`glass-panel ${styles.healthLink}`}>
         <Bot size={24} />
         <span>
-          <strong>AI Provider Foundation</strong>
+          <strong>AI Governance &amp; Providers</strong>
           <small>Configure optional provider-neutral AI connections, models, privacy, budgets, health, and safe audits. AI is disabled by default.</small>
         </span>
         <span aria-hidden="true">&rarr;</span>

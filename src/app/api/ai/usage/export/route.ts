@@ -1,0 +1,6 @@
+import { NextResponse } from "next/server";
+import { aiRouteError, requireAiPermission } from "@/ai/services/api";
+import { getAiUsage, parseUsageFilters } from "@/ai/services/usageService";
+export const dynamic = "force-dynamic";
+const csvCell = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+export async function GET(request: Request) { try { await requireAiPermission("EXPORT_AI_USAGE"); const url = new URL(request.url); const usage = await getAiUsage(parseUsageFilters(url)); if (url.searchParams.get("format") === "json") return NextResponse.json({ exportedAt: new Date().toISOString(), safe: true, records: usage.records }); const columns = ["createdAt", "featureKey", "userId", "providerDisplayName", "model", "privacyMode", "inputTokenCount", "outputTokenCount", "estimatedCost", "actualCost", "latencyMs", "status", "fallbackReason", "blockReason"]; const csv = [columns.join(","), ...usage.records.map((row: any) => columns.map((column) => csvCell(row[column])).join(","))].join("\r\n"); return new NextResponse(csv, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="mixarr-ai-usage-${new Date().toISOString().slice(0, 10)}.csv"` } }); } catch (error) { return aiRouteError(error); } }

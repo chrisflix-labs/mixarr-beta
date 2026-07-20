@@ -49,6 +49,7 @@ export type ReleaseNoteBadge =
   | "Popularity"
   | "Plex"
   | "Preview"
+  | "Privacy"
   | "Recipes"
   | "Regeneration"
   | "Release Notes"
@@ -77,6 +78,20 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "2.4.1",
+    title: "AI Privacy, Cost and Token Controls",
+    releaseDate: "July 20, 2026",
+    badges: ["AI", "Security", "Settings", "Database", "Dashboard", "Privacy", "Reliability", "Accessibility", "Export", "Retry"],
+    changes: [
+      "Added a centralized server-side AI governance preflight for privacy policy, metadata allowlisting/anonymization, prompt and token limits, configured model pricing, request limits, provider/user/global budgets, background policy, fallback eligibility, and retry cost protection.",
+      "Added decimal-safe pricing profiles and transactional expiring budget reservations that are created before provider execution, reconciled to actual or estimated usage, and released on failure, timeout, or cancellation.",
+      "Added Local Only, Metadata Limited, Anonymous Metadata, and version-acknowledged Full Metadata modes; sensitive values, paths, credentials, infrastructure identifiers, unknown external fields, raw prompts, and raw responses remain prohibited by default.",
+      "Added governance, pricing, budgets, reservations, preview, comparison, alerts, filtered usage, sanitized audit detail, CSV, and JSON administrator APIs plus an accessible responsive AI Governance dashboard.",
+      "Upgrade: apply migration 20260721120000_ai_governance_v241. Existing v2.4.0 providers and encrypted credentials remain valid; the transitional policy is restrictive, paid fallback and external background AI remain off, and unpriced external models are blocked.",
+      "No playlist generation, recommendation, discovery, tagging, conversation, or other user-facing AI workflow is introduced in v2.4.1.",
+    ],
+  },
   {
     version: "2.4.0",
     title: "AI Provider Foundation",

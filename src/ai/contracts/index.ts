@@ -9,7 +9,7 @@ export type AiCapabilityConfidence = "CONFIRMED" | "REPORTED" | "ASSUMED" | "MAN
 export type AiCapabilityResult = Partial<Record<AiCapability, AiCapabilityConfidence>>;
 
 export type AiMessage = { role: "user" | "assistant"; content: string };
-export type AiUsage = { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+export type AiUsage = { inputTokens?: number; outputTokens?: number; totalTokens?: number; cachedTokens?: number; reasoningTokens?: number; providerReported?: boolean; providerRequestId?: string; rawUsage?: Record<string, unknown> };
 export type AiModelCategory = "GENERAL" | "FAST" | "REASONING" | "LARGE_CONTEXT" | "LOCAL" | "REMOTE" | "UNKNOWN";
 export type AiModel = { id: string; displayName: string; contextSize?: number; category: AiModelCategory; capabilities: AiCapabilityResult; available: boolean };
 
@@ -35,6 +35,12 @@ export type AiRequest<T = unknown> = {
   signal?: AbortSignal;
   correlationId?: string;
   metadata?: Record<string, string | number | boolean>;
+  metadataRecords?: Array<Record<string, unknown>>;
+  privacyMode?: "LOCAL_ONLY" | "METADATA_LIMITED" | "ANONYMOUS_METADATA" | "FULL_METADATA";
+  requestSource?: "FOREGROUND" | "BACKGROUND" | "CONNECTION_TEST" | "MODEL_DISCOVERY";
+  backgroundApproval?: boolean;
+  contextSections?: Array<{ id: string; content: string; priority: "REQUIRED" | "HIGH" | "NORMAL" | "LOW" | "OPTIONAL"; kind?: "SYSTEM" | "SAFETY" | "SCHEMA" | "CONTEXT" | "METADATA" }>;
+  contextTrimmingStrategy?: "REJECT" | "REMOVE_OLDEST" | "REMOVE_LOWEST_PRIORITY" | "REMOVE_DUPLICATES";
   allowFallback?: boolean;
   allowStreamingFallback?: boolean;
   requiredCapabilities?: AiCapability[];
@@ -49,6 +55,7 @@ export type AiResponse<T = unknown> = {
   data?: T;
   usage?: AiUsage;
   estimatedCost?: number;
+  actualCost?: number;
   finishReason?: string;
   latencyMs: number;
   retryCount: number;

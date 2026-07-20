@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.4.1 - AI Privacy, Cost and Token Controls
+
+- Added one backend AI governance preflight for global/feature/user privacy, metadata transformation, prompt/token/response limits, configured model pricing, request limits, provider/user/global budgets, background policy, fallback eligibility, retry cost, and context trimming before provider dispatch.
+- Added Local Only, Metadata Limited, Anonymous Metadata, and version-acknowledged Full Metadata modes with an allowlist engine, deterministic abstractions, unknown-field blocking, field-name-only privacy reports, and outgoing payload preview.
+- Added decimal-safe model pricing history, real-time minimum/expected/maximum cost estimates, provider comparison, and serializable expiring budget reservations reconciled or released on every terminal request state.
+- Added provider and user budgets, request/token limits, background controls, conservative paid fallback and retry defaults, provider-attempt records, alert deduplication/cooldowns, governance-change auditing, filtered usage analytics, sanitized detail, and CSV/JSON exports.
+- Added an accessible responsive `/settings/ai` governance dashboard with setup review, privacy and cost previews, pricing, budgets, token limits, background, timeouts/retries, alerts, usage charts, audit table, loading/empty/error states, and provider local-endpoint confirmation.
+- Added additive migration `20260721120000_ai_governance_v241`, policy/unit coverage, API enforcement markers, governance documentation, upgrade notes, roadmap/version updates, and no paid-provider calls in tests.
+- Compatibility: existing v2.4.0 provider rows and encrypted credentials remain valid. Upgrade defaults are Metadata Limited with a restrictive allowlist, paid fallback off, external background AI off, prompt recording off, unknown external fields and unpriced external models blocked, and hard shutdown on when a budget exists.
+- Scope boundary: v2.4.1 adds no user-facing playlist generation, recommendation, discovery, tagging, or conversational AI feature.
+
 ## v2.4.0 - AI Provider Foundation
 
 - Added a provider-neutral AI contract, adapter registry, capability model, request coordinator, normalized errors, retries with jitter, timeouts, cancellation, response byte limits, normalized streams, and Zod-backed structured-response validation.

@@ -5102,7 +5102,7 @@ model FailoverEvent {
   @@index([activeServerId, recoveredAt])
 }
 
-// Mixarr v2.4.0 provider-neutral AI foundation. AI remains disabled by default
+// Mixarr v2.4.1 provider-neutral AI foundation and governance. AI remains disabled by default
 // and these records never grant playlist mutation capabilities.
 model AiGlobalSetting {
   id                           String    @id @default("global")
@@ -5119,49 +5119,115 @@ model AiGlobalSetting {
   updatedAt                    DateTime  @updatedAt
 }
 
+model AiGovernanceSetting {
+  id                                String   @id @default("global")
+  privacyMode                       String   @default("METADATA_LIMITED")
+  reviewed                          Boolean  @default(false)
+  currency                          String   @default("USD")
+  monthlyBudget                     Decimal? @db.Decimal(18, 6)
+  budgetResetDay                    Int      @default(1)
+  budgetWarningThresholds           Json
+  hardShutdownEnabled               Boolean  @default(true)
+  countLocalCost                    Boolean  @default(false)
+  allowUnpricedExternalModels       Boolean  @default(false)
+  adminExemptionEnabled             Boolean  @default(false)
+  allowPaidProviderFallback         Boolean  @default(false)
+  automaticCheaperModelFallback     Boolean  @default(false)
+  backgroundAiEnabled               Boolean  @default(false)
+  externalBackgroundAiEnabled       Boolean  @default(false)
+  maximumBackgroundRequestsPerDay   Int?
+  maximumBackgroundCostPerDay       Decimal? @db.Decimal(18, 6)
+  maximumBackgroundConcurrency      Int      @default(1)
+  backgroundAllowedHoursJson        Json?
+  requireExternalBackgroundApproval Boolean  @default(true)
+  maximumInputTokens                Int      @default(16000)
+  maximumOutputTokens               Int      @default(2000)
+  maximumCombinedTokens             Int      @default(18000)
+  maximumPromptCharacters           Int      @default(80000)
+  maximumPromptBytes                Int      @default(200000)
+  maximumMetadataRecords            Int      @default(500)
+  maximumContextMessages            Int      @default(100)
+  maximumResponseBytes              Int      @default(1048576)
+  maximumStructuredItems            Int      @default(1000)
+  dailyRequestLimit                 Int?
+  monthlyRequestLimit               Int?
+  metadataAllowlistJson             Json
+  anonymousGranularity              String   @default("STRICT")
+  anonymousYearBandSize             Int      @default(10)
+  anonymousBpmBandSize              Int      @default(10)
+  allowUnknownLocalMetadata         Boolean  @default(false)
+  secureDebugEnabled                Boolean  @default(false)
+  secureDebugRetentionHours         Int      @default(24)
+  defaultContextTrimmingStrategy    String   @default("REJECT")
+  connectionTimeoutMs               Int      @default(10000)
+  firstTokenTimeoutMs               Int      @default(30000)
+  totalRequestTimeoutMs             Int      @default(120000)
+  streamingIdleTimeoutMs            Int      @default(30000)
+  cancellationGraceMs               Int      @default(2000)
+  maximumRetryAttempts              Int      @default(1)
+  maximumRetryCost                  Decimal? @db.Decimal(18, 6)
+  maximumCumulativeRequestCost      Decimal? @db.Decimal(18, 6)
+  retryAfterPossibleBilling         Boolean  @default(false)
+  auditRetentionDays                Int      @default(90)
+  usageSummaryRetentionDays         Int      @default(730)
+  errorRetentionDays                Int      @default(90)
+  settingVersion                    Int      @default(1)
+  updatedBy                         String?
+  createdAt                         DateTime @default(now())
+  updatedAt                         DateTime @updatedAt
+}
+
 model AiProviderConfig {
-  id                         String             @id @default(uuid())
-  providerType               String
-  displayName                String
-  enabled                    Boolean            @default(false)
-  locationClassification     String             @default("UNKNOWN")
-  baseUrl                    String?
-  authenticationType         String             @default("NONE")
-  encryptedSecretPayload     String?
-  encryptedSecretHeaders     String?
-  nonSecretHeadersJson       Json?
-  defaultModel               String?
-  fastModel                  String?
-  reasoningModel             String?
-  maximumContextTokens       Int?
-  maximumOutputTokens        Int?
-  requestTimeoutMs           Int                @default(30000)
-  retryCount                 Int                @default(2)
-  initialRetryDelayMs        Int                @default(500)
-  maximumRetryDelayMs        Int                @default(10000)
-  retryBackoffMultiplier     Float              @default(2)
-  sslVerification            Boolean            @default(true)
-  capabilityOverridesJson    Json?
-  modelDiscoveryEnabled      Boolean            @default(true)
-  healthCheckEnabled         Boolean            @default(true)
-  healthCheckIntervalMinutes Int                @default(15)
-  monthlyBudget              Float?
-  budgetWarningThreshold     Float              @default(0.8)
-  priority                   Int?
-  fallbackProviderId         String?
-  notes                      String?
-  customConfigurationJson    Json?
-  createdAt                  DateTime           @default(now())
-  updatedAt                  DateTime           @updatedAt
-  lastConnectionTestAt       DateTime?
-  lastSuccessfulConnectionAt DateTime?
-  fallbackProvider           AiProviderConfig?  @relation("AiProviderFallback", fields: [fallbackProviderId], references: [id], onDelete: SetNull)
-  fallbackFor                AiProviderConfig[] @relation("AiProviderFallback")
-  models                     AiProviderModel[]
-  health                     AiProviderHealth?
-  audits                     AiRequestAudit[]
-  preferredFeatures          AiFeatureSetting[] @relation("AiFeaturePreferredProvider")
-  fallbackFeatures           AiFeatureSetting[] @relation("AiFeatureFallbackProvider")
+  id                          String                @id @default(uuid())
+  providerType                String
+  displayName                 String
+  enabled                     Boolean               @default(false)
+  locationClassification      String                @default("UNKNOWN")
+  baseUrl                     String?
+  authenticationType          String                @default("NONE")
+  encryptedSecretPayload      String?
+  encryptedSecretHeaders      String?
+  nonSecretHeadersJson        Json?
+  defaultModel                String?
+  fastModel                   String?
+  reasoningModel              String?
+  maximumContextTokens        Int?
+  maximumOutputTokens         Int?
+  requestTimeoutMs            Int                   @default(30000)
+  retryCount                  Int                   @default(2)
+  initialRetryDelayMs         Int                   @default(500)
+  maximumRetryDelayMs         Int                   @default(10000)
+  retryBackoffMultiplier      Float                 @default(2)
+  sslVerification             Boolean               @default(true)
+  capabilityOverridesJson     Json?
+  modelDiscoveryEnabled       Boolean               @default(true)
+  healthCheckEnabled          Boolean               @default(true)
+  healthCheckIntervalMinutes  Int                   @default(15)
+  monthlyBudget               Float?
+  budgetWarningThreshold      Float                 @default(0.8)
+  priority                    Int?
+  fallbackProviderId          String?
+  notes                       String?
+  customConfigurationJson     Json?
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
+  lastConnectionTestAt        DateTime?
+  lastSuccessfulConnectionAt  DateTime?
+  fallbackProvider            AiProviderConfig?     @relation("AiProviderFallback", fields: [fallbackProviderId], references: [id], onDelete: SetNull)
+  fallbackFor                 AiProviderConfig[]    @relation("AiProviderFallback")
+  models                      AiProviderModel[]
+  health                      AiProviderHealth?
+  audits                      AiRequestAudit[]
+  preferredFeatures           AiFeatureSetting[]    @relation("AiFeaturePreferredProvider")
+  fallbackFeatures            AiFeatureSetting[]    @relation("AiFeatureFallbackProvider")
+  governanceBudget            AiProviderBudget?
+  pricingProfiles             AiModelPricing[]
+  budgetReservations          AiBudgetReservation[]
+  providerAttempts            AiProviderAttempt[]
+  administratorConfirmedLocal Boolean               @default(false)
+  trustedNetwork              Boolean               @default(false)
+  externalAccessWarning       Boolean               @default(true)
+  lastLocalStatusValidationAt DateTime?
 
   @@index([providerType, enabled])
   @@index([enabled, priority])
@@ -5169,17 +5235,20 @@ model AiProviderConfig {
 }
 
 model AiProviderModel {
-  id                 String           @id @default(uuid())
-  providerConfigId   String
-  modelIdentifier    String
-  displayName        String
-  contextSize        Int?
-  modelCategory      String           @default("UNKNOWN")
-  capabilityMetadata Json?
-  discoveredAt       DateTime         @default(now())
-  lastSeenAt         DateTime         @default(now())
-  availabilityStatus String           @default("AVAILABLE")
-  provider           AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Cascade)
+  id                    String           @id @default(uuid())
+  providerConfigId      String
+  modelIdentifier       String
+  displayName           String
+  contextSize           Int?
+  modelCategory         String           @default("UNKNOWN")
+  capabilityMetadata    Json?
+  discoveredAt          DateTime         @default(now())
+  lastSeenAt            DateTime         @default(now())
+  availabilityStatus    String           @default("AVAILABLE")
+  maximumInputTokens    Int?
+  maximumOutputTokens   Int?
+  maximumCombinedTokens Int?
+  provider              AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Cascade)
 
   @@unique([providerConfigId, modelIdentifier])
   @@index([providerConfigId, availabilityStatus])
@@ -5225,37 +5294,272 @@ model AiFeatureSetting {
 }
 
 model AiRequestAudit {
-  id                  String            @id @default(uuid())
-  requestId           String            @unique
-  correlationId       String?
-  featureKey          String
-  providerConfigId    String?
-  providerType        String?
-  providerDisplayName String?
-  model               String?
-  status              String            @default("QUEUED")
-  startedAt           DateTime          @default(now())
-  completedAt         DateTime?
-  latencyMs           Int?
-  retryCount          Int               @default(0)
-  streamingUsed       Boolean           @default(false)
-  cancellationStatus  String?
-  inputTokenCount     Int?
-  outputTokenCount    Int?
-  totalTokenCount     Int?
-  estimatedCost       Float?
-  responseByteCount   Int?
-  errorCategory       String?
-  sanitizedErrorCode  String?
-  userId              String?
-  safeMetadataJson    Json?
-  promptHash          String?
-  createdAt           DateTime          @default(now())
-  provider            AiProviderConfig? @relation(fields: [providerConfigId], references: [id], onDelete: SetNull)
+  id                        String                @id @default(uuid())
+  requestId                 String                @unique
+  correlationId             String?
+  featureKey                String
+  providerConfigId          String?
+  providerType              String?
+  providerDisplayName       String?
+  model                     String?
+  status                    String                @default("QUEUED")
+  startedAt                 DateTime              @default(now())
+  completedAt               DateTime?
+  latencyMs                 Int?
+  retryCount                Int                   @default(0)
+  streamingUsed             Boolean               @default(false)
+  cancellationStatus        String?
+  inputTokenCount           Int?
+  outputTokenCount          Int?
+  totalTokenCount           Int?
+  estimatedCost             Float?
+  responseByteCount         Int?
+  errorCategory             String?
+  sanitizedErrorCode        String?
+  userId                    String?
+  safeMetadataJson          Json?
+  promptHash                String?
+  logicalRequestId          String?
+  requestSource             String                @default("FOREGROUND")
+  background                Boolean               @default(false)
+  locationClassification    String?
+  privacyMode               String?
+  includedMetadataFields    Json?
+  transformedMetadataFields Json?
+  blockedMetadataFields     Json?
+  cachedTokenCount          Int?
+  reasoningTokenCount       Int?
+  actualCost                Decimal?              @db.Decimal(18, 6)
+  pricingProfileId          String?
+  usageSource               String                @default("ESTIMATED")
+  timeToFirstTokenMs        Int?
+  fallbackReason            String?
+  originalProviderConfigId  String?
+  originalModel             String?
+  estimatedFallbackSavings  Decimal?              @db.Decimal(18, 6)
+  crossedProviderBoundary   Boolean               @default(false)
+  crossedLocationBoundary   Boolean               @default(false)
+  budgetControlResult       String?
+  limitControlResult        String?
+  blockReason               String?
+  providerRequestId         String?
+  createdAt                 DateTime              @default(now())
+  provider                  AiProviderConfig?     @relation(fields: [providerConfigId], references: [id], onDelete: SetNull)
+  attempts                  AiProviderAttempt[]
+  reservations              AiBudgetReservation[]
 
   @@index([createdAt])
   @@index([featureKey, createdAt])
   @@index([providerConfigId, createdAt])
   @@index([status, startedAt])
   @@index([correlationId])
+  @@index([userId, createdAt])
+  @@index([privacyMode, createdAt])
+  @@index([requestSource, createdAt])
+  @@index([blockReason, createdAt])
+}
+
+model AiProviderBudget {
+  id                         String           @id @default(uuid())
+  providerConfigId           String           @unique
+  currency                   String           @default("USD")
+  dailyLimit                 Decimal?         @db.Decimal(18, 6)
+  monthlyLimit               Decimal?         @db.Decimal(18, 6)
+  warningThresholdsJson      Json
+  hardLimitEnabled           Boolean          @default(true)
+  selectableAfterWarning     Boolean          @default(true)
+  allowFallbackWhenExhausted Boolean          @default(false)
+  dailyRequestLimit          Int?
+  monthlyRequestLimit        Int?
+  maximumInputTokens         Int?
+  maximumOutputTokens        Int?
+  maximumCombinedTokens      Int?
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+  provider                   AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Cascade)
+}
+
+model AiUserLimit {
+  id                        String   @id @default(uuid())
+  userId                    String   @unique
+  currency                  String   @default("USD")
+  dailyCostLimit            Decimal? @db.Decimal(18, 6)
+  monthlyCostLimit          Decimal? @db.Decimal(18, 6)
+  dailyRequestLimit         Int?
+  monthlyRequestLimit       Int?
+  maximumInputTokens        Int?
+  maximumOutputTokens       Int?
+  maximumCombinedTokens     Int?
+  allowedPrivacyModesJson   Json?
+  allowedProviderIdsJson    Json?
+  allowedModelTiersJson     Json?
+  paidProvidersAllowed      Boolean  @default(false)
+  backgroundRequestsAllowed Boolean  @default(false)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model AiModelPricing {
+  id                         String           @id @default(uuid())
+  providerConfigId           String
+  modelIdentifier            String
+  displayName                String
+  inputPricePerMillion       Decimal?         @db.Decimal(18, 6)
+  outputPricePerMillion      Decimal?         @db.Decimal(18, 6)
+  cachedInputPricePerMillion Decimal?         @db.Decimal(18, 6)
+  reasoningPricePerMillion   Decimal?         @db.Decimal(18, 6)
+  fixedRequestCost           Decimal?         @db.Decimal(18, 6)
+  currency                   String           @default("USD")
+  effectiveAt                DateTime         @default(now())
+  pricingSource              String?
+  lastVerifiedAt             DateTime?
+  enabled                    Boolean          @default(true)
+  estimated                  Boolean          @default(true)
+  billingClassification      String           @default("EXTERNAL")
+  status                     String           @default("PRICED")
+  supersedesId               String?
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+  provider                   AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Cascade)
+
+  @@index([providerConfigId, modelIdentifier, effectiveAt])
+  @@index([enabled, lastVerifiedAt])
+}
+
+model AiBudgetReservation {
+  id               String           @id @default(uuid())
+  requestId        String
+  auditId          String?
+  userId           String?
+  providerConfigId String
+  featureKey       String
+  requestSource    String           @default("FOREGROUND")
+  currency         String           @default("USD")
+  reservedCost     Decimal          @db.Decimal(18, 6)
+  actualCost       Decimal?         @db.Decimal(18, 6)
+  status           String           @default("ACTIVE")
+  expiresAt        DateTime
+  releasedAt       DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  provider         AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Restrict)
+  audit            AiRequestAudit?  @relation(fields: [auditId], references: [id], onDelete: SetNull)
+
+  @@index([status, expiresAt])
+  @@index([providerConfigId, status, createdAt])
+  @@index([userId, status, createdAt])
+  @@index([requestId])
+}
+
+model AiProviderAttempt {
+  id                   String           @id @default(uuid())
+  requestAuditId       String
+  attemptNumber        Int
+  providerConfigId     String
+  model                String
+  status               String           @default("STARTED")
+  estimatedCost        Decimal?         @db.Decimal(18, 6)
+  actualCost           Decimal?         @db.Decimal(18, 6)
+  inputTokens          Int?
+  outputTokens         Int?
+  cachedTokens         Int?
+  reasoningTokens      Int?
+  providerAcknowledged Boolean          @default(false)
+  errorCategory        String?
+  retryReason          String?
+  startedAt            DateTime         @default(now())
+  completedAt          DateTime?
+  safeUsageJson        Json?
+  requestAudit         AiRequestAudit   @relation(fields: [requestAuditId], references: [id], onDelete: Cascade)
+  provider             AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Restrict)
+
+  @@unique([requestAuditId, attemptNumber])
+  @@index([providerConfigId, startedAt])
+  @@index([status, startedAt])
+}
+
+model AiPrivacyAcknowledgment {
+  id            String    @id @default(uuid())
+  policyVersion String
+  actorId       String
+  acceptedAt    DateTime  @default(now())
+  revokedAt     DateTime?
+  warningHash   String
+
+  @@index([policyVersion, revokedAt])
+  @@index([actorId, acceptedAt])
+}
+
+model AiAlertThreshold {
+  id              String   @id @default(uuid())
+  scopeType       String
+  scopeId         String?
+  condition       String
+  thresholdsJson  Json
+  enabled         Boolean  @default(true)
+  cooldownMinutes Int      @default(1440)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([scopeType, scopeId, enabled])
+}
+
+model AiAlertEvent {
+  id               String    @id @default(uuid())
+  thresholdId      String?
+  deduplicationKey String
+  severity         String
+  condition        String
+  scopeType        String
+  scopeId          String?
+  safeDetailsJson  Json?
+  acknowledgedAt   DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([deduplicationKey, createdAt])
+  @@index([acknowledgedAt, createdAt])
+}
+
+model AiContextTrimmingRecord {
+  id                    String   @id @default(uuid())
+  requestId             String
+  strategy              String
+  originalTokenEstimate Int
+  finalTokenEstimate    Int
+  savedTokenEstimate    Int
+  removedSectionsJson   Json
+  createdAt             DateTime @default(now())
+
+  @@index([requestId])
+  @@index([createdAt])
+}
+
+model AiGovernanceAudit {
+  id                String   @id @default(uuid())
+  actorId           String
+  action            String
+  entityType        String
+  entityId          String
+  previousValueJson Json?
+  newValueJson      Json?
+  reason            String?
+  createdAt         DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId, createdAt])
+}
+
+model AiSecureDebugPayload {
+  id                String   @id @default(uuid())
+  requestId         String
+  privacyMode       String
+  sanitizedPayload  Json
+  privacyReportJson Json
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+
+  @@index([requestId])
+  @@index([expiresAt])
 }

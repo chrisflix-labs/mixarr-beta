@@ -1,0 +1,5 @@
+import { NextResponse } from "next/server";
+import { aiRouteError, requireAiPermission } from "@/ai/services/api";
+import { previewAiRequest } from "@/ai/governance/service";
+import { resolveAiProvider } from "@/ai/services/providerService";
+export async function POST(request: Request) { try { const userId = await requireAiPermission("VIEW_SANITIZED_AI_DETAILS"); const body = await request.json(); const provider = await resolveAiProvider(String(body.providerId || "")); const model = String(body.model || provider.defaultModel || ""); return NextResponse.json(await previewAiRequest({ request: { featureKey: String(body.featureKey || "administrative_preview"), messages: Array.isArray(body.messages) ? body.messages : [], systemInstructions: body.systemInstructions, metadataRecords: Array.isArray(body.metadataRecords) ? body.metadataRecords : [], privacyMode: body.privacyMode, maxOutputTokens: body.maxOutputTokens, contextSections: body.contextSections, contextTrimmingStrategy: body.contextTrimmingStrategy, requestSource: body.requestSource || "FOREGROUND" }, provider, model, userId: body.userId || userId })); } catch (error) { return aiRouteError(error); } }

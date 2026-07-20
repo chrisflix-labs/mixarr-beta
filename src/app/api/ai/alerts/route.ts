@@ -1,0 +1,8 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import prisma from "@/lib/prisma";
+import { aiRouteError, requireAiPermission } from "@/ai/services/api";
+export const dynamic = "force-dynamic";
+const schema = z.object({ id: z.string().uuid().optional(), scopeType: z.enum(["GLOBAL", "PROVIDER", "USER", "FEATURE"]), scopeId: z.string().nullable().optional(), condition: z.enum(["BUDGET_PERCENT", "REQUEST_LIMIT", "COST_SPIKE", "UNPRICED_MODEL", "LOCAL_ONLY_EXTERNAL_ATTEMPT", "PAID_FALLBACK_BLOCKED", "HARD_SHUTDOWN", "RETRY_COST", "LARGE_PROMPT", "PROVIDER_TIMEOUT", "BACKGROUND_USAGE", "STALE_PRICING"]), thresholds: z.array(z.number().min(0)).min(1), enabled: z.boolean().default(true), cooldownMinutes: z.number().int().min(1).max(43200).default(1440) });
+export async function GET() { try { await requireAiPermission("VIEW_AI_USAGE"); const [thresholds, events] = await Promise.all([prisma.aiAlertThreshold.findMany({ orderBy: { createdAt: "asc" } }), prisma.aiAlertEvent.findMany({ orderBy: { createdAt: "desc" }, take: 100 })]); return NextResponse.json({ thresholds, events }); } catch (error) { return aiRouteError(error); } }
+export async function PUT(request: Request) { try { await requireAiPermission("MANAGE_AI_BUDGETS"); const { id, thresholds, ...input } = schema.parse(await request.json()); const row = id ? await prisma.aiAlertThreshold.update({ where: { id }, data: { ...input, thresholdsJson: thresholds } }) : await prisma.aiAlertThreshold.create({ data: { ...input, thresholdsJson: thresholds } }); return NextResponse.json(row); } catch (error) { return aiRouteError(error); } }
