@@ -36,6 +36,13 @@ export async function register() {
     }
 
     try {
+      const { initializeIntegrationScheduler } = await import("./lib/integrations/scheduler");
+      await initializeIntegrationScheduler();
+    } catch (error) {
+      console.error("[Integrations] Scheduler startup failed", sanitizeErrorText(error));
+    }
+
+    try {
       const { initializeRecentlyAddedScheduler } = await import("./lib/recentlyAdded/scheduler");
       await initializeRecentlyAddedScheduler();
     } catch (error) {

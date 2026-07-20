@@ -141,7 +141,7 @@ export async function transitionExperiment(userId: string, experimentId: string,
   if ((action === "start" || action === "continue") && experiment.durationType === "DAYS" && experiment.durationTarget) plannedEndAt = new Date(now.getTime() + experiment.durationTarget * 86_400_000);
   const pausedDurationSeconds = action === "resume" && experiment.pausedAt ? experiment.pausedDurationSeconds + Math.max(0, Math.floor((now.getTime() - experiment.pausedAt.getTime()) / 1000)) : experiment.pausedDurationSeconds;
   if (action === "resume" && experiment.pausedAt && experiment.plannedEndAt) plannedEndAt = new Date(experiment.plannedEndAt.getTime() + Math.max(0, now.getTime() - experiment.pausedAt.getTime()));
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     const updated = await tx.smartExperiment.update({ where: { id: experimentId }, data: {
       status: transition.to, ...(action === "start" ? { startAt: now } : {}), ...(plannedEndAt !== undefined ? { plannedEndAt } : {}),
       ...(action === "pause" ? { pausedAt: now } : {}), ...(action === "resume" ? { pausedAt: null, pausedDurationSeconds } : {}),
@@ -150,6 +150,11 @@ export async function transitionExperiment(userId: string, experimentId: string,
     await tx.smartExperimentEvent.create({ data: { experimentId, eventType: `EXPERIMENT_${action.toUpperCase()}${action.endsWith("e") ? "D" : "ED"}`, actorUserId: userId, metadata: json({ previousStatus: experiment.status, status: transition.to }) } });
     return updated;
   });
+  if (action === "complete") {
+    const { emitIntegrationEvent } = await import("../integrations/service");
+    await emitIntegrationEvent("experiment.completed", { experiment: { id: updated.id, name: updated.name, status: updated.status, completedAt: updated.completedAt } }, { actorType: "user", actorId: userId }, `experiment.completed:${updated.id}`);
+  }
+  return updated;
 }
 
 export async function deleteExperiment(userId: string, experimentId: string, deletePlexPlaylists = false) {

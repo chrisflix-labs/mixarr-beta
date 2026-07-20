@@ -1,0 +1,3 @@
+import { NextResponse } from "next/server";
+import { getAppReadiness } from "@/lib/readiness";
+export async function GET() { const readiness = await getAppReadiness(); const critical = [readiness.checks.database, readiness.checks.worker, readiness.checks.environment]; const ready = !critical.some((check) => check.status === "Error"); return NextResponse.json({ status: ready ? "ready" : "not_ready", ready, checkedAt: readiness.checkedAt, checks: Object.fromEntries(Object.entries(readiness.checks).filter(([key]) => ["database", "worker", "scheduler", "environment"].includes(key)).map(([key, value]) => [key, { status: value.status, summary: value.summary }])) }, { status: ready ? 200 : 503 }); }

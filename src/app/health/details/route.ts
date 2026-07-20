@@ -1,0 +1,8 @@
+import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+import { authorizeSessionOrToken, integrationApiError } from "@/lib/integrations/api";
+import { ecosystemStatus } from "@/lib/integrations/service";
+import { getAppReadiness } from "@/lib/readiness";
+const db = prisma as any;
+export const dynamic = "force-dynamic";
+export async function GET(request: Request) { try { const auth = await authorizeSessionOrToken(request, "health.read", true); const [readiness, ecosystem, integrations, webhooks, mounts] = await Promise.all([getAppReadiness({ userId: auth.userId }), ecosystemStatus(auth.userId), db.integrationConfiguration.findMany({ select: { key: true, enabled: true, status: true, lastSuccessAt: true, lastFailureAt: true, lastFailureReason: true } }), db.webhookEndpoint.findMany({ select: { id: true, displayName: true, enabled: true, lastSuccessAt: true, lastFailureAt: true, failureCount: true } }), db.mountDependency.findMany({ select: { id: true, displayName: true, enabled: true, status: true, lastCheckedAt: true, lastFailureReason: true } })]); return NextResponse.json({ status: ecosystem.status, checkedAt: new Date().toISOString(), process: { status: "HEALTHY", uptimeSeconds: ecosystem.uptimeSeconds }, database: readiness.checks.database, backgroundJobs: readiness.checks.worker, scheduler: readiness.checks.scheduler, plex: { status: ecosystem.plexAvailable ? "HEALTHY" : "UNAVAILABLE", activeServer: ecosystem.activePlexServer }, mounts, integrations, webhooks, metrics: { status: process.env.METRICS_PORT === "0" ? "DISABLED" : "HEALTHY" }, apiTokens: { status: "HEALTHY", scopedAuthorization: true } }); } catch (error) { return integrationApiError(error); } }

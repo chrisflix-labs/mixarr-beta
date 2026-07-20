@@ -125,6 +125,8 @@ model User {
   householdPreferenceEvents      HouseholdPreference[]             @relation("HouseholdPreferenceActor")
   householdVotes                 PlaylistVote[]                    @relation("PlaylistVoteUser")
   householdApprovals             PlaylistApproval[]                @relation("PlaylistApprovalUser")
+  apiTokens                      ApiToken[]                        @relation("ApiTokenOwner")
+  createdApiTokens               ApiToken[]                        @relation("ApiTokenCreator")
 }
 
 model SyncSettings {
@@ -169,53 +171,74 @@ model SyncSettings {
 }
 
 model Server {
-  id                     String                 @id @default(uuid())
-  machineIdentifier      String                 @unique
-  name                   String
-  uri                    String
-  accessToken            String
-  userId                 String
-  user                   User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  libraries              Library[]
-  playlistRules          PlaylistRule[]
-  playlistHistory        PlaylistHistory[]
-  playlistHistoryEntries PlaylistHistoryEntry[]
-  plexAccounts           PlexAccount[]
-  plexUserMappings       PlexUserMapping[]
-  playbackEvents         PlexPlaybackEvent[]
-  playbackSyncState      PlaybackSyncState?
-  createdAt              DateTime               @default(now())
-  updatedAt              DateTime               @updatedAt
+  id                      String                 @id @default(uuid())
+  machineIdentifier       String                 @unique
+  name                    String
+  uri                     String
+  accessToken             String
+  accessTokenEncrypted    String?
+  priority                Int                    @default(100)
+  enabled                 Boolean                @default(true)
+  role                    String                 @default("PRIMARY")
+  availabilityState       String                 @default("UNKNOWN")
+  failureCount            Int                    @default(0)
+  lastSuccessAt           DateTime?
+  lastFailureAt           DateTime?
+  lastFailureReason       String?
+  responseLatencyMs       Int?
+  automaticFailover       Boolean                @default(false)
+  minimumFailures         Int                    @default(3)
+  failoverCooldownMinutes Int                    @default(15)
+  failoverWritePolicy     String                 @default("READ_ONLY")
+  userId                  String
+  user                    User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  libraries               Library[]
+  playlistRules           PlaylistRule[]
+  playlistHistory         PlaylistHistory[]
+  playlistHistoryEntries  PlaylistHistoryEntry[]
+  plexAccounts            PlexAccount[]
+  plexUserMappings        PlexUserMapping[]
+  playbackEvents          PlexPlaybackEvent[]
+  playbackSyncState       PlaybackSyncState?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+
+  @@index([enabled, priority])
+  @@index([availabilityState, lastFailureAt])
 }
 
 model Library {
-  id                       String                      @id @default(uuid())
-  plexId                   String
-  serverId                 String
-  name                     String
-  type                     String
-  server                   Server                      @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  artists                  Artist[]
-  albums                   Album[]
-  tracks                   Track[]
-  syncLogs                 SyncLog[]
-  healthSnapshot           LibraryHealthSnapshot?
-  playlistRules            PlaylistRule[]
-  recentlyAddedBatches     RecentlyAddedBatch[]
-  canonicalRecordings      CanonicalRecording[]
-  plexSyncConflicts        PlexSyncConflict[]
-  playlistTrackMemories    PlaylistTrackMemory[]
-  playlistMembershipEvents PlaylistMembershipEvent[]
-  playbackEvents           PlexPlaybackEvent[]
-  managedPlaylists         ManagedPlaylist[]
-  orchestrationJobs        PlaylistOrchestrationJob[]
-  orchestrationLocks       PlaylistOrchestrationLock[]
-  coverageSnapshots        LibraryCoverageSnapshot[]
-  smartActions             SmartAction[]
-  recipeImportAnalyses     RecipeImportAnalysis[]
-  savedRecipeMappingRules  SavedRecipeMappingRule[]
-  createdAt                DateTime                    @default(now())
-  updatedAt                DateTime                    @updatedAt
+  id                          String                      @id @default(uuid())
+  plexId                      String
+  serverId                    String
+  name                        String
+  type                        String
+  scanState                   String                      @default("UNKNOWN")
+  lastScanDetectedAt          DateTime?
+  lastScanCompletedAt         DateTime?
+  destructiveSyncBlockedUntil DateTime?
+  server                      Server                      @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  artists                     Artist[]
+  albums                      Album[]
+  tracks                      Track[]
+  syncLogs                    SyncLog[]
+  healthSnapshot              LibraryHealthSnapshot?
+  playlistRules               PlaylistRule[]
+  recentlyAddedBatches        RecentlyAddedBatch[]
+  canonicalRecordings         CanonicalRecording[]
+  plexSyncConflicts           PlexSyncConflict[]
+  playlistTrackMemories       PlaylistTrackMemory[]
+  playlistMembershipEvents    PlaylistMembershipEvent[]
+  playbackEvents              PlexPlaybackEvent[]
+  managedPlaylists            ManagedPlaylist[]
+  orchestrationJobs           PlaylistOrchestrationJob[]
+  orchestrationLocks          PlaylistOrchestrationLock[]
+  coverageSnapshots           LibraryCoverageSnapshot[]
+  smartActions                SmartAction[]
+  recipeImportAnalyses        RecipeImportAnalysis[]
+  savedRecipeMappingRules     SavedRecipeMappingRule[]
+  createdAt                   DateTime                    @default(now())
+  updatedAt                   DateTime                    @updatedAt
 
   @@unique([serverId, plexId])
 }
@@ -1535,107 +1558,123 @@ model PlaylistHistory {
 }
 
 model GeneratedPlaylist {
-  id                         String                          @id @default(uuid())
-  userId                     String
-  serverId                   String?
-  plexPlaylistRatingKey      String?
-  plexPlaylistTitle          String
-  sourceType                 String                          @default("unknown")
-  engineVersion              String                          @default("v1")
-  recipeId                   String?
-  recipeName                 String?
-  recipeVersionUsed          Int?
-  recipeSchemaVersionUsed    Int?
-  resolvedRecipeSnapshotJson Json?
-  playlistOverridesJson      Json?
-  smartPresetId              String?
-  smartPresetName            String?
-  moodPresetId               String?
-  moodPresetName             String?
-  bpmPresetId                String?
-  bpmPresetName              String?
-  tuningPresetName           String?
-  tuningConfigJson           Json?
-  discoveryConfigJson        Json?
-  discoveryResultJson        Json?
-  filtersJson                Json
-  safetyRulesJson            Json?
-  qualityScoreJson           Json?
-  scoringModel               String                          @default("stable-v2")
-  scoringModelVersion        String                          @default("2")
-  betaMetadataJson           Json?
-  adaptiveScoringVersion     String?
-  adaptiveSettingsJson       Json?
-  playbackSettingsJson       Json?
-  contextProfileId           String?
-  contextProfileName         String?
-  contextInfluence           String?
-  contextSnapshotJson        Json?
-  contextOverridesJson       Json?
-  trackCount                 Int                             @default(0)
-  lastGeneratedAt            DateTime                        @default(now())
-  lastRegeneratedAt          DateTime?
-  createdAt                  DateTime                        @default(now())
-  updatedAt                  DateTime                        @updatedAt
-  revisionCounter            Int                             @default(0)
-  user                       User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  recipe                     PlaylistRecipe?                 @relation("RecipeGeneratedPlaylists", fields: [recipeId], references: [id], onDelete: SetNull)
-  recipeOverrides            PlaylistRecipeOverride[]
-  inheritanceSnapshots       EffectiveRecipeSnapshot[]
-  sourceRecipes              PlaylistRecipe[]                @relation("RecipeSourcePlaylist")
-  tracks                     GeneratedPlaylistTrack[]
-  historyEntries             PlaylistHistoryEntry[]
-  regenerations              PlaylistRegeneration[]
-  revisions                  PlaylistRevision[]
-  automationSettings         PlaylistAutomationSettings?
-  recentlyAddedMatches       RecentlyAddedPlaylistMatch[]
-  recentlyAddedChanges       RecentlyAddedAutomationChange[]
-  preferenceProfile          PlaylistPreferenceProfile?
-  interactionEvents          TrackInteractionEvent[]
-  playlistFitFeedback        PlaylistFitFeedback[]
-  transitionFeedback         TransitionFeedback[]
-  identity                   PlaylistIdentity?
-  adaptiveScoringSetting     AdaptivePlaylistScoringSetting?
-  coordinationSettings       PlaylistCoordinationSetting?
-  relationshipSources        PlaylistRelationship[]          @relation("PlaylistRelationshipSource")
-  relationshipTargets        PlaylistRelationship[]          @relation("PlaylistRelationshipTarget")
-  sharedCoreTracks           PlaylistSharedCoreTrack[]
-  progressionMemberships     PlaylistProgressionMember[]
-  roleAssignment             PlaylistRoleAssignment?
-  masterForChains            PlaylistProgressionChain[]      @relation("PlaylistChainMasterPlaylist")
-  overlapSummariesA          PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryA")
-  overlapSummariesB          PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryB")
-  explanationGenerations     SmartMixExplanationGeneration[]
-  decisionTraces             SmartMixDecisionTrace[]
-  automationProposals        AutomationProposal[]
-  automationActivities       AutomationActivity[]
-  managedPlaylist            ManagedPlaylist?
-  groupMemberships           PlaylistGroupMembership[]
-  pairPoliciesA              PlaylistPairPolicy[]            @relation("PlaylistPairPolicyA")
-  pairPoliciesB              PlaylistPairPolicy[]            @relation("PlaylistPairPolicyB")
-  varietyDesignations        PlaylistTrackDesignation[]
-  repairPreviews             PlaylistRepairPreview[]         @relation("RepairPreviewPlaylist")
-  repairComparisonPreviews   PlaylistRepairPreview[]         @relation("RepairPreviewComparison")
-  overlapSnapshotsA          PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotA")
-  overlapSnapshotsB          PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotB")
-  smartRefreshSettings       SmartRefreshSettings?
-  smartRefreshEvaluations    SmartRefreshEvaluation[]
-  sourceExperiments          SmartExperiment[]               @relation("SmartExperimentSourcePlaylist")
-  experimentVariants         SmartExperimentVariant[]
-  smartActions               SmartAction[]
-  healthSnapshots            PlaylistHealthSnapshot[]
-  healthAlerts               PlaylistHealthAlert[]
-  householdConfiguration     HouseholdPlaylistConfiguration?
-  householdVotes             PlaylistVote[]
-  householdApprovals         PlaylistApproval[]
-  householdConflicts         PreferenceConflict[]
-  householdContributions     PlaylistContribution[]
-  householdActivities        HouseholdActivity[]
+  id                           String                          @id @default(uuid())
+  userId                       String
+  serverId                     String?
+  plexPlaylistRatingKey        String?
+  plexPlaylistTitle            String
+  plexOwnerName                String?
+  plexOwnerAccountId           String?
+  plexPlaylistUrl              String?
+  plexOwnedByAuthenticatedUser Boolean                         @default(true)
+  plexCanModify                Boolean                         @default(true)
+  managedByMixarr              Boolean                         @default(true)
+  importedFromPlex             Boolean                         @default(false)
+  reconciliationPolicy         String                          @default("REQUIRE_MANUAL_REVIEW")
+  externalChangeState          String                          @default("NO_CHANGE")
+  lastExternalFingerprint      String?
+  lastSuccessfulSyncAt         DateTime?
+  lastManualChangeAt           DateTime?
+  sourceType                   String                          @default("unknown")
+  engineVersion                String                          @default("v1")
+  recipeId                     String?
+  recipeName                   String?
+  recipeVersionUsed            Int?
+  recipeSchemaVersionUsed      Int?
+  resolvedRecipeSnapshotJson   Json?
+  playlistOverridesJson        Json?
+  smartPresetId                String?
+  smartPresetName              String?
+  moodPresetId                 String?
+  moodPresetName               String?
+  bpmPresetId                  String?
+  bpmPresetName                String?
+  tuningPresetName             String?
+  tuningConfigJson             Json?
+  discoveryConfigJson          Json?
+  discoveryResultJson          Json?
+  filtersJson                  Json
+  safetyRulesJson              Json?
+  qualityScoreJson             Json?
+  scoringModel                 String                          @default("stable-v2")
+  scoringModelVersion          String                          @default("2")
+  betaMetadataJson             Json?
+  adaptiveScoringVersion       String?
+  adaptiveSettingsJson         Json?
+  playbackSettingsJson         Json?
+  contextProfileId             String?
+  contextProfileName           String?
+  contextInfluence             String?
+  contextSnapshotJson          Json?
+  contextOverridesJson         Json?
+  trackCount                   Int                             @default(0)
+  lastGeneratedAt              DateTime                        @default(now())
+  lastRegeneratedAt            DateTime?
+  createdAt                    DateTime                        @default(now())
+  updatedAt                    DateTime                        @updatedAt
+  revisionCounter              Int                             @default(0)
+  user                         User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe                       PlaylistRecipe?                 @relation("RecipeGeneratedPlaylists", fields: [recipeId], references: [id], onDelete: SetNull)
+  recipeOverrides              PlaylistRecipeOverride[]
+  inheritanceSnapshots         EffectiveRecipeSnapshot[]
+  sourceRecipes                PlaylistRecipe[]                @relation("RecipeSourcePlaylist")
+  tracks                       GeneratedPlaylistTrack[]
+  historyEntries               PlaylistHistoryEntry[]
+  regenerations                PlaylistRegeneration[]
+  revisions                    PlaylistRevision[]
+  automationSettings           PlaylistAutomationSettings?
+  recentlyAddedMatches         RecentlyAddedPlaylistMatch[]
+  recentlyAddedChanges         RecentlyAddedAutomationChange[]
+  preferenceProfile            PlaylistPreferenceProfile?
+  interactionEvents            TrackInteractionEvent[]
+  playlistFitFeedback          PlaylistFitFeedback[]
+  transitionFeedback           TransitionFeedback[]
+  identity                     PlaylistIdentity?
+  adaptiveScoringSetting       AdaptivePlaylistScoringSetting?
+  coordinationSettings         PlaylistCoordinationSetting?
+  relationshipSources          PlaylistRelationship[]          @relation("PlaylistRelationshipSource")
+  relationshipTargets          PlaylistRelationship[]          @relation("PlaylistRelationshipTarget")
+  sharedCoreTracks             PlaylistSharedCoreTrack[]
+  progressionMemberships       PlaylistProgressionMember[]
+  roleAssignment               PlaylistRoleAssignment?
+  masterForChains              PlaylistProgressionChain[]      @relation("PlaylistChainMasterPlaylist")
+  overlapSummariesA            PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryA")
+  overlapSummariesB            PlaylistOverlapSummary[]        @relation("PlaylistOverlapSummaryB")
+  explanationGenerations       SmartMixExplanationGeneration[]
+  decisionTraces               SmartMixDecisionTrace[]
+  automationProposals          AutomationProposal[]
+  automationActivities         AutomationActivity[]
+  managedPlaylist              ManagedPlaylist?
+  groupMemberships             PlaylistGroupMembership[]
+  pairPoliciesA                PlaylistPairPolicy[]            @relation("PlaylistPairPolicyA")
+  pairPoliciesB                PlaylistPairPolicy[]            @relation("PlaylistPairPolicyB")
+  varietyDesignations          PlaylistTrackDesignation[]
+  repairPreviews               PlaylistRepairPreview[]         @relation("RepairPreviewPlaylist")
+  repairComparisonPreviews     PlaylistRepairPreview[]         @relation("RepairPreviewComparison")
+  overlapSnapshotsA            PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotA")
+  overlapSnapshotsB            PlaylistOverlapSnapshot[]       @relation("PlaylistOverlapSnapshotB")
+  smartRefreshSettings         SmartRefreshSettings?
+  smartRefreshEvaluations      SmartRefreshEvaluation[]
+  sourceExperiments            SmartExperiment[]               @relation("SmartExperimentSourcePlaylist")
+  experimentVariants           SmartExperimentVariant[]
+  smartActions                 SmartAction[]
+  healthSnapshots              PlaylistHealthSnapshot[]
+  healthAlerts                 PlaylistHealthAlert[]
+  householdConfiguration       HouseholdPlaylistConfiguration?
+  householdVotes               PlaylistVote[]
+  householdApprovals           PlaylistApproval[]
+  householdConflicts           PreferenceConflict[]
+  householdContributions       PlaylistContribution[]
+  householdActivities          HouseholdActivity[]
+  externalSnapshots            ExternalStateSnapshot[]
+  reconciliations              PlaylistReconciliation[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
   @@index([userId, sourceType])
   @@index([recipeId, createdAt])
+  @@index([externalChangeState, updatedAt])
+  @@index([plexOwnerAccountId])
 }
 
 /// A named collaboration boundary. Archiving is intentionally non-destructive so
@@ -3394,18 +3433,24 @@ model PlexAccount {
 }
 
 model PlexUserMapping {
-  id            String      @id @default(uuid())
-  userId        String
-  serverId      String
-  plexAccountId String
-  plexUserId    String
-  plexUsername  String
-  enabled       Boolean     @default(true)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  server        Server      @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  plexAccount   PlexAccount @relation(fields: [plexAccountId], references: [id], onDelete: Cascade)
+  id                   String      @id @default(uuid())
+  userId               String
+  serverId             String
+  plexAccountId        String
+  plexUserId           String
+  plexUsername         String
+  enabled              Boolean     @default(true)
+  mappingState         String      @default("MAPPED")
+  isHomeUser           Boolean     @default(false)
+  isManagedUser        Boolean     @default(false)
+  defaultPlaylistOwner Boolean     @default(false)
+  lastVerifiedAt       DateTime?
+  conflictReason       String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  server               Server      @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  plexAccount          PlexAccount @relation(fields: [plexAccountId], references: [id], onDelete: Cascade)
 
   @@unique([userId, serverId])
   @@index([serverId, plexUserId])
@@ -4662,4 +4707,272 @@ model OrchestrationBackupValidation {
 
   @@index([userId, validatedAt])
   @@index([status, validatedAt])
+}
+
+// v2.3.7 media-ecosystem integration state. All integrations are disabled by
+// default and secrets are stored only in encryptedSecretJson.
+model IntegrationConfiguration {
+  id                  String    @id @default(uuid())
+  key                 String    @unique
+  displayName         String
+  enabled             Boolean   @default(false)
+  status              String    @default("DISABLED")
+  configurationJson   Json      @default("{}")
+  encryptedSecretJson String?
+  lastSuccessAt       DateTime?
+  lastFailureAt       DateTime?
+  lastFailureReason   String?
+  failureCount        Int       @default(0)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([enabled, status])
+  @@index([lastFailureAt])
+}
+
+model ApiToken {
+  id             String               @id @default(uuid())
+  userId         String
+  name           String
+  description    String?
+  prefix         String
+  tokenHash      String               @unique
+  scopesJson     Json                 @default("[]")
+  ipRestrictions Json?
+  enabled        Boolean              @default(true)
+  revokedAt      DateTime?
+  expiresAt      DateTime?
+  lastUsedAt     DateTime?
+  createdById    String
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  owner          User                 @relation("ApiTokenOwner", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy      User                 @relation("ApiTokenCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  auditEvents    ApiTokenAuditEvent[]
+
+  @@index([userId, enabled])
+  @@index([prefix])
+  @@index([expiresAt])
+}
+
+model ApiTokenAuditEvent {
+  id        String   @id @default(uuid())
+  tokenId   String
+  eventType String
+  actorId   String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  token     ApiToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+
+  @@index([tokenId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model IntegrationEvent {
+  id              String            @id
+  event           String
+  envelopeVersion String            @default("1")
+  dataJson        Json
+  contextJson     Json              @default("{}")
+  idempotencyKey  String?           @unique
+  createdAt       DateTime          @default(now())
+  deliveries      WebhookDelivery[]
+
+  @@index([event, createdAt])
+  @@index([createdAt])
+}
+
+model WebhookEndpoint {
+  id                      String            @id @default(uuid())
+  displayName             String
+  destinationUrlEncrypted String
+  secretEncrypted         String
+  enabled                 Boolean           @default(false)
+  eventsJson              Json              @default("[]")
+  customHeadersJson       Json              @default("{}")
+  timeoutMs               Int               @default(5000)
+  retryCount              Int               @default(3)
+  backoffStrategy         String            @default("EXPONENTIAL")
+  includeSensitiveFields  Boolean           @default(false)
+  lastSuccessAt           DateTime?
+  lastFailureAt           DateTime?
+  failureCount            Int               @default(0)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  deliveries              WebhookDelivery[]
+
+  @@index([enabled])
+  @@index([lastFailureAt])
+}
+
+model WebhookDelivery {
+  id              String           @id @default(uuid())
+  deliveryId      String
+  eventId         String
+  endpointId      String
+  status          String           @default("PENDING")
+  httpStatus      Int?
+  attemptNumber   Int              @default(1)
+  durationMs      Int?
+  responseExcerpt String?
+  errorCategory   String?
+  errorMessage    String?
+  nextAttemptAt   DateTime?
+  createdAt       DateTime         @default(now())
+  completedAt     DateTime?
+  eventRecord     IntegrationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  endpoint        WebhookEndpoint  @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryId, attemptNumber])
+  @@index([endpointId, status, createdAt])
+  @@index([eventId, createdAt])
+  @@index([status, nextAttemptAt])
+}
+
+model ExternalStateSnapshot {
+  id                  String            @id @default(uuid())
+  generatedPlaylistId String
+  fingerprint         String
+  stateJson           Json
+  source              String            @default("PLEX")
+  synchronized        Boolean           @default(false)
+  createdAt           DateTime          @default(now())
+  playlist            GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+
+  @@index([generatedPlaylistId, createdAt])
+  @@index([fingerprint])
+}
+
+model PlaylistReconciliation {
+  id                  String            @id @default(uuid())
+  generatedPlaylistId String
+  changeType          String
+  status              String            @default("PENDING")
+  policy              String            @default("REQUIRE_MANUAL_REVIEW")
+  beforeJson          Json
+  afterJson           Json
+  diffJson            Json
+  decision            String?
+  decidedById         String?
+  decidedAt           DateTime?
+  resultJson          Json?
+  createdAt           DateTime          @default(now())
+  playlist            GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+
+  @@index([generatedPlaylistId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+model PlexCollectionState {
+  id                       String    @id @default(uuid())
+  serverId                 String
+  libraryId                String
+  plexCollectionId         String
+  name                     String
+  summary                  String?
+  collectionType           String    @default("artist")
+  itemCount                Int       @default(0)
+  managedByMixarr          Boolean   @default(false)
+  available                Boolean   @default(true)
+  synchronizationDirection String    @default("ONE_TIME")
+  syncMode                 String    @default("CREATE_NEW")
+  manualChangeState        String    @default("NO_CHANGE")
+  lastItemSetJson          Json?
+  lastMetadataJson         Json?
+  lastModifiedAt           DateTime?
+  lastSuccessfulUpdateAt   DateTime?
+  lastError                String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@unique([serverId, plexCollectionId])
+  @@index([libraryId, available])
+  @@index([managedByMixarr, updatedAt])
+}
+
+model MountDependency {
+  id                      String    @id @default(uuid())
+  serverId                String?
+  displayName             String
+  path                    String
+  markerFile              String?
+  expectedFilesystemId    String?
+  enabled                 Boolean   @default(true)
+  status                  String    @default("UNKNOWN")
+  failureCount            Int       @default(0)
+  consecutiveSuccessCount Int       @default(0)
+  requiredSuccessCount    Int       @default(2)
+  lastCheckedAt           DateTime?
+  lastSuccessAt           DateTime?
+  lastFailureAt           DateTime?
+  lastFailureReason       String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([enabled, status])
+  @@index([serverId])
+}
+
+model TautulliPlaybackSignal {
+  id                   String   @id @default(uuid())
+  externalEventId      String   @unique
+  trackRatingKey       String
+  plexUserIdHash       String?
+  playedAt             DateTime
+  durationMs           Int?
+  completionPercentage Float?
+  behavior             String
+  recentPlayCount      Int      @default(1)
+  privacyCategory      String?
+  expiresAt            DateTime
+  createdAt            DateTime @default(now())
+
+  @@index([trackRatingKey, playedAt])
+  @@index([expiresAt])
+}
+
+model IntegrationHealthRecord {
+  id             String   @id @default(uuid())
+  integrationKey String
+  status         String
+  latencyMs      Int?
+  errorCategory  String?
+  message        String?
+  detailsJson    Json?
+  checkedAt      DateTime @default(now())
+
+  @@index([integrationKey, checkedAt])
+  @@index([status, checkedAt])
+}
+
+model IntegrationTestResult {
+  id              String   @id @default(uuid())
+  testKey         String
+  status          String
+  safe            Boolean  @default(true)
+  durationMs      Int
+  requestSummary  Json?
+  responseSummary Json?
+  errorCategory   String?
+  message         String
+  actorId         String?
+  createdAt       DateTime @default(now())
+
+  @@index([testKey, createdAt])
+  @@index([status, createdAt])
+}
+
+model FailoverEvent {
+  id              String    @id @default(uuid())
+  primaryServerId String
+  activeServerId  String
+  operationType   String
+  writeAllowed    Boolean   @default(false)
+  reason          String
+  metadataJson    Json?
+  recoveredAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([primaryServerId, createdAt])
+  @@index([activeServerId, recoveredAt])
 }

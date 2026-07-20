@@ -56,6 +56,15 @@ export default async function SettingsPage() {
         <span aria-hidden="true">&rarr;</span>
       </Link>
 
+      <Link href="/settings/integrations" className={`glass-panel ${styles.healthLink}`}>
+        <Server size={24} />
+        <span>
+          <strong>Media Ecosystem Integrations</strong>
+          <small>Manage Plex servers and users, collections, Tautulli, notifications, webhooks, scoped tokens, metrics, and diagnostics.</small>
+        </span>
+        <span aria-hidden="true">&rarr;</span>
+      </Link>
+
       <Link href="/library-coverage?tab=settings" className={`glass-panel ${styles.healthLink}`}>
         <BarChart3 size={24} />
         <span>

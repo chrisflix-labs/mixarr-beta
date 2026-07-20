@@ -13,9 +13,18 @@ export async function GET() {
   try {
     const servers = await prisma.server.findMany({
       where: { userId },
-      include: {
+      select: {
+        id: true, machineIdentifier: true, name: true, uri: true, userId: true,
+        priority: true, enabled: true, role: true, availabilityState: true,
+        failureCount: true, lastSuccessAt: true, lastFailureAt: true,
+        lastFailureReason: true, responseLatencyMs: true, automaticFailover: true,
+        minimumFailures: true, failoverCooldownMinutes: true, failoverWritePolicy: true,
+        createdAt: true, updatedAt: true,
         libraries: {
-          include: {
+          select: {
+            id: true, plexId: true, serverId: true, name: true, type: true,
+            scanState: true, lastScanDetectedAt: true, lastScanCompletedAt: true,
+            destructiveSyncBlockedUntil: true, createdAt: true, updatedAt: true,
             _count: { select: { tracks: { where: { syncStatus: "active" } } } },
             syncLogs: {
               orderBy: { startedAt: "desc" },

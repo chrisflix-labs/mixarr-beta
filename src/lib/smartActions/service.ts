@@ -134,6 +134,8 @@ export async function submitSmartAction(candidate: SmartActionCandidate) {
   if (activeCount >= settings.maximumPendingActions) return { action: null, outcome: "limit_reached" as const };
   const action = await prisma.smartAction.create({ data: { userId: candidate.userId, deduplicationKey: candidate.deduplicationKey.slice(0, 500), ...data } });
   await audit(action.id, { eventType: "GENERATED", previousStatus: null, newStatus: "PENDING", reason: candidate.sourceService });
+  const { emitIntegrationEvent } = await import("../integrations/service");
+  await emitIntegrationEvent("smart_action.pending", { smartAction: { id: action.id, type: action.actionType, title: action.title, confidence: action.confidenceLevel, risk: action.riskLevel } }, { actorType: "system" }, `smart_action.pending:${action.id}`);
   return { action, outcome: "created" as const };
 }
 

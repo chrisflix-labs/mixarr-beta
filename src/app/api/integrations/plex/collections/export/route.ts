@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+import { integrationApiError, requireIntegrationAdmin } from "@/lib/integrations/api";
+import { exportPlexCollection } from "@/lib/integrations/service";
+export async function POST(request: Request) { try { const userId = await requireIntegrationAdmin(); const body = await request.json(); return NextResponse.json({ collection: await exportPlexCollection({ userId, generatedPlaylistId: String(body.generatedPlaylistId), serverId: String(body.serverId), libraryId: String(body.libraryId), name: String(body.name || "Mixarr collection").slice(0, 200), summary: body.summary ? String(body.summary).slice(0, 1000) : undefined, mode: ["CREATE_NEW", "REPLACE", "MERGE"].includes(body.mode) ? body.mode : "CREATE_NEW", keepSynchronized: !!body.keepSynchronized }) }); } catch (error) { return integrationApiError(error); } }

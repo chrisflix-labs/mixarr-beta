@@ -818,9 +818,12 @@ export const runSyncEngine = async (
     });
     changeCounts.match_conflict = needsReviewCount;
 
-    // This transaction is reached only after all three complete Plex snapshots were
-    // fetched and every item was successfully upserted.
-    const reconciliation = await prisma.$transaction(async (tx) => {
+    // Re-check scan and mount state immediately before the destructive phase.
+    // Read/upsert work above is safe, but missing-item reconciliation is deferred
+    // while Plex is scanning, during its grace period, or while storage is absent.
+    const { plexLibraryDestructiveSafety } = await import("./integrations/service");
+    const destructiveSafety = await plexLibraryDestructiveSafety(libraryId);
+    const reconciliation = destructiveSafety.destructiveAllowed ? await prisma.$transaction(async (tx) => {
       const reconciled = await reconcileCompletedLibrary(tx, {
         libraryId,
         syncRunId,
@@ -842,6 +845,10 @@ export const runSyncEngine = async (
         },
       });
       return reconciled;
+    }) : await prisma.$transaction(async (tx) => {
+      await tx.syncLog.update({ where: { id: syncLog.id }, data: { status: "warning", endedAt: new Date(), snapshotComplete: true, plexReportedTrackCount: plexTracks.length, unresolvedTrackCount: needsReviewCount, error: destructiveSafety.reason } });
+      await tx.jobHistory.create({ data: { userId: server.userId, type: "sync", name: `Deferred destructive Plex reconciliation: ${library.name}`, status: "waiting", finishedAt: new Date(), durationMs: 0, trigger: "safety_gate", summary: destructiveSafety.reason, metadata: { libraryId, syncRunId, state: destructiveSafety.state } } });
+      return { markedMissing: 0, restored: 0, restoreVerificationFailures: 0, restoreDiagnostics: [], hardDeleted: 0 };
     });
 
     // The authoritative count is deliberately read after the reconciliation

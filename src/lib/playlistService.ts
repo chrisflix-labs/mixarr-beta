@@ -1591,7 +1591,8 @@ async function pushTracksToPlex({
   if (playlistId) {
     const previousRatingKeys = await fetchPlexPlaylistItemRatingKeys({ server, playlistId });
     try {
-      await axios.put(`${server.uri}/playlists/${playlistId}`, null, { params: { title: name }, headers });
+      // Item-only synchronization intentionally does not rewrite the title,
+      // summary, artwork, visibility, owner, labels, or timestamps.
       await axios.delete(`${server.uri}/playlists/${playlistId}/items`, { headers });
       for (const batch of batches) await axios.put(`${server.uri}/playlists/${playlistId}/items`, null, { params: { uri: uriFor(batch) }, headers });
       return playlistId;
@@ -1754,12 +1755,30 @@ export async function syncGeneratedPlaylistToPlex(userId: string, generatedPlayl
   });
   if (!playlist) throw new Error("Generated playlist not found");
   if (!playlist.serverId || !playlist.plexPlaylistRatingKey) throw new Error("The Plex playlist is unavailable for synchronization.");
+  if (!playlist.plexCanModify) throw new Error("This Plex playlist is read-only for the mapped owner.");
   const server = await prisma.server.findFirst({ where: { id: playlist.serverId, userId } });
   if (!server) throw new Error("The Plex server is unavailable for synchronization.");
   const ratingKeys = playlist.tracks.map((track) => track.plexTrackRatingKey).filter((key): key is string => Boolean(key));
   if (ratingKeys.length !== playlist.tracks.length) throw new Error("Some restored tracks do not have a Plex identifier.");
+  const { fetchPlexPlaylistState, plexLibraryDestructiveSafety } = await import("./integrations/service");
+  const { playlistFingerprint } = await import("./integrations/core");
+  const sourceLibraryId = playlist.tracks[0]?.trackId ? (await prisma.track.findUnique({ where: { id: playlist.tracks[0].trackId }, select: { libraryId: true } }))?.libraryId : null;
+  if (sourceLibraryId) {
+    const safety = await plexLibraryDestructiveSafety(sourceLibraryId);
+    if (!safety.destructiveAllowed) throw new Error(safety.reason || "Plex synchronization is waiting for a safe dependency state.");
+  }
+  const previousState = await fetchPlexPlaylistState(server, playlist.plexPlaylistRatingKey);
+  if (previousState) await prisma.externalStateSnapshot.create({ data: { generatedPlaylistId: playlist.id, fingerprint: playlistFingerprint(previousState), stateJson: previousState as any, synchronized: false } });
   await assertPlexPlaylistExists({ server, playlistId: playlist.plexPlaylistRatingKey });
   await pushTracksToPlex({ server, name: playlist.plexPlaylistTitle, ratingKeys, playlistId: playlist.plexPlaylistRatingKey });
+  const synchronizedState = await fetchPlexPlaylistState(server, playlist.plexPlaylistRatingKey);
+  if (synchronizedState) {
+    const fingerprint = playlistFingerprint(synchronizedState);
+    await prisma.$transaction([
+      prisma.externalStateSnapshot.create({ data: { generatedPlaylistId: playlist.id, fingerprint, stateJson: synchronizedState as any, synchronized: true } }),
+      prisma.generatedPlaylist.update({ where: { id: playlist.id }, data: { lastExternalFingerprint: fingerprint, lastSuccessfulSyncAt: new Date(), externalChangeState: "NO_CHANGE", plexOwnerName: synchronizedState.ownerName, plexOwnerAccountId: synchronizedState.ownerId, plexPlaylistUrl: `${server.uri.replace(/\/$/, "")}/web/index.html#!/server/${server.machineIdentifier}/details?key=%2Fplaylists%2F${playlist.plexPlaylistRatingKey}` } }),
+    ]);
+  }
 }
 
 export async function syncTrackIdsToPlexPlaylist({ userId, serverId, playlistId, name, trackIds }: { userId: string; serverId: string; playlistId: string; name: string; trackIds: string[] }) {
@@ -1996,6 +2015,8 @@ export async function recordGeneratedPlaylist({
     });
     return saved;
   });
+  const { emitIntegrationEvent } = await import("./integrations/service");
+  await emitIntegrationEvent(existing ? "playlist.updated" : "playlist.created", { playlist: { id: generatedPlaylist.id, title: generatedPlaylist.plexPlaylistTitle, trackCount: generatedPlaylist.trackCount, managedByMixarr: true } }, { actorType: "user", actorId: userId }, `${existing ? "playlist.updated" : "playlist.created"}:${generatedPlaylist.id}:${generatedPlaylist.updatedAt.toISOString()}`);
   if (config.personalizationMode === "HOUSEHOLD" && config.householdCollaboration) {
     await configureHouseholdPlaylist(userId, generatedPlaylist.id, config.householdCollaboration, {
       engineVersion: config.engineVersion,

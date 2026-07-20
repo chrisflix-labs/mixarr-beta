@@ -361,7 +361,11 @@ export async function approveAutomationProposal(userId: string, proposalId: stri
       items: requested.map((item) => ({ action: item.action, trackId: item.trackId, plexRatingKey: item.plexRatingKey, confidence: item.confidence, outcome: decision.eligibleAdditionIds.includes(item.id) || decision.eligibleRemovalIds.includes(item.id) ? (syncError ? "PARTIAL" : "APPLIED") : "SKIPPED", reasonCode: syncError ? "plex_unavailable" : decision.skipped.find((skip) => skip.candidateId === item.id)?.reasonCode })),
     });
     await prisma.automationProposal.update({ where: { id: proposal.id }, data: { status: syncError ? "PARTIAL" : "APPLIED", reviewedByUserId: userId, reviewedAt: new Date(), appliedActivityId: activity.id } });
-    if (syncError) throw new Error(`Plex only partially synchronized: ${syncError}`);
+    if (syncError) {
+      const { emitIntegrationEvent } = await import("../integrations/service");
+      await emitIntegrationEvent("automation.failed", { automation: { proposalId: proposal.id, playlistId: proposal.generatedPlaylistId }, category: "PLEX_SYNC_FAILED", message: syncError }, { actorType: "user", actorId: userId }, `automation.failed:${proposal.id}:${proposal.updatedAt.toISOString()}`);
+      throw new Error(`Plex only partially synchronized: ${syncError}`);
+    }
     return getAutomationProposal(userId, proposalId);
   } finally { lock.release(); }
 }

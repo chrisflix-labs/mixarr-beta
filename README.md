@@ -198,6 +198,10 @@ DATABASE_URL=postgresql://mixarr:mixarrpass@db:5432/mixarrdb?schema=public&conne
 
 Prefer lowering job concurrency and avoiding overlapping syncs before raising the pool size.
 
+## Media Ecosystem Integrations
+
+Mixarr v2.3.7 adds Plex ownership and collection workflows, manual-change reconciliation, scan/mount safety, Tautulli playback signals, Discord and Notifiarr delivery, signed webhooks, scoped dashboard tokens, Homepage, Home Assistant, Prometheus, and improved health endpoints. See [the v2.3.7 integration guide](docs/MEDIA_ECOSYSTEM_INTEGRATIONS_V237.md) for migration, configuration, endpoint, and troubleshooting examples.
+
 ## Discord Community
 
 Join the Mixarr beta Discord to report bugs, share feedback, and help test upcoming features:

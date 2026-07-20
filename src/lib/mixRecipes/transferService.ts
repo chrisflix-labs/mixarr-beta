@@ -407,6 +407,8 @@ export async function confirmRecipeImport(input: { userId: string; stageId: stri
       prisma.recipeImportStage.update({ where: { id: stage.id }, data: { status: "IMPORTED", sanitizedPayloadJson: json({ consumed: true, sourceDigest: stage.sourceDigest }), previewJson: json({ consumed: true }) } }),
     ]);
     console.info("[RecipeTransfer] Import completed", { historyId: history.id, status, counts });
+    const { emitIntegrationEvent } = await import("../integrations/service");
+    await emitIntegrationEvent("recipe.imported", { import: { historyId: history.id, status, counts, recipes: results.map((item) => ({ id: item.recipeId, name: item.name, action: item.action })) } }, { actorType: "user", actorId: input.userId }, `recipe.imported:${history.id}`);
     return { historyId: history.id, status, counts, results };
   } catch (error) {
     const diagnostic = diagnosticForTransfer(parsed, "FAILED", { errorCode: (error as Error & { code?: string }).code || "TRANSACTION_FAILED", message: error instanceof Error ? error.message : "Import failed." });

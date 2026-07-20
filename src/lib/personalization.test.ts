@@ -103,7 +103,7 @@ describe("personalization roadmap", () => {
     assert.equal(roadmapCycles.find((cycle) => cycle.id === "2.1.x")?.status, "completed");
     assert.equal(roadmapCycles.find((cycle) => cycle.id === "2.2.x")?.status, "completed");
     assert.equal(roadmapCycles.find((cycle) => cycle.id === "2.3.x")?.status, "current");
-    assert.equal(currentRoadmapRelease()?.version, "2.3.6");
+    assert.equal(currentRoadmapRelease()?.version, "2.3.7");
   });
 });
 

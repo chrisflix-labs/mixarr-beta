@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.3.7 - Plex & Media Ecosystem Integrations
+
+- Added prioritized multi-server Plex status, detailed authentication/identity/library/playlist/collection tests, user mapping, playlist ownership and permissions, collection import/export, external fingerprints, change classification, and manual reconciliation actions.
+- Added scan-aware and mount-aware destructive synchronization gates, post-scan grace periods, recovery hysteresis, actionable Plex availability categories, and failover policy state with safe read-only defaults.
+- Added privacy-minimized Tautulli playback signal ingestion, portable Discord recipe sharing, Notifiarr notifications, centralized versioned integration events, HMAC SHA-256 webhooks, retry tracking, delivery history, and retention cleanup.
+- Added a fast expanded Homepage widget, flat Home Assistant status, authenticated low-cardinality Prometheus metrics, liveness/readiness/protected-details health endpoints, and a sanitized `/api/public/v1` dashboard API.
+- Added hashed scoped API tokens shown once, expiry/revocation/use audit data, an administrator integration center, safe integration tests, ownership/reconciliation controls, responsive layouts, and an additive migration.
+- Upgrade defaults are conservative: existing servers stay enabled; reconciliation requires manual review; failover and every new external integration remain disabled; webhook destinations and all new secrets require encryption and validation.
+
 ## v2.3.6 - Household Collaboration & Shared Playlists
 
 - Added named, archivable households with stable Mixarr-user memberships, owner/member/child roles, reusable or expiring guests, configurable influence, eligibility, family restrictions, and temporary exclusions that retain preference history.

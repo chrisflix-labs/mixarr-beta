@@ -16,6 +16,7 @@ import PlaylistCollectionsButton from "@/components/PlaylistCollectionsButton";
 import PlaylistRolePanel from "@/components/PlaylistRolePanel";
 import SmartRefreshPanel from "@/components/SmartRefreshPanel";
 import HouseholdCollaborationPanel from "@/components/HouseholdCollaborationPanel";
+import PlexOwnershipPanel from "@/components/PlexOwnershipPanel";
 import { orderTracksByBpmFlow, summarizeBpmFlow, type BpmFlowMode } from "@/lib/smartMixEngine/v2/bpmFlow";
 import { normalizeSmartMixTuningConfig } from "@/lib/smartMixEngine/v2/tuning";
 import styles from "./generated-playlists.module.css";
@@ -24,6 +25,13 @@ type GeneratedPlaylist = {
   id: string;
   plexPlaylistRatingKey?: string | null;
   plexPlaylistTitle: string;
+  plexOwnerName?: string | null;
+  plexOwnerAccountId?: string | null;
+  plexPlaylistUrl?: string | null;
+  plexCanModify?: boolean;
+  managedByMixarr?: boolean;
+  importedFromPlex?: boolean;
+  externalChangeState?: string;
   sourceType: string;
   engineVersion?: "v1" | "v2" | null;
   qualityScoreJson?: PlaylistQualityScore | null;
@@ -603,6 +611,7 @@ export default function GeneratedPlaylistsPage() {
                 )}
                 {playlist.contextProfileName && <p className={styles.contextSummary}>Generated with {playlist.contextProfileName} · {(playlist.contextInfluence || "BALANCED").toLowerCase()} influence · {playlist.contextOverridesJson?.length || 0} manual override{playlist.contextOverridesJson?.length === 1 ? "" : "s"}</p>}
                 <PlaylistQualityCard score={qualityScoreForDisplay(playlist.qualityScoreJson)} />
+                {playlist.plexPlaylistRatingKey && <PlexOwnershipPanel playlist={playlist} onChanged={fetchPlaylists} />}
                 {playlist.engineVersion === "v2" && <SmartRefreshPanel
                   playlistId={playlist.id}
                   onOpenAdvanced={() => setAdvancedPlaylist(playlist)}

@@ -136,6 +136,10 @@ export async function analyzePlaylist(userId: string, playlistId: string) {
     failedAutomation: failedActivities.length ? { count: failedActivities.length, latestMessage: failedActivities[0].error || failedActivities[0].summary } : null,
   });
   await persistResult(userId, result, settings);
+  if (!previous || previous.status !== result.status) {
+    const { emitIntegrationEvent } = await import("../integrations/service");
+    await emitIntegrationEvent("playlist.health_changed", { playlist: { id: playlist.id, title: playlist.plexPlaylistTitle }, previousStatus: previous?.status || null, status: result.status, score: result.overallScore }, { actorType: "system" }, `playlist.health_changed:${playlist.id}:${result.status}:${result.overallScore}`);
+  }
   return result;
 }
 

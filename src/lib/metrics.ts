@@ -1,4 +1,5 @@
 import http from "http";
+import crypto from "crypto";
 import {
   Registry,
   Counter,
@@ -568,6 +569,18 @@ export const startMetricsServer = (port: number): http.Server | null => {
   const server = http.createServer(async (req, res) => {
     const url = req.url || "/";
     if (url === "/metrics") {
+      const configuredToken = process.env.METRICS_AUTH_TOKEN || "";
+      const suppliedToken = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+      const trusted = new Set((process.env.METRICS_TRUSTED_NETWORKS || "").split(",").map((value) => value.trim()).filter(Boolean));
+      const remote = req.socket.remoteAddress || "";
+      const tokenMatches = !!configuredToken && suppliedToken.length === configuredToken.length && crypto.timingSafeEqual(Buffer.from(suppliedToken), Buffer.from(configuredToken));
+      const authorized = tokenMatches || trusted.has(remote) || process.env.METRICS_ALLOW_UNAUTHENTICATED === "true";
+      if (!authorized) {
+        res.statusCode = 401;
+        res.setHeader("WWW-Authenticate", "Bearer");
+        res.end("Authentication required\n");
+        return;
+      }
       try {
         await refreshStateGauges();
         res.setHeader("Content-Type", registry.contentType);

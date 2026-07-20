@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { checkPin, findReachableConnection, getServers, getUser } from "@/lib/plex";
 import prisma from "@/lib/prisma";
 import { sanitizeOptionalMetadataString, sanitizeRequiredMetadataString } from "@/lib/metadataSanitizer";
+import { encryptSecret, isSecretEncryptionConfigured } from "@/lib/secretStorage";
 
 export async function POST(req: Request) {
   try {
@@ -82,6 +83,7 @@ export async function POST(req: Request) {
             name: serverName,
             uri: serverUri,
             accessToken: server.accessToken,
+            accessTokenEncrypted: isSecretEncryptionConfigured() ? encryptSecret(server.accessToken) : undefined,
             userId: user.id,
           },
           create: {
@@ -89,6 +91,7 @@ export async function POST(req: Request) {
             name: serverName,
             uri: serverUri,
             accessToken: server.accessToken,
+            accessTokenEncrypted: isSecretEncryptionConfigured() ? encryptSecret(server.accessToken) : undefined,
             userId: user.id,
           },
         });
@@ -102,7 +105,7 @@ export async function POST(req: Request) {
         `(${plexServers.length} total in ${Date.now() - discoveryStart}ms)`,
     );
 
-    return NextResponse.json({ status: "success", user });
+    return NextResponse.json({ status: "success", user: { id: user.id, plexId: user.plexId, username: user.username, email: user.email, thumb: user.thumb, isAdmin: user.isAdmin } });
   } catch (error) {
     console.error("Plex Auth Error", error);
     return NextResponse.json({ error: "Authentication failed" }, { status: 500 });

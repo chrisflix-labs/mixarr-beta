@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+import { integrationApiError, requireIntegrationAdmin } from "@/lib/integrations/api";
+import { runPlexWriteTest } from "@/lib/integrations/service";
+export async function POST(request: Request) { try { const userId = await requireIntegrationAdmin(); const body = await request.json(); if (body.confirm !== true) return NextResponse.json({ error: "Confirm the temporary Plex write and cleanup test." }, { status: 409 }); if (!["playlist", "collection"].includes(body.type)) return NextResponse.json({ error: "Test type must be playlist or collection." }, { status: 400 }); return NextResponse.json(await runPlexWriteTest({ userId, serverId: String(body.serverId), libraryId: String(body.libraryId), type: body.type })); } catch (error) { return integrationApiError(error); } }

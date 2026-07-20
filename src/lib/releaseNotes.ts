@@ -77,6 +77,20 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.3.7",
+    title: "Plex & Media Ecosystem Integrations",
+    releaseDate: "July 19, 2026",
+    badges: ["Plex", "External APIs", "Security", "Health", "Diagnostics", "Notifications", "Dashboard", "Automation", "Database", "Reliability", "Mobile"],
+    changes: [
+      "Added prioritized Plex server health, detailed connection tests, administrator-confirmed Plex user mapping, playlist ownership and read-only visibility, collection discovery/import/export, and manual external-change review.",
+      "Added destructive-sync gates for Plex library scans, post-scan grace periods, and verified storage mounts; missing media is not reconciled while an unsafe dependency state is active.",
+      "Added privacy-minimized Tautulli playback signals, Discord recipe sharing, Notifiarr delivery, centralized versioned integration events, HMAC-signed generic webhooks, retries, delivery history, and retention jobs.",
+      "Added scoped, hashed, one-time-display API tokens plus expanded Homepage, Home Assistant, Prometheus, versioned dashboard API, liveness, readiness, and protected detailed-health endpoints.",
+      "Added a responsive administrator integration center, safe test runner, Plex ownership/reconciliation controls, additive indexed migration, and deterministic security/safety tests.",
+      "Upgrade: apply the v2.3.7 Prisma migration and configure MIXARR_SECRET_KEY before saving integration secrets. Existing Plex connections remain enabled, failover stays off, and reconciliation defaults to manual review.",
+    ],
+  },
+  {
     version: "2.3.6",
     title: "Household Collaboration & Shared Playlists",
     releaseDate: "July 19, 2026",
