@@ -77,6 +77,20 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.3.6",
+    title: "Household Collaboration & Shared Playlists",
+    releaseDate: "July 19, 2026",
+    badges: ["Playlists", "Personalization", "Feedback", "Sharing", "Safety Rules", "Database", "Plex", "Preview", "Mobile", "Security", "Reliability"],
+    changes: [
+      "Added named, archivable households with stable user memberships, guest profiles, configurable influence and eligibility, temporary exclusions, shared preferences, and retained activity history.",
+      "Added opt-in Household mode to Smart Builder with balanced, weighted, shared-favorite, discovery-consensus, individual-first, and party strategies plus configured-versus-effective influence preview.",
+      "Added deterministic household compatibility scoring, conflict detection and resolution, influence caps, member/artist/genre fairness, strict child content enforcement, hard household dislikes, and per-track contribution explanations.",
+      "Added collaborative voting, validated approval thresholds, pending drafts that cannot sync to Plex, administrator publication after approval, and versioned approval state.",
+      "Added authenticated household, membership, guest, preference, playlist collaboration, vote, approval, contribution, conflict, activity, and publication APIs with an additive indexed migration.",
+      "Compatibility: household collaboration is optional. Existing playlists remain Individual and are never converted automatically.",
+    ],
+  },
+  {
     version: "2.3.5",
     title: "Community Recipe Sharing",
     releaseDate: "July 19, 2026",

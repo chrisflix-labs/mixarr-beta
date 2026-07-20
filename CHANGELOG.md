@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.3.6 - Household Collaboration & Shared Playlists
+
+- Added named, archivable households with stable Mixarr-user memberships, owner/member/child roles, reusable or expiring guests, configurable influence, eligibility, family restrictions, and temporary exclusions that retain preference history.
+- Added opt-in household mode to Smart Builder with participant selection, six deterministic balance modes, configured-versus-effective influence preview, shared-favorite weighting, caps, anti-domination safeguards, party mode, family rules, voting, approval thresholds, and fairness controls.
+- Extended Smart Mix generation with batched individual/shared preference loading, household compatibility scoring, consensus boosts, hard household dislikes, strict child content rules, conflict detection/resolution, artist/genre/member representation, contribution snapshots, and explanations.
+- Added versioned playlist and track voting, approval-gated drafts that do not sync to Plex, administrator publication after approval, contribution breakdowns, preference conflicts, and a filterable privacy-safe activity log.
+- Added household management and generated-playlist collaboration UI, authenticated APIs, an additive indexed migration, deterministic algorithm tests, and release documentation.
+- Compatibility: all existing playlists remain Individual; no playlist, recipe, feedback, history, or Plex workflow is converted automatically.
+
 ## v2.3.5 - Community Recipe Sharing
 
 - Added portable community recipe JSON, `.mixarr-recipe.zip` bundles, and checksum-protected `MXR1:` share codes.

@@ -119,6 +119,12 @@ model User {
   orchestrationPreference        OrchestrationPreference?
   orchestrationTrendSnapshots    OrchestrationTrendSnapshot[]
   orchestrationBackupValidations OrchestrationBackupValidation[]
+  ownedHouseholds                Household[]                       @relation("HouseholdOwner")
+  householdMemberships           HouseholdMember[]
+  householdActivities            HouseholdActivity[]               @relation("HouseholdActivityActor")
+  householdPreferenceEvents      HouseholdPreference[]             @relation("HouseholdPreferenceActor")
+  householdVotes                 PlaylistVote[]                    @relation("PlaylistVoteUser")
+  householdApprovals             PlaylistApproval[]                @relation("PlaylistApprovalUser")
 }
 
 model SyncSettings {
@@ -1619,11 +1625,289 @@ model GeneratedPlaylist {
   smartActions               SmartAction[]
   healthSnapshots            PlaylistHealthSnapshot[]
   healthAlerts               PlaylistHealthAlert[]
+  householdConfiguration     HouseholdPlaylistConfiguration?
+  householdVotes             PlaylistVote[]
+  householdApprovals         PlaylistApproval[]
+  householdConflicts         PreferenceConflict[]
+  householdContributions     PlaylistContribution[]
+  householdActivities        HouseholdActivity[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
   @@index([userId, sourceType])
   @@index([recipeId, createdAt])
+}
+
+/// A named collaboration boundary. Archiving is intentionally non-destructive so
+/// membership, preference, playlist, and audit history remain explainable.
+model Household {
+  id                      String                           @id @default(uuid())
+  ownerId                 String
+  name                    String
+  description             String?
+  avatar                  String?
+  status                  String                           @default("ACTIVE")
+  defaultBalanceMode      String                           @default("BALANCED_HOUSEHOLD")
+  defaultFamilyRule       String                           @default("STRICTEST_PROFILE")
+  defaultMaximumInfluence Float                            @default(0.5)
+  createdAt               DateTime                         @default(now())
+  updatedAt               DateTime                         @updatedAt
+  archivedAt              DateTime?
+  owner                   User                             @relation("HouseholdOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members                 HouseholdMember[]
+  guests                  HouseholdGuest[]
+  preferences             HouseholdPreference[]
+  playlistConfigurations  HouseholdPlaylistConfiguration[]
+  activities              HouseholdActivity[]
+
+  @@unique([ownerId, name])
+  @@index([ownerId, status, updatedAt])
+}
+
+model HouseholdMember {
+  id                        String                 @id @default(uuid())
+  householdId               String
+  userId                    String
+  displayName               String
+  memberType                String                 @default("MEMBER")
+  influenceWeight           Float                  @default(1)
+  isActive                  Boolean                @default(true)
+  temporarilyExcluded       Boolean                @default(false)
+  exclusionExpiresAt        DateTime?
+  votingEligible            Boolean                @default(true)
+  approvalEligible          Boolean                @default(true)
+  familyFriendlyRestriction String                 @default("INHERIT")
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
+  household                 Household              @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  user                      User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  playlistParticipations    PlaylistParticipant[]
+  votes                     PlaylistVote[]
+  approvals                 PlaylistApproval[]
+  contributions             PlaylistContribution[]
+
+  @@unique([householdId, userId])
+  @@index([householdId, isActive, temporarilyExcluded])
+  @@index([userId, updatedAt])
+}
+
+model HouseholdGuest {
+  id                         String                 @id @default(uuid())
+  householdId                String
+  displayName                String
+  isReusable                 Boolean                @default(false)
+  isActive                   Boolean                @default(true)
+  expiresAt                  DateTime?
+  influenceWeight            Float                  @default(1)
+  votingEligible             Boolean                @default(true)
+  approvalEligible           Boolean                @default(false)
+  explicitContentRestriction String                 @default("INHERIT")
+  preferencesJson            Json?
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
+  household                  Household              @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  playlistParticipations     PlaylistParticipant[]
+  preferences                HouseholdPreference[]
+  votes                      PlaylistVote[]
+  approvals                  PlaylistApproval[]
+  contributions              PlaylistContribution[]
+
+  @@index([householdId, isActive, expiresAt])
+}
+
+model HouseholdPreference {
+  id           String          @id @default(uuid())
+  householdId  String
+  actorUserId  String?
+  actorGuestId String?
+  scope        String          @default("HOUSEHOLD")
+  playlistId   String?
+  targetType   String
+  targetId     String
+  state        String
+  strength     Float           @default(1)
+  isHardRule   Boolean         @default(false)
+  expiresAt    DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  household    Household       @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  actorUser    User?           @relation("HouseholdPreferenceActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorGuest   HouseholdGuest? @relation(fields: [actorGuestId], references: [id], onDelete: SetNull)
+
+  @@unique([householdId, scope, playlistId, targetType, targetId, actorUserId, actorGuestId])
+  @@index([householdId, targetType, targetId, state])
+  @@index([playlistId, updatedAt])
+}
+
+model HouseholdPlaylistConfiguration {
+  id                             String                @id @default(uuid())
+  generatedPlaylistId            String                @unique
+  householdId                    String
+  balanceMode                    String                @default("BALANCED_HOUSEHOLD")
+  primaryMemberId                String?
+  sharedFavoritesWeight          Float                 @default(0.15)
+  maximumIndividualInfluence     Float                 @default(0.5)
+  maximumTracksPerMemberPercent  Float                 @default(0.5)
+  maximumConsecutiveMemberTracks Int                   @default(3)
+  requireEveryParticipant        Boolean               @default(true)
+  redistributeUnusedInfluence    Boolean               @default(true)
+  administratorOverride          Boolean               @default(false)
+  familyRule                     String                @default("STRICTEST_PROFILE")
+  unknownRatingRule              String                @default("BLOCK")
+  preferCleanVersions            Boolean               @default(true)
+  partyModeEnabled               Boolean               @default(false)
+  partySettingsJson              Json?
+  votingEnabled                  Boolean               @default(false)
+  liveFeedbackEnabled            Boolean               @default(false)
+  approvalMode                   String                @default("DISABLED")
+  fixedApprovalCount             Int?
+  approvalConflictSeverity       Int?
+  publicationStatus              String                @default("PUBLISHED")
+  fairnessSettingsJson           Json?
+  generationSnapshotJson         Json?
+  createdAt                      DateTime              @default(now())
+  updatedAt                      DateTime              @updatedAt
+  generatedPlaylist              GeneratedPlaylist     @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  household                      Household             @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  participants                   PlaylistParticipant[]
+
+  @@index([householdId, updatedAt])
+  @@index([publicationStatus, updatedAt])
+}
+
+model PlaylistParticipant {
+  id                   String                         @id @default(uuid())
+  configurationId      String
+  householdMemberId    String?
+  householdGuestId     String?
+  configuredInfluence  Float                          @default(1)
+  effectiveInfluence   Float                          @default(0)
+  capReduction         Float                          @default(0)
+  isActive             Boolean                        @default(true)
+  temporarilyExcluded  Boolean                        @default(false)
+  exclusionExpiresAt   DateTime?
+  excludeFromApprovals Boolean                        @default(false)
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+  configuration        HouseholdPlaylistConfiguration @relation(fields: [configurationId], references: [id], onDelete: Cascade)
+  householdMember      HouseholdMember?               @relation(fields: [householdMemberId], references: [id], onDelete: Restrict)
+  householdGuest       HouseholdGuest?                @relation(fields: [householdGuestId], references: [id], onDelete: Restrict)
+
+  @@unique([configurationId, householdMemberId])
+  @@unique([configurationId, householdGuestId])
+  @@index([configurationId, isActive, temporarilyExcluded])
+}
+
+model PlaylistVote {
+  id                  String            @id @default(uuid())
+  householdId         String
+  generatedPlaylistId String
+  playlistVersion     Int               @default(1)
+  targetType          String            @default("PLAYLIST")
+  targetId            String            @default("PLAYLIST")
+  voterKey            String
+  userId              String?
+  householdMemberId   String?
+  householdGuestId    String?
+  voteType            String
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  generatedPlaylist   GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  user                User?             @relation("PlaylistVoteUser", fields: [userId], references: [id], onDelete: SetNull)
+  householdMember     HouseholdMember?  @relation(fields: [householdMemberId], references: [id], onDelete: SetNull)
+  householdGuest      HouseholdGuest?   @relation(fields: [householdGuestId], references: [id], onDelete: SetNull)
+
+  @@unique([generatedPlaylistId, playlistVersion, targetType, targetId, voterKey])
+  @@index([householdId, generatedPlaylistId, updatedAt])
+  @@index([generatedPlaylistId, playlistVersion, voteType])
+}
+
+model PlaylistApproval {
+  id                  String            @id @default(uuid())
+  householdId         String
+  generatedPlaylistId String
+  playlistVersion     Int               @default(1)
+  approverKey         String
+  userId              String?
+  householdMemberId   String?
+  householdGuestId    String?
+  status              String            @default("APPROVED")
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  generatedPlaylist   GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  user                User?             @relation("PlaylistApprovalUser", fields: [userId], references: [id], onDelete: SetNull)
+  householdMember     HouseholdMember?  @relation(fields: [householdMemberId], references: [id], onDelete: SetNull)
+  householdGuest      HouseholdGuest?   @relation(fields: [householdGuestId], references: [id], onDelete: SetNull)
+
+  @@unique([generatedPlaylistId, playlistVersion, approverKey])
+  @@index([generatedPlaylistId, playlistVersion, status])
+}
+
+model PreferenceConflict {
+  id                    String             @id @default(uuid())
+  householdId           String
+  generatedPlaylistId   String?
+  generationId          String?
+  category              String
+  severity              Int
+  participantsJson      Json
+  conflictingValuesJson Json
+  resolutionMethod      String
+  resolvedValueJson     Json?
+  affectedSelection     Boolean            @default(false)
+  createdAt             DateTime           @default(now())
+  generatedPlaylist     GeneratedPlaylist? @relation(fields: [generatedPlaylistId], references: [id], onDelete: SetNull)
+
+  @@index([householdId, createdAt])
+  @@index([generatedPlaylistId, severity])
+  @@index([generationId])
+}
+
+model PlaylistContribution {
+  id                  String            @id @default(uuid())
+  generatedPlaylistId String
+  playlistVersion     Int               @default(1)
+  trackId             String?
+  householdMemberId   String?
+  householdGuestId    String?
+  contributionType    String
+  contributionWeight  Float
+  primaryContributor  Boolean           @default(false)
+  compatibilityScore  Float?
+  selectionReason     String
+  conflictStatus      String?
+  approvalStatus      String?
+  metadataJson        Json?
+  createdAt           DateTime          @default(now())
+  generatedPlaylist   GeneratedPlaylist @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  householdMember     HouseholdMember?  @relation(fields: [householdMemberId], references: [id], onDelete: SetNull)
+  householdGuest      HouseholdGuest?   @relation(fields: [householdGuestId], references: [id], onDelete: SetNull)
+
+  @@index([generatedPlaylistId, playlistVersion, trackId])
+  @@index([householdMemberId, createdAt])
+  @@index([householdGuestId, createdAt])
+}
+
+model HouseholdActivity {
+  id                  String             @id @default(uuid())
+  householdId         String
+  generatedPlaylistId String?
+  playlistVersion     Int?
+  actorUserId         String?
+  eventType           String
+  summary             String
+  beforeJson          Json?
+  afterJson           Json?
+  metadataJson        Json?
+  createdAt           DateTime           @default(now())
+  household           Household          @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  generatedPlaylist   GeneratedPlaylist? @relation(fields: [generatedPlaylistId], references: [id], onDelete: SetNull)
+  actorUser           User?              @relation("HouseholdActivityActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([householdId, createdAt])
+  @@index([generatedPlaylistId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([eventType, createdAt])
 }
 
 model PlaylistGroup {

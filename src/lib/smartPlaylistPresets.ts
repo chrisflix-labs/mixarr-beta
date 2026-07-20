@@ -244,5 +244,6 @@ export function buildSmartPresetConfig(preset: SmartPlaylistPreset): PlaylistCon
     libraryId: undefined,
     pinnedTrackIds: [],
     excludedTrackIds: [],
+    personalizationMode: "INDIVIDUAL",
   };
 }

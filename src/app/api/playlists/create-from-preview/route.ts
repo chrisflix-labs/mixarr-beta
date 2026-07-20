@@ -50,6 +50,31 @@ export async function POST(req: Request) {
       }
     }
 
+    const pendingConfigParse = optionsSnapshot ? playlistConfigSchema.safeParse(optionsSnapshot) : null;
+    const pendingConfig = pendingConfigParse?.success ? pendingConfigParse.data : null;
+    if (pendingConfig?.personalizationMode === "HOUSEHOLD" && pendingConfig.householdCollaboration && pendingConfig.householdCollaboration.approvalMode !== "DISABLED") {
+      const pendingPlaylist = await recordGeneratedPlaylist({
+        userId,
+        plexPlaylistRatingKey: null,
+        plexPlaylistTitle: trimmedName,
+        sourceType: sourceType || (ownedRecipe || recipeId ? "recipe" : pendingConfig.smartPresetName ? "smart_builder" : "manual_builder"),
+        recipeId: ownedRecipe?.id || recipeId || null,
+        recipeName: ownedRecipe?.name || recipeName || null,
+        recipeVersion: ownedRecipe?.recipeVersion || null,
+        recipeSchemaVersion: ownedRecipe?.schemaVersion || null,
+        resolvedRecipeSnapshot: ownedRecipe ? portableRecipeFromRecord(ownedRecipe) : null,
+        playlistOverrides: ownedRecipe ? { generation: optionsSnapshot } : null,
+        filters: optionsSnapshot,
+        trackIds,
+        discoveryResult,
+        previewId: previewId || null,
+      });
+      const pendingSummary = `Created household playlist draft “${trimmedName}” with ${trackIds.length} tracks. Plex sync is blocked until the configured approval threshold is reached.`;
+      await recordPlaylistHistoryEntry({ userId, generatedPlaylistId: pendingPlaylist.id, playlistName: trimmedName, eventType: "created", sourceType: sourceType || "smart_builder", engineVersion: pendingConfig.engineVersion, trackCount: trackIds.length, filters: optionsSnapshot, safetyRules: pendingConfig.safetyRules, summary: pendingSummary, trackIds });
+      await safeRecordJobHistory({ userId, type: "playlist", name: "Household playlist draft", status: "success", trigger: "manual", summary: pendingSummary, counts: { attempted: trackIds.length, processed: trackIds.length, skipped: 0, failed: 0 }, metadata: { generatedPlaylistId: pendingPlaylist.id, publicationStatus: "PENDING_APPROVAL", householdId: pendingConfig.householdCollaboration.householdId } });
+      return NextResponse.json({ success: true, pendingApproval: true, generatedPlaylistId: pendingPlaylist.id, trackCount: trackIds.length, playlistId: null, engineVersion: pendingConfig.engineVersion });
+    }
+
     const result = await exportTracksToPlex({
       userId,
       name: trimmedName,

@@ -6,7 +6,7 @@
 
 Mixarr connects to your Plex music library, syncs artists/albums/tracks into a local database, and helps build smarter playlists using metadata, genres, moods, energy, BPM, popularity, and audio analysis. It is designed for self-hosted Plex music users who want more control than static playlists can provide.
 
-Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.3.5 adds portable, data-only community recipe sharing with secure URL, paste, share-code, and bundle import plus mandatory local approval; existing recipes and playlists remain unchanged. Never use `prisma db push --force-reset` on an existing Mixarr database.
+Docker upgrades run a non-destructive Prisma preflight before `db push`. Mixarr v2.3.6 adds optional household collaboration, fair shared personalization, guest profiles, voting, approvals, and family-friendly rules; existing playlists remain Individual. Never use `prisma db push --force-reset` on an existing Mixarr database.
 
 ## Roadmad to V2.0.0 & Beyond
 
@@ -28,6 +28,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 | --- | --- |
 | Plex library connection | Connects to Plex, imports music libraries, and stores artists, albums, tracks, tags, and library state locally. |
 | Smart playlist generation | Builds playlists from rules such as genre, artist, album, year, popularity, BPM, energy, mood, danceability, and more. |
+| Household collaboration | Opt-in shared playlists combine selected members and guests with visible normalized influence, deterministic conflict handling, fairness caps, family rules, voting, approvals, contribution explanations, and activity history. |
 | Push to Plex | Exports generated playlists back to Plex and supports saved playlist refresh flows. |
 | Dashboard operations | Prioritizes library readiness, active work, Recently Added discovery, common playlist actions, automation, and compact Plex server status while keeping product previews secondary. |
 | Library browsing | Provides searchable library and genre views for synced Plex music. |
@@ -55,7 +56,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 
 ## Beta and Experimental Features
 
-Mixarr v2.3.5 supports decentralized community recipe exchange without a hosted social network. See [Community Recipe Sharing](docs/COMMUNITY_RECIPE_SHARING_V235.md), [Curated Recipe Library](docs/CURATED_RECIPE_LIBRARY_V234.md), [Recipe Inheritance & Overrides](docs/RECIPE_INHERITANCE_V233.md), [Adaptive Recipe Mapping](docs/ADAPTIVE_RECIPE_MAPPING_V232.md), [Recipe Import & Export](docs/RECIPE_IMPORT_EXPORT_V231.md), and [Mix Recipe Foundation](docs/MIX_RECIPES_V230.md).
+Mixarr v2.3.6 adds optional household collaboration. See [Household Collaboration](docs/HOUSEHOLD_COLLABORATION_V236.md), [Community Recipe Sharing](docs/COMMUNITY_RECIPE_SHARING_V235.md), [Curated Recipe Library](docs/CURATED_RECIPE_LIBRARY_V234.md), [Recipe Inheritance & Overrides](docs/RECIPE_INHERITANCE_V233.md), [Adaptive Recipe Mapping](docs/ADAPTIVE_RECIPE_MAPPING_V232.md), [Recipe Import & Export](docs/RECIPE_IMPORT_EXPORT_V231.md), and [Mix Recipe Foundation](docs/MIX_RECIPES_V230.md).
 
 These features exist in the current beta, but are still being tested across different libraries, platforms, and file layouts:
 

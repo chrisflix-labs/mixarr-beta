@@ -15,6 +15,7 @@ import PlaylistCoordinationPanel from "@/components/PlaylistCoordinationPanel";
 import PlaylistCollectionsButton from "@/components/PlaylistCollectionsButton";
 import PlaylistRolePanel from "@/components/PlaylistRolePanel";
 import SmartRefreshPanel from "@/components/SmartRefreshPanel";
+import HouseholdCollaborationPanel from "@/components/HouseholdCollaborationPanel";
 import { orderTracksByBpmFlow, summarizeBpmFlow, type BpmFlowMode } from "@/lib/smartMixEngine/v2/bpmFlow";
 import { normalizeSmartMixTuningConfig } from "@/lib/smartMixEngine/v2/tuning";
 import styles from "./generated-playlists.module.css";
@@ -610,6 +611,7 @@ export default function GeneratedPlaylistsPage() {
                 <PlaylistRolePanel playlistId={playlist.id} />
                 <PlaylistIdentityPanel playlistId={playlist.id} playlistName={playlist.plexPlaylistTitle} onClone={fetchPlaylists} />
                 <PlaylistCoordinationPanel playlist={playlist} />
+                <HouseholdCollaborationPanel playlistId={playlist.id} />
                 <PlaylistCollectionsButton playlistId={playlist.id} />
                 {playlist.discoveryResultJson?.explanations?.length > 0 && (
                   <div className={styles.discoverySummary} aria-label="Discovery explanation labels">

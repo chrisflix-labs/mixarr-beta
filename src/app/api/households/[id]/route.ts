@@ -1,0 +1,7 @@
+import { NextResponse } from "next/server";
+import { getHousehold, updateHousehold } from "@/lib/householdCollaboration";
+import { householdApiError, householdApiUserId } from "@/lib/householdCollaboration/api";
+export async function GET(_: Request, { params }: { params: { id: string } }) { const userId = householdApiUserId(); if (!userId) return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, { status: 401 }); try { return NextResponse.json({ household: await getHousehold(userId, params.id) }); } catch (error) { return householdApiError(error); } }
+export async function PATCH(request: Request, { params }: { params: { id: string } }) { const userId = householdApiUserId(); if (!userId) return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, { status: 401 }); try { return NextResponse.json({ household: await updateHousehold(userId, params.id, await request.json()) }); } catch (error) { return householdApiError(error); } }
+export async function DELETE(_: Request, { params }: { params: { id: string } }) { const userId = householdApiUserId(); if (!userId) return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, { status: 401 }); try { return NextResponse.json({ household: await updateHousehold(userId, params.id, { status: "ARCHIVED" }) }); } catch (error) { return householdApiError(error); } }
+

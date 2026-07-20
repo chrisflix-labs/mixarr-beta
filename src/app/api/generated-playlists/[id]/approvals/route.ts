@@ -1,0 +1,5 @@
+import { NextResponse } from "next/server";
+import { getHouseholdPlaylistDetails, submitPlaylistApproval } from "@/lib/householdCollaboration";
+import { householdApiError, householdApiUserId } from "@/lib/householdCollaboration/api";
+export async function GET(_: Request, { params }: { params: { id: string } }) { const userId = householdApiUserId(); if (!userId) return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, { status: 401 }); try { const details = await getHouseholdPlaylistDetails(userId, params.id); return NextResponse.json({ approvals: details?.approvals || [], progress: details?.approvalProgress || null }); } catch (error) { return householdApiError(error); } }
+export async function POST(request: Request, { params }: { params: { id: string } }) { const userId = householdApiUserId(); if (!userId) return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, { status: 401 }); try { return NextResponse.json(await submitPlaylistApproval(userId, params.id, await request.json())); } catch (error) { return householdApiError(error); } }

@@ -38,7 +38,7 @@ test("community UI requires explicit approval and displays trust, compatibility,
 });
 
 test("release documentation states the data-only security boundary", () => {
-  assert.equal(JSON.parse(read("package.json")).version, "2.3.5");
+  assert.equal(JSON.parse(read("package.json")).version, "2.3.6");
   const docs = read("docs/COMMUNITY_RECIPE_SHARING_V235.md");
   assert.match(docs, /data-only/);
   assert.match(docs, /never contain or execute scripts, commands, credentials, environment variables, plugins, or installation hooks/);

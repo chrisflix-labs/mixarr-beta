@@ -60,6 +60,7 @@ import type { PlaylistGenerationControl } from "./playlistGenerationControl";
 import { PLAYLIST_GENERATION_LIMITS } from "./playlistGenerationLimits";
 import { chunkValues, queryInBatches } from "./databaseBatching";
 import { loadCoverageScoringContext } from "./libraryCoverage";
+import { applyHouseholdGeneration, configureHouseholdPlaylist, householdPlaylistDraftSchema } from "./householdCollaboration";
 
 const numericFields = ["popularity", "energy", "valence", "tempo", "year", "duration", "rating", "playCount"] as const;
 const booleanFields = ["isLive", "isRemaster", "isExplicit", "hasPopularity"] as const;
@@ -190,6 +191,8 @@ export const playlistConfigSchema = z.object({
     level: z.enum(["disabled", "low", "medium", "high", "custom"]).default("low"),
     maximumBoost: z.coerce.number().min(0).max(10).optional(),
   }).optional(),
+  personalizationMode: z.enum(["INDIVIDUAL", "HOUSEHOLD"]).default("INDIVIDUAL"),
+  householdCollaboration: householdPlaylistDraftSchema.optional(),
 }).merge(playlistOptionsSchema);
 
 export const savedPlaylistSchema = playlistConfigSchema.extend({
@@ -1057,7 +1060,11 @@ export async function generatePlaylistTracksWithStats({
         ? await runSmartMixEngineV2Async({ ...engineInput, control })
         : runSmartMixEngineV2(engineInput);
 
-      const tracks = engineResult.tracks.map((track) => annotateTrack(track, reasons, SMART_MIX_ENGINE_V2));
+      const householdGeneration = config.personalizationMode === "HOUSEHOLD" && config.householdCollaboration
+        ? await applyHouseholdGeneration(userId, config.householdCollaboration, engineResult.tracks, config.limit)
+        : null;
+      const effectiveTracks = householdGeneration?.tracks || engineResult.tracks;
+      const tracks = effectiveTracks.map((track) => annotateTrack(track, reasons, SMART_MIX_ENGINE_V2));
       return {
         tracks,
         manualExclusionsApplied,
@@ -1083,7 +1090,7 @@ export async function generatePlaylistTracksWithStats({
         engine: {
           version: SMART_MIX_ENGINE_V2,
           label: smartMixEngineLabel(SMART_MIX_ENGINE_V2),
-          diagnostics: { ...engineResult.diagnostics, scoringModel: scoringResolution.model.id, scoringModelVersion: scoringResolution.model.version, requestedScoringModel: scoringResolution.requestedModel, betaFeatures, betaAccessLevel: betaStatus?.accessLevel || "STABLE", stableFallbackUsed, fallbackReason },
+          diagnostics: { ...engineResult.diagnostics, scoringModel: scoringResolution.model.id, scoringModelVersion: scoringResolution.model.version, requestedScoringModel: scoringResolution.requestedModel, betaFeatures, betaAccessLevel: betaStatus?.accessLevel || "STABLE", stableFallbackUsed, fallbackReason, ...(householdGeneration ? { household: { household: householdGeneration.household, influence: householdGeneration.influence, familyRule: householdGeneration.familyRule, conflicts: householdGeneration.conflicts, approvals: householdGeneration.approvals, fairnessAdjustments: householdGeneration.adjustments, excluded: householdGeneration.excluded } } : {}) },
         },
         explanationContext: {
           decisionTrace: engineResult.decisionTrace,
@@ -1096,9 +1103,12 @@ export async function generatePlaylistTracksWithStats({
 
     const generatedTracks = applyDuplicatePolicy(candidates, config, safetyCandidateLimit);
     const safetyResult = applyPlaylistSafetyRules(pinnedTracks.concat(generatedTracks), config);
+    const householdGeneration = config.personalizationMode === "HOUSEHOLD" && config.householdCollaboration
+      ? await applyHouseholdGeneration(userId, config.householdCollaboration, safetyResult.tracks, config.limit)
+      : null;
 
     return {
-      tracks: safetyResult.tracks.map((track) => annotateTrack(track, reasons, SMART_MIX_ENGINE_V1)),
+      tracks: (householdGeneration?.tracks || safetyResult.tracks).map((track) => annotateTrack(track, reasons, SMART_MIX_ENGINE_V1)),
       manualExclusionsApplied,
       safety: {
         ...safetyResult.metadata,
@@ -1114,7 +1124,7 @@ export async function generatePlaylistTracksWithStats({
       engine: {
         version: SMART_MIX_ENGINE_V1,
         label: smartMixEngineLabel(SMART_MIX_ENGINE_V1),
-        diagnostics: null,
+        diagnostics: householdGeneration ? { household: { household: householdGeneration.household, influence: householdGeneration.influence, familyRule: householdGeneration.familyRule, conflicts: householdGeneration.conflicts, approvals: householdGeneration.approvals, fairnessAdjustments: householdGeneration.adjustments, excluded: householdGeneration.excluded } } : null,
       },
       explanationContext: null,
     };
@@ -1900,6 +1910,10 @@ export async function recordGeneratedPlaylist({
       ...(playbackScoring ? { playbackScoring } : {}),
     }));
   }
+  if (config.personalizationMode === "HOUSEHOLD" && config.householdCollaboration && scoredTracks.length) {
+    const householdGeneration = await applyHouseholdGeneration(userId, config.householdCollaboration, scoredTracks, scoredTracks.length);
+    scoredTracks = householdGeneration.tracks;
+  }
   const qualityScore = config.engineVersion === SMART_MIX_ENGINE_V2 ? scorePlaylist(scoredTracks, tuningConfig, discoveryResult || undefined) : null;
   const feedbackProfile = config.engineVersion === SMART_MIX_ENGINE_V2 ? await prisma.userRecommendationProfile.findUnique({ where: { userId }, select: { enabled: true } }) : null;
   const [appliedTrackFeedback, appliedArtistFeedback] = feedbackProfile?.enabled ? await Promise.all([
@@ -1957,7 +1971,7 @@ export async function recordGeneratedPlaylist({
     filtersJson: config as any,
     safetyRulesJson: config.safetyRules as any,
     qualityScoreJson: qualityScore as any,
-    trackCount: tracks.length,
+    trackCount: scoredTracks.length,
     lastGeneratedAt: new Date(),
   };
 
@@ -1982,6 +1996,18 @@ export async function recordGeneratedPlaylist({
     });
     return saved;
   });
+  if (config.personalizationMode === "HOUSEHOLD" && config.householdCollaboration) {
+    await configureHouseholdPlaylist(userId, generatedPlaylist.id, config.householdCollaboration, {
+      engineVersion: config.engineVersion,
+      generatedAt: new Date().toISOString(),
+      tracks: scoredTracks.map((track: any, position) => ({
+        trackId: track.id,
+        position,
+        householdScore: track.householdScore ?? null,
+        contribution: track.householdContribution || null,
+      })),
+    });
+  }
   if (config.engineVersion === SMART_MIX_ENGINE_V2) {
     if (previewId) {
       await attachGenerationExplanationsToPlaylist(userId, previewId, generatedPlaylist.id);

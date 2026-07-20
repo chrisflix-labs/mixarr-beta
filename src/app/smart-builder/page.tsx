@@ -18,6 +18,7 @@ import AdaptiveScoreBreakdown from "@/components/AdaptiveScoreBreakdown";
 import SmartMixExplanation from "@/components/SmartMixExplanation";
 import SmartMixGenerationInsights from "@/components/SmartMixGenerationInsights";
 import PlaylistGenerationProgress from "@/components/PlaylistGenerationProgress";
+import HouseholdPlaylistSettings, { defaultHouseholdPlaylistDraft, type HouseholdPlaylistDraft } from "@/components/HouseholdPlaylistSettings";
 import { cancelPlaylistGeneration, generatePlaylistPreviewInBackground, type PlaylistGenerationJobView } from "@/lib/playlistGenerationClient";
 import { getMoodPreset, moodPresetLabel, MOOD_PRESET_VERSION, type MoodPreset } from "@/lib/moodPresets";
 import { buildSmartPresetConfig, SMART_PRESET_VERSION, smartPlaylistPresets, type SmartPlaylistPreset } from "@/lib/smartPlaylistPresets";
@@ -265,6 +266,8 @@ export default function SmartBuilderPage() {
   const [savingRecipe, setSavingRecipe] = useState(false);
   const [generatedPlaylists, setGeneratedPlaylists] = useState<Array<{ id: string; plexPlaylistTitle: string; trackCount: number }>>([]);
   const [coordination, setCoordination] = useState({ enabled: false, relationshipType: "SISTER", relatedPlaylistIds: [] as string[], maximumSharedTrackPercentage: 20, overlapEnforcement: "SOFT_TARGET", allowSharedCoreTracks: true, preferGloballyUnusedTracks: true, unusedTrackPreferenceStrength: 0.5, crossPlaylistArtistBalancingEnabled: true, keepDistinct: true });
+  const [personalizationMode, setPersonalizationMode] = useState<"INDIVIDUAL" | "HOUSEHOLD">("INDIVIDUAL");
+  const [householdCollaboration, setHouseholdCollaboration] = useState<HouseholdPlaylistDraft>({ ...defaultHouseholdPlaylistDraft });
 
   useEffect(() => {
     const loadDefaults = async () => {
@@ -465,6 +468,8 @@ export default function SmartBuilderPage() {
       pinnedTrackIds: [],
       excludedTrackIds: [],
       ...(coordination.enabled ? { coordinationSetup: coordination } : {}),
+      personalizationMode,
+      ...(personalizationMode === "HOUSEHOLD" ? { householdCollaboration } : {}),
     };
   };
 
@@ -765,6 +770,13 @@ export default function SmartBuilderPage() {
               libraryId={libraryId}
             />
             </div>
+
+            <HouseholdPlaylistSettings
+              mode={personalizationMode}
+              value={householdCollaboration}
+              onModeChange={(nextMode) => { setPersonalizationMode(nextMode); clearPreview(); }}
+              onChange={(nextValue) => { setHouseholdCollaboration(nextValue); clearPreview(); }}
+            />
 
             <div className={styles.panel}>
               <div className={styles.panelHeader}><div><h3><Network size={16} /> Playlist Coordination</h3><p>Coordinate this mix with existing Smart Mix playlists after it is created.</p></div></div>
