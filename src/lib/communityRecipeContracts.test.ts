@@ -25,7 +25,8 @@ test("all community imports share staged validation and server-side installation
 
 test("community UI requires explicit approval and displays trust, compatibility, attribution, and reporting", () => {
   const page = read("src/app/recipes/community/page.tsx"); const detail = read("src/app/recipes/[id]/page.tsx"); const css = read("src/app/recipes/community/community.module.css");
-  assert.match(page, /Approve and Import Recipe/);
+  assert.match(page, /Import for Local Review/);
+  assert.match(page, /Recipe safety review/);
   assert.match(page, /Third-party community recipe/);
   assert.match(page, /minimumMixarrVersion/);
   assert.match(page, /Upload bundle/);
@@ -38,7 +39,7 @@ test("community UI requires explicit approval and displays trust, compatibility,
 });
 
 test("release documentation states the data-only security boundary", () => {
-  assert.equal(JSON.parse(read("package.json")).version, "2.3.7");
+  assert.equal(JSON.parse(read("package.json")).version, "2.3.8");
   const docs = read("docs/COMMUNITY_RECIPE_SHARING_V235.md");
   assert.match(docs, /data-only/);
   assert.match(docs, /never contain or execute scripts, commands, credentials, environment variables, plugins, or installation hooks/);

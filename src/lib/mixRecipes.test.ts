@@ -92,14 +92,14 @@ describe("Mix Recipe migrations", () => {
     const source = lateNightHighway();
     const result = migrateRecipeDocument(source);
     assert.equal(result.migrated, false);
-    assert.equal(result.fromVersion, 1);
+    assert.equal(result.fromVersion, 3);
   });
 
-  it("migrates legacy saved filters to schema v1", () => {
+  it("migrates legacy saved filters sequentially to schema v3", () => {
     const legacy = { name: "Legacy Mix", filters: { rules: [], limit: 30 } };
     const result = migrateRecipeDocument(legacy);
     assert.equal(result.migrated, true);
-    assert.equal(result.recipe.schemaVersion, 1);
+    assert.equal(result.recipe.schemaVersion, 3);
     assert.equal(result.recipe.generation.limit, 30);
   });
 

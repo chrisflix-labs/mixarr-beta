@@ -20,6 +20,7 @@ import {
   type MixRecipeDocument,
 } from "./mixRecipes/schema";
 import { validateRecipe } from "./mixRecipes/validation";
+import { inferRecipePermissions } from "./mixRecipes/governance";
 
 type RuleNode = PlaylistRuleInput | {
   type: "group";
@@ -211,6 +212,30 @@ export function parsePlaylistRecipe(recipe: any) {
     presetReferences: { transition: recipe.transitionPreset || null, discovery: recipe.discoveryPreset || null, variety: recipe.varietyPreset || null, automation: recipe.automationPreset || null },
     localOverrides: recipe.recipeOverrides || [],
     dependentRecipeCount: recipe._count?.childRecipes ?? 0,
+    governance: {
+      schemaVersion: recipe.governanceSchemaVersion || 3,
+      source: recipe.recipeSource || "LOCAL",
+      trustState: recipe.trustState || "LOCAL",
+      approvalState: recipe.approvalState || "APPROVED",
+      quarantineState: recipe.quarantineState || "NONE",
+      quarantineReason: recipe.quarantineReason || null,
+      signatureStatus: recipe.signatureStatus || "MISSING",
+      signatureKeyId: recipe.signatureKeyId || null,
+      signerIdentity: recipe.signerIdentity || null,
+      official: recipe.trustState === "OFFICIAL" && recipe.signatureStatus === "VALID",
+      requestedPermissions: recipe.requestedPermissionsJson || [],
+      grantedPermissions: recipe.grantedPermissionsJson || [],
+      restrictedPermissions: recipe.restrictedPermissionsJson || [],
+      compatibilityStatus: recipe.compatibilityStatus || "COMPATIBLE",
+      compatibility: recipe.compatibilityJson || {},
+      riskLevel: recipe.riskLevel || "LOW",
+      riskScore: recipe.riskScore || 0,
+      riskFindings: recipe.riskFindingsJson || [],
+      dependencies: recipe.dependencyStatusJson || [],
+      migrationHistory: recipe.migrationHistoryJson || [],
+      approvedAt: recipe.approvedAt || null,
+      lastValidatedAt: recipe.lastValidatedAt || null,
+    },
     community: recipe.communityRecipeId ? {
       recipeId: recipe.communityRecipeId,
       version: recipe.communityVersion,
@@ -257,6 +282,7 @@ export function createPlaylistRecipeData(userId: string, input: PlaylistRecipeIn
   const validation = validateRecipe(resolved);
   if (!validation.normalizedRecipe) throw new Error(validation.errors[0]?.message || "Invalid recipe.");
   const recipe = validation.normalizedRecipe;
+  const permissionPlan = inferRecipePermissions(recipe);
   return {
     user: { connect: { id: userId } },
     name: input.name,
@@ -276,6 +302,17 @@ export function createPlaylistRecipeData(userId: string, input: PlaylistRecipeIn
     identityDefaultsJson: recipe.playlistIdentity as Prisma.InputJsonValue,
     refreshPolicyJson: recipe.refreshPolicy as Prisma.InputJsonValue,
     automationPolicyJson: recipe.automationPolicy as Prisma.InputJsonValue,
+    governanceSchemaVersion: 3,
+    recipeSource: "LOCAL",
+    trustState: "LOCAL",
+    approvalState: "APPROVED",
+    quarantineState: "NONE",
+    signatureStatus: "MISSING",
+    normalizedPayloadJson: recipe as Prisma.InputJsonValue,
+    requestedPermissionsJson: permissionPlan as Prisma.InputJsonValue,
+    grantedPermissionsJson: permissionPlan.filter((item) => item.decision === "allow").map((item) => item.permission) as Prisma.InputJsonValue,
+    restrictedPermissionsJson: permissionPlan.filter((item) => item.decision !== "allow").map((item) => item.permission) as Prisma.InputJsonValue,
+    lastValidatedAt: new Date(),
     ...(input.sourcePlaylistId ? { sourcePlaylist: { connect: { id: input.sourcePlaylistId } } } : {}),
     ...(input.baseRecipeId ? { baseRecipe: { connect: { id: input.baseRecipeId } }, inheritanceEnabled: true } : {}),
     ...(input.recipeCategoryId ? { recipeCategory: { connect: { id: input.recipeCategoryId } }, inheritanceEnabled: true } : {}),
@@ -329,6 +366,7 @@ export function updatePlaylistRecipeData(input: PlaylistRecipeInput, existing?: 
     category: input.category,
     artworkUrl: input.artworkUrl || null,
     enabled: input.enabled,
+    schemaVersion: normalized.schemaVersion,
     filtersJson: normalized.generation as Prisma.InputJsonValue,
     scoringJson: normalized.scoring as Prisma.InputJsonValue,
     targetsJson: normalized.targets as Prisma.InputJsonValue,

@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import prisma from "../prisma";
 import { isUserAdmin } from "../auth";
@@ -8,6 +9,9 @@ import type { AdaptiveMappingDecision } from "../adaptiveRecipeMapping";
 import { createPlaylistRecipeData, parsePlaylistRecipe, portableRecipeFromRecord, updatePlaylistRecipeData, type PlaylistRecipeInput } from "../playlistRecipes";
 import { validateRecipe } from "./validation";
 import { buildRecipeArchive, parseRecipeArchive, validateArtwork, type ValidArtwork } from "./archive";
+import { buildRecipeGovernancePlan, createRecipeSnapshot, recipeGovernanceData, writeRecipeAudit, type RecipeImportMode } from "./governanceService";
+import { normalizeSafetyLimits } from "./governance";
+import { recipeImportDurationSeconds, recipeImportsTotal } from "../metrics";
 import {
   MAX_RECIPE_ARCHIVE_BYTES,
   MAX_RECIPE_JSON_BYTES,
@@ -42,6 +46,7 @@ type StoredRecipe = Record<string, any>;
 type ImportDecision = {
   index: number; selected?: boolean; action?: ConflictAction; name?: string; acceptOptionalAdaptations?: boolean;
   adaptationMode?: "adapted" | "original"; analysisId?: string; acknowledgeMajorIdentityChange?: boolean; acknowledgeLowCompatibility?: boolean;
+  importMode?: RecipeImportMode; grantedPermissions?: string[]; confirmConsequences?: string[];
 };
 
 function json<T>(value: T): Prisma.InputJsonValue {
@@ -196,6 +201,7 @@ export async function stageRecipeImport(input: { userId: string; filename: strin
   addConflictAnalysis(parsed, await existingPortableRecipes(input.userId));
   for (const candidate of parsed.candidates) {
     if (!candidate.normalizedRecipe || candidate.validationErrors.length) continue;
+    candidate.governance = await buildRecipeGovernancePlan({ userId: input.userId, recipe: candidate.normalizedRecipe, source: parsed.format, rawPayload: candidate.portable });
     try {
       candidate.adaptiveAnalysis = await analyzeRecipeForLibrary({ userId: input.userId, recipe: candidate.normalizedRecipe });
     } catch (error) {
@@ -306,16 +312,41 @@ function revalidateCandidate(candidate: ImportCandidate) {
 }
 
 export async function confirmRecipeImport(input: { userId: string; stageId: string; mode?: ImportMode; decisions?: ImportDecision[] }) {
+  const importStarted = performance.now();
   const mode: ImportMode = input.mode === "independent" ? "independent" : "atomic";
   const decisions = input.decisions || [];
   const stage = await prisma.recipeImportStage.findFirst({ where: { id: input.stageId, userId: input.userId, status: "STAGED" } });
   if (!stage || stage.expiresAt <= new Date()) throw transferError("IMPORT_EXPIRED", "The staged import expired. Select the file again.", 410);
   const parsed = stage.sanitizedPayloadJson as unknown as ParsedTransfer;
   const selected = parsed.candidates.map((candidate) => ({ candidate, decision: decisionFor(candidate, decisions) })).filter((item) => item.decision.action !== "skip");
+  const safetyPolicy = await prisma.recipeSafetyPolicy.findUnique({ where: { userId: input.userId }, select: { limitsJson: true } });
+  const importLimit = normalizeSafetyLimits(safetyPolicy?.limitsJson as any).maxRecipesPerImport;
+  if (selected.length > importLimit) throw transferError("RECIPE_IMPORT_LIMIT_EXCEEDED", `This operation selects ${selected.length} recipes; the configured safety limit is ${importLimit}.`, 422);
   const admin = await isUserAdmin(input.userId);
   if (selected.some((item) => item.decision.action === "replace") && !admin) throw transferError("PERMISSION_DENIED", "Administrator permission is required to replace an existing recipe.", 403);
   if (!selected.length) throw transferError("NO_RECIPES_FOUND", "No recipes are selected for import.");
   selected.forEach(({ candidate }) => revalidateCandidate(candidate));
+  for (const { candidate } of selected) {
+    const freshPlan = await buildRecipeGovernancePlan({ userId: input.userId, recipe: candidate.normalizedRecipe!, source: parsed.format, rawPayload: candidate.portable });
+    if (!candidate.governance || freshPlan.planHash !== candidate.governance.planHash) throw transferError("STALE_IMPORT_PREVIEW", "Recipe trust, compatibility, dependencies, or safety policy changed. Review a new import preview.", 409);
+    const requested = decisions.find((item) => item.index === candidate.index);
+    const importMode = requested?.importMode || freshPlan.recommendedImportMode;
+    if (!freshPlan.availableImportModes.includes(importMode)) throw transferError("UNSAFE_IMPORT_MODE", `Import mode ${importMode} is not allowed for this recipe.`, 409);
+    const selectedPermissions = new Set(requested?.grantedPermissions || freshPlan.grantedPermissions);
+    for (const permission of freshPlan.permissions) if (permission.required && permission.decision === "allow") selectedPermissions.add(permission.permission);
+    const grantedPermissions = freshPlan.permissions.filter((item) => item.decision !== "deny" && selectedPermissions.has(item.permission)).map((item) => item.permission);
+    const restrictedPermissions = freshPlan.permissions.filter((item) => !grantedPermissions.includes(item.permission)).map((item) => item.permission);
+    const normalizedRecipe = structuredClone(freshPlan.normalizedRecipe);
+    if (["suggest_only", "approval_required"].includes(importMode)) {
+      normalizedRecipe.automationPolicy.enabled = false;
+      normalizedRecipe.refreshPolicy.mode = "manual";
+      normalizedRecipe.refreshPolicy.frequencyDays = null;
+    }
+    candidate.governance = { ...freshPlan, normalizedRecipe, grantedPermissions, restrictedPermissions };
+    const high = freshPlan.permissions.filter((item) => item.riskLevel === "high" && grantedPermissions.includes(item.permission)).map((item) => item.permission);
+    if (high.length && (!requested?.confirmConsequences || !high.every((permission) => requested.confirmConsequences!.includes(permission)))) throw transferError("EXPLICIT_CONFIRMATION_REQUIRED", `Confirm each high-risk consequence for recipe “${candidate.portable.name}”.`, 409);
+    if ((importMode === "use_recipe_settings" || high.length) && !admin) throw transferError("PERMISSION_DENIED", "Administrator permission is required for high-risk recipe settings.", 403);
+  }
   for (const { candidate, decision } of selected) {
     const requested = decisions.find((item) => item.index === candidate.index);
     const analysis = candidate.adaptiveAnalysis;
@@ -323,7 +354,15 @@ export async function confirmRecipeImport(input: { userId: string; stageId: stri
     if ((requested?.adaptationMode || "adapted") === "adapted" && analysis?.identityImpact === "major" && requested?.acknowledgeMajorIdentityChange !== true) throw transferError("IDENTITY_CONFIRMATION_REQUIRED", `Recipe "${candidate.portable.name}" has a major identity change that requires confirmation.`, 409);
     if ((requested?.adaptationMode || "adapted") === "original" && (analysis?.compatibilityScore || 100) < 50 && requested?.acknowledgeLowCompatibility !== true) throw transferError("LOW_COMPATIBILITY_CONFIRMATION_REQUIRED", `Recipe "${candidate.portable.name}" has low local compatibility. Confirm importing the original recipe unchanged.`, 409);
   }
-  const history = await prisma.recipeImportHistory.create({ data: { userId: input.userId, originalFilename: stage.originalFilename, detectedFormat: stage.detectedFormat, formatVersion: stage.formatVersion, importMode: mode.toUpperCase(), recipeCount: parsed.candidates.length, checksumResult: parsed.candidates.every((item) => item.checksumStatus === "valid") ? "VALID" : parsed.candidates.some((item) => item.checksumStatus === "missing") ? "MISSING_COMPATIBLE" : "FAILED", sensitiveDataScanResult: parsed.candidates.every((item) => item.scan.safe) ? "PASSED" : "BLOCKED", warningCount: parsed.candidates.reduce((total, item) => total + item.validationWarnings.length + item.adaptations.length + item.unsupported.length, 0), errorCount: parsed.candidates.reduce((total, item) => total + item.validationErrors.length, 0), resultSummaryJson: json({ pending: true }), status: "RUNNING" } });
+  const correlationId = crypto.randomUUID();
+  const history = await prisma.recipeImportHistory.create({ data: { userId: input.userId, originalFilename: stage.originalFilename, detectedFormat: stage.detectedFormat, formatVersion: stage.formatVersion, importMode: mode.toUpperCase(), recipeCount: parsed.candidates.length, checksumResult: parsed.candidates.every((item) => item.checksumStatus === "valid") ? "VALID" : parsed.candidates.some((item) => item.checksumStatus === "missing") ? "MISSING_COMPATIBLE" : "FAILED", sensitiveDataScanResult: parsed.candidates.every((item) => item.scan.safe) ? "PASSED" : "BLOCKED", warningCount: parsed.candidates.reduce((total, item) => total + item.validationWarnings.length + item.adaptations.length + item.unsupported.length, 0), errorCount: parsed.candidates.reduce((total, item) => total + item.validationErrors.length, 0), resultSummaryJson: json({ pending: true, correlationId }), status: "RUNNING" } });
+  const snapshotByCandidate = new Map<number, string>();
+  for (const { candidate, decision } of selected) {
+    if (decision.action === "use_existing") continue;
+    const target = decision.action === "replace" ? candidate.conflicts.find((item) => ["exact_name", "normalized_name"].includes(item.type))?.existingRecipeId : null;
+    const snapshot = await createRecipeSnapshot({ userId: input.userId, recipeId: target, correlationId, reason: target ? `Before importing replacement for ${candidate.portable.name}` : `Before importing ${candidate.portable.name}` });
+    snapshotByCandidate.set(candidate.index, snapshot.id);
+  }
   console.info("[RecipeTransfer] Import confirmed", { stageId: stage.id, historyId: history.id, mode, selectedCount: selected.length });
   const results: Array<{ index: number; name: string; action: string; recipeId?: string; error?: string }> = [];
   const artworkWrites: Array<{ recipeId: string; candidate: ImportCandidate }> = [];
@@ -331,7 +370,9 @@ export async function confirmRecipeImport(input: { userId: string; stageId: stri
     const requested = decisions.find((item) => item.index === candidate.index);
     const adaptive = candidate.adaptiveAnalysis;
     const importAdapted = Boolean(adaptive) && (requested?.adaptationMode || "adapted") === "adapted";
-    const selectedDocument = importAdapted ? adaptive!.adaptedRecipe : candidate.normalizedRecipe;
+    const selectedDocument = importAdapted
+      ? { ...adaptive!.adaptedRecipe, generation: { ...adaptive!.adaptedRecipe.generation, limit: candidate.governance!.normalizedRecipe.generation.limit }, refreshPolicy: candidate.governance!.normalizedRecipe.refreshPolicy, automationPolicy: candidate.governance!.normalizedRecipe.automationPolicy }
+      : candidate.governance!.normalizedRecipe;
     const identicalConflict = candidate.conflicts.find((item) => ["identical_checksum", "equivalent_content"].includes(item.type) && item.existingRecipeId);
     const nameConflict = candidate.conflicts.find((item) => ["exact_name", "normalized_name"].includes(item.type) && item.existingRecipeId);
     if (decision.action === "use_existing") {
@@ -344,15 +385,16 @@ export async function confirmRecipeImport(input: { userId: string; stageId: stri
       const existing = await tx.playlistRecipe.findFirst({ where: { id: nameConflict.existingRecipeId, userId: input.userId, isArchived: false } });
       if (!existing) throw transferError("CONFLICT_UNRESOLVED", "The recipe selected for replacement no longer exists.");
       const recipeInput = inputFromCandidate(candidate, existing.name, selectedDocument);
-      recipeInput.enabled = existing.enabled;
       recipeInput.artworkUrl = candidate.artworkDataBase64 ? null : existing.artworkUrl;
-      recipeInput.automationPolicy = existing.automationPolicyJson as PlaylistRecipeInput["automationPolicy"];
-      const updated = await tx.playlistRecipe.update({ where: { id: existing.id }, data: { ...updatePlaylistRecipeData(recipeInput, existing), portableChecksum: candidate.calculatedChecksum, portableContentChecksum: candidate.contentChecksum, importedAt: new Date(), originalImportedRecipeJson: adaptive ? json(adaptive.originalRecipe) : undefined, adaptedFromImport: importAdapted, importSchemaVersion: adaptive?.schemaVersion, importEngineVersion: adaptive?.engineVersion, importWarningsJson: adaptive ? json(adaptive.warnings) : undefined } });
+      const governance = candidate.governance!;
+      const updated = await tx.playlistRecipe.update({ where: { id: existing.id }, data: { ...updatePlaylistRecipeData(recipeInput, existing), ...recipeGovernanceData(governance, { source: parsed.format, originalPayload: candidate.portable }), portableChecksum: candidate.calculatedChecksum, portableContentChecksum: candidate.contentChecksum, importedAt: new Date(), originalImportedRecipeJson: adaptive ? json(adaptive.originalRecipe) : undefined, adaptedFromImport: importAdapted, importSchemaVersion: adaptive?.schemaVersion, importEngineVersion: adaptive?.engineVersion, importWarningsJson: adaptive ? json(adaptive.warnings) : undefined } });
+      await tx.recipeImportSnapshot.update({ where: { id: snapshotByCandidate.get(candidate.index)! }, data: { resourceVersions: json({ recipeUpdatedAt: updated.updatedAt.toISOString() }) } });
       if (adaptive?.analysisId) {
         await tx.recipeImportAnalysis.updateMany({ where: { recipeId: existing.id }, data: { recipeId: null } });
         await tx.recipeImportAnalysis.updateMany({ where: { id: adaptive.analysisId, userId: input.userId }, data: { recipeId: existing.id, status: "IMPORTED", completedAt: new Date() } });
       }
       results.push({ index: candidate.index, name: updated.name, action: "replaced", recipeId: updated.id });
+      await writeRecipeAudit({ recipeId: updated.id, recipeVersion: updated.recipeVersion, eventType: governance.quarantine.required ? "RECIPE_QUARANTINED" : "RECIPE_IMPORTED", actorId: input.userId, correlationId, description: governance.quarantine.required ? "Imported recipe was stored in quarantine for local review." : "Recipe was imported after governance review.", validation: { findings: governance.findings, safetyAdjustments: governance.safetyAdjustments }, risk: governance.risk, permissions: governance.permissions, trustState: governance.trustState, riskLevel: governance.risk.riskLevel, metadata: { planHash: governance.planHash, signatureStatus: governance.signature.status, official: governance.official } }, tx);
       if (candidate.artworkDataBase64) artworkWrites.push({ recipeId: updated.id, candidate });
       return;
     }
@@ -364,9 +406,12 @@ export async function confirmRecipeImport(input: { userId: string; stageId: stri
       finalName = safeImportedName(candidate.portable.name, names.map((item) => item.name));
     }
     const recipeInput = inputFromCandidate(candidate, finalName, selectedDocument);
-    const created = await tx.playlistRecipe.create({ data: { ...createPlaylistRecipeData(input.userId, recipeInput), portableChecksum: candidate.calculatedChecksum, portableContentChecksum: candidate.contentChecksum, importedAt: new Date(), originalImportedRecipeJson: adaptive ? json(adaptive.originalRecipe) : undefined, adaptedFromImport: importAdapted, importSchemaVersion: adaptive?.schemaVersion, importEngineVersion: adaptive?.engineVersion, importWarningsJson: adaptive ? json(adaptive.warnings) : undefined } });
+    const governance = candidate.governance!;
+    const created = await tx.playlistRecipe.create({ data: { ...createPlaylistRecipeData(input.userId, recipeInput), ...recipeGovernanceData(governance, { source: parsed.format, originalPayload: candidate.portable }), portableChecksum: candidate.calculatedChecksum, portableContentChecksum: candidate.contentChecksum, importedAt: new Date(), originalImportedRecipeJson: adaptive ? json(adaptive.originalRecipe) : undefined, adaptedFromImport: importAdapted, importSchemaVersion: adaptive?.schemaVersion, importEngineVersion: adaptive?.engineVersion, importWarningsJson: adaptive ? json(adaptive.warnings) : undefined } });
+    await tx.recipeImportSnapshot.update({ where: { id: snapshotByCandidate.get(candidate.index)! }, data: { recipeId: created.id, resourceVersions: json({ recipeUpdatedAt: created.updatedAt.toISOString() }) } });
     if (adaptive?.analysisId) await tx.recipeImportAnalysis.updateMany({ where: { id: adaptive.analysisId, userId: input.userId }, data: { recipeId: created.id, status: "IMPORTED", completedAt: new Date() } });
     results.push({ index: candidate.index, name: created.name, action: finalName === candidate.portable.name ? "imported" : "renamed", recipeId: created.id });
+    await writeRecipeAudit({ recipeId: created.id, recipeVersion: created.recipeVersion, eventType: governance.quarantine.required ? "RECIPE_QUARANTINED" : "RECIPE_IMPORTED", actorId: input.userId, correlationId, description: governance.quarantine.required ? "Imported recipe was stored in quarantine for local review." : "Recipe was imported after governance review.", validation: { findings: governance.findings, safetyAdjustments: governance.safetyAdjustments }, risk: governance.risk, permissions: governance.permissions, trustState: governance.trustState, riskLevel: governance.risk.riskLevel, metadata: { planHash: governance.planHash, signatureStatus: governance.signature.status, official: governance.official } }, tx);
     if (candidate.artworkDataBase64) artworkWrites.push({ recipeId: created.id, candidate });
   };
   try {
@@ -379,7 +424,7 @@ export async function confirmRecipeImport(input: { userId: string; stageId: stri
       }
     }
     for (const artwork of artworkWrites) {
-      try { await writeImportedArtwork(input.userId, artwork.recipeId, artwork.candidate); }
+      try { await writeImportedArtwork(input.userId, artwork.recipeId, artwork.candidate); const decorated = await prisma.playlistRecipe.findUnique({ where: { id: artwork.recipeId }, select: { updatedAt: true } }); if (decorated) await prisma.recipeImportSnapshot.update({ where: { id: snapshotByCandidate.get(artwork.candidate.index)! }, data: { resourceVersions: json({ recipeUpdatedAt: decorated.updatedAt.toISOString() }) } }); }
       catch (error) { results.push({ index: artwork.candidate.index, name: artwork.candidate.portable.name, action: "artwork_omitted", error: error instanceof Error ? error.message : "Artwork could not be stored." }); }
     }
     for (const { candidate } of selected) {
@@ -407,13 +452,24 @@ export async function confirmRecipeImport(input: { userId: string; stageId: stri
       prisma.recipeImportStage.update({ where: { id: stage.id }, data: { status: "IMPORTED", sanitizedPayloadJson: json({ consumed: true, sourceDigest: stage.sourceDigest }), previewJson: json({ consumed: true }) } }),
     ]);
     console.info("[RecipeTransfer] Import completed", { historyId: history.id, status, counts });
-    const { emitIntegrationEvent } = await import("../integrations/service");
-    await emitIntegrationEvent("recipe.imported", { import: { historyId: history.id, status, counts, recipes: results.map((item) => ({ id: item.recipeId, name: item.name, action: item.action })) } }, { actorType: "user", actorId: input.userId }, `recipe.imported:${history.id}`);
+    try {
+      const { emitIntegrationEvent } = await import("../integrations/service");
+      await emitIntegrationEvent("recipe.imported", { import: { historyId: history.id, status, counts, recipes: results.map((item) => ({ id: item.recipeId, name: item.name, action: item.action })) } }, { actorType: "user", actorId: input.userId }, `recipe.imported:${history.id}`);
+      for (const item of selected) {
+        const imported = results.find((result) => result.index === item.candidate.index && result.recipeId);
+        if (!imported?.recipeId || !item.candidate.governance) continue;
+        const event = item.candidate.governance.quarantine.required ? "recipe.quarantined" : "recipe.approval_required";
+        await emitIntegrationEvent(event, { recipe: { id: imported.recipeId, trustState: item.candidate.governance.trustState, signatureStatus: item.candidate.governance.signature.status, riskLevel: item.candidate.governance.risk.riskLevel }, correlationId }, { actorType: "user", actorId: input.userId }, `${event}:${correlationId}:${imported.recipeId}`);
+      }
+    } catch (error) { console.warn("[RecipeTransfer] Governance notification delivery failed", { historyId: history.id, reason: error instanceof Error ? error.message : "unknown" }); }
+    recipeImportsTotal.inc({ result: status.toLowerCase() }); recipeImportDurationSeconds.observe({ mode }, (performance.now() - importStarted) / 1000);
     return { historyId: history.id, status, counts, results };
   } catch (error) {
     const diagnostic = diagnosticForTransfer(parsed, "FAILED", { errorCode: (error as Error & { code?: string }).code || "TRANSACTION_FAILED", message: error instanceof Error ? error.message : "Import failed." });
     await prisma.recipeImportHistory.update({ where: { id: history.id }, data: { completedAt: new Date(), failedCount: selected.length, errorCount: { increment: 1 }, resultSummaryJson: json({ errorCode: (error as Error & { code?: string }).code || "TRANSACTION_FAILED" }), diagnosticJson: json(diagnostic), status: "FAILED" } });
     console.warn("[RecipeTransfer] Import failed", { historyId: history.id, errorCode: (error as Error & { code?: string }).code || "TRANSACTION_FAILED" });
+    recipeImportsTotal.inc({ result: "failed" }); recipeImportDurationSeconds.observe({ mode }, (performance.now() - importStarted) / 1000);
+    try { const { emitIntegrationEvent } = await import("../integrations/service"); await emitIntegrationEvent("recipe.import_failed", { import: { historyId: history.id, errorCode: (error as any)?.code || "TRANSACTION_FAILED" }, correlationId }, { actorType: "user", actorId: input.userId }, `recipe.import_failed:${history.id}`); } catch { /* Import failure remains authoritative even if notification storage is unavailable. */ }
     throw error;
   }
 }

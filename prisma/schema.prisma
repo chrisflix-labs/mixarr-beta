@@ -112,6 +112,11 @@ model User {
   recipeInheritanceAudits        RecipeInheritanceAudit[]          @relation("RecipeInheritanceActor")
   recipeGlobalDefaultsUpdates    GlobalRecipeDefaults[]            @relation("GlobalRecipeDefaultsActor")
   builtInRecipePreferences       BuiltInRecipePreference[]
+  recipeAuditEvents              RecipeAuditEvent[]                @relation("RecipeAuditActor")
+  recipeApprovals                PlaylistRecipe[]                  @relation("RecipeApprovalActor")
+  recipeSnapshots                RecipeImportSnapshot[]            @relation("RecipeSnapshotActor")
+  recipeSigningKeys              RecipeSigningKey[]                @relation("RecipeSigningKeyActor")
+  recipeSafetyPolicy             RecipeSafetyPolicy?
   playlistHealthSetting          PlaylistHealthSetting?
   playlistHealthSnapshots        PlaylistHealthSnapshot[]
   playlistHealthAlerts           PlaylistHealthAlert[]
@@ -1121,6 +1126,33 @@ model PlaylistRecipe {
   communityOriginalChecksum  String?
   communityImportedVersion   String?
   communityUpdatedAt         DateTime?
+  governanceSchemaVersion    Int                       @default(3)
+  recipeSource               String                    @default("LOCAL")
+  originalPayloadJson        Json?
+  normalizedPayloadJson      Json?
+  trustState                 String                    @default("LOCAL")
+  approvalState              String                    @default("APPROVED")
+  quarantineState            String                    @default("NONE")
+  quarantineReason           String?
+  signatureStatus            String                    @default("MISSING")
+  signatureAlgorithm         String?
+  signatureKeyId             String?
+  signerIdentity             String?
+  signatureSignedAt          DateTime?
+  requestedPermissionsJson   Json                      @default("[]")
+  grantedPermissionsJson     Json                      @default("[]")
+  restrictedPermissionsJson  Json                      @default("[]")
+  compatibilityStatus        String                    @default("COMPATIBLE")
+  compatibilityJson          Json                      @default("{}")
+  riskLevel                  String                    @default("LOW")
+  riskScore                  Int                       @default(0)
+  riskFindingsJson           Json                      @default("[]")
+  dependencyStatusJson       Json                      @default("[]")
+  migrationHistoryJson       Json                      @default("[]")
+  approvedById               String?
+  approvedAt                 DateTime?
+  revokedLocallyAt           DateTime?
+  lastValidatedAt            DateTime?
   localOverridesJson         Json                      @default("{}")
   inheritanceSchemaVersion   Int                       @default(1)
   baseRecipe                 PlaylistRecipe?           @relation("RecipeBaseInheritance", fields: [baseRecipeId], references: [id], onDelete: Restrict)
@@ -1130,6 +1162,9 @@ model PlaylistRecipe {
   discoveryPreset            RecipePreset?             @relation("RecipeDiscoveryPreset", fields: [discoveryPresetId], references: [id], onDelete: Restrict)
   varietyPreset              RecipePreset?             @relation("RecipeVarietyPreset", fields: [varietyPresetId], references: [id], onDelete: Restrict)
   automationPreset           RecipePreset?             @relation("RecipeAutomationPreset", fields: [automationPresetId], references: [id], onDelete: Restrict)
+  approvedBy                 User?                     @relation("RecipeApprovalActor", fields: [approvedById], references: [id], onDelete: SetNull)
+  auditEvents                RecipeAuditEvent[]
+  importSnapshots            RecipeImportSnapshot[]
   recipeOverrides            RecipeOverride[]
   inheritanceSnapshots       EffectiveRecipeSnapshot[]
 
@@ -1148,6 +1183,92 @@ model PlaylistRecipe {
   @@index([discoveryPresetId])
   @@index([varietyPresetId])
   @@index([automationPresetId])
+  @@index([userId, trustState, updatedAt])
+  @@index([userId, approvalState, updatedAt])
+  @@index([userId, quarantineState, updatedAt])
+  @@index([signatureKeyId])
+  @@index([riskLevel, updatedAt])
+}
+
+model RecipeSigningKey {
+  id          String    @id @default(uuid())
+  keyId       String    @unique
+  name        String
+  identity    String
+  algorithm   String    @default("ed25519")
+  publicKey   String
+  official    Boolean   @default(false)
+  trusted     Boolean   @default(true)
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  revokedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  revokedBy   User?     @relation("RecipeSigningKeyActor", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@index([official, trusted, revokedAt])
+  @@index([expiresAt])
+}
+
+model RecipeSafetyPolicy {
+  id         String   @id @default(uuid())
+  userId     String   @unique
+  limitsJson Json     @default("{}")
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RecipeAuditEvent {
+  id                String          @id @default(uuid())
+  recipeId          String?
+  recipeVersion     Int?
+  eventType         String
+  actorType         String
+  actorId           String?
+  sourceIp          String?
+  previousStateJson Json?
+  newStateJson      Json?
+  validationJson    Json?
+  riskJson          Json?
+  permissionsJson   Json?
+  trustState        String?
+  riskLevel         String?
+  result            String          @default("SUCCESS")
+  correlationId     String
+  description       String
+  metadataJson      Json?
+  createdAt         DateTime        @default(now())
+  recipe            PlaylistRecipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  actor             User?           @relation("RecipeAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([recipeId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([actorId, createdAt])
+  @@index([trustState, createdAt])
+  @@index([riskLevel, createdAt])
+  @@index([correlationId])
+}
+
+model RecipeImportSnapshot {
+  id                String          @id @default(uuid())
+  recipeId          String?
+  userId            String
+  correlationId     String
+  snapshotJson      Json
+  resourceVersions  Json            @default("{}")
+  reason            String
+  status            String          @default("AVAILABLE")
+  restoredAt        DateTime?
+  restoredById      String?
+  restoreResultJson Json?
+  createdAt         DateTime        @default(now())
+  recipe            PlaylistRecipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  user              User            @relation("RecipeSnapshotActor", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([recipeId, createdAt])
+  @@index([userId, status, createdAt])
+  @@index([correlationId])
 }
 
 model BuiltInRecipePreference {

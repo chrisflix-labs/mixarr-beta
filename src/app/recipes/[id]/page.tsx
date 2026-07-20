@@ -9,7 +9,7 @@ import { AlertCircle, ArrowDown, ArrowLeft, CheckCircle2, Copy, Download, Flag, 
 import styles from "./recipe-detail.module.css";
 
 const categories = ["Driving", "Workout", "Party", "Focus", "Chill", "Relaxation", "Sleep", "Discovery", "Deep Cuts", "Recently Added", "Forgotten Favorites", "Decade Mixes", "Seasonal Mixes", "Genre Journeys", "Artist Radio", "Album Exploration", "Mood Progressions", "Mood", "Decade", "Genre", "Artist", "Seasonal", "Custom"];
-const sections = ["Recipe Foundation", "Overview", "Mood and Energy", "BPM Flow", "Discovery", "Scoring", "Artist and Album Variety", "Playlist Identity", "Refresh and Automation", "Effective Configuration", "Import Mapping", "Validation", "Generated Playlists"];
+const sections = ["Recipe Foundation", "Overview", "Mood and Energy", "BPM Flow", "Discovery", "Scoring", "Artist and Album Variety", "Playlist Identity", "Refresh and Automation", "Effective Configuration", "Import Mapping", "Governance", "Validation", "Generated Playlists"];
 
 type Message = { path: string; code: string; message: string };
 type Recipe = Record<string, any> & { id: string; name: string; slug: string; validation: { valid: boolean; errors: Message[]; warnings: Message[] } };
@@ -54,6 +54,10 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
   const [categoryOptions, setCategoryOptions] = useState<any[]>([]);
   const [showClone, setShowClone] = useState(false);
   const [sourceDetails, setSourceDetails] = useState<any>(null);
+  const [auditEvents, setAuditEvents] = useState<any[]>([]);
+  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [migrationPlan, setMigrationPlan] = useState<any>(null);
+  const [restorePlan, setRestorePlan] = useState<any>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,6 +75,8 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
       setLibraries(options);
       setLibraryId(loaded.filters?.libraryId || options[0]?.id || "");
       setRecipeOptions(recipesResponse.data.recipes || []); setPresetOptions(presetsResponse.data.presets || []); setCategoryOptions(categoriesResponse.data.categories || []); setResolution(effectiveResponse.data);
+      axios.get(`/api/recipes/audit?recipeId=${encodeURIComponent(params.id)}`).then((response) => setAuditEvents(response.data.events || [])).catch(() => setAuditEvents([]));
+      axios.get(`/api/recipes/${encodeURIComponent(params.id)}/snapshots`).then((response) => setSnapshots(response.data.snapshots || [])).catch(() => setSnapshots([]));
     }).catch((caught) => setError(caught.response?.data?.error || "Unable to load this recipe.")).finally(() => setLoading(false));
     return () => { cancelled = true; };
   }, [params.id]);
@@ -185,6 +191,51 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
     catch (caught: any) { setError(caught.response?.data?.error || "The report could not be created."); }
   }
 
+  async function governanceAction(action: "approve" | "reject" | "revalidate" | "revoke") {
+    if (!draft) return; setSaving(true); setError("");
+    try {
+      if (action === "approve") await axios.post(`/api/recipes/${draft.id}/approval`, { mode: "suggest_only", grantedPermissions: draft.governance?.requestedPermissions?.filter((item: any) => item.decision === "allow").map((item: any) => item.permission) || [], confirmConsequences: [] });
+      else if (action === "reject") { const reason = window.prompt("Specific reason for rejecting this recipe"); if (!reason) return; await axios.post(`/api/recipes/${draft.id}/reject`, { reason }); }
+      else if (action === "revoke") await axios.delete(`/api/recipes/${draft.id}/approval`);
+      else await axios.post(`/api/recipes/${draft.id}/revalidate`);
+      window.location.reload();
+    } catch (caught: any) { setError(caught.response?.data?.error || "The governance action failed."); } finally { setSaving(false); }
+  }
+
+  async function previewMigration() {
+    if (!draft) return; setSaving(true); setError("");
+    try { setMigrationPlan((await axios.get(`/api/recipes/${draft.id}/migration`)).data); }
+    catch (caught: any) { setError(caught.response?.data?.error || "Migration preview failed."); }
+    finally { setSaving(false); }
+  }
+
+  async function applyMigration() {
+    if (!draft || !migrationPlan?.diffHash) return;
+    const changeSummary = (migrationPlan.changes || []).map((item: any) => item.message).join("\n") || "Normalize this recipe to the current schema and require approval again.";
+    if (!window.confirm(`Apply this reviewed migration?\n\n${changeSummary}\n\nThe original payload and a restore snapshot will be preserved.`)) return;
+    setSaving(true); setError("");
+    try { await axios.post(`/api/recipes/${draft.id}/migration`, { diffHash: migrationPlan.diffHash }); window.location.reload(); }
+    catch (caught: any) { setError(caught.response?.data?.error || "Migration failed."); }
+    finally { setSaving(false); }
+  }
+
+  async function previewSnapshot(snapshotId: string) {
+    setSaving(true); setError("");
+    try { setRestorePlan((await axios.get(`/api/recipes/snapshots/${snapshotId}/preview`)).data); }
+    catch (caught: any) { setError(caught.response?.data?.error || "Restore preview failed."); }
+    finally { setSaving(false); }
+  }
+
+  async function restoreSnapshot() {
+    if (!restorePlan?.snapshot?.id) return;
+    const consequence = restorePlan.restoreAction === "REMOVE_IMPORTED_RECIPE" ? "The imported recipe will be disabled and moved out of the active library." : "The recipe configuration shown under Before will replace its current configuration.";
+    if (!window.confirm(`Restore snapshot from ${new Date(restorePlan.snapshot.createdAt).toLocaleString()}?\n\n${consequence}${restorePlan.conflicts?.length ? "\n\nA later recipe change was detected and will be overwritten." : ""}`)) return;
+    setSaving(true); setError("");
+    try { await axios.post(`/api/recipes/snapshots/${restorePlan.snapshot.id}/restore`, { confirmConflicts: Boolean(restorePlan.conflicts?.length) }); window.location.reload(); }
+    catch (caught: any) { setError(caught.response?.data?.error || "Restore failed."); }
+    finally { setSaving(false); }
+  }
+
   async function generate() {
     if (!draft || !playlistName.trim()) return;
     if (dirty) { setError("Save recipe changes before creating a playlist."); return; }
@@ -297,6 +348,20 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
           {draft.importAnalysis ? <><div className={styles.two}><div className={styles.valid}><CheckCircle2 /><div><strong>{draft.importAnalysis.compatibilityScore}% compatibility</strong><p>{draft.importAnalysis.library?.name || "Local library"} · {draft.importAnalysis.identityImpact.replaceAll("_", " ")} identity impact</p></div></div><div className={styles.valid}><CheckCircle2 /><div><strong>{draft.importAnalysis.adaptedCandidateEstimate} adapted candidates</strong><p>{draft.importAnalysis.originalCandidateEstimate} using the original definition</p></div></div></div>
           {draft.importAnalysis.mappings.map((mapping: any) => <div className={styles.message} key={mapping.id}><code>{mapping.mappingType}</code><span><b>{mapping.originalValue}</b> → {(mapping.mappedValuesJson || []).join(", ") || "No local mapping"}<small>{mapping.matchStatus.replaceAll("_", " ")} · {Math.round(mapping.confidence * 100)}% · {mapping.reason}</small></span></div>)}
           <details><summary>Compare preserved original recipe JSON</summary><pre>{JSON.stringify(draft.originalImportedRecipe, null, 2)}</pre></details></> : <p className={styles.empty}>This recipe was created locally or predates adaptive import analysis.</p>}
+        </Section>}
+        {activeSection === "Governance" && <Section title="Safety, Trust & Governance" hint="Trust, official status, approval, and restrictions are derived and enforced by the server.">
+          {draft.governance ? <><div className={draft.governance.quarantineState === "NONE" ? styles.valid : styles.invalid}>{draft.governance.quarantineState === "NONE" ? <CheckCircle2 /> : <ShieldAlert />}<div><strong>{draft.governance.official ? "Official Recipe" : draft.governance.trustState.replaceAll("_", " ")}</strong><p>{draft.governance.approvalState.replaceAll("_", " ")} · {draft.governance.compatibilityStatus.replaceAll("_", " ")} · {draft.governance.riskLevel} risk ({draft.governance.riskScore}/100)</p></div></div>
+          {draft.governance.quarantineReason && <div className={styles.invalid}><ShieldAlert /><div><strong>Quarantined</strong><p>{draft.governance.quarantineReason}</p></div></div>}
+          <div className={styles.two}><div className={styles.summary}><strong>Signature</strong><p>{draft.governance.signatureStatus.replaceAll("_", " ")}{draft.governance.signerIdentity ? ` · ${draft.governance.signerIdentity}` : ""}{draft.governance.signatureKeyId ? ` · ${draft.governance.signatureKeyId}` : ""}</p></div><div className={styles.summary}><strong>Last validation</strong><p>{draft.governance.lastValidatedAt ? new Date(draft.governance.lastValidatedAt).toLocaleString() : "Not recorded"}</p></div></div>
+          <h4>Requested permissions</h4>{draft.governance.requestedPermissions.map((item: any) => <div className={styles.message} data-error={item.decision === "deny"} key={item.permission || item}><code>{item.permission || item}</code><span>{item.reason || "Inferred legacy permission"}<small>{item.riskLevel ? `${item.riskLevel} · ${item.decision}${item.fallback ? ` · ${item.fallback}` : ""}` : ""}</small></span></div>)}
+          <h4>Risk findings</h4>{draft.governance.riskFindings.length ? draft.governance.riskFindings.map((finding: any, index: number) => <div className={styles.message} data-error={["error","high","destructive"].includes(finding.severity)} key={`${finding.code}-${index}`}><code>{finding.code}</code><span>{finding.message}</span></div>) : <p className={styles.empty}>No governance risk findings.</p>}
+          <h4>Dependencies</h4>{draft.governance.dependencies.length ? draft.governance.dependencies.map((dependency: any) => <div className={styles.message} data-error={dependency.required && dependency.status !== "AVAILABLE"} key={`${dependency.type}-${dependency.name}`}><code>{dependency.status}</code><span>{dependency.name}<small>{dependency.message}</small></span></div>) : <p className={styles.empty}>No declared external dependencies.</p>}
+          <div className={styles.actions}><button onClick={() => void governanceAction("revalidate")}><RefreshCw size={15} /> Revalidate</button>{!["APPROVED","APPROVED_WITH_RESTRICTIONS"].includes(draft.governance.approvalState) && <button onClick={() => void governanceAction("approve")}><CheckCircle2 size={15} /> Approve safely</button>}{["APPROVED","APPROVED_WITH_RESTRICTIONS"].includes(draft.governance.approvalState) && <button onClick={() => void governanceAction("revoke")}><ShieldAlert size={15} /> Revoke approval</button>}<button onClick={() => void governanceAction("reject")}><X size={15} /> Reject</button><button onClick={() => void previewMigration()}><GitBranch size={15} /> Preview migration</button></div>
+          {migrationPlan && <div className={styles.governancePanel} aria-label="Recipe migration preview"><strong>Migration preview</strong><p>Current payload to schema v{migrationPlan.normalized?.schemaVersion || "unknown"}. Applying this disables execution until local review.</p>{(migrationPlan.changes || []).map((item: any, index: number) => <div className={styles.message} key={`${item.code}-${index}`}><code>{item.path || "recipe"}</code><span>{item.message}</span></div>)}{(migrationPlan.errors || []).map((item: any, index: number) => <div className={styles.message} data-error="true" key={`${item.code}-${index}`}><code>{item.path || "recipe"}</code><span>{item.message}</span></div>)}<button disabled={!migrationPlan.normalized || migrationPlan.errors?.length} onClick={() => void applyMigration()}><GitBranch size={15} /> Apply reviewed migration</button></div>}
+          <h4>Migration history</h4>{draft.governance.migrationHistory?.length ? draft.governance.migrationHistory.map((entry: any, index: number) => <div className={styles.message} key={`${entry.migratedAt}-${index}`}><code>v{entry.fromSchemaVersion} → v{entry.toSchemaVersion}</code><span>{new Date(entry.migratedAt).toLocaleString()}<small>Permissions were not increased.</small></span></div>) : <p className={styles.empty}>No recipe migrations recorded.</p>}
+          <h4>Restore snapshots</h4>{snapshots.length ? snapshots.map((snapshot: any) => <div className={styles.snapshotRow} key={snapshot.id}><span><strong>{new Date(snapshot.createdAt).toLocaleString()}</strong><small>{snapshot.reason} · correlation {snapshot.correlationId} · {snapshot.status.toLowerCase()}</small></span><button disabled={snapshot.status !== "AVAILABLE"} onClick={() => void previewSnapshot(snapshot.id)}>Preview restore</button></div>) : <p className={styles.empty}>No import or migration snapshots are available.</p>}
+          {restorePlan && <div className={styles.governancePanel} aria-label="Restore preview"><strong>{restorePlan.restoreAction === "REMOVE_IMPORTED_RECIPE" ? "Remove imported recipe" : "Restore pre-import configuration"}</strong><p>Snapshot {new Date(restorePlan.snapshot.createdAt).toLocaleString()} · correlation {restorePlan.snapshot.correlationId}</p>{restorePlan.conflicts?.map((conflict: any) => <div className={styles.invalid} key={conflict.code}><AlertCircle /><div><strong>{conflict.code}</strong><p>{conflict.message}</p></div></div>)}<details><summary>Before and current configuration</summary><div className={styles.diffGrid}><pre>{JSON.stringify(restorePlan.before, null, 2)}</pre><pre>{JSON.stringify(restorePlan.current, null, 2)}</pre></div></details><button disabled={!restorePlan.restorable} onClick={() => void restoreSnapshot()}><RotateCcw size={15} /> Confirm atomic restore</button></div>}
+          <h4>Immutable audit history</h4>{auditEvents.length ? auditEvents.map((event: any) => <div className={styles.auditRow} key={event.id}><span><strong>{event.eventType.replaceAll("_", " ")}</strong><small>{new Date(event.createdAt).toLocaleString()} · {event.result} · correlation {event.correlationId}{event.trustState ? ` · ${event.trustState}` : ""}</small></span><p>{event.description}</p></div>) : <p className={styles.empty}>No governance audit events recorded.</p>}</> : <p className={styles.empty}>Governance metadata will be created by validation.</p>}
         </Section>}
         {activeSection === "Validation" && <Section title="Validation" hint="Validation does not load tracks or run playlist generation.">
           <div className={draft.validation.valid ? styles.valid : styles.invalid}>{draft.validation.valid ? <CheckCircle2 /> : <AlertCircle />}<div><strong>{draft.validation.valid ? "Recipe is valid" : "Recipe needs attention"}</strong><p>{draft.validation.errors.length} error(s), {draft.validation.warnings.length} warning(s)</p></div></div>

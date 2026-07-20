@@ -3,9 +3,11 @@ import { playlistConfigSchema, type PlaylistConfigInput } from "../playlistServi
 import { DEFAULT_SMART_MIX_TUNING, normalizeSmartMixTuningConfig } from "../smartMixEngine/v2/tuning";
 import { normalizeDiscoveryConfig } from "../smartMixEngine/v2/discovery";
 import { normalizeBpmFlowConfig } from "../smartMixEngine/v2/bpmFlow";
+import { RECIPE_PERMISSIONS } from "./governanceTypes";
+export { RECIPE_PERMISSIONS } from "./governanceTypes";
 
 export const MIX_RECIPE_FORMAT = "mixarr-recipe" as const;
-export const CURRENT_RECIPE_SCHEMA_VERSION = 1;
+export const CURRENT_RECIPE_SCHEMA_VERSION = 3;
 export const RECIPE_CATEGORIES = [
   "Driving", "Workout", "Party", "Focus", "Chill", "Sleep", "Discovery",
   "Mood", "Decade", "Genre", "Artist", "Seasonal", "Custom",
@@ -150,11 +152,46 @@ export const mixRecipeMetadataSchema = z.object({
   sourcePlaylistId: z.string().uuid().optional().nullable(),
 }).strict();
 
+export const recipePermissionSchema = z.object({
+  permission: z.enum(RECIPE_PERMISSIONS),
+  reason: z.string().trim().min(1).max(500),
+  required: z.boolean().default(true),
+}).strict();
+
+export const recipeDependencySchema = z.object({
+  type: z.enum(["feature", "metadata_provider", "plex_integration", "plex_library", "plex_collection", "integration", "approval_workflow", "smart_actions", "recipe", "capability", "api_scope"]),
+  name: z.string().trim().min(1).max(160),
+  required: z.boolean().default(true),
+  minimumVersion: z.string().trim().max(80).optional().nullable(),
+  fallback: z.object({
+    action: z.enum(["disable_rule", "suggest_only", "skip_notification", "disabled_schedule", "require_approval", "compatible_source", "ignore_ui_field"]),
+    target: z.string().trim().max(240).optional().nullable(),
+  }).strict().optional().nullable(),
+}).strict();
+
+export const recipeCompatibilitySchema = z.object({
+  minMixarrVersion: z.string().trim().max(80).default("2.3.8"),
+  maxMixarrVersion: z.string().trim().max(80).default("2.x"),
+  recipeSchemaVersion: z.coerce.number().int().min(1).max(CURRENT_RECIPE_SCHEMA_VERSION).default(CURRENT_RECIPE_SCHEMA_VERSION),
+}).strict();
+
+export const recipeSignatureSchema = z.object({
+  algorithm: z.literal("ed25519"),
+  keyId: z.string().trim().min(1).max(160),
+  value: z.string().trim().min(1).max(1000),
+  signedAt: z.string().datetime({ offset: true }),
+  expiresAt: z.string().datetime({ offset: true }).optional().nullable(),
+}).strict();
+
 export const mixRecipeDocumentSchema = z.object({
   format: z.literal(MIX_RECIPE_FORMAT),
   schemaVersion: z.literal(CURRENT_RECIPE_SCHEMA_VERSION),
   recipeVersion: z.coerce.number().int().min(1),
   metadata: mixRecipeMetadataSchema,
+  permissions: z.array(recipePermissionSchema).max(RECIPE_PERMISSIONS.length).default([]),
+  dependencies: z.array(recipeDependencySchema).max(100).default([]),
+  compatibility: recipeCompatibilitySchema.default({}),
+  signature: recipeSignatureSchema.optional().nullable(),
   scoring: recipeScoringSchema,
   targets: recipeTargetsSchema,
   bpmFlow: recipeBpmFlowSchema,
@@ -254,6 +291,7 @@ export function defaultMixRecipeDocument(metadata: MixRecipeMetadataInput, gener
     schemaVersion: CURRENT_RECIPE_SCHEMA_VERSION,
     recipeVersion: 1,
     metadata: { ...metadata, slug: metadata.slug || slugifyRecipeName(metadata.name) },
+    permissions: [], dependencies: [], compatibility: {}, signature: null,
     ...sections,
     playlistIdentity: {}, refreshPolicy: {}, automationPolicy: {}, generation,
   });

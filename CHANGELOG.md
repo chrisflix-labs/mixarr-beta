@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.3.8 - Recipe Safety, Compatibility & Governance
+
+- Added recipe schema v3 with explicit permission reasons, dependencies and safe fallbacks, semantic Mixarr-version compatibility, deprecation-aware migration output, deterministic canonical signing payloads, and Ed25519 public-key verification.
+- Added server-derived local/trusted/official/untrusted/quarantined/signature-invalid/unknown/revoked trust, pending/approved/restricted/rejected/revoked approval, and signature result state persisted independently of enabled state.
+- Added conservative configurable safety limits with absolute caps, explainable combined-risk analysis, impossible-candidate checks, forbidden delete/recreate and protected-target detection, and Suggest-Only defaults for external recipes.
+- Extended staged import with a shared server-side governance plan, explicit high-risk consequences, stale-plan revalidation, transactional persistence, pre-import snapshots, immutable correlated audit events, and conflict-aware atomic restore.
+- Added scoped governance, quarantine, signing-key, migration, audit, validation, approval, rejection, revalidation, safety-policy, snapshot-preview, and restore APIs plus recipe-list badges, visible import warnings, recipe governance details, and a quarantine workflow.
+- Added execution-time approval, quarantine, permission, deletion, and protected-playlist enforcement; private signing keys and client-provided official/trust state are never accepted.
+- Added additive migration `20260720180000_recipe_governance_v238`, governance/security tests, release documentation, and recipe-author guidance.
+
 ## v2.3.7 - Plex & Media Ecosystem Integrations
 
 - Added prioritized multi-server Plex status, detailed authentication/identity/library/playlist/collection tests, user mapping, playlist ownership and permissions, collection import/export, external fingerprints, change classification, and manual reconciliation actions.

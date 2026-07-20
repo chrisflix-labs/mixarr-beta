@@ -48,6 +48,16 @@
 .message { display: grid; grid-template-columns: minmax(120px,220px) 1fr; gap: .7rem; padding: .65rem; border-left: 3px solid #d7ad5b; background: rgba(215,173,91,.06); font-size: .8rem; }
 .message[data-error="true"] { border-color: #d75b5b; background: rgba(215,91,91,.06); }
 .message code { color: var(--muted); overflow-wrap: anywhere; }
+.governancePanel { display: grid; gap: .7rem; padding: .85rem; border: 1px solid rgba(124,111,247,.35); border-radius: var(--radius-md); background: rgba(124,111,247,.07); }
+.governancePanel > p { margin: 0; color: var(--muted); font-size: .8rem; }
+.governancePanel > button, .snapshotRow button { justify-self: start; display: inline-flex; align-items: center; gap: .4rem; min-height: 2.2rem; padding: .45rem .65rem; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--fg); background: rgba(255,255,255,.04); cursor: pointer; }
+.governancePanel summary { cursor: pointer; font-weight: 750; }
+.diffGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .6rem; margin-top: .6rem; }
+.diffGrid pre { max-height: 24rem; margin: 0; padding: .65rem; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--muted); background: rgba(0,0,0,.22); font-size: .7rem; }
+.snapshotRow, .auditRow { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .6rem; padding: .7rem; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.snapshotRow span, .auditRow span { display: grid; gap: .2rem; }
+.snapshotRow small, .auditRow small { color: var(--muted); }
+.auditRow p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: .8rem; }
 .playlistList { display: grid; gap: .55rem; }
 .playlistList a { display: flex; justify-content: space-between; gap: 1rem; padding: .75rem; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--fg); }
 .playlistList span { display: grid; gap: .2rem; }
@@ -83,6 +93,7 @@
   .tabs button { white-space: nowrap; }
   .header { flex-direction: column; }
   .two, .three { grid-template-columns: 1fr; }
+  .diffGrid { grid-template-columns: 1fr; }
   .sourceBanner { grid-template-columns: auto 1fr; }
   .sourceBanner > span, .sourceBanner > a, .sourceBanner > button { grid-column: 2; justify-self: start; }
   .communityBanner{grid-template-columns:auto 1fr}.communityBanner>button{grid-column:2;justify-self:start}

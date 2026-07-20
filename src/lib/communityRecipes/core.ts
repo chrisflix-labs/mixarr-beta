@@ -6,6 +6,7 @@ import { APP_VERSION_NUMBER } from "../appVersion";
 import { validateArtwork } from "../mixRecipes/archive";
 import { canonicalize, scanSensitiveData } from "../mixRecipes/transfer";
 import { mixRecipeDocumentSchema, type MixRecipeDocument } from "../mixRecipes/schema";
+import { parseJsonRejectingDuplicateKeys } from "../mixRecipes/transfer";
 import { validateRecipe } from "../mixRecipes/validation";
 
 export const COMMUNITY_RECIPE_FORMAT = "mixarr-community-recipe" as const;
@@ -150,20 +151,20 @@ export function parseCommunityBundle(data: Uint8Array): CommunityDocument {
 
 export function parseManifest(input: string | unknown) {
   let value = input;
-  if (typeof input === "string") { if (Buffer.byteLength(input) > MAX_COMMUNITY_JSON_BYTES) throw communityError("CONTENT_TOO_LARGE", "Community recipe JSON is too large."); try { value = JSON.parse(input); } catch { throw communityError("INVALID_JSON", "The community recipe is not valid JSON."); } }
+  if (typeof input === "string") { if (Buffer.byteLength(input) > MAX_COMMUNITY_JSON_BYTES) throw communityError("CONTENT_TOO_LARGE", "Community recipe JSON is too large."); try { value = parseJsonRejectingDuplicateKeys(input); } catch (error) { throw communityError((error as any)?.code || "INVALID_JSON", error instanceof Error ? error.message : "The community recipe is not valid JSON."); } }
   const result = communityManifestSchema.safeParse(value); if (!result.success) throw communityError("INVALID_MANIFEST", result.error.issues[0]?.message || "The manifest is invalid.", result.error.issues[0]?.path.join(".")); return result.data;
 }
 
 export function parseRecipeJson(input: string | unknown) {
   let value = input;
-  if (typeof input === "string") { try { value = JSON.parse(input); } catch { throw communityError("INVALID_JSON", "recipe.json is not valid JSON."); } }
+  if (typeof input === "string") { try { value = parseJsonRejectingDuplicateKeys(input); } catch (error) { throw communityError((error as any)?.code || "INVALID_JSON", error instanceof Error ? error.message : "recipe.json is not valid JSON."); } }
   const parsed = mixRecipeDocumentSchema.safeParse(value); if (!parsed.success) throw communityError("INVALID_RECIPE", parsed.error.issues[0]?.message || "The recipe data is invalid.", parsed.error.issues[0]?.path.join("."));
   const validation = validateRecipe(parsed.data); if (!validation.normalizedRecipe) throw communityError("INVALID_RECIPE", validation.errors[0]?.message || "The recipe rules are invalid."); return validation.normalizedRecipe;
 }
 
 export function parseCommunityJson(input: string | unknown): CommunityDocument {
   let value: any = input;
-  if (typeof input === "string") { if (Buffer.byteLength(input) > MAX_COMMUNITY_JSON_BYTES) throw communityError("CONTENT_TOO_LARGE", "Pasted content exceeds the 2 MB limit."); try { value = JSON.parse(input); } catch { throw communityError("INVALID_JSON", "Pasted content is not valid JSON or a supported share code."); } }
+  if (typeof input === "string") { if (Buffer.byteLength(input) > MAX_COMMUNITY_JSON_BYTES) throw communityError("CONTENT_TOO_LARGE", "Pasted content exceeds the 2 MB limit."); try { value = parseJsonRejectingDuplicateKeys(input); } catch (error) { throw communityError((error as any)?.code || "INVALID_JSON", error instanceof Error ? error.message : "Pasted content is not valid JSON or a supported share code."); } }
   if (!value || typeof value !== "object" || Array.isArray(value)) throw communityError("INVALID_DOCUMENT", "Community recipe data must be an object.");
   if (value.manifest && value.recipe) { const document = { manifest: parseManifest(value.manifest), recipe: parseRecipeJson(value.recipe), changelog: typeof value.changelog === "string" ? value.changelog.slice(0, 20_000) : null }; verifyDocumentIntegrity(document, value.integrity); return document; }
   if (value.format === COMMUNITY_RECIPE_FORMAT && value.recipe && typeof value.recipe === "object") {

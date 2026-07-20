@@ -77,6 +77,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.3.8",
+    title: "Recipe Safety, Compatibility & Governance",
+    releaseDate: "July 19, 2026",
+    badges: ["Recipes", "Security", "Import", "Safety Rules", "Automation", "Database", "History", "Reliability", "UI"],
+    changes: [
+      "Added recipe schema v3 permissions, dependencies, semantic-version compatibility, deterministic Ed25519 verification, administrator-managed public signing keys, server-derived official badges, and local trust/approval states.",
+      "Added a shared import policy plan with conservative limits, explainable combined-risk analysis, impossible-requirement checks, safe fallbacks, quarantine, explicit high-risk confirmation, and stale-preview protection.",
+      "Blocked recipe playlist deletion and protected-playlist changes in the service layer, and re-check approval, quarantine, and granted permissions before recipe execution and regeneration.",
+      "Added immutable recipe audit events, pre-import snapshots, conflict-aware atomic restore, sequential migration previews, quarantine/detail workflows, authenticated scoped governance APIs, and sanitized webhook events.",
+      "Upgrade: apply migration 20260720180000_recipe_governance_v238. Existing local recipes remain local and continue safely; imported external recipes require review and default to Suggest-Only quarantine.",
+    ],
+  },
+  {
     version: "2.3.7",
     title: "Plex & Media Ecosystem Integrations",
     releaseDate: "July 19, 2026",

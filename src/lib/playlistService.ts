@@ -10,6 +10,8 @@ import { activeSyncStatusWhere } from "./syncStatus";
 import { getUserSyncSettings } from "./syncSettings";
 import { safeFinishJobHistory, safeRecordJobHistory, safeStartJobHistory } from "./jobHistory";
 import { recordPlaylistHistoryEntry } from "./playlistHistory";
+import { assertRecipeExecutionAllowed } from "./mixRecipes/executionPolicy";
+import { recipeExecutionsBlockedTotal } from "./metrics";
 import { filterManualTrackExclusions, getManualTrackExclusionIds } from "./trackExclusions";
 import { scorePlaylist, type PlaylistScoreSummary } from "./playlistScoring";
 import { resolveScoringModel, STABLE_SCORING_MODEL_ID } from "./scoringModels";
@@ -2564,10 +2566,38 @@ export async function regenerateGeneratedPlaylistFromPreview({
   const normalizedKeepPercent = regenerationMode === "keep_some" ? validateKeepPercent(Number(keepPercent || regeneration?.keepPercent || 25)) : null;
   const generatedPlaylist = await prisma.generatedPlaylist.findFirst({
     where: { id: generatedPlaylistId, userId },
+    include: { automationSettings: { select: { protected: true } }, recipe: { select: { id: true, enabled: true, approvalState: true, quarantineState: true, trustState: true, grantedPermissionsJson: true, recipeVersion: true, riskLevel: true } } },
   });
 
   if (!generatedPlaylist) {
     throw new Error("Generated playlist not found");
+  }
+  if (generatedPlaylist.recipe) {
+    try {
+      const target = { protected: generatedPlaylist.automationSettings?.protected === true, name: generatedPlaylist.plexPlaylistTitle };
+      assertRecipeExecutionAllowed(generatedPlaylist.recipe, "playlist.update", target);
+      assertRecipeExecutionAllowed(generatedPlaylist.recipe, "automation.remove_tracks", target);
+      assertRecipeExecutionAllowed(generatedPlaylist.recipe, "automation.add_tracks", target);
+    }
+    catch (error) {
+      const code = (error as any)?.code || "RECIPE_EXECUTION_BLOCKED";
+      const protectedPlaylist = generatedPlaylist.automationSettings?.protected === true;
+      recipeExecutionsBlockedTotal.inc({ reason: protectedPlaylist ? "protected_playlist" : String(code).toLowerCase() });
+      await prisma.recipeAuditEvent.create({ data: {
+        recipeId: generatedPlaylist.recipe.id,
+        recipeVersion: generatedPlaylist.recipe.recipeVersion,
+        eventType: protectedPlaylist ? "RECIPE_PROTECTED_PLAYLIST_BLOCKED" : "RECIPE_EXECUTION_BLOCKED",
+        actorType: "USER",
+        actorId: userId,
+        correlationId: globalThis.crypto.randomUUID(),
+        description: error instanceof Error ? error.message.slice(0, 1000) : "Recipe regeneration was blocked.",
+        trustState: generatedPlaylist.recipe.trustState,
+        riskLevel: generatedPlaylist.recipe.riskLevel,
+        result: "BLOCKED",
+        metadataJson: { generatedPlaylistId, code },
+      } });
+      throw error;
+    }
   }
   if (!generatedPlaylist.plexPlaylistRatingKey) {
     throw new Error("Mixarr could not find the existing Plex playlist. Create a new playlist instead?");

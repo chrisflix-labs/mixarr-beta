@@ -17,6 +17,8 @@ import {
   type MixRecipeDocument,
 } from "./schema";
 import { validateRecipe, type RecipeValidationMessage } from "./validation";
+import { scanForbiddenRecipeActions } from "./governance";
+import type { RecipeGovernancePlan } from "./governanceService";
 
 export const RECIPE_EXPORT_FORMAT = "mixarr-recipe" as const;
 export const RECIPE_BUNDLE_FORMAT = "mixarr-recipe-bundle" as const;
@@ -43,6 +45,10 @@ export type PortableRecipePayload = {
   description: string | null;
   category: string;
   artwork: PortableArtwork;
+  permissions: MixRecipeDocument["permissions"];
+  dependencies: MixRecipeDocument["dependencies"];
+  compatibility: MixRecipeDocument["compatibility"];
+  signature: MixRecipeDocument["signature"];
   settings: {
     scoring: MixRecipeDocument["scoring"];
     targets: MixRecipeDocument["targets"];
@@ -127,6 +133,7 @@ export type ImportCandidate = {
   artworkDataBase64?: string | null;
   artworkMimeType?: string | null;
   adaptiveAnalysis?: AdaptiveRecipeAnalysis & { analysisId?: string; mappingStateHash?: string; libraries?: Array<{ id: string; name: string; serverId: string; updatedAt: Date | string; _count: { tracks: number } }> };
+  governance?: RecipeGovernancePlan;
 };
 
 export type ParsedTransfer = {
@@ -168,6 +175,34 @@ export function canonicalize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
   const source = value as Record<string, unknown>;
   return `{${Object.keys(source).sort().map((key) => `${JSON.stringify(key)}:${canonicalize(source[key])}`).join(",")}}`;
+}
+
+export function parseJsonRejectingDuplicateKeys(input: string) {
+  const stack: Array<{ type: "object" | "array"; keys?: Set<string>; expectingKey?: boolean }> = [];
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    if (char === '"') {
+      const start = index;
+      index += 1;
+      for (; index < input.length; index += 1) {
+        if (input[index] === "\\") { index += 1; continue; }
+        if (input[index] === '"') break;
+      }
+      if (index >= input.length) break;
+      const frame = stack[stack.length - 1];
+      if (frame?.type === "object" && frame.expectingKey) {
+        const key = JSON.parse(input.slice(start, index + 1)) as string;
+        if (frame.keys!.has(key)) throw Object.assign(new Error(`Duplicate JSON key “${key}” is ambiguous and is not allowed.`), { code: "DUPLICATE_JSON_KEY" });
+        frame.keys!.add(key); frame.expectingKey = false;
+      }
+      continue;
+    }
+    if (char === "{") stack.push({ type: "object", keys: new Set(), expectingKey: true });
+    else if (char === "[") stack.push({ type: "array" });
+    else if (char === "}" || char === "]") stack.pop();
+    else if (char === ",") { const frame = stack[stack.length - 1]; if (frame?.type === "object") frame.expectingKey = true; }
+  }
+  return JSON.parse(input);
 }
 
 export function sha256(value: string | Uint8Array) {
@@ -234,6 +269,10 @@ export function portableRecipePayloadFromDocument(document: MixRecipeDocument, a
     description: recipe.metadata.description || null,
     category: recipe.metadata.category,
     artwork,
+    permissions: clone(recipe.permissions),
+    dependencies: clone(recipe.dependencies),
+    compatibility: clone(recipe.compatibility),
+    signature: clone(recipe.signature),
     settings: {
       scoring: clone(recipe.scoring),
       targets: clone(recipe.targets),
@@ -478,6 +517,10 @@ function portableFromUnknown(raw: unknown, adaptations: ImportAdaptation[], unsu
       ...(typeof artwork.mimeType === "string" ? { mimeType: artwork.mimeType } : {}),
       ...(typeof artwork.checksum === "string" ? { checksum: artwork.checksum } : {}),
     },
+    permissions: Array.isArray(raw.permissions) ? clone(raw.permissions) as MixRecipeDocument["permissions"] : [],
+    dependencies: Array.isArray(raw.dependencies) ? clone(raw.dependencies) as MixRecipeDocument["dependencies"] : [],
+    compatibility: isPlainObject(raw.compatibility) ? clone(raw.compatibility) as MixRecipeDocument["compatibility"] : { minMixarrVersion: "2.3.8", maxMixarrVersion: "2.x", recipeSchemaVersion: 3 },
+    signature: isPlainObject(raw.signature) ? clone(raw.signature) as MixRecipeDocument["signature"] : null,
     settings: {
       scoring: recipeScoringSchema.parse(cleanedSettings.scoring),
       targets: recipeTargetsSchema.parse(cleanedSettings.targets),
@@ -498,9 +541,13 @@ function internalDocumentFromPortable(portable: PortableRecipePayload): MixRecip
   const automation = recipeAutomationPolicySchema.parse({ ...portable.settings.automationPolicy, enabled: false, libraryId: null });
   return {
     format: "mixarr-recipe",
-    schemaVersion: 1,
+    schemaVersion: 3,
     recipeVersion: portable.recipeVersion,
     metadata: { name: portable.name, slug: slugifyRecipeName(portable.name), description: portable.description, category: portable.category, artworkUrl: null, sourcePlaylistId: null },
+    permissions: portable.permissions,
+    dependencies: portable.dependencies,
+    compatibility: portable.compatibility,
+    signature: portable.signature,
     scoring: portable.settings.scoring,
     targets: portable.settings.targets,
     bpmFlow: portable.settings.bpmFlow,
@@ -545,12 +592,14 @@ function makeCandidate(input: { raw: unknown; integrity: unknown; index: number;
   } catch (error) {
     portable = {
       recipeVersion: 1, name: isPlainObject(input.raw) && typeof input.raw.name === "string" ? input.raw.name : "Invalid recipe", description: null, category: "Custom", artwork: { included: false, reference: null },
+      permissions: [], dependencies: [], compatibility: { minMixarrVersion: "2.3.8", maxMixarrVersion: "2.x", recipeSchemaVersion: 3 }, signature: null,
       settings: { scoring: recipeScoringSchema.parse({}), targets: recipeTargetsSchema.parse({}), bpmFlow: recipeBpmFlowSchema.parse({}), discovery: recipeDiscoverySchema.parse({}), variety: recipeVarietySchema.parse({}), playlistIdentity: recipeIdentityDefaultsSchema.parse({}), refreshPolicy: recipeRefreshPolicySchema.parse({}), automationPolicy: (() => { const { libraryId: _id, ...value } = recipeAutomationPolicySchema.parse({}); return value; })(), generation: portableGeneration({ generation: playlistConfigSchema.parse({}) } as MixRecipeDocument) },
     };
     errors = [{ path: "recipe", code: (error as Error & { code?: string }).code || "invalid_recipe_schema", message: error instanceof Error ? error.message : "Invalid recipe schema." }];
   }
   const integrity = integrityStatus(input.integrity, portable);
   const scan = scanSensitiveData(input.scanSource ?? input.raw);
+  errors.push(...scanForbiddenRecipeActions(input.scanSource ?? input.raw).map((item) => ({ path: item.path, code: item.code, message: item.message, severity: "error" as const })));
   if (integrity.status === "mismatched" || integrity.status === "malformed" || integrity.status === "unsupported") errors.push({ path: "integrity", code: `checksum_${integrity.status}`, message: integrity.status === "mismatched" ? "The recipe checksum does not match its content." : integrity.status === "unsupported" ? "The checksum algorithm is unsupported." : "The checksum is malformed." });
   if (!scan.safe) errors.push({ path: "security", code: "sensitive_data_detected", message: "Import blocked because private or server-specific data was detected." });
   if (integrity.status === "missing") warnings.push({ path: "integrity", code: "checksum_missing", message: "This older export has no checksum. Review it carefully before importing." });
@@ -594,7 +643,7 @@ export function parseTransferJson(input: string | Record<string, unknown>, total
   const sourceText = typeof input === "string" ? input : JSON.stringify(input);
   if (Buffer.byteLength(sourceText, "utf8") > MAX_RECIPE_JSON_BYTES) throw Object.assign(new Error("Recipe import file is too large."), { code: "FILE_TOO_LARGE" });
   let payload: unknown;
-  try { payload = typeof input === "string" ? JSON.parse(input) : input; } catch { throw Object.assign(new Error("The recipe file is not valid JSON."), { code: "INVALID_JSON" }); }
+  try { payload = typeof input === "string" ? parseJsonRejectingDuplicateKeys(input) : input; } catch (error) { if ((error as any)?.code === "DUPLICATE_JSON_KEY") throw error; throw Object.assign(new Error("The recipe file is not valid JSON."), { code: "INVALID_JSON" }); }
   if (!isPlainObject(payload)) throw Object.assign(new Error("The recipe export must be a JSON object."), { code: "UNSUPPORTED_FORMAT" });
   const sourceDigest = sha256(sourceText);
   if (payload.format === RECIPE_EXPORT_FORMAT && payload.formatVersion != null) {
@@ -710,6 +759,7 @@ export function publicImportPreview(parsed: ParsedTransfer) {
     recommendedAction: candidate.recommendedAction,
     summary: candidate.summary,
     adaptiveAnalysis: candidate.adaptiveAnalysis || null,
+    governance: candidate.governance || null,
     ready: candidate.validationErrors.length === 0,
   }));
   return {
@@ -751,6 +801,7 @@ export function diagnosticForTransfer(parsed: ParsedTransfer, status: string, re
       conflicts: candidate.conflicts.map(({ type, message, recommendedAction }) => ({ type, message, recommendedAction })),
       sensitiveDataScan: { safe: candidate.scan.safe, categories: candidate.scan.categories },
       summary: candidate.scan.safe ? candidate.summary : { title: "[redacted]", category: "[redacted]" },
+      governance: candidate.governance ? { trustState: candidate.governance.trustState, signature: candidate.governance.signature.status, official: candidate.governance.official, risk: candidate.governance.risk, quarantine: candidate.governance.quarantine, compatibility: candidate.governance.compatibility, permissions: candidate.governance.permissions, dependencies: candidate.governance.dependencies, safetyAdjustments: candidate.governance.safetyAdjustments, planHash: candidate.governance.planHash } : null,
     })),
     result,
   };

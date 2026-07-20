@@ -20,6 +20,10 @@ import { validateRecipe } from "./validation";
 import { persistEffectiveSnapshot, resolveOwnedRecipe } from "../recipeInheritance/service";
 import { getBuiltInRecipe } from "../builtInRecipes/catalog";
 import { markBuiltInRecipeUsed } from "../builtInRecipes/preferences";
+import { assertRecipeExecutionAllowed } from "./executionPolicy";
+import { retryRecipeValidation, writeRecipeAudit } from "./governanceService";
+import { recipeExecutionsBlockedTotal } from "../metrics";
+import { APP_VERSION_NUMBER } from "../appVersion";
 
 function json(value: unknown): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
@@ -136,8 +140,14 @@ export async function createPlaylistFromRecipe({
 }) {
   const trimmedName = playlistName.trim();
   if (!trimmedName || trimmedName.length > 120) throw new Error("Playlist name is required and must be 120 characters or fewer.");
-  const stored = await getOwnedRecipe(userId, recipeId);
-  if (!stored.enabled) throw new Error("This recipe is disabled.");
+  let stored = await getOwnedRecipe(userId, recipeId);
+  if (!stored.lastValidatedAt || (stored.compatibilityJson as any)?.installedVersion !== APP_VERSION_NUMBER) {
+    const revalidation = await retryRecipeValidation(userId, stored.id, portableRecipeFromRecord(stored));
+    if (!revalidation.valid) throw Object.assign(new Error(revalidation.validation.errors[0]?.message || "Recipe execution-time validation failed."), { code: "RECIPE_EXECUTION_VALIDATION_FAILED", status: 422 });
+    stored = await getOwnedRecipe(userId, stored.id);
+  }
+  try { assertRecipeExecutionAllowed(stored, "playlist.create"); }
+  catch (error) { const code = (error as any)?.code || "RECIPE_EXECUTION_BLOCKED"; recipeExecutionsBlockedTotal.inc({ reason: String(code).toLowerCase() }); await writeRecipeAudit({ recipeId: stored.id, recipeVersion: stored.recipeVersion, eventType: "RECIPE_EXECUTION_BLOCKED", actorId: userId, description: error instanceof Error ? error.message : "Recipe execution was blocked.", trustState: stored.trustState, riskLevel: stored.riskLevel, result: "BLOCKED", metadata: { code } }); try { const { emitIntegrationEvent } = await import("../integrations/service"); const event = code === "RECIPE_PLAYLIST_DELETE_FORBIDDEN" ? "recipe.destructive_action_blocked" : "recipe.execution_blocked"; await emitIntegrationEvent(event, { recipe: { id: stored.id, code } }, { actorType: "user", actorId: userId }, `${event}:${stored.id}:${Date.now()}`); } catch { /* The policy block remains authoritative if notification delivery is unavailable. */ } throw error; }
   const playlistOverrides = overrides && typeof overrides === "object" && !Array.isArray(overrides) ? overrides as Record<string, unknown> : {};
   const resolution = await resolveOwnedRecipe(userId, stored.id, { proposedChanges: { playlistOverrides: { generation: playlistOverrides } } });
   if (!resolution.valid) throw new Error(resolution.errors[0]?.message || "The effective recipe configuration is invalid.");

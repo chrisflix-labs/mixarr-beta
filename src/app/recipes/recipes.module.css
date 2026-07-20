@@ -567,3 +567,11 @@
   .resultActions, .historyHeader { align-items: stretch; flex-direction: column; }.resultActions > * { width: 100%; }
   .compatibilityStats { grid-template-columns: repeat(2,1fr); }.breakdown > div { grid-template-columns: repeat(2,1fr); }.mappingRow { grid-template-columns: 1fr; }.mappingArrow { transform: rotate(90deg); }.mappingActions { grid-template-columns: 1fr; }.mappingComparison { display: none; }.recommendations article { grid-template-columns: 1fr; }.recommendations article > span { text-align: left; }.mappingHeader { align-items: flex-start; }.importChoice { align-items: flex-start; flex-direction: column; }
 }
+.governanceBadges { display: flex; flex-wrap: wrap; gap: .4rem; margin: .65rem 0; }
+.governanceBadges span { border: 1px solid var(--border, #334155); border-radius: 999px; padding: .25rem .55rem; font-size: .72rem; text-transform: capitalize; }
+.governanceBadges span[data-risk="high"], .governanceBadges span[data-risk="destructive"] { border-color: #ef4444; background: rgba(239,68,68,.12); }
+.governanceBadges span[data-risk="moderate"] { border-color: #f59e0b; background: rgba(245,158,11,.12); }
+.governanceReview { margin: .9rem 0; padding: 1rem; border: 2px solid #f59e0b; border-radius: .8rem; background: rgba(245,158,11,.08); }
+.governanceReview[data-risk="high"], .governanceReview[data-risk="destructive"] { border-color: #ef4444; background: rgba(239,68,68,.08); }
+.governanceReview h5, .governanceReview h6 { margin: 0 0 .55rem; text-transform: capitalize; }
+.governanceReview p { margin: .35rem 0; line-height: 1.45; }

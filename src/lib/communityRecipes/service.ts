@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { Prisma } from "@prisma/client";
@@ -9,6 +9,7 @@ import { isUserAdmin } from "../auth";
 import { createPlaylistRecipeData, portableRecipeFromRecord, updatePlaylistRecipeData, type PlaylistRecipeInput } from "../playlistRecipes";
 import { safeRecipeFilename } from "../mixRecipes/transfer";
 import { validateArtwork } from "../mixRecipes/archive";
+import { buildRecipeGovernancePlan, createRecipeSnapshot, recipeGovernanceData, writeRecipeAudit } from "../mixRecipes/governanceService";
 import {
   COMMUNITY_FORMAT_VERSION, COMMUNITY_RECIPE_FORMAT, buildCommunityBundle, buildCommunityJson, checksumCommunityDocument, compareVersions,
   communityError, communityManifestSchema, decodeShareCode, encodeShareCode, parseCommunityBundle, parseCommunityJson,
@@ -54,6 +55,8 @@ export async function stageCommunityInput(input: { userId: string; content: stri
   if (typeof input.content !== "string") document = parseCommunityBundle(input.content);
   else document = input.content.trim().startsWith("MXR1:") ? decodeShareCode(input.content) : parseCommunityJson(input.content);
   const trust = sourceTrust(input.sourceUrl); const preview = await addConflict(input.userId, validateCommunityDocument(document, { sourceUrl: input.sourceUrl, importMethod: input.method, official: Boolean(input.official && trust.official), known: trust.known }));
+  const governance = await buildRecipeGovernancePlan({ userId: input.userId, recipe: document.recipe, source: `community_${input.method}`, rawPayload: document.recipe });
+  (preview as CommunityPreview & { governance: unknown }).governance = governance;
   const stage = await prisma.recipeImportStage.create({ data: { userId: input.userId, originalFilename: (input.filename || "community-recipe").slice(0, 255), detectedFormat: COMMUNITY_RECIPE_FORMAT, formatVersion: COMMUNITY_FORMAT_VERSION, sourceDigest: preview.checksum || recipeHash(document), sanitizedPayloadJson: json({ kind: "community", document, sourceUrl: input.sourceUrl || null, method: input.method, official: preview.trustState === "official" }), previewJson: json(preview), expiresAt: new Date(Date.now() + STAGE_TTL_MS) } });
   console.info("[CommunityRecipe] Validation completed", { stageId: stage.id, status: preview.status, codes: preview.messages.map((item) => item.code), checksum: preview.checksum });
   return { stageId: stage.id, expiresAt: stage.expiresAt, preview };
@@ -93,6 +96,9 @@ export async function installStagedCommunityRecipe(input: { userId: string; stag
   const stored = stage.sanitizedPayloadJson as any; if (stored.kind !== "community") throw communityError("INVALID_STAGE", "This is not a community recipe preview.");
   const document = stored.document as CommunityDocument; const trust = sourceTrust(stored.sourceUrl); const preview = validateCommunityDocument(document, { sourceUrl: stored.sourceUrl, importMethod: stored.method, official: stored.official && trust.official, known: trust.known });
   if (!preview.installable) throw communityError("IMPORT_BLOCKED", preview.messages.find((item) => item.blocking)?.message || "The recipe is blocked.");
+  const governance = await buildRecipeGovernancePlan({ userId: input.userId, recipe: document.recipe, source: `community_${stored.method}`, rawPayload: document.recipe });
+  const stagedGovernance = (stage.previewJson as any)?.governance;
+  if (!stagedGovernance || stagedGovernance.planHash !== governance.planHash) throw communityError("STALE_IMPORT_PREVIEW", "Recipe trust, compatibility, dependencies, or safety policy changed. Review a new import preview.", undefined, 409);
   const existing = await prisma.playlistRecipe.findFirst({ where: { userId: input.userId, communityRecipeId: document.manifest.recipeId, isArchived: false, deletedAt: null } }); const action = input.action || (existing ? "copy" : "new");
   if (!["new", "copy", "update", "replace"].includes(action)) throw communityError("INVALID_ACTION", "Choose a supported recipe conflict action.");
   if (["update", "replace"].includes(action) && (!existing || input.confirmReplace !== true)) throw communityError("REPLACE_CONFIRMATION_REQUIRED", "Updating or replacing an installed recipe requires explicit confirmation.", undefined, 409);
@@ -101,11 +107,24 @@ export async function installStagedCommunityRecipe(input: { userId: string; stag
   const names = await prisma.playlistRecipe.findMany({ where: { userId: input.userId, isArchived: false, deletedAt: null }, select: { name: true } }); let finalName = requestedName;
   if ((action === "new" || action === "copy") && names.some((item) => item.name.toLowerCase() === finalName.toLowerCase())) finalName = `${requestedName.slice(0, 108)} (Community)`;
   const metadata = communityData(document, preview, stored.method, stored.sourceUrl);
-  const saved = existing && (action === "update" || action === "replace") ? await prisma.playlistRecipe.update({ where: { id: existing.id }, data: { ...updatePlaylistRecipeData(recipeInput(document, input.name || existing.name), existing), ...metadata } }) : await prisma.playlistRecipe.create({ data: { ...createPlaylistRecipeData(input.userId, recipeInput(document, finalName)), ...metadata } });
-  const assets = await storeAssets(input.userId, saved.id, document); if (assets.artworkUrl || assets.screenshots.length) await prisma.playlistRecipe.update({ where: { id: saved.id }, data: { artworkUrl: assets.artworkUrl, communityScreenshotsJson: json(assets.screenshots) } });
-  await prisma.recipeImportStage.update({ where: { id: stage.id }, data: { status: "IMPORTED", sanitizedPayloadJson: json({ consumed: true, checksum: preview.checksum }), previewJson: json({ consumed: true }) } });
+  const safeDocument = { ...document, recipe: governance.normalizedRecipe };
+  const correlationId = randomUUID();
+  const snapshot = await createRecipeSnapshot({ userId: input.userId, recipeId: existing && (action === "update" || action === "replace") ? existing.id : null, correlationId, reason: existing && (action === "update" || action === "replace") ? `Before importing replacement for ${document.manifest.name}` : `Before importing ${document.manifest.name}` });
+  const saved = await prisma.$transaction(async (tx) => {
+    const result = existing && (action === "update" || action === "replace")
+      ? await tx.playlistRecipe.update({ where: { id: existing.id }, data: { ...updatePlaylistRecipeData(recipeInput(safeDocument, input.name || existing.name), existing), ...metadata, ...recipeGovernanceData(governance, { source: `community_${stored.method}`, originalPayload: document.recipe }) } })
+      : await tx.playlistRecipe.create({ data: { ...createPlaylistRecipeData(input.userId, recipeInput(safeDocument, finalName)), ...metadata, ...recipeGovernanceData(governance, { source: `community_${stored.method}`, originalPayload: document.recipe }) } });
+    await tx.recipeImportSnapshot.update({ where: { id: snapshot.id }, data: { recipeId: result.id, resourceVersions: json({ recipeUpdatedAt: result.updatedAt.toISOString() }) } });
+    await tx.recipeImportStage.update({ where: { id: stage.id }, data: { status: "IMPORTED", sanitizedPayloadJson: json({ consumed: true, checksum: preview.checksum }), previewJson: json({ consumed: true }) } });
+    await writeRecipeAudit({ recipeId: result.id, recipeVersion: result.recipeVersion, eventType: governance.quarantine.required ? "RECIPE_QUARANTINED" : "RECIPE_IMPORTED", actorId: input.userId, correlationId, description: governance.quarantine.required ? "Community recipe was imported into quarantine for local review." : "Community recipe was imported after governance review.", validation: { findings: governance.findings, safetyAdjustments: governance.safetyAdjustments }, risk: governance.risk, permissions: governance.permissions, trustState: governance.trustState, riskLevel: governance.risk.riskLevel, metadata: { source: stored.method, planHash: governance.planHash, signatureStatus: governance.signature.status, official: governance.official } }, tx);
+    return result;
+  });
+  try { const assets = await storeAssets(input.userId, saved.id, document); if (assets.artworkUrl || assets.screenshots.length) { const decorated = await prisma.playlistRecipe.update({ where: { id: saved.id }, data: { artworkUrl: assets.artworkUrl, communityScreenshotsJson: json(assets.screenshots) } }); await prisma.recipeImportSnapshot.update({ where: { id: snapshot.id }, data: { resourceVersions: json({ recipeUpdatedAt: decorated.updatedAt.toISOString() }) } }); } }
+  catch (error) { console.warn("[CommunityRecipe] Optional assets were omitted after import", { recipeId: saved.id, reason: error instanceof Error ? error.message : "unknown" }); }
+  try { const { emitIntegrationEvent } = await import("../integrations/service"); const governanceEvent = governance.quarantine.required ? "recipe.quarantined" : "recipe.approval_required"; await emitIntegrationEvent(governanceEvent, { recipe: { id: saved.id, trustState: governance.trustState, signatureStatus: governance.signature.status, riskLevel: governance.risk.riskLevel }, correlationId }, { actorType: "user", actorId: input.userId }, `${governanceEvent}:${correlationId}:${saved.id}`); }
+  catch (error) { console.warn("[CommunityRecipe] Governance notification delivery failed", { recipeId: saved.id, reason: error instanceof Error ? error.message : "unknown" }); }
   console.info("[CommunityRecipe] Recipe installed", { userId: input.userId, recipeId: saved.id, communityRecipeId: document.manifest.recipeId, version: document.manifest.version, method: stored.method, trustState: preview.trustState, action });
-  return { recipeId: saved.id, name: saved.name, action, enabled: false };
+  return { recipeId: saved.id, name: saved.name, action, enabled: saved.enabled, governance: { trustState: governance.trustState, approvalState: governance.approvalState, quarantine: governance.quarantine, signature: governance.signature, official: governance.official, risk: governance.risk } };
 }
 
 function manifestFromRecord(record: any, metadata: Partial<z.input<typeof communityManifestSchema>> = {}) {

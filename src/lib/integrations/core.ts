@@ -9,12 +9,18 @@ export const INTEGRATION_EVENTS = [
   "smart_action.failed", "experiment.completed", "automation.failed", "automation.recovered", "plex.unavailable",
   "plex.recovered", "plex.failover_activated", "mount.unavailable", "mount.recovered", "integration.failed",
   "integration.recovered",
+  "recipe.validation_failed", "recipe.signature_invalid", "recipe.signature_verified", "recipe.quarantined",
+  "recipe.approval_required", "recipe.approved", "recipe.approved_with_restrictions", "recipe.rejected",
+  "recipe.migrated", "recipe.import_failed", "recipe.restore_completed", "recipe.restore_failed",
+  "recipe.execution_blocked", "recipe.protected_playlist_blocked", "recipe.destructive_action_blocked", "recipe.signing_key_revoked",
 ] as const;
 
 export const API_TOKEN_SCOPES = [
   "status.read", "health.read", "playlists.read", "collections.read", "automations.read", "activity.read",
   "integrations.read", "widget.read", "home_assistant.read", "metrics.read", "recipes.read", "webhooks.manage",
   "integrations.manage",
+  "recipes.view", "recipes.import", "recipes.approve", "recipes.manage_trust", "recipes.migrate", "recipes.restore",
+  "recipes.audit.view", "recipes.signing_keys.view", "recipes.signing_keys.manage",
 ] as const;
 
 export type ApiTokenScope = typeof API_TOKEN_SCOPES[number];
@@ -127,7 +133,7 @@ export function checkMountDependency(input: { mountPath: string; markerFile?: st
 }
 
 export function createEventEnvelope(event: typeof INTEGRATION_EVENTS[number], data: Record<string, unknown>, context: Record<string, unknown> = {}, now = new Date()) {
-  return { id: `evt_${crypto.randomUUID()}`, event, version: "1", createdAt: now.toISOString(), source: "mixarr", mixarrVersion: "2.3.7", data: sanitizePayload(data), context: sanitizePayload(context) };
+  return { id: `evt_${crypto.randomUUID()}`, event, version: "1", createdAt: now.toISOString(), source: "mixarr", mixarrVersion: "2.3.8", data: sanitizePayload(data), context: sanitizePayload(context) };
 }
 
 const sensitiveKey = /(token|secret|password|credential|authorization|api.?key|cookie|session|filesystem|path)/i;

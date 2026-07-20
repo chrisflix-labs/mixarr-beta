@@ -309,6 +309,16 @@ const createMetricsBundle = () => {
       registers: [registry],
     }),
 
+    recipeImportsTotal: new Counter({ name: "mixarr_recipe_imports_total", help: "Recipe imports by final result", labelNames: ["result"], registers: [registry] }),
+    recipesQuarantinedTotal: new Counter({ name: "mixarr_recipes_quarantined_total", help: "Recipes placed into quarantine", labelNames: ["reason"], registers: [registry] }),
+    recipeSignatureVerificationsTotal: new Counter({ name: "mixarr_recipe_signature_verifications_total", help: "Recipe signature verification results", labelNames: ["result"], registers: [registry] }),
+    highRiskRecipesTotal: new Counter({ name: "mixarr_high_risk_recipes_total", help: "High-risk or destructive recipes detected", labelNames: ["risk"], registers: [registry] }),
+    recipeExecutionsBlockedTotal: new Counter({ name: "mixarr_recipe_executions_blocked_total", help: "Recipe executions blocked by server policy", labelNames: ["reason"], registers: [registry] }),
+    recipeMigrationsTotal: new Counter({ name: "mixarr_recipe_migrations_total", help: "Recipe migrations by result", labelNames: ["result"], registers: [registry] }),
+    recipeRestoresTotal: new Counter({ name: "mixarr_recipe_restores_total", help: "Recipe restores by result", labelNames: ["result"], registers: [registry] }),
+    recipeValidationDurationSeconds: new Histogram({ name: "mixarr_recipe_validation_duration_seconds", help: "Recipe governance validation duration", registers: [registry] }),
+    recipeImportDurationSeconds: new Histogram({ name: "mixarr_recipe_import_duration_seconds", help: "Recipe import transaction duration", labelNames: ["mode"], registers: [registry] }),
+
     // -----------------------------------------------------------------------
     // Spotify rate-limit visibility
     // -----------------------------------------------------------------------
@@ -449,6 +459,15 @@ export const albumsTotal = metrics.albumsTotal;
 export const enrichmentTracksTotal = metrics.enrichmentTracksTotal;
 export const savedPlaylistsTotal = metrics.savedPlaylistsTotal;
 export const blockedTracksTotal = metrics.blockedTracksTotal;
+export const recipeImportsTotal = metrics.recipeImportsTotal;
+export const recipesQuarantinedTotal = metrics.recipesQuarantinedTotal;
+export const recipeSignatureVerificationsTotal = metrics.recipeSignatureVerificationsTotal;
+export const highRiskRecipesTotal = metrics.highRiskRecipesTotal;
+export const recipeExecutionsBlockedTotal = metrics.recipeExecutionsBlockedTotal;
+export const recipeMigrationsTotal = metrics.recipeMigrationsTotal;
+export const recipeRestoresTotal = metrics.recipeRestoresTotal;
+export const recipeValidationDurationSeconds = metrics.recipeValidationDurationSeconds;
+export const recipeImportDurationSeconds = metrics.recipeImportDurationSeconds;
 export const spotifyBackoffSecondsRemaining = metrics.spotifyBackoffSecondsRemaining;
 
 // ---------------------------------------------------------------------------

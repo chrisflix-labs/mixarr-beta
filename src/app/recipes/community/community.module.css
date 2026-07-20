@@ -21,6 +21,14 @@
 .success { border: 1px solid rgba(60,200,130,.5); background: rgba(60,200,130,.1); }
 .error { border: 1px solid rgba(240,90,90,.5); background: rgba(240,90,90,.1); }
 .warning strong { color: #ffd37a; }
+.governanceReview { display: grid; gap: .65rem; padding: .9rem; border: 2px solid rgba(245,185,66,.45); border-radius: var(--radius-md); background: rgba(245,185,66,.07); }
+.governanceReview > div:first-child { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+.governanceReview > div:first-child span, .governanceReview small { color: var(--muted); }
+.governanceReview h4 { margin: .2rem 0 0; }
+.permission { display: grid; grid-template-columns: minmax(150px,220px) 1fr; gap: .6rem; padding: .6rem; border-left: 3px solid #e7b84d; background: rgba(255,255,255,.025); }
+.permission[data-decision="deny"] { border-color: #eb6b6b; }
+.permission code { color: var(--muted); overflow-wrap: anywhere; }
+.permission small { display: block; margin-top: .2rem; }
 .badge { padding: .4rem .65rem; border: 1px solid var(--line); border-radius: 999px; text-transform: capitalize; font-weight: 700; }
 .badge[data-state="official"] { color: #7ee0b5; border-color: #3aa978; }
 .badge[data-state="blocked"] { color: #ff8c8c; border-color: #a94545; }
@@ -57,4 +65,5 @@
   .header, .official > header, .preview > header { display: grid; }
   .meta, .official .filters { grid-template-columns: 1fr; }
   .tabs button { flex: 1 1 100%; }
+  .permission { grid-template-columns: 1fr; }
 }
