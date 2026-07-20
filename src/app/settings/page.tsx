@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Settings as SettingsIcon, Ban, BarChart3, Brain, CalendarDays, CircleHelp, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, ListChecks, ListMusic, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
+import { Settings as SettingsIcon, Ban, BarChart3, Bot, Brain, CalendarDays, CircleHelp, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, ListChecks, ListMusic, Map, RefreshCw, ScrollText, Server, ShieldCheck } from "lucide-react";
 import ProviderTestButton from "@/components/ProviderTestButton";
 import BetaFeatureSettingsForm from "@/components/BetaFeatureSettingsForm";
 import ExternalApiSettingsPanel from "@/components/ExternalApiSettingsPanel";
@@ -61,6 +61,15 @@ export default async function SettingsPage() {
         <span>
           <strong>Media Ecosystem Integrations</strong>
           <small>Manage Plex servers and users, collections, Tautulli, notifications, webhooks, scoped tokens, metrics, and diagnostics.</small>
+        </span>
+        <span aria-hidden="true">&rarr;</span>
+      </Link>
+
+      <Link href="/settings/ai" className={`glass-panel ${styles.healthLink}`}>
+        <Bot size={24} />
+        <span>
+          <strong>AI Provider Foundation</strong>
+          <small>Configure optional provider-neutral AI connections, models, privacy, budgets, health, and safe audits. AI is disabled by default.</small>
         </span>
         <span aria-hidden="true">&rarr;</span>
       </Link>

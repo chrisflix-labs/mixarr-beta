@@ -3,6 +3,7 @@ import { validDiscordSupportUrl } from "./appInfo";
 export const MIXARR_BETA_DISCORD_URL = validDiscordSupportUrl(process.env.DISCORD_SUPPORT_URL || process.env.NEXT_PUBLIC_DISCORD_SUPPORT_URL) || "";
 
 export type ReleaseNoteBadge =
+  | "AI"
   | "Accessibility"
   | "Audio Features"
   | "Automation"
@@ -76,6 +77,20 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "2.4.0",
+    title: "AI Provider Foundation",
+    releaseDate: "July 20, 2026",
+    badges: ["AI", "Security", "Settings", "External APIs", "Database", "Health", "Diagnostics", "Reliability", "Mobile", "Accessibility"],
+    changes: [
+      "Added provider-neutral contracts, registries, normalized capabilities and errors, a central request coordinator, retries with jitter, timeouts, cancellation, bounded streaming, response-size enforcement, and structured-response validation.",
+      "Added Ollama, LiteLLM, LM Studio, DeepSeek, OpenAI API, generic OpenAI-compatible, OpenRouter, and native Anthropic adapters with safe connection tests and model discovery.",
+      "Registered ChatGPT Subscription as unavailable because no official supported integration is configured; Mixarr never requests cookies, imports browser profiles, reuses unofficial session tokens, or automates ChatGPT web pages.",
+      "Added encrypted provider credentials, safe audits, health and model caches, usage and budget metadata, administrator APIs, and a responsive AI settings dashboard.",
+      "Upgrade: apply migration 20260721050000_ai_provider_foundation_v240. AI and every future AI feature remain disabled, no provider is created, and no provider request occurs automatically.",
+      "Foundation safety boundary: v2.4.0 has no AI endpoint that creates, regenerates, edits, unlocks, adds to, or removes from a playlist or recipe.",
+    ],
+  },
   {
     version: "2.3.9",
     title: "Recipe Studio & Release Polish",

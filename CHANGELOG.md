@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.0 - AI Provider Foundation
+
+- Added a provider-neutral AI contract, adapter registry, capability model, request coordinator, normalized errors, retries with jitter, timeouts, cancellation, response byte limits, normalized streams, and Zod-backed structured-response validation.
+- Added native Ollama and Anthropic adapters plus shared OpenAI-compatible support for OpenAI, LiteLLM, LM Studio, DeepSeek, OpenRouter, and configurable compatible APIs. ChatGPT Subscription is registered as unavailable; Mixarr never uses browser cookies, profiles, session tokens, or web automation.
+- Added additive provider, discovered-model, health, feature-setting, global-setting, and safe request-audit tables in migration `20260721050000_ai_provider_foundation_v240`. Global AI and every feature default to disabled; no provider is created and no external request runs during upgrade.
+- Added administrator APIs and a responsive `/settings/ai` dashboard for provider CRUD, explicit secret replacement/removal, connection testing, model discovery, health, capabilities, budget/usage metadata, privacy classification, future-feature availability, and sanitized audits.
+- AI credentials and secret headers use application-level AES-256-GCM authenticated encryption. Full prompts, full responses, raw provider errors, API keys, authorization headers, Plex tokens, and private library records are not persisted in AI audits.
+- v2.4.0 adds foundation only: there is no AI playlist creation, regeneration, recipe execution, track add/remove/unlock, automation, web browsing, filesystem, shell, or tool-execution endpoint.
+
 ## v2.3.9 - Recipe Studio & Release Polish
 
 - Added `/recipes/new` and `/recipes/:id/edit` as one responsive Recipe Studio with Guided, Beginner, and Advanced modes over the existing recipe schema.

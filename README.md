@@ -53,6 +53,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 | Library health views | Surfaces missing tracks, active/missing counts, metadata coverage, failure reasons, retry queues, and cleanup tools. |
 | Background jobs | Runs sync, metadata, playlist refresh, and analysis jobs with progress logging and overlap protection. |
 | Docker deployment | Ships with Docker and Docker Compose support for self-hosted installs. |
+| AI provider foundation | Optionally configures provider-neutral local or remote AI connections, encrypted credentials, model discovery, health, budgets, and safe audits. AI and all future features are disabled by default, and no AI endpoint can mutate playlists. |
 
 ## Beta and Experimental Features
 
@@ -203,6 +204,12 @@ Prefer lowering job concurrency and avoiding overlapping syncs before raising th
 Mixarr v2.3.7 adds Plex ownership and collection workflows, manual-change reconciliation, scan/mount safety, Tautulli playback signals, Discord and Notifiarr delivery, signed webhooks, scoped dashboard tokens, Homepage, Home Assistant, Prometheus, and improved health endpoints. See [the v2.3.7 integration guide](docs/MEDIA_ECOSYSTEM_INTEGRATIONS_V237.md) for migration, configuration, endpoint, and troubleshooting examples.
 
 Mixarr v2.3.9 adds a unified Recipe Studio with guided and advanced editing, live candidate and compatibility estimates, accessible energy/BPM tools, scoring and discovery previews, comparison, operational analytics, onboarding, optimistic save conflicts, mobile polish, and a reorganized roadmap. See [Recipe Studio & Release Polish](docs/RECIPE_STUDIO_V239.md). The v2.3.8 permission, signature, quarantine, governance, audit, snapshot, and restore systems remain authoritative; see [Recipe Safety, Compatibility & Governance](docs/RECIPE_GOVERNANCE_V238.md) and the [Recipe Author Guide](docs/RECIPE_AUTHOR_GUIDE_V238.md).
+
+## AI Provider Foundation
+
+Mixarr v2.4.0 adds optional provider-neutral infrastructure for Ollama, LiteLLM, LM Studio, DeepSeek, OpenAI API, generic OpenAI-compatible services, OpenRouter, and native Anthropic. Configure it at `/settings/ai`. ChatGPT consumer subscriptions are not OpenAI API credentials and are not integrated through browser sessions or unofficial tokens.
+
+AI is globally disabled after upgrade, every future feature remains unavailable, and Mixarr makes no provider request until an administrator explicitly configures and tests a provider. Set `AI_CREDENTIAL_ENCRYPTION_KEY` (or the existing `MIXARR_SECRET_KEY`) before saving secret-based providers. Back up the key separately from the database: losing it makes saved credentials unreadable. See [AI Provider Foundation](docs/AI_PROVIDER_FOUNDATION_V240.md) for Docker networking, privacy, timeouts, cancellation, usage, audit, SSL, key backup, and troubleshooting guidance.
 
 ## Discord Community
 

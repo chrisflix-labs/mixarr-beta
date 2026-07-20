@@ -69,6 +69,13 @@ export async function register() {
     } catch (error) {
       console.error("[SmartExperiments] Scheduler startup failed", sanitizeErrorText(error));
     }
+
+    try {
+      const { initializeAiHealthScheduler } = await import("./ai/health/scheduler");
+      await initializeAiHealthScheduler();
+    } catch (error) {
+      console.warn("[AI Health] Optional scheduler startup skipped", sanitizeErrorText(error));
+    }
   }
 
   try {

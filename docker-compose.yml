@@ -28,6 +28,8 @@ services:
       # - "9090:9090"
     environment:
       - NODE_ENV=production
+      # Recommended: set AI_CREDENTIAL_ENCRYPTION_KEY in .env or inject it
+      # through your container platform's secret management. AI is off by default.
     depends_on:
       db:
         condition: service_healthy

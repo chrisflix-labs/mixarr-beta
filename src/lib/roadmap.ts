@@ -10,7 +10,7 @@ export type RoadmapRelease = {
   releaseOrder: number;
   completionDate?: string;
   route?: string;
-  releaseType?: "release-line" | "patch";
+  releaseType?: "release-line" | "minor" | "patch";
   progress?: number;
   target?: string;
 };
@@ -401,7 +401,7 @@ export const roadmapReleases: RoadmapRelease[] = [
     version: "2.3.9",
     title: "Recipe Studio & Release Polish",
     cycle: "2.3.x",
-    status: "current",
+    status: "completed",
     description: "Completes the v2.3.x recipe platform with one approachable, powerful workspace for guided creation, advanced editing, live estimates, compatibility, comparison, governance, maintenance, analytics, accessibility, and mobile use.",
     featureLabels: ["Visual Recipe Studio", "Guided builder", "Beginner and advanced modes", "Live candidate estimate", "Compatibility remediation", "Scoring impact preview", "Accessible energy and BPM editors", "Discovery and variety preview", "Recipe comparison", "Import and export center", "Usage analytics", "First-time onboarding", "Optimistic save conflicts", "Mobile and keyboard polish", "Roadmap archive"],
     releaseOrder: 309,
@@ -411,13 +411,26 @@ export const roadmapReleases: RoadmapRelease[] = [
     route: "/recipes",
   },
   {
+    version: "2.4.0",
+    title: "AI Provider Foundation",
+    cycle: "2.4.x",
+    status: "current",
+    description: "Establishes secure, provider-neutral AI configuration, adapters, capabilities, model discovery, coordination, health, usage, and audit infrastructure while keeping all AI output advisory and all future features disabled.",
+    featureLabels: ["Provider-neutral contracts", "Ollama", "LiteLLM", "LM Studio", "DeepSeek", "OpenAI API", "OpenAI-compatible APIs", "OpenRouter", "Anthropic", "Encrypted credentials", "Capabilities", "Model discovery", "Streaming", "Cancellation", "Timeouts and retry", "Health", "Usage and budgets", "Safe audits", "No playlist mutations"],
+    releaseOrder: 400,
+    releaseType: "minor",
+    progress: 100,
+    completionDate: "2026-07-20",
+    route: "/settings/ai",
+  },
+  {
     version: "2.4.x",
     title: "AI-Assisted Mix Intelligence",
     cycle: "2.4.x",
     status: "upcoming",
     description: "Use explainable, user-controlled intelligence to help analyze libraries, recommend recipe improvements, identify playlist opportunities, and assist with mix design without removing user control.",
     featureLabels: ["Explainable assistance", "User-controlled recommendations", "Library opportunity analysis", "Recipe improvement suggestions", "Reviewable mix-design help", "Deterministic generation remains authoritative"],
-    releaseOrder: 400,
+    releaseOrder: 401,
     releaseType: "release-line",
     progress: 0,
     target: "Next release line",
@@ -451,7 +464,7 @@ export const roadmapCycles: RoadmapCycle[] = [
   {
     id: "2.3.x",
     title: "v2.3.x — Mix Recipes",
-    status: "current",
+    status: "completed",
     description: "The recipe foundation makes Smart Mix strategies portable, reusable, versioned, and independent from the concrete playlists they create.",
     releases: roadmapReleases.filter((release) => release.cycle === "2.3.x"),
     futureThemes: ["Maintenance and compatibility fixes", "Recipe provider extensibility", "No AI behavior is included in v2.3.9"],
@@ -459,8 +472,8 @@ export const roadmapCycles: RoadmapCycle[] = [
   {
     id: "2.4.x",
     title: "v2.4.x — AI-Assisted Mix Intelligence",
-    status: "upcoming",
-    description: "Explainable, user-controlled assistance for library analysis and mix design. This roadmap entry does not enable or simulate AI features in v2.3.9.",
+    status: "current",
+    description: "The provider foundation is available in v2.4.0. User-facing assistance remains future work and no v2.4.0 AI path can mutate a playlist.",
     releases: roadmapReleases.filter((release) => release.cycle === "2.4.x"),
     futureThemes: ["Provider-neutral interfaces", "Explicit consent and data previews", "Cost and usage controls", "Reviewable suggestions", "Deterministic scoring remains authoritative"],
   },

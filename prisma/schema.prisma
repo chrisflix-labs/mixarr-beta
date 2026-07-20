@@ -5101,3 +5101,161 @@ model FailoverEvent {
   @@index([primaryServerId, createdAt])
   @@index([activeServerId, recoveredAt])
 }
+
+// Mixarr v2.4.0 provider-neutral AI foundation. AI remains disabled by default
+// and these records never grant playlist mutation capabilities.
+model AiGlobalSetting {
+  id                           String    @id @default("global")
+  enabled                      Boolean   @default(false)
+  defaultProviderId            String?
+  defaultFallbackPolicy        String    @default("NONE")
+  auditRetentionDays           Int       @default(90)
+  usageReportingEnabled        Boolean   @default(true)
+  maximumServerResponseBytes   Int       @default(1048576)
+  defaultTimeoutMs             Int       @default(30000)
+  privacyWarningAcknowledgedAt DateTime?
+  updatedBy                    String?
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+}
+
+model AiProviderConfig {
+  id                         String             @id @default(uuid())
+  providerType               String
+  displayName                String
+  enabled                    Boolean            @default(false)
+  locationClassification     String             @default("UNKNOWN")
+  baseUrl                    String?
+  authenticationType         String             @default("NONE")
+  encryptedSecretPayload     String?
+  encryptedSecretHeaders     String?
+  nonSecretHeadersJson       Json?
+  defaultModel               String?
+  fastModel                  String?
+  reasoningModel             String?
+  maximumContextTokens       Int?
+  maximumOutputTokens        Int?
+  requestTimeoutMs           Int                @default(30000)
+  retryCount                 Int                @default(2)
+  initialRetryDelayMs        Int                @default(500)
+  maximumRetryDelayMs        Int                @default(10000)
+  retryBackoffMultiplier     Float              @default(2)
+  sslVerification            Boolean            @default(true)
+  capabilityOverridesJson    Json?
+  modelDiscoveryEnabled      Boolean            @default(true)
+  healthCheckEnabled         Boolean            @default(true)
+  healthCheckIntervalMinutes Int                @default(15)
+  monthlyBudget              Float?
+  budgetWarningThreshold     Float              @default(0.8)
+  priority                   Int?
+  fallbackProviderId         String?
+  notes                      String?
+  customConfigurationJson    Json?
+  createdAt                  DateTime           @default(now())
+  updatedAt                  DateTime           @updatedAt
+  lastConnectionTestAt       DateTime?
+  lastSuccessfulConnectionAt DateTime?
+  fallbackProvider           AiProviderConfig?  @relation("AiProviderFallback", fields: [fallbackProviderId], references: [id], onDelete: SetNull)
+  fallbackFor                AiProviderConfig[] @relation("AiProviderFallback")
+  models                     AiProviderModel[]
+  health                     AiProviderHealth?
+  audits                     AiRequestAudit[]
+  preferredFeatures          AiFeatureSetting[] @relation("AiFeaturePreferredProvider")
+  fallbackFeatures           AiFeatureSetting[] @relation("AiFeatureFallbackProvider")
+
+  @@index([providerType, enabled])
+  @@index([enabled, priority])
+  @@index([fallbackProviderId])
+}
+
+model AiProviderModel {
+  id                 String           @id @default(uuid())
+  providerConfigId   String
+  modelIdentifier    String
+  displayName        String
+  contextSize        Int?
+  modelCategory      String           @default("UNKNOWN")
+  capabilityMetadata Json?
+  discoveredAt       DateTime         @default(now())
+  lastSeenAt         DateTime         @default(now())
+  availabilityStatus String           @default("AVAILABLE")
+  provider           AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([providerConfigId, modelIdentifier])
+  @@index([providerConfigId, availabilityStatus])
+  @@index([lastSeenAt])
+}
+
+model AiProviderHealth {
+  id                      String           @id @default(uuid())
+  providerConfigId        String           @unique
+  healthState             String           @default("NOT_TESTED")
+  lastCheckAt             DateTime?
+  lastSuccessfulCheckAt   DateTime?
+  latencyMs               Int?
+  errorCategory           String?
+  sanitizedMessage        String?
+  discoveredModelCount    Int              @default(0)
+  consecutiveFailureCount Int              @default(0)
+  nextEligibleCheckAt     DateTime?
+  updatedAt               DateTime         @updatedAt
+  provider                AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Cascade)
+
+  @@index([healthState, nextEligibleCheckAt])
+}
+
+model AiFeatureSetting {
+  featureKey            String            @id
+  enabled               Boolean           @default(false)
+  implemented           Boolean           @default(false)
+  preferredProviderId   String?
+  preferredModel        String?
+  fallbackBehavior      String            @default("NONE")
+  fallbackProviderId    String?
+  requiredCapabilities  Json?
+  safeConfigurationJson Json?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  preferredProvider     AiProviderConfig? @relation("AiFeaturePreferredProvider", fields: [preferredProviderId], references: [id], onDelete: SetNull)
+  fallbackProvider      AiProviderConfig? @relation("AiFeatureFallbackProvider", fields: [fallbackProviderId], references: [id], onDelete: SetNull)
+
+  @@index([enabled, implemented])
+  @@index([preferredProviderId])
+  @@index([fallbackProviderId])
+}
+
+model AiRequestAudit {
+  id                  String            @id @default(uuid())
+  requestId           String            @unique
+  correlationId       String?
+  featureKey          String
+  providerConfigId    String?
+  providerType        String?
+  providerDisplayName String?
+  model               String?
+  status              String            @default("QUEUED")
+  startedAt           DateTime          @default(now())
+  completedAt         DateTime?
+  latencyMs           Int?
+  retryCount          Int               @default(0)
+  streamingUsed       Boolean           @default(false)
+  cancellationStatus  String?
+  inputTokenCount     Int?
+  outputTokenCount    Int?
+  totalTokenCount     Int?
+  estimatedCost       Float?
+  responseByteCount   Int?
+  errorCategory       String?
+  sanitizedErrorCode  String?
+  userId              String?
+  safeMetadataJson    Json?
+  promptHash          String?
+  createdAt           DateTime          @default(now())
+  provider            AiProviderConfig? @relation(fields: [providerConfigId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([featureKey, createdAt])
+  @@index([providerConfigId, createdAt])
+  @@index([status, startedAt])
+  @@index([correlationId])
+}

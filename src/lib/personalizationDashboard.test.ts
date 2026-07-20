@@ -63,11 +63,12 @@ describe("personalization dashboard security and performance contracts", () => {
 });
 
 describe("v2.1.10 roadmap separation", () => {
-  it("completes adaptive personalization and keeps AI optional in v2.3.x", () => {
+  it("completes adaptive personalization and keeps AI optional in v2.4.x", () => {
     assert.equal(roadmapReleases.find((item) => item.version === "2.1.10")?.status, "completed");
     assert.equal(roadmapCycles.find((item) => item.id === "2.1.x")?.status, "completed");
     assert.equal(roadmapCycles.find((item) => item.id === "2.2.x")?.status, "completed");
-    assert.equal(roadmapCycles.find((item) => item.id === "2.3.x")?.status, "current");
+    assert.equal(roadmapCycles.find((item) => item.id === "2.3.x")?.status, "completed");
+    assert.equal(roadmapCycles.find((item) => item.id === "2.4.x")?.status, "current");
     assert.match(aiExploration.description, /Ollama/);
     assert.match(aiExploration.description, /OpenRouter/);
     assert.match(aiExploration.description, /OpenAI/);

@@ -1,0 +1,43 @@
+import { sanitizeErrorText } from "../../lib/supportRedaction";
+
+export const AI_ERROR_CATEGORIES = ["AI_DISABLED", "FEATURE_DISABLED", "PROVIDER_NOT_CONFIGURED", "PROVIDER_DISABLED", "PROVIDER_NOT_FOUND", "PROVIDER_UNAVAILABLE", "PROVIDER_UNSUPPORTED", "MODEL_NOT_CONFIGURED", "MODEL_NOT_FOUND", "CAPABILITY_UNAVAILABLE", "AUTHENTICATION_FAILED", "PERMISSION_DENIED", "RATE_LIMITED", "BUDGET_EXCEEDED", "REQUEST_TIMEOUT", "REQUEST_CANCELLED", "CONNECTION_FAILED", "TLS_ERROR", "INVALID_REQUEST", "INVALID_RESPONSE", "STRUCTURED_RESPONSE_INVALID", "RESPONSE_TOO_LARGE", "STREAM_INTERRUPTED", "PROVIDER_OVERLOADED", "INTERNAL_AI_ERROR"] as const;
+export type AiErrorCategory = typeof AI_ERROR_CATEGORIES[number];
+
+const publicMessages: Record<AiErrorCategory, string> = {
+  AI_DISABLED: "AI is disabled in Mixarr settings.", FEATURE_DISABLED: "This AI feature is disabled.", PROVIDER_NOT_CONFIGURED: "No AI provider is configured for this feature.", PROVIDER_DISABLED: "The selected AI provider is disabled.", PROVIDER_NOT_FOUND: "The selected AI provider no longer exists.", PROVIDER_UNAVAILABLE: "The selected AI provider is currently unavailable.", PROVIDER_UNSUPPORTED: "This provider integration is not available.", MODEL_NOT_CONFIGURED: "No model is configured for this request.", MODEL_NOT_FOUND: "The configured model is unavailable.", CAPABILITY_UNAVAILABLE: "The provider does not have a required capability.", AUTHENTICATION_FAILED: "The provider rejected its configured credentials.", PERMISSION_DENIED: "The provider denied this request.", RATE_LIMITED: "The provider is rate limiting requests.", BUDGET_EXCEEDED: "The provider monthly budget has been reached.", REQUEST_TIMEOUT: "The AI request timed out.", REQUEST_CANCELLED: "The AI request was cancelled.", CONNECTION_FAILED: "Mixarr could not connect to the provider.", TLS_ERROR: "The provider TLS connection could not be verified.", INVALID_REQUEST: "The AI request is invalid.", INVALID_RESPONSE: "The provider returned an invalid response.", STRUCTURED_RESPONSE_INVALID: "The provider response did not match the required structure.", RESPONSE_TOO_LARGE: "The provider response exceeded the configured size limit.", STREAM_INTERRUPTED: "The provider stream ended unexpectedly.", PROVIDER_OVERLOADED: "The provider is temporarily overloaded.", INTERNAL_AI_ERROR: "The AI request could not be completed."
+};
+
+export class AiError extends Error {
+  constructor(public category: AiErrorCategory, message = publicMessages[category], public status = statusForCategory(category), public retryAfterMs?: number) { super(message); Object.setPrototypeOf(this, new.target.prototype); this.name = "AiError"; }
+  toSafePayload() { return { code: this.category, message: publicMessages[this.category] }; }
+}
+
+export function statusForCategory(category: AiErrorCategory) {
+  if (["AI_DISABLED", "FEATURE_DISABLED", "PROVIDER_DISABLED", "CAPABILITY_UNAVAILABLE", "BUDGET_EXCEEDED"].includes(category)) return 409;
+  if (["PROVIDER_NOT_CONFIGURED", "PROVIDER_NOT_FOUND", "MODEL_NOT_FOUND"].includes(category)) return 404;
+  if (category === "AUTHENTICATION_FAILED") return 401;
+  if (category === "PERMISSION_DENIED") return 403;
+  if (["INVALID_REQUEST", "MODEL_NOT_CONFIGURED", "STRUCTURED_RESPONSE_INVALID", "RESPONSE_TOO_LARGE"].includes(category)) return 400;
+  if (category === "RATE_LIMITED") return 429;
+  if (category === "REQUEST_TIMEOUT") return 504;
+  return 502;
+}
+
+export function normalizeProviderError(error: unknown, status?: number, retryAfterMs?: number): AiError {
+  if (error instanceof AiError) return error;
+  if ((error as Error)?.name === "AbortError") return new AiError("REQUEST_CANCELLED");
+  if (status === 401) return new AiError("AUTHENTICATION_FAILED");
+  if (status === 403) return new AiError("PERMISSION_DENIED");
+  if (status === 408) return new AiError("REQUEST_TIMEOUT");
+  if (status === 429) return new AiError("RATE_LIMITED", undefined, 429, retryAfterMs);
+  if ([500, 502, 503, 504].includes(status || 0)) return new AiError("PROVIDER_OVERLOADED");
+  const safe = sanitizeErrorText(error) || "Provider request failed.";
+  if (/certificate|tls|ssl/i.test(safe)) return new AiError("TLS_ERROR");
+  if (/timeout/i.test(safe)) return new AiError("REQUEST_TIMEOUT");
+  return new AiError("CONNECTION_FAILED");
+}
+
+export function aiApiError(error: unknown) {
+  const normalized = error instanceof AiError ? error : new AiError("INTERNAL_AI_ERROR");
+  return { payload: normalized.toSafePayload(), status: normalized.status };
+}
