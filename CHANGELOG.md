@@ -1,6 +1,27 @@
 # Changelog
 
-## v2.4.2 - Natural-Language Playlist Requests
+## v2.4.2 - Ollama Requests & User Policy Hotfix
+
+Fixed:
+
+- Ollama requests being incorrectly blocked or reported as `INTERNAL_AI_ERROR`.
+- PostgreSQL advisory budget locks returning `void` and failing Prisma deserialization before provider dispatch.
+- Local Ollama models being affected by paid-provider and missing-pricing checks.
+- User-specific AI policies failing when optional numeric limits were blank.
+- UUID validation, user existence checks, and duplicate-safe user-policy persistence.
+- Generic AI Governance validation messages and incorrect-field navigation.
+- Administrative provider tests resolving incomplete user context or issuing more than one configured Ollama test request.
+- Audit entries incorrectly categorizing governance denials as internal/provider errors.
+
+Improved:
+
+- Central provider/model classification (`LOCAL_FREE`, `EXTERNAL_FREE_OR_UNPRICED`, `EXTERNAL_PAID`, `UNKNOWN`).
+- Field-level validation, searchable user selection, tri-state permission inheritance, and exact save feedback.
+- Sanitized unexpected-error logging and UI diagnostics with correlation IDs.
+- Server-only stack sanitization now retains call frames without repeating raw multiline exception text.
+- Paid-provider policy precedence, local no-cost labels, and connection-test governance/provider stages.
+
+The existing Ask Mixarr v2.4.2 workflow remains available:
 
 - Added `/ask-mixarr` with provider privacy/cost preflight, structured interpretation review, explicit versus inferred constraints, assumptions, ambiguity resolution, conversational revisions, revision diffs, Recipe Studio editing, candidate/compatibility analysis, and deterministic track previews.
 - Added strict Zod provider output contracts and canonical recipe normalization. Provider output cannot supply track IDs, enable automation, request recipe permissions, or reach a Plex mutation path.

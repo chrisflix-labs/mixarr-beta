@@ -407,7 +407,7 @@ describe("release notes", () => {
     const [latest] = getReleaseNotesNewestFirst();
 
     assert.equal(latest.version, "2.4.2");
-    assert.equal(latest.title, "Natural-Language Playlist Requests");
+    assert.equal(latest.title, "Ollama Requests & User Policy Hotfix");
     assert.ok(latest.badges.includes("Accessibility"));
   });
 

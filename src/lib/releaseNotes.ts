@@ -80,10 +80,16 @@ export type ReleaseNote = {
 export const releaseNotes: ReleaseNote[] = [
   {
     version: "2.4.2",
-    title: "Natural-Language Playlist Requests",
+    title: "Ollama Requests & User Policy Hotfix",
     releaseDate: "July 20, 2026",
     badges: ["AI", "Security", "Database", "Accessibility", "Mobile", "Recipes", "Privacy", "Reliability"],
     changes: [
+      "Fixed Ollama requests being incorrectly blocked or reported as INTERNAL_AI_ERROR; local Ollama models no longer require paid-provider permission or configured pricing.",
+      "Fixed Prisma deserialization of PostgreSQL advisory budget locks so governed requests proceed to provider dispatch while retaining serialized budget admission.",
+      "Fixed user-policy UUID validation, existing-user checks, blank optional limits, tri-state permission inheritance, and duplicate-safe upserts with field-level feedback.",
+      "Administrative provider tests now use the authenticated administrator policy, make one configured Ollama test request, and distinguish governance denials from provider failures with safe correlation IDs.",
+      "Improved provider/model classification and audit records with LOCAL_FREE, EXTERNAL_FREE_OR_UNPRICED, EXTERNAL_PAID, and fail-closed UNKNOWN outcomes.",
+      "Upgrade: apply migration 20260721210000_ai_governance_ollama_user_policy_hotfix; existing settings, explicit user denials/permissions, provider credentials, and audit history are preserved.",
       "Added Ask Mixarr: privacy/cost preflight, strict structured interpretation, explicit and inferred constraints, assumptions, ambiguities, conversational revisions, Recipe Studio editing, candidate analysis, compatibility, and deterministic preview.",
       "Added revision-bound explicit approval, automatic approval invalidation after edits, current-analysis checks, idempotent execution, and separate save-recipe and create-playlist actions.",
       "AI output cannot select tracks, enable automation, request mutation permissions, or bypass the canonical recipe schema; only the existing deterministic recipe engine can create the final Plex playlist.",

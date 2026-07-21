@@ -13,9 +13,13 @@ export class OllamaAdapter implements AiProviderAdapter {
   }
   async detectCapabilities(config: ResolvedAiProviderConfig) { return this.capabilities(config); }
   async testConnection(config: ResolvedAiProviderConfig, signal?: AbortSignal): Promise<AiConnectionTestResult> {
-    const started = Date.now(); const models = await this.discoverModels(config, signal);
-    if (config.defaultModel) await this.complete({ featureKey: "connection_test", messages: [{ role: "user", content: "Reply with OK." }], maxOutputTokens: 8 }, config, { requestId: crypto.randomUUID(), providerId: config.id, model: config.defaultModel, signal: signal || new AbortController().signal, maxResponseBytes: 16_384 });
-    return { connected: true, message: config.defaultModel ? "Ollama connection and chat completion succeeded." : "Ollama is reachable. Select a model to test chat completion.", latencyMs: Date.now() - started, detectedApiType: "ollama", capabilities: this.capabilities(config), availableModelCount: models.length, defaultModelAvailable: config.defaultModel ? models.some((model) => model.id === config.defaultModel) : null, testedAt: new Date().toISOString() };
+    const started = Date.now();
+    if (config.defaultModel) {
+      await this.complete({ featureKey: "connection_test", messages: [{ role: "user", content: "Reply only with OK." }], maxOutputTokens: 8 }, config, { requestId: crypto.randomUUID(), providerId: config.id, model: config.defaultModel, signal: signal || new AbortController().signal, maxResponseBytes: 16_384 });
+      return { connected: true, message: "Ollama connection and chat completion succeeded.", latencyMs: Date.now() - started, detectedApiType: "ollama", capabilities: this.capabilities(config), availableModelCount: 0, defaultModelAvailable: true, testedAt: new Date().toISOString() };
+    }
+    const models = await this.discoverModels(config, signal);
+    return { connected: true, message: "Ollama is reachable. Select a model to test chat completion.", latencyMs: Date.now() - started, detectedApiType: "ollama", capabilities: this.capabilities(config), availableModelCount: models.length, defaultModelAvailable: null, testedAt: new Date().toISOString() };
   }
   async complete<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): Promise<AiResponse<T>> {
     const started = Date.now();
