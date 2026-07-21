@@ -23,6 +23,7 @@
 .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .9rem; margin-top: 1rem; }
 .grid label, .review > label { display: grid; gap: .35rem; font-size: .78rem; font-weight: 700; color: var(--muted); }
 .grid input, .grid select, .grid textarea, .review textarea { width: 100%; min-height: 40px; padding: .55rem .65rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(0,0,0,.18); color: var(--fg); }
+.grid [aria-invalid="true"], .review [aria-invalid="true"] { border-color: #ff7777; box-shadow: 0 0 0 1px rgba(255,119,119,.25); }
 .grid textarea, .review textarea { min-height: 88px; font-family: inherit; }
 .full { grid-column: 1/-1; }
 .toggle { display: flex !important; grid-template-columns: auto 1fr !important; align-items: center; gap: .55rem; margin: .8rem 0; color: var(--fg) !important; }
@@ -52,6 +53,9 @@
 .secretHint { display: block; color: var(--muted); font-size: .66rem; font-weight: 400; }
 .review { display: grid; gap: 1rem; }
 .boundary { padding: .75rem; border-left: 3px solid var(--accent); background: rgba(124,111,247,.08); color: var(--muted); }
+.fieldError { color: #ffb1b1; font-size: .7rem; font-weight: 600; line-height: 1.35; }
+.saveError { display: flex; align-items: flex-start; gap: .55rem; margin-top: 1rem; padding: .75rem; border: 1px solid rgba(255,100,100,.35); border-radius: var(--radius-sm); background: rgba(255,100,100,.1); color: #ffb1b1; }
+.saveError svg { flex: 0 0 auto; }
 .wizardActions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
 .featureList { display: grid; gap: .8rem; }
 .featureList article { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem; }

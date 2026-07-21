@@ -75,7 +75,7 @@ export function classifyProviderAndModel(provider: ProviderLike, model: string, 
   }
 
   const explicitlyRemote = provider.locationClassification === "REMOTE";
-  const explicitlyLocal = provider.locationClassification === "LOCAL" && (provider.administratorConfirmedLocal || provider.trustedNetwork);
+  const explicitlyLocal = provider.locationClassification === "LOCAL" && provider.administratorConfirmedLocal === true && provider.trustedNetwork === true;
   const inferredLocalOllama = provider.providerType === "ollama" && !explicitlyRemote && isLocalProviderUrl(provider);
   const local = explicitlyLocal || inferredLocalOllama;
 
