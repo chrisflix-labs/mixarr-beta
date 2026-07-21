@@ -257,6 +257,13 @@ export function parsePlaylistRecipe(recipe: any) {
       locallyModified,
       updatedAt: recipe.communityUpdatedAt,
     } : null,
+    ai: recipe.aiGenerated ? {
+      generated: true,
+      status: recipe.aiRecipeStatus || "NEEDS_REVIEW",
+      provenance: recipe.aiProvenanceJson || null,
+      lastProposalId: recipe.lastAiProposalId || null,
+      manuallyEditedAfterGeneration: recipe.manuallyEditedAfterAi === true,
+    } : null,
   };
 }
 

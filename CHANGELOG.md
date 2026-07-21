@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.4.4 - AI-Assisted Recipe Creation
+
+Added:
+
+- Recipe Copilot in Recipe Studio for structured Create, Refine, Explain, Diagnose, Optimize, intent comparison, naming, descriptions, onboarding, and playlist-example conversion.
+- Strict versioned provider output, actual-schema normalization, local conflict detection, candidate estimation, compatibility and safety validation, built-in parent and inheritance recommendations, and safer automation guidance.
+- Reviewable logical diffs with per-change accept, reject, editing, side effects, confidence, and one-click pre-AI restoration.
+- Durable AI request/proposal provenance with Draft, Needs Review, Validated, Approved, Rejected, Superseded, and Quarantined workflows enforced by the backend.
+- Owner/admin permission checks, audit history, prompt-injection delimiters, privacy-aware context filtering, stale-result detection, and governed provider/token/cost/budget preflight.
+- Additive migration `20260722120000_ai_recipe_copilot_v244`, responsive accessible drawer, documentation, and automated backend/UI/security contracts.
+
+Safety boundary:
+
+- AI proposals are inactive review artifacts. They cannot approve or activate themselves, attach a parent automatically, execute arbitrary content, bypass recipe validation, or send track-level library data unnecessarily.
+- Applying a proposal creates a normal restorable revision and clears approval. Validation, approval, and activation remain separate explicit actions.
+
 ## v2.4.3 - OpenAI Test Requests & Model Compatibility Hotfix
 
 Fixed:

@@ -76,6 +76,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       refreshPolicy: existing.refreshPolicyJson, automationPolicy: existing.automationPolicyJson,
       ...body,
     });
+    if (existing.aiGenerated && parsed.enabled && (existing.aiRecipeStatus !== "APPROVED" || existing.quarantineState !== "NONE")) {
+      return NextResponse.json({ error: "AI-generated recipes must be validated and explicitly approved before a separate activation action.", code: "AI_RECIPE_ACTIVATION_BLOCKED" }, { status: 409 });
+    }
     const inheritanceKeys = ["baseRecipeId", "recipeCategoryId", "transitionPresetId", "discoveryPresetId", "varietyPresetId", "automationPresetId"];
     const inheritanceChanged = inheritanceKeys.some((key) => Object.prototype.hasOwnProperty.call(body, key));
     if (inheritanceChanged) {
@@ -95,7 +98,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       for (const override of overrideUpdates) await tx.recipeOverride.upsert({ where: { recipeId_fieldPath: { recipeId: existing.id, fieldPath: override.fieldPath } }, create: { recipeId: existing.id, fieldPath: override.fieldPath, valueJson: override.value as any, createdById: userId, updatedById: userId }, update: { valueJson: override.value as any, updatedById: userId } });
       return tx.playlistRecipe.update({
         where: { id: existing.id },
-        data: updatePlaylistRecipeData(parsed, existing),
+        data: {
+          ...updatePlaylistRecipeData(parsed, existing),
+          ...(existing.aiGenerated ? {
+            manuallyEditedAfterAi: true,
+            aiProvenanceJson: { ...((existing.aiProvenanceJson || {}) as Record<string, unknown>), manuallyEdited: true, differsFromAiProposal: true, lastManualEditAt: new Date().toISOString() },
+          } : {}),
+        },
       });
     });
     await safeRecordJobHistory({ userId, type: "mix_recipe", name: "Recipe updated", status: "completed", trigger: "manual", summary: `Updated recipe "${recipe.name}".`, counts: { attempted: 1, processed: 1 }, metadata: { recipeId: recipe.id, schemaVersion: recipe.schemaVersion, recipeVersion: recipe.recipeVersion } });

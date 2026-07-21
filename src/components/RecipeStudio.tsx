@@ -13,6 +13,7 @@ import {
   validateCurve, type CurvePoint, type GuidedRecipeAnswers, type RecipeStudioMode,
 } from "@/lib/recipeStudio";
 import styles from "./RecipeStudio.module.css";
+import RecipeCopilot from "./RecipeCopilot";
 
 type Analysis = Record<string, any>;
 type LibraryOption = { id: string; name: string; serverName: string; tracks: number };
@@ -53,6 +54,7 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [raw, setRaw] = useState("");
+  const [copilotOpen, setCopilotOpen] = useState(false);
   const analysisAbort = useRef<AbortController | null>(null);
   const firstAnalysis = useRef(true);
 
@@ -139,7 +141,7 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
     if (curveFindings.some((finding) => finding.severity === "error")) { setError("Fix the energy curve before saving."); setActive("energy"); return; }
     setSaving(true); setError(""); setNotice("");
     try {
-      const payload = { name: draft.name, description: draft.description, category: draft.category, artworkUrl: draft.artworkUrl || null, enabled: draft.enabled, filters: draft.filters, scoring: draft.scoring, targets: draft.targets, bpmFlow: draft.bpmFlow, discovery: draft.discovery, variety: draft.variety, playlistIdentity: draft.playlistIdentity, refreshPolicy: draft.refreshPolicy, automationPolicy: draft.automationPolicy, expectedUpdatedAt: draft.updatedAt };
+      const payload = { name: draft.name, description: draft.description, category: draft.category, artworkUrl: draft.artworkUrl || null, enabled: draft.enabled, filters: draft.filters, scoring: draft.scoring, targets: draft.targets, bpmFlow: draft.bpmFlow, discovery: draft.discovery, variety: draft.variety, playlistIdentity: draft.playlistIdentity, refreshPolicy: draft.refreshPolicy, automationPolicy: draft.automationPolicy, expectedUpdatedAt: draft.updatedAt, aiProposalId: draft.aiProposalId };
       const response = await fetch(naturalLanguageRequestId ? `/api/natural-language-requests/${encodeURIComponent(naturalLanguageRequestId)}` : recipeId ? `/api/playlist-recipes/${encodeURIComponent(recipeId)}` : "/api/playlist-recipes", { method: recipeId || naturalLanguageRequestId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(naturalLanguageRequestId ? { draft: payload } : payload) });
       const body = await response.json();
       if (!response.ok) {
@@ -161,7 +163,7 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
   return <main className={styles.page}>
     <header className={styles.header}>
       <div><Link href={naturalLanguageRequestId ? `/ask-mixarr/${naturalLanguageRequestId}` : recipeId ? `/recipes/${recipeId}` : "/recipes"} className={styles.back}><ArrowLeft size={15} /> {naturalLanguageRequestId ? "Request review" : "Recipe Library"}</Link><span className={styles.kicker}><Wand2 size={14} /> Recipe Studio</span><h1>{recipeId || naturalLanguageRequestId ? draft.name : "Create a Mix Recipe"}</h1><p>{naturalLanguageRequestId ? "Edit the canonical draft. Saving creates a new request revision and invalidates approval." : "Guided and advanced tools edit one portable, governed recipe document."}</p></div>
-      <div className={styles.headerActions}><button type="button" onClick={() => void validate()} disabled={validating}>{validating ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Validate</button><button type="button" className={styles.primary} onClick={() => void save()} disabled={saving || !dirty}>{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} {saving ? "Saving…" : dirty ? "Save draft" : "Saved"}</button></div>
+      <div className={styles.headerActions}><button type="button" onClick={() => setCopilotOpen(true)}><Sparkles size={15} /> AI Copilot</button><button type="button" onClick={() => void validate()} disabled={validating}>{validating ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Validate</button><button type="button" className={styles.primary} onClick={() => void save()} disabled={saving || !dirty}>{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} {saving ? "Saving…" : dirty ? "Save draft" : "Saved"}</button></div>
     </header>
 
     <div className={styles.statusBar} role="status" aria-live="polite"><span data-dirty={dirty}>{dirty ? "Unsaved changes" : "All changes saved"}</span><span>Analysis: {analysisState}</span>{draft.updatedAt && <span>Revision updated {new Date(draft.updatedAt).toLocaleString()}</span>}</div>
@@ -223,7 +225,8 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
       </section>
       <Diagnostics analysis={analysis} state={analysisState} onSection={setActive} />
     </div>}
-    <div className={styles.mobileSave}><button onClick={() => void validate()} disabled={validating}>Validate</button><button className={styles.primary} onClick={() => void save()} disabled={saving || !dirty}><Save size={16} /> Save</button></div>
+    <RecipeCopilot open={copilotOpen} recipeId={recipeId} draft={draft} dirty={dirty} onClose={() => setCopilotOpen(false)} onDraft={(next, persisted) => { setDraft(next); if (persisted) setBaseline(JSON.stringify(next)); }} onNotice={setNotice} />
+    <div className={styles.mobileSave}><button onClick={() => setCopilotOpen(true)}><Sparkles size={15} /> Copilot</button><button onClick={() => void validate()} disabled={validating}>Validate</button><button className={styles.primary} onClick={() => void save()} disabled={saving || !dirty}><Save size={16} /> Save</button></div>
   </main>;
 }
 

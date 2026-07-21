@@ -79,6 +79,22 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.4",
+    title: "AI-Assisted Recipe Creation",
+    releaseDate: "July 21, 2026",
+    badges: ["AI", "Recipes", "Privacy", "Security", "Diagnostics", "Accessibility", "Mobile", "History", "Automation"],
+    changes: [
+      "Added Recipe Copilot inside Recipe Studio for structured creation, refinement, explanation, diagnosis, optimization, intent comparison, names, descriptions, onboarding guidance, and playlist-example conversion.",
+      "Provider output is an untrusted strict-schema review artifact; unknown rules, executable content, credentials, identifiers, and arbitrary settings are rejected before canonical recipe validation.",
+      "Added local intent conflict detection, candidate estimates, compatibility checks, safer automation guidance, and built-in parent/inheritance recommendations that are never applied automatically.",
+      "Refinements show logical per-rule diffs with reasons, expected behavior, side effects, confidence, individual selection and editing, plus restorable recipe revisions.",
+      "Added durable provenance and backend-enforced Draft, Needs Review, Validated, Approved, Rejected, Superseded, and Quarantined statuses.",
+      "Recipe Copilot uses existing provider, privacy, cost, token, budget, limit, fallback, audit, permission, recipe governance, approval, and compatibility systems.",
+      "AI-generated recipes remain inactive: validation is not approval, approval is not activation, and neither approval nor activation can be performed by provider output.",
+      "Upgrade: apply migration 20260722120000_ai_recipe_copilot_v244, then explicitly enable Recipe Copilot after reviewing its provider and governance policy.",
+    ],
+  },
+  {
     version: "2.4.3",
     title: "OpenAI Test Requests & Model Compatibility Hotfix",
     releaseDate: "July 21, 2026",
