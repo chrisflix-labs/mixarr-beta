@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.4.3 - OpenAI Test Requests & Model Compatibility Hotfix
+
+Fixed:
+
+- Native OpenAI model discovery succeeding while inference tests failed through the generic Chat Completions adapter.
+- Native OpenAI tests using the wrong endpoint and response parser; tests now send one minimal `POST /v1/responses` request.
+- Embedding, moderation, image, audio, transcription, realtime, and other specialized models being offered as standard text-test models.
+- Model, authorization, permission, quota, rate-limit, invalid-request, endpoint, service, timeout, and connectivity failures being collapsed into `PROVIDER_CONNECTION_FAILED`.
+- Discovery alone marking a provider fully healthy, failed requests displaying a confirmed `$0.00`, and saved-secret failures appearing as network failures.
+
+Improved:
+
+- Added a dedicated native OpenAI adapter with canonical API-root handling, Responses output/usage parsing, OpenAI error parsing, request IDs, and sanitized diagnostics.
+- Added deterministic compatible test-model selection without changing the saved default model during a test.
+- Added separate credential verification, model discovery, and inference testing actions plus authentication, discovery, and inference health dimensions.
+- Added explicit audit stages, provider/model results, endpoint mode, HTTP status, safe provider error codes, provider request IDs, and cost states.
+- Native OpenAI is classified as externally paid independently from whether Mixarr has a pricing profile; paid-provider, privacy, budget, and permission governance remain enforced.
+- Added additive migration `20260722010000_openai_provider_hotfix_v243` and focused backend/frontend regression coverage.
+
 ## v2.4.2 - Ollama Requests & User Policy Hotfix
 
 Fixed:

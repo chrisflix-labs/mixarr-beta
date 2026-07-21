@@ -79,6 +79,21 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.3",
+    title: "OpenAI Test Requests & Model Compatibility Hotfix",
+    releaseDate: "July 21, 2026",
+    badges: ["AI", "Hotfix", "External APIs", "Health", "Diagnostics", "Security", "Reliability", "UI"],
+    changes: [
+      "Native OpenAI now uses a dedicated adapter and one minimal Responses API request for inference tests instead of the generic Chat Completions path.",
+      "Discovered models are tagged with conservative text, endpoint, usage, test, and default-selection eligibility so specialized models cannot be used for a standard text test.",
+      "Provider HTTP errors now distinguish invalid models, incompatible operations, authentication, permission, quota, rate limits, invalid requests, invalid endpoints, service failures, timeouts, and genuine connectivity failures.",
+      "Credential verification, model discovery, and inference testing now have separate actions and health states; discovery no longer claims inference is healthy.",
+      "Responses output text, token usage, response IDs, and provider request IDs are parsed and stored in sanitized audit fields without prompts, raw responses, or credentials.",
+      "Failed tests now report not sent, no billable usage reported, usage unavailable, or pricing not configured instead of assuming a confirmed $0.00 cost.",
+      "Upgrade: apply migration 20260722010000_openai_provider_hotfix_v243. Existing providers, encrypted credentials, discovered models, and audit history are preserved.",
+    ],
+  },
+  {
     version: "2.4.2",
     title: "Ollama Requests & User Policy Hotfix",
     releaseDate: "July 20, 2026",

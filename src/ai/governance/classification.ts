@@ -61,7 +61,7 @@ export function isLocalProviderUrl(provider: ProviderLike) {
   return isConfiguredInternalHost(provider, hostname);
 }
 
-function hasConfiguredPrice(pricing: PricingLike) {
+function hasConfiguredPrice(pricing: PricingLike | undefined) {
   return !!pricing && [pricing.inputPricePerMillion, pricing.outputPricePerMillion, pricing.fixedRequestCost].some((value) => value != null);
 }
 
@@ -78,6 +78,11 @@ export function classifyProviderAndModel(provider: ProviderLike, model: string, 
   const explicitlyLocal = provider.locationClassification === "LOCAL" && provider.administratorConfirmedLocal === true && provider.trustedNetwork === true;
   const inferredLocalOllama = provider.providerType === "ollama" && !explicitlyRemote && isLocalProviderUrl(provider);
   const local = explicitlyLocal || inferredLocalOllama;
+
+  // OpenAI API requests are externally billed even when a newly discovered model
+  // does not yet have a Mixarr pricing profile. Billing class and pricing
+  // availability are deliberately separate dimensions.
+  if (provider.providerType === "openai" && !local) return { classification: "EXTERNAL_PAID", locality: "EXTERNAL", pricingClassification: pricing?.status === "FREE" ? "FREE" : hasConfiguredPrice(pricing) ? "PAID" : "UNPRICED", requiresPaidProviderPermission: true, missingPricingPermitted: false, reason: "Native OpenAI API usage is classified as externally billed; model pricing may still require configuration." };
 
   // A model-level paid pricing declaration always wins, even for an otherwise local protocol endpoint.
   const paid = pricing?.billingClassification === "EXTERNAL" && (pricing.status === "PRICED" || hasConfiguredPrice(pricing));

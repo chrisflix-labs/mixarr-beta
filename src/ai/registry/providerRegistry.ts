@@ -4,6 +4,7 @@ import { AiError } from "../errors";
 import { AnthropicAdapter } from "../providers/anthropic";
 import { OllamaAdapter } from "../providers/ollama";
 import { OpenAiCompatibleAdapter } from "../providers/openAiCompatible";
+import { OpenAIProviderAdapter } from "../providers/openai";
 
 export type AiProviderMetadata = {
   type: AiProviderType; displayName: string; description: string; available: boolean; experimental?: boolean;
@@ -38,7 +39,8 @@ registry.register(ollama, { type: "ollama", displayName: "Ollama", description: 
 compatible("litellm", "LiteLLM", "LiteLLM OpenAI-compatible proxy.", "http://localhost:4000/v1", "BEARER", "UNKNOWN");
 compatible("lm_studio", "LM Studio", "Local or remote LM Studio server.", "http://localhost:1234/v1", "NONE", "LOCAL");
 compatible("deepseek", "DeepSeek", "DeepSeek chat and reasoning models.", "https://api.deepseek.com", "BEARER", "REMOTE");
-compatible("openai", "OpenAI API", "OpenAI API access using a separate API key.", "https://api.openai.com/v1", "BEARER", "REMOTE");
+const openai = new OpenAIProviderAdapter();
+registry.register(openai, { type: "openai", displayName: "OpenAI API", description: "Native OpenAI API using the Responses API for inference.", available: true, defaultBaseUrl: "https://api.openai.com/v1", defaultAuthenticationType: "BEARER", defaultLocation: "REMOTE", knownCapabilities: openai.knownCapabilities() });
 const chatgpt = new UnavailableChatGptSubscriptionAdapter();
 registry.register(chatgpt, { type: "chatgpt_subscription", displayName: "ChatGPT Subscription", description: "Consumer ChatGPT subscriptions are separate from OpenAI API access.", available: false, experimental: true, defaultAuthenticationType: "OFFICIAL_OAUTH", defaultLocation: "REMOTE", knownCapabilities: {}, unavailableMessage: "No official supported Mixarr integration is available. Browser cookies, profiles, session tokens, and web automation are never used. Configure the OpenAI API provider instead." });
 compatible("openai_compatible", "OpenAI-Compatible API", "A configurable service implementing compatible model and chat endpoints.", undefined, "BEARER", "UNKNOWN");

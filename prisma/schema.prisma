@@ -5364,6 +5364,16 @@ model AiProviderHealth {
   discoveredModelCount    Int              @default(0)
   consecutiveFailureCount Int              @default(0)
   nextEligibleCheckAt     DateTime?
+  authenticationState     String           @default("NOT_TESTED")
+  discoveryState          String           @default("NOT_TESTED")
+  inferenceState          String           @default("NOT_TESTED")
+  lastAuthenticationAt    DateTime?
+  lastDiscoveryAt         DateTime?
+  lastSuccessfulInferenceAt DateTime?
+  lastFailedRequestAt     DateTime?
+  endpointMode            String?
+  lastHttpStatus          Int?
+  providerRequestId       String?
   updatedAt               DateTime         @updatedAt
   provider                AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Cascade)
 
@@ -5441,6 +5451,14 @@ model AiRequestAudit {
   blockReason                 String?
   providerModelClassification String?
   providerRequestId           String?
+  modelReturned               String?
+  endpointMode                String?
+  testStage                   String?
+  governanceResult            String?
+  modelCompatibilityResult    String?
+  httpStatus                  Int?
+  providerErrorCode           String?
+  costState                   String?
   createdAt                   DateTime              @default(now())
   provider                    AiProviderConfig?     @relation(fields: [providerConfigId], references: [id], onDelete: SetNull)
   attempts                    AiProviderAttempt[]

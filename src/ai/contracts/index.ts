@@ -11,7 +11,20 @@ export type AiCapabilityResult = Partial<Record<AiCapability, AiCapabilityConfid
 export type AiMessage = { role: "user" | "assistant"; content: string };
 export type AiUsage = { inputTokens?: number; outputTokens?: number; totalTokens?: number; cachedTokens?: number; reasoningTokens?: number; providerReported?: boolean; providerRequestId?: string; rawUsage?: Record<string, unknown> };
 export type AiModelCategory = "GENERAL" | "FAST" | "REASONING" | "LARGE_CONTEXT" | "LOCAL" | "REMOTE" | "UNKNOWN";
-export type AiModel = { id: string; displayName: string; contextSize?: number; category: AiModelCategory; capabilities: AiCapabilityResult; available: boolean };
+export type AiModelCompatibility = {
+  ownedBy?: string;
+  lifecycleState?: "ACTIVE" | "DEPRECATED" | "UNKNOWN";
+  supportsTextInput: boolean;
+  supportsTextOutput: boolean;
+  supportsResponsesApi: boolean;
+  supportsChatCompletions: boolean;
+  supportsStreaming: boolean;
+  supportsUsageReporting: boolean;
+  suitableForConnectionTest: boolean;
+  selectableAsDefault: boolean;
+  reason?: string;
+};
+export type AiModel = { id: string; displayName: string; contextSize?: number; category: AiModelCategory; capabilities: AiCapabilityResult; available: boolean; compatibility?: AiModelCompatibility };
 
 export type AiResponseFormat<T = unknown> = {
   type: "json";
@@ -73,7 +86,7 @@ export type AiStreamEvent =
   | { type: "cancelled" }
   | { type: "failed"; code: string; message: string };
 
-export type AiConnectionTestResult = { connected: boolean; message: string; latencyMs: number; detectedApiType: string; capabilities: AiCapabilityResult; availableModelCount: number; defaultModelAvailable: boolean | null; testedAt: string };
+export type AiConnectionTestResult = { connected: boolean; message: string; latencyMs: number; detectedApiType: string; capabilities: AiCapabilityResult; availableModelCount: number; defaultModelAvailable: boolean | null; testedAt: string; model?: string; modelReturned?: string; endpointMode?: string; authenticationResult?: string; discoveryResult?: string; inferenceResult?: string; responseId?: string; providerRequestId?: string; usage?: AiUsage };
 
 export type ResolvedAiProviderConfig = {
   id: string;
@@ -107,7 +120,7 @@ export type AiProviderExecutionContext = { requestId: string; providerId: string
 export interface AiProviderAdapter {
   readonly providerType: AiProviderType;
   readonly available: boolean;
-  testConnection(config: ResolvedAiProviderConfig, signal?: AbortSignal): Promise<AiConnectionTestResult>;
+  testConnection(config: ResolvedAiProviderConfig, signal?: AbortSignal, model?: string): Promise<AiConnectionTestResult>;
   discoverModels(config: ResolvedAiProviderConfig, signal?: AbortSignal): Promise<AiModel[]>;
   detectCapabilities(config: ResolvedAiProviderConfig, model?: string, signal?: AbortSignal): Promise<AiCapabilityResult>;
   complete<T = unknown>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): Promise<AiResponse<T>>;
