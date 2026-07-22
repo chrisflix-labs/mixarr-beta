@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, CheckCircle2, ChevronDown, Clock3, History, Loader2, RotateCcw, ShieldAlert, Sparkles, X } from "lucide-react";
 import styles from "./RecipeCopilot.module.css";
+import RecommendationExplanationPanel from "./RecommendationExplanationPanel";
 
 type Action = "create" | "refine" | "explain" | "diagnose" | "optimize" | "compare_intent" | "from_playlist" | "suggest_names" | "generate_description" | "onboarding";
 type Props = { open: boolean; recipeId?: string; draft: Record<string, any>; dirty: boolean; onClose: () => void; onDraft: (draft: Record<string, any>, persisted?: boolean) => void; onNotice: (message: string) => void };
@@ -123,6 +124,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
 
         {proposal && <div className={styles.results}>
           <section className={styles.reviewHeader}><div><span className={styles.badge} data-status={proposal.status}>{proposal.status.replaceAll("_", " ")}</span>{proposal.manuallyEdited && <span className={styles.badge}>Manually edited</span>}</div><strong>{proposal.intent?.summary || "Copilot analysis"}</strong><small>Confidence {Math.round(Number(proposal.confidence || 0) * 100)}% · Validated does not mean approved or active.</small></section>
+          <RecommendationExplanationPanel resourceId={proposal.id} title="Full recommendation explanation" />
           {(proposal.intent?.conflicts || []).length > 0 && <ResultList title="Intent conflicts" items={proposal.intent.conflicts.map((item: any) => `${item.description} Resolution: ${item.resolution}`)} warning />}
           {(proposal.safetyWarnings || []).length > 0 && <ResultList title="Warnings and safety" items={proposal.safetyWarnings} warning />}
           {(proposal.unsupportedRequests || []).length > 0 && <ResultList title="Unsupported requests" items={proposal.unsupportedRequests} warning />}

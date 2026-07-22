@@ -145,6 +145,9 @@ model User {
   aiRecipeProposalApplications   AiRecipeProposal[]                @relation("AiRecipeProposalApplier")
   aiRecipeProposalApprovals      AiRecipeProposal[]                @relation("AiRecipeProposalApprover")
   aiRecipeAuditEvents            AiRecipeAuditEvent[]              @relation("AiRecipeAuditActor")
+  recommendationExplanations     RecommendationExplanation[]       @relation("RecommendationExplanationOwner")
+  explanationApprovalNotes       ExplanationApprovalNote[]         @relation("ExplanationApprovalActor")
+  explanationAuditEvents         RecommendationExplanationAudit[]  @relation("RecommendationExplanationAuditActor")
   playlistAnalysisSnapshots      PlaylistAnalysisSnapshot[]
   playlistAiSummaries            PlaylistAiSummary[]               @relation("PlaylistAiSummaryCreator")
   metadataAnalysisJobs           MetadataAnalysisJob[]
@@ -1080,51 +1083,51 @@ model PlaylistRule {
 }
 
 model PlaylistRecipe {
-  id                         String                    @id @default(uuid())
+  id                         String                      @id @default(uuid())
   userId                     String
   name                       String
   slug                       String
   description                String?
-  category                   String                    @default("Custom")
+  category                   String                      @default("Custom")
   artworkUrl                 String?
-  schemaVersion              Int                       @default(1)
-  recipeVersion              Int                       @default(1)
-  enabled                    Boolean                   @default(true)
+  schemaVersion              Int                         @default(1)
+  recipeVersion              Int                         @default(1)
+  enabled                    Boolean                     @default(true)
   filtersJson                Json
-  scoringJson                Json                      @default("{}")
-  targetsJson                Json                      @default("{}")
-  bpmFlowJson                Json                      @default("{}")
-  discoveryJson              Json                      @default("{}")
-  varietyJson                Json                      @default("{}")
-  identityDefaultsJson       Json                      @default("{}")
-  refreshPolicyJson          Json                      @default("{}")
-  automationPolicyJson       Json                      @default("{}")
+  scoringJson                Json                        @default("{}")
+  targetsJson                Json                        @default("{}")
+  bpmFlowJson                Json                        @default("{}")
+  discoveryJson              Json                        @default("{}")
+  varietyJson                Json                        @default("{}")
+  identityDefaultsJson       Json                        @default("{}")
+  refreshPolicyJson          Json                        @default("{}")
+  automationPolicyJson       Json                        @default("{}")
   createdFromVersion         String?
   sourcePlaylistId           String?
   sourceRecipeId             String?
   sourceRecipeVersion        Int?
-  isFavorite                 Boolean                   @default(false)
-  isArchived                 Boolean                   @default(false)
+  isFavorite                 Boolean                     @default(false)
+  isArchived                 Boolean                     @default(false)
   deletedAt                  DateTime?
   lastUsedAt                 DateTime?
-  useCount                   Int                       @default(0)
+  useCount                   Int                         @default(0)
   portableChecksum           String?
   portableContentChecksum    String?
   importedAt                 DateTime?
   originalImportedRecipeJson Json?
-  adaptedFromImport          Boolean                   @default(false)
+  adaptedFromImport          Boolean                     @default(false)
   importSchemaVersion        Int?
   importEngineVersion        String?
   importWarningsJson         Json?
   lastExportedAt             DateTime?
-  createdAt                  DateTime                  @default(now())
-  updatedAt                  DateTime                  @updatedAt
-  user                       User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sourcePlaylist             GeneratedPlaylist?        @relation("RecipeSourcePlaylist", fields: [sourcePlaylistId], references: [id], onDelete: SetNull)
-  generatedPlaylists         GeneratedPlaylist[]       @relation("RecipeGeneratedPlaylists")
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
+  user                       User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourcePlaylist             GeneratedPlaylist?          @relation("RecipeSourcePlaylist", fields: [sourcePlaylistId], references: [id], onDelete: SetNull)
+  generatedPlaylists         GeneratedPlaylist[]         @relation("RecipeGeneratedPlaylists")
   revisions                  PlaylistRecipeRevision[]
   importAnalysis             RecipeImportAnalysis?
-  inheritanceEnabled         Boolean                   @default(false)
+  inheritanceEnabled         Boolean                     @default(false)
   baseRecipeId               String?
   recipeCategoryId           String?
   transitionPresetId         String?
@@ -1151,55 +1154,56 @@ model PlaylistRecipe {
   communityOriginalChecksum  String?
   communityImportedVersion   String?
   communityUpdatedAt         DateTime?
-  governanceSchemaVersion    Int                       @default(3)
-  recipeSource               String                    @default("LOCAL")
+  governanceSchemaVersion    Int                         @default(3)
+  recipeSource               String                      @default("LOCAL")
   originalPayloadJson        Json?
   normalizedPayloadJson      Json?
-  trustState                 String                    @default("LOCAL")
-  approvalState              String                    @default("APPROVED")
-  quarantineState            String                    @default("NONE")
+  trustState                 String                      @default("LOCAL")
+  approvalState              String                      @default("APPROVED")
+  quarantineState            String                      @default("NONE")
   quarantineReason           String?
-  signatureStatus            String                    @default("MISSING")
+  signatureStatus            String                      @default("MISSING")
   signatureAlgorithm         String?
   signatureKeyId             String?
   signerIdentity             String?
   signatureSignedAt          DateTime?
-  requestedPermissionsJson   Json                      @default("[]")
-  grantedPermissionsJson     Json                      @default("[]")
-  restrictedPermissionsJson  Json                      @default("[]")
-  compatibilityStatus        String                    @default("COMPATIBLE")
-  compatibilityJson          Json                      @default("{}")
-  riskLevel                  String                    @default("LOW")
-  riskScore                  Int                       @default(0)
-  riskFindingsJson           Json                      @default("[]")
-  dependencyStatusJson       Json                      @default("[]")
-  migrationHistoryJson       Json                      @default("[]")
+  requestedPermissionsJson   Json                        @default("[]")
+  grantedPermissionsJson     Json                        @default("[]")
+  restrictedPermissionsJson  Json                        @default("[]")
+  compatibilityStatus        String                      @default("COMPATIBLE")
+  compatibilityJson          Json                        @default("{}")
+  riskLevel                  String                      @default("LOW")
+  riskScore                  Int                         @default(0)
+  riskFindingsJson           Json                        @default("[]")
+  dependencyStatusJson       Json                        @default("[]")
+  migrationHistoryJson       Json                        @default("[]")
   approvedById               String?
   approvedAt                 DateTime?
   revokedLocallyAt           DateTime?
   lastValidatedAt            DateTime?
-  localOverridesJson         Json                      @default("{}")
-  inheritanceSchemaVersion   Int                       @default(1)
-  baseRecipe                 PlaylistRecipe?           @relation("RecipeBaseInheritance", fields: [baseRecipeId], references: [id], onDelete: Restrict)
-  childRecipes               PlaylistRecipe[]          @relation("RecipeBaseInheritance")
-  recipeCategory             RecipeCategory?           @relation(fields: [recipeCategoryId], references: [id], onDelete: SetNull)
-  transitionPreset           RecipePreset?             @relation("RecipeTransitionPreset", fields: [transitionPresetId], references: [id], onDelete: Restrict)
-  discoveryPreset            RecipePreset?             @relation("RecipeDiscoveryPreset", fields: [discoveryPresetId], references: [id], onDelete: Restrict)
-  varietyPreset              RecipePreset?             @relation("RecipeVarietyPreset", fields: [varietyPresetId], references: [id], onDelete: Restrict)
-  automationPreset           RecipePreset?             @relation("RecipeAutomationPreset", fields: [automationPresetId], references: [id], onDelete: Restrict)
-  approvedBy                 User?                     @relation("RecipeApprovalActor", fields: [approvedById], references: [id], onDelete: SetNull)
+  localOverridesJson         Json                        @default("{}")
+  inheritanceSchemaVersion   Int                         @default(1)
+  baseRecipe                 PlaylistRecipe?             @relation("RecipeBaseInheritance", fields: [baseRecipeId], references: [id], onDelete: Restrict)
+  childRecipes               PlaylistRecipe[]            @relation("RecipeBaseInheritance")
+  recipeCategory             RecipeCategory?             @relation(fields: [recipeCategoryId], references: [id], onDelete: SetNull)
+  transitionPreset           RecipePreset?               @relation("RecipeTransitionPreset", fields: [transitionPresetId], references: [id], onDelete: Restrict)
+  discoveryPreset            RecipePreset?               @relation("RecipeDiscoveryPreset", fields: [discoveryPresetId], references: [id], onDelete: Restrict)
+  varietyPreset              RecipePreset?               @relation("RecipeVarietyPreset", fields: [varietyPresetId], references: [id], onDelete: Restrict)
+  automationPreset           RecipePreset?               @relation("RecipeAutomationPreset", fields: [automationPresetId], references: [id], onDelete: Restrict)
+  approvedBy                 User?                       @relation("RecipeApprovalActor", fields: [approvedById], references: [id], onDelete: SetNull)
   auditEvents                RecipeAuditEvent[]
   importSnapshots            RecipeImportSnapshot[]
   recipeOverrides            RecipeOverride[]
   inheritanceSnapshots       EffectiveRecipeSnapshot[]
   naturalLanguageRequests    NaturalLanguageRequest[]
-  aiGenerated                Boolean                   @default(false)
+  aiGenerated                Boolean                     @default(false)
   aiRecipeStatus             String?
   aiProvenanceJson           Json?
   lastAiProposalId           String?
-  manuallyEditedAfterAi      Boolean                   @default(false)
+  manuallyEditedAfterAi      Boolean                     @default(false)
   aiRecipeRequests           AiRecipeRequest[]
   aiRecipeProposals          AiRecipeProposal[]
+  recommendationExplanations RecommendationExplanation[]
 
   @@unique([userId, slug])
   @@index([userId, sourceRecipeId])
@@ -2050,6 +2054,7 @@ model GeneratedPlaylist {
   analysisSnapshots            PlaylistAnalysisSnapshot[]
   aiSummaries                  PlaylistAiSummary[]
   metadataSuggestions          MetadataSuggestion[]
+  recommendationExplanations   RecommendationExplanation[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -2966,29 +2971,30 @@ model SmartMixExplanationPreference {
 }
 
 model SmartMixExplanationGeneration {
-  id                          String                  @id @default(uuid())
-  generationId                String                  @unique
+  id                          String                     @id @default(uuid())
+  generationId                String                     @unique
   userId                      String
   generatedPlaylistId         String?
   engineVersion               String
-  status                      String                  @default("complete")
+  status                      String                     @default("complete")
   settingsSnapshotJson        Json?
   identitySnapshotJson        Json?
   personalizationSnapshotJson Json?
   insightsJson                Json
   rejectionSummaryJson        Json?
-  evaluatedCount              Int                     @default(0)
-  eligibleCount               Int                     @default(0)
-  selectedCount               Int                     @default(0)
-  hardRejectedCount           Int                     @default(0)
-  rankedRejectedCount         Int                     @default(0)
-  traceDurationMs             Int                     @default(0)
+  evaluatedCount              Int                        @default(0)
+  eligibleCount               Int                        @default(0)
+  selectedCount               Int                        @default(0)
+  hardRejectedCount           Int                        @default(0)
+  rankedRejectedCount         Int                        @default(0)
+  traceDurationMs             Int                        @default(0)
   fullTraceExpiresAt          DateTime?
-  createdAt                   DateTime                @default(now())
-  updatedAt                   DateTime                @updatedAt
-  user                        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  generatedPlaylist           GeneratedPlaylist?      @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+  user                        User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generatedPlaylist           GeneratedPlaylist?         @relation(fields: [generatedPlaylistId], references: [id], onDelete: Cascade)
   traces                      SmartMixDecisionTrace[]
+  recommendationExplanation   RecommendationExplanation?
 
   @@index([userId, createdAt])
   @@index([generatedPlaylistId, createdAt])
@@ -3004,6 +3010,7 @@ model SmartMixDecisionTrace {
   trackId             String?
   trackTitle          String?
   artistName          String?
+  albumName           String?
   decision            String
   rank                Int?
   rejectionStage      String?
@@ -3025,6 +3032,203 @@ model SmartMixDecisionTrace {
   @@index([generatedPlaylistId, decision])
   @@index([rejectionCode])
   @@index([expiresAt])
+}
+
+/// Versioned, provider-neutral explanation that connects immutable user intent,
+/// AI interpretation, generated recipe settings, and deterministic engine traces.
+model RecommendationExplanation {
+  id                           String                           @id @default(uuid())
+  ownerId                      String
+  recipeId                     String?
+  recipeVersion                Int?
+  generatedPlaylistId          String?
+  generationRecordId           String?                          @unique
+  aiRequestId                  String?                          @unique
+  aiProposalId                 String?                          @unique
+  source                       String                           @default("RECIPE_COPILOT")
+  originalRequest              String?
+  originalRequestHash          String?
+  originalRequestCreatedAt     DateTime?
+  requestSource                String                           @default("RECIPE_COPILOT")
+  structuredInterpretationJson Json
+  generatedConfigurationJson   Json
+  generatedSettingsJson        Json                             @default("[]")
+  validationResultsJson        Json                             @default("[]")
+  uncertaintyWarningsJson      Json                             @default("[]")
+  semanticDiffJson             Json                             @default("[]")
+  overallConfidence            Float?
+  overallConfidenceCategory    String                           @default("unknown")
+  explanationSchemaVersion     String                           @default("1.0")
+  recipeSchemaVersion          String
+  engineVersion                String
+  modelProvider                String?
+  modelIdentifier              String?
+  privacyMode                  String?
+  aiCallRequired               Boolean                          @default(true)
+  interpretationCost           Decimal?                         @db.Decimal(18, 6)
+  deterministicRenderCost      Decimal                          @default(0) @db.Decimal(18, 6)
+  interpretationHash           String
+  configurationHash            String
+  reproducibilityStatus        String
+  reproducibilityReason        String
+  reproducibilitySnapshotJson  Json
+  metadataSnapshotPolicy       String                           @default("reference-or-snapshot")
+  randomSeed                   Int?
+  createdAt                    DateTime                         @default(now())
+  updatedAt                    DateTime                         @updatedAt
+  owner                        User                             @relation("RecommendationExplanationOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  recipe                       PlaylistRecipe?                  @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  generatedPlaylist            GeneratedPlaylist?               @relation(fields: [generatedPlaylistId], references: [id], onDelete: SetNull)
+  generation                   SmartMixExplanationGeneration?   @relation(fields: [generationRecordId], references: [id], onDelete: SetNull)
+  aiRequest                    AiRecipeRequest?                 @relation(fields: [aiRequestId], references: [id], onDelete: SetNull)
+  aiProposal                   AiRecipeProposal?                @relation(fields: [aiProposalId], references: [id], onDelete: SetNull)
+  assumptions                  ExplanationAssumption[]
+  alternatives                 ExplanationAlternative[]
+  ruleTraces                   RecommendationRuleTrace[]
+  trackEvaluations             RecommendationTrackEvaluation[]
+  approvalNotes                ExplanationApprovalNote[]
+  auditEvents                  RecommendationExplanationAudit[]
+
+  @@index([ownerId, createdAt])
+  @@index([recipeId, recipeVersion, createdAt])
+  @@index([generatedPlaylistId, createdAt])
+  @@index([reproducibilityStatus, updatedAt])
+}
+
+model ExplanationAssumption {
+  id                    String                    @id @default(uuid())
+  explanationId         String
+  sourceText            String?
+  description           String
+  fieldPath             String?
+  inferredValueJson     Json?
+  confidence            Float?
+  confidenceCategory    String                    @default("unknown")
+  responsibility        String                    @default("ai_interpretation")
+  effect                String                    @default("score")
+  status                String                    @default("pending")
+  userOverrideValueJson Json?
+  relatedRuleIdsJson    Json                      @default("[]")
+  alternativeValuesJson Json                      @default("[]")
+  acceptedAt            DateTime?
+  rejectedAt            DateTime?
+  modifiedAt            DateTime?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  explanation           RecommendationExplanation @relation(fields: [explanationId], references: [id], onDelete: Cascade)
+
+  @@index([explanationId, status, createdAt])
+  @@index([fieldPath])
+}
+
+model ExplanationAlternative {
+  id                           String                    @id @default(uuid())
+  explanationId                String
+  label                        String
+  structuredInterpretationJson Json
+  generatedConfigurationJson   Json?
+  confidence                   Float?
+  confidenceCategory           String                    @default("unknown")
+  differenceSummaryJson        Json                      @default("[]")
+  expectedRuleImpactJson       Json                      @default("[]")
+  appliedAt                    DateTime?
+  createdAt                    DateTime                  @default(now())
+  explanation                  RecommendationExplanation @relation(fields: [explanationId], references: [id], onDelete: Cascade)
+
+  @@index([explanationId, confidence, createdAt])
+}
+
+model RecommendationRuleTrace {
+  id                String                    @id @default(uuid())
+  explanationId     String
+  nodeType          String
+  nodeIdentifier    String
+  sourceNodeId      String?
+  targetRuleId      String?
+  fieldPath         String?
+  inputValueJson    Json?
+  outputValueJson   Json?
+  responsibility    String
+  confidence        Float?
+  assumptionsJson   Json                      @default("[]")
+  validationStatus  String                    @default("not_evaluated")
+  parentNodeIdsJson Json                      @default("[]")
+  childNodeIdsJson  Json                      @default("[]")
+  createdAt         DateTime                  @default(now())
+  explanation       RecommendationExplanation @relation(fields: [explanationId], references: [id], onDelete: Cascade)
+
+  @@index([explanationId, nodeType, nodeIdentifier])
+  @@index([explanationId, targetRuleId])
+  @@index([fieldPath])
+}
+
+model RecommendationTrackEvaluation {
+  id                String                    @id @default(uuid())
+  explanationId     String
+  generationId      String?
+  trackId           String?
+  trackTitle        String?
+  artistName        String?
+  albumName         String?
+  selected          Boolean                   @default(false)
+  rank              Int?
+  ruleId            String
+  ruleType          String
+  result            String
+  reasonCode        String
+  inputSnapshotJson Json
+  scoreDelta        Float                     @default(0)
+  scoreBefore       Float?
+  scoreAfter        Float?
+  exclusion         Boolean                   @default(false)
+  responsibility    String                    @default("deterministic_engine")
+  metadataQuality   Float?
+  evaluatedAt       DateTime
+  expiresAt         DateTime?
+  createdAt         DateTime                  @default(now())
+  explanation       RecommendationExplanation @relation(fields: [explanationId], references: [id], onDelete: Cascade)
+
+  @@index([explanationId, selected, rank])
+  @@index([explanationId, trackId, evaluatedAt])
+  @@index([explanationId, ruleId, result])
+  @@index([explanationId, reasonCode])
+  @@index([generationId, trackId])
+  @@index([expiresAt])
+}
+
+model ExplanationApprovalNote {
+  id                  String                    @id @default(uuid())
+  explanationId       String
+  approverUserId      String
+  decision            String
+  note                String
+  relatedFieldPath    String?
+  relatedRuleId       String?
+  recipeVersion       Int?
+  explanationVersion  String
+  generationRunId     String?
+  requestedChangeJson Json?
+  createdAt           DateTime                  @default(now())
+  explanation         RecommendationExplanation @relation(fields: [explanationId], references: [id], onDelete: Cascade)
+  approver            User                      @relation("ExplanationApprovalActor", fields: [approverUserId], references: [id], onDelete: Restrict)
+
+  @@index([explanationId, createdAt])
+  @@index([approverUserId, createdAt])
+}
+
+model RecommendationExplanationAudit {
+  id            String                    @id @default(uuid())
+  explanationId String
+  actorId       String?
+  eventType     String
+  detailsJson   Json?
+  createdAt     DateTime                  @default(now())
+  explanation   RecommendationExplanation @relation(fields: [explanationId], references: [id], onDelete: Cascade)
+  actor         User?                     @relation("RecommendationExplanationAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([explanationId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([eventType, createdAt])
 }
 
 model PlaylistRegeneration {
@@ -5766,36 +5970,37 @@ model AiProviderAttempt {
 // AI recipe output remains an untrusted review artifact. A proposal can become a
 // disabled recipe revision only through an explicit, permission-checked apply.
 model AiRecipeRequest {
-  id                    String               @id @default(uuid())
-  ownerId               String
-  recipeId              String?
-  recipeVersion         Int?
-  action                String
-  sourceRequest         String
-  providerConfigId      String?
-  providerDisplayName   String?
-  model                 String?
-  privacyMode           String               @default("METADATA_LIMITED")
-  status                String               @default("PREPARING")
-  contextFingerprint    String
-  sourceUpdatedAt       DateTime?
-  promptTemplateVersion String
-  inputTokenCount       Int?
-  outputTokenCount      Int?
-  estimatedCost         Decimal?             @db.Decimal(18, 6)
-  actualCost            Decimal?             @db.Decimal(18, 6)
-  aiResponseIdentifier  String?
-  errorCategory         String?
-  errorMessage          String?
-  remote                Boolean              @default(false)
-  cancelledAt           DateTime?
-  completedAt           DateTime?
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
-  owner                 User                 @relation("AiRecipeRequestOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  recipe                PlaylistRecipe?      @relation(fields: [recipeId], references: [id], onDelete: SetNull)
-  proposal              AiRecipeProposal?
-  auditEvents           AiRecipeAuditEvent[]
+  id                        String                     @id @default(uuid())
+  ownerId                   String
+  recipeId                  String?
+  recipeVersion             Int?
+  action                    String
+  sourceRequest             String
+  providerConfigId          String?
+  providerDisplayName       String?
+  model                     String?
+  privacyMode               String                     @default("METADATA_LIMITED")
+  status                    String                     @default("PREPARING")
+  contextFingerprint        String
+  sourceUpdatedAt           DateTime?
+  promptTemplateVersion     String
+  inputTokenCount           Int?
+  outputTokenCount          Int?
+  estimatedCost             Decimal?                   @db.Decimal(18, 6)
+  actualCost                Decimal?                   @db.Decimal(18, 6)
+  aiResponseIdentifier      String?
+  errorCategory             String?
+  errorMessage              String?
+  remote                    Boolean                    @default(false)
+  cancelledAt               DateTime?
+  completedAt               DateTime?
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  owner                     User                       @relation("AiRecipeRequestOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  recipe                    PlaylistRecipe?            @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  proposal                  AiRecipeProposal?
+  auditEvents               AiRecipeAuditEvent[]
+  recommendationExplanation RecommendationExplanation?
 
   @@index([ownerId, status, createdAt])
   @@index([recipeId, createdAt])
@@ -5803,11 +6008,11 @@ model AiRecipeRequest {
 }
 
 model AiRecipeProposal {
-  id                        String               @id @default(uuid())
-  requestId                 String               @unique
+  id                        String                     @id @default(uuid())
+  requestId                 String                     @unique
   recipeId                  String?
-  status                    String               @default("DRAFT")
-  schemaVersion             String               @default("1.0")
+  status                    String                     @default("DRAFT")
+  schemaVersion             String                     @default("1.0")
   originalProposalJson      Json
   proposedConfigurationJson Json?
   analysisJson              Json
@@ -5819,11 +6024,11 @@ model AiRecipeProposal {
   compatibilityJson         Json?
   safetyWarningsJson        Json
   unsupportedRequestsJson   Json
-  confidenceScore           Float                @default(0)
+  confidenceScore           Float                      @default(0)
   previousConfigurationJson Json?
   previousRecipeVersion     Int?
-  manuallyEdited            Boolean              @default(false)
-  differsFromAiProposal     Boolean              @default(false)
+  manuallyEdited            Boolean                    @default(false)
+  differsFromAiProposal     Boolean                    @default(false)
   appliedById               String?
   appliedAt                 DateTime?
   approvedById              String?
@@ -5832,13 +6037,14 @@ model AiRecipeProposal {
   supersededAt              DateTime?
   quarantinedAt             DateTime?
   statusReason              String?
-  createdAt                 DateTime             @default(now())
-  updatedAt                 DateTime             @updatedAt
-  request                   AiRecipeRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  recipe                    PlaylistRecipe?      @relation(fields: [recipeId], references: [id], onDelete: SetNull)
-  appliedBy                 User?                @relation("AiRecipeProposalApplier", fields: [appliedById], references: [id], onDelete: SetNull)
-  approvedBy                User?                @relation("AiRecipeProposalApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  request                   AiRecipeRequest            @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  recipe                    PlaylistRecipe?            @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  appliedBy                 User?                      @relation("AiRecipeProposalApplier", fields: [appliedById], references: [id], onDelete: SetNull)
+  approvedBy                User?                      @relation("AiRecipeProposalApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   auditEvents               AiRecipeAuditEvent[]
+  recommendationExplanation RecommendationExplanation?
 
   @@index([recipeId, status, createdAt])
   @@index([status, createdAt])

@@ -79,6 +79,20 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.7",
+    title: "Explainable AI Recommendations",
+    releaseDate: "July 22, 2026",
+    badges: ["AI", "Diagnostics", "Recipes", "Playlists", "Privacy", "Security", "History", "Export", "Accessibility", "Mobile"],
+    changes: [
+      "Added immutable user intent, structured AI interpretation, generated configuration, deterministic engine evaluation, and final outcome as five connected explanation layers.",
+      "Added request-to-rule and rule-to-track traces, responsibility labels, stable reason codes, assumptions, alternatives, uncertainty warnings, semantic diffs, and validation separate from AI confidence.",
+      "Added paginated evaluation APIs, household approval notes, privacy-aware JSON/Markdown/HTML/print exports, canonical hashes, reproducibility statuses, and deterministic regeneration without another AI request.",
+      "Added a responsive keyboard-accessible explanation panel to Recipe Copilot and Smart Mix v2 generated playlists while preserving existing non-AI and legacy workflows.",
+      "AI interprets and proposes configuration only. Mixarr's deterministic engine remains authoritative for candidate discovery, filtering, scoring, deduplication, spacing, repeat prevention, availability, ordering, and final selection.",
+      "Upgrade: apply migration 20260725010000_explainable_ai_recommendations_v247. Historical explanations are never fabricated when source data is absent or expired.",
+    ],
+  },
+  {
     version: "2.4.6",
     title: "AI Playlist Summaries and Metadata Suggestions",
     releaseDate: "July 21, 2026",

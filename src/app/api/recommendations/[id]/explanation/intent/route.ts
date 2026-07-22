@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+import { getRecommendationExplanation } from "@/lib/recommendationExplanations/service";
+import { recommendationExplanationApiError, recommendationExplanationUserId } from "@/lib/recommendationExplanations/api";
+export async function GET(_: Request, { params }: { params: { id: string } }) { try { const value = await getRecommendationExplanation(recommendationExplanationUserId(), params.id); return NextResponse.json({ originalRequest: value.originalRequest, createdAt: value.originalRequestCreatedAt, requestSource: value.requestSource, structuredInterpretation: value.structuredInterpretation, confidence: value.overallConfidence, confidenceCategory: value.overallConfidenceCategory, uncertaintyWarnings: value.uncertaintyWarnings, assumptions: value.assumptions, alternatives: value.alternatives }); } catch (error) { return recommendationExplanationApiError(error); } }

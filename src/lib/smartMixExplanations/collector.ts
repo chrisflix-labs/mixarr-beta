@@ -203,7 +203,7 @@ export function buildDecisionExplanation({ track, generationId, playlistId, deci
   if (rejectionCode?.includes("NEVER")) suggestedFixes.push({ code: "REVIEW_NEVER_RECOMMEND", label: "Review Never recommend feedback", href: "/settings/personalization" });
   if (confidence.score < 55 && track.playlistIdentityScore?.applied) suggestedFixes.push({ code: "RETRAIN_IDENTITY", label: "Retrain playlist identity", href: playlistId ? `/generated-playlists?playlistId=${playlistId}` : "/generated-playlists" });
   return {
-    schemaVersion: SMART_MIX_EXPLANATION_SCHEMA_VERSION, trackId: String(track.id), trackTitle: track.title || "Unknown track", artistName: track.artist?.title || null, ...(playlistId !== undefined ? { playlistId } : {}), generationId, engineVersion: track.engineVersion || "v2", decision, ...(rank !== undefined ? { rank } : {}),
+    schemaVersion: SMART_MIX_EXPLANATION_SCHEMA_VERSION, trackId: String(track.id), trackTitle: track.title || "Unknown track", artistName: track.artist?.title || null, albumName: track.album?.title || null, ...(playlistId !== undefined ? { playlistId } : {}), generationId, engineVersion: track.engineVersion || "v2", decision, ...(rank !== undefined ? { rank } : {}),
     ...(decision === "rejected" ? { rejectionStage: rejectionStage(rejectionCode), rejectionCode: rejectionCode || "RANKED_BELOW_CUTOFF" } : {}),
     hardFilterResults: [{ code: rejectionCode || "ELIGIBLE", passed: !hard, explanation: hard ? summary : "No retained hard filter rejected this candidate." }],
     softFilterResults: [{ code: "FINAL_RANKING", passed: decision === "selected", explanation: decision === "selected" ? "This candidate ranked inside the selected set." : summary }],

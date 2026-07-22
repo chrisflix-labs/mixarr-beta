@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import prisma from "../prisma";
 import { redactVersionSettings } from "../playlists/versions/playlist-version-snapshot";
 import { buildGenerationInsights, compareDecisionExplanations } from "./collector";
+import { linkRecommendationExplanationToGeneration } from "../recommendationExplanations/service";
 import type { SmartMixDecisionExplanation, SmartMixExplanationDetailLevel, SmartMixGenerationInsights } from "./types";
 
 export const DEFAULT_REJECTED_CANDIDATE_LIMIT = 100;
@@ -38,7 +39,7 @@ export async function persistGenerationExplanations({ userId, generationId, engi
       update: { engineVersion, status: "complete", settingsSnapshotJson: redactVersionSettings(settingsSnapshot) as Prisma.InputJsonValue, identitySnapshotJson: redactVersionSettings(identitySnapshot) as Prisma.InputJsonValue, personalizationSnapshotJson: redactVersionSettings(personalizationSnapshot) as Prisma.InputJsonValue, insightsJson: insights as unknown as Prisma.InputJsonValue, rejectionSummaryJson: rejectionSummary as Prisma.InputJsonValue, evaluatedCount: counts.evaluated, eligibleCount: counts.eligible, selectedCount: selected.length, hardRejectedCount: counts.hardRejected, rankedRejectedCount: Math.max(0, counts.eligible - selected.length), traceDurationMs, fullTraceExpiresAt: expiresAt },
     });
     await tx.smartMixDecisionTrace.deleteMany({ where: { generationRecordId: record.id } });
-    if (all.length) await tx.smartMixDecisionTrace.createMany({ data: all.map((item) => ({ generationRecordId: record.id, generationId, userId, trackId: item.trackId, trackTitle: item.trackTitle, artistName: item.artistName, decision: item.decision, rank: item.rank, rejectionStage: item.rejectionStage, rejectionCode: item.rejectionCode, finalScore: item.scores.finalScore, confidenceScore: item.confidence.score, confidenceLabel: item.confidence.label, explanationJson: item as unknown as Prisma.InputJsonValue, expiresAt: item.decision === "selected" ? null : expiresAt })) });
+    if (all.length) await tx.smartMixDecisionTrace.createMany({ data: all.map((item) => ({ generationRecordId: record.id, generationId, userId, trackId: item.trackId, trackTitle: item.trackTitle, artistName: item.artistName, albumName: item.albumName, decision: item.decision, rank: item.rank, rejectionStage: item.rejectionStage, rejectionCode: item.rejectionCode, finalScore: item.scores.finalScore, confidenceScore: item.confidence.score, confidenceLabel: item.confidence.label, explanationJson: item as unknown as Prisma.InputJsonValue, expiresAt: item.decision === "selected" ? null : expiresAt })) });
     return record;
   });
   console.info("[SmartMixInsights]", { generationId, evaluated: counts.evaluated, eligible: counts.eligible, selected: selected.length, hardRejected: counts.hardRejected, fallbacks: insights.fallbackTrackCount, lowConfidence: insights.lowConfidenceSelectedCount, traceDurationMs });
@@ -60,6 +61,7 @@ export async function attachGenerationExplanationsToPlaylist(userId: string, gen
       if (trace.trackId) await tx.generatedPlaylistTrack.updateMany({ where: { generatedPlaylistId, trackId: trace.trackId }, data: { explanationJson: explanation as unknown as Prisma.InputJsonValue } });
     }
   });
+  await linkRecommendationExplanationToGeneration(userId, generationId, generatedPlaylistId);
   return generation;
 }
 
@@ -108,9 +110,11 @@ export async function exportGenerationDebugReport(userId: string, generationId: 
 export async function cleanupExpiredExplanationTraces(userId?: string) {
   const now = new Date();
   const where = { expiresAt: { lt: now }, ...(userId ? { userId } : {}) };
-  const [deleted, expiredGenerations] = await Promise.all([
+  const explanationWhere = { expiresAt: { lt: now }, ...(userId ? { explanation: { ownerId: userId } } : {}) };
+  const [deleted, deletedEvaluationEvents, expiredGenerations] = await Promise.all([
     prisma.smartMixDecisionTrace.deleteMany({ where }),
+    prisma.recommendationTrackEvaluation.deleteMany({ where: explanationWhere }),
     prisma.smartMixExplanationGeneration.count({ where: { fullTraceExpiresAt: { lt: now }, ...(userId ? { userId } : {}) } }),
   ]);
-  return { deletedTraces: deleted.count, expiredGenerations };
+  return { deletedTraces: deleted.count, deletedEvaluationEvents: deletedEvaluationEvents.count, expiredGenerations };
 }

@@ -90,6 +90,7 @@ export type SmartMixDecisionExplanation = {
   trackId: string;
   trackTitle: string;
   artistName: string | null;
+  albumName?: string | null;
   playlistId?: string | null;
   generationId: string;
   engineVersion: string;

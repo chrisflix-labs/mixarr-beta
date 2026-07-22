@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.7 - Explainable AI Recommendations
+
+- Added a versioned five-layer explanation model spanning immutable user requests, structured AI interpretation, generated configuration, deterministic engine evaluation, and final track outcomes.
+- Added request-to-rule and rule-to-track traces, stable reason codes, responsibility labels, field-level AI confidence, deterministic validation, assumption review, alternative previews, and semantic recipe diffs.
+- Added authenticated explanation APIs, paginated track evaluation filters, household approval notes, JSON/Markdown/HTML/print exports, privacy redaction, canonical hashes, reproducibility statuses, and no-AI deterministic regeneration.
+- Integrated a keyboard-accessible responsive ten-tab explanation panel with Recipe Copilot and Smart Mix v2 generated playlists.
+- Added additive migration `20260725010000_explainable_ai_recommendations_v247`, tests, API/permission/privacy/reproducibility documentation, and a complete rainy-night worked example.
+- AI continues to interpret and propose structured settings only. Mixarr's deterministic engine remains responsible for filtering, scoring, deduplication, spacing, repeat prevention, availability, ordering, and final selection.
+
 ## v2.4.6 - AI Playlist Summaries and Metadata Suggestions
 
 - Added deterministic, privacy-scoped playlist analysis and 14 individually selectable factual summary formats, including refresh comparisons, Plex-friendly plain text, and household descriptions.
