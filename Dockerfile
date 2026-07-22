@@ -20,6 +20,7 @@ RUN \
 FROM base AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_APP_VERSION
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -39,10 +40,10 @@ RUN \
 FROM base AS runner
 WORKDIR /app
 ARG TARGETARCH
-ARG NEXT_PUBLIC_APP_VERSION=2.4.3
+ARG NEXT_PUBLIC_APP_VERSION=2.4.8
 LABEL org.opencontainers.image.title="Mixarr" \
-      org.opencontainers.image.version="2.4.3" \
-      org.opencontainers.image.description="Smart Plex playlist engine with controlled Smart Mix experiments"
+      org.opencontainers.image.version="2.4.8" \
+      org.opencontainers.image.description="Smart Plex playlist engine with deterministic-first AI-assisted troubleshooting"
 
 RUN apt-get update && apt-get install -y openssl ffmpeg aubio-tools python3 python3-venv && rm -rf /var/lib/apt/lists/*
 RUN if [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "amd64" ]; then \

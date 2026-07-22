@@ -6,6 +6,7 @@ import { getClearableJobHistoryCount, getJobHistory } from "@/lib/jobHistory";
 import WorkerHealthCard from "@/components/WorkerHealthCard";
 import CopySupportButton from "@/components/CopySupportButton";
 import ClearJobHistoryButton from "@/components/ClearJobHistoryButton";
+import TroubleshootLink from "@/components/TroubleshootLink";
 import styles from "./jobs.module.css";
 
 export const metadata = {
@@ -142,6 +143,7 @@ export default async function JobHistoryPage({
                 const plexCounts = job.type === "plex_sync" ? plexSyncCounts(job.metadata) : null;
                 return (
                 <article key={job.id} className={styles.jobCard}>
+                  <TroubleshootLink resourceType="JOB" resourceId={job.id} category="SCHEDULING_JOBS" compact />
                   <div className={styles.jobTop}>
                     <div>
                       <h3>{job.name}</h3>

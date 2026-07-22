@@ -2,7 +2,7 @@
 
 import styles from "./Sidebar.module.css";
 import { useEffect, useMemo, useState } from "react";
-import { AudioWaveform, BarChart3, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, Grid2X2, HeartPulse, History, Home, LayoutDashboard, LifeBuoy, ListChecks, ListMusic, ListRestart, Map, MessageSquareText, MoreHorizontal, Network, Route, ScrollText, Settings, ShieldCheck, Sparkles, Tags, Wand2, X } from "lucide-react";
+import { AudioWaveform, BarChart3, BookMarked, Brain, ChevronDown, ExternalLink, FlaskConical, Github, Grid2X2, HeartPulse, History, Home, LayoutDashboard, LifeBuoy, ListChecks, ListMusic, ListRestart, Map, MessageSquareText, MoreHorizontal, Network, Route, ScrollText, Settings, ShieldCheck, Sparkles, Tags, Wand2, Wrench, X } from "lucide-react";
 import PlexLoginButton from "./PlexLoginButton";
 import LogoutButton from "./LogoutButton";
 import Link from "next/link";
@@ -37,6 +37,7 @@ const libraryLinks = [
 ];
 
 const activityLinks = [
+  { href: "/troubleshooting", label: "Troubleshooting", icon: Wrench, isActive: (pathname: string) => pathname.startsWith("/troubleshooting") },
   { href: "/personalization", label: "Personalization", icon: Brain, isActive: (pathname: string) => pathname.startsWith("/personalization") },
   { href: "/job-history", label: "Job History", icon: History, isActive: (pathname: string) => pathname.startsWith("/job-history") || pathname.startsWith("/jobs") },
   { href: "/support", label: "Beta Support", icon: LifeBuoy, isActive: (pathname: string) => pathname.startsWith("/support") },

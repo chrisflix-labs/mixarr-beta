@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { troubleshootingApiError, troubleshootingUserId } from "@/lib/troubleshooting/api"; import { explainTroubleshootingSession } from "@/lib/troubleshooting/service";
+export async function POST(_: Request, { params }: { params: { sessionId: string } }) { try { return NextResponse.json({ session: await explainTroubleshootingSession(troubleshootingUserId(), params.sessionId) }); } catch (error) { return troubleshootingApiError(error); } }

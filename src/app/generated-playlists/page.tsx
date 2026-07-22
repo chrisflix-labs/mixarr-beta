@@ -19,6 +19,7 @@ import HouseholdCollaborationPanel from "@/components/HouseholdCollaborationPane
 import PlexOwnershipPanel from "@/components/PlexOwnershipPanel";
 import PlaylistAiSummaries from "@/components/PlaylistAiSummaries";
 import RecommendationExplanationPanel from "@/components/RecommendationExplanationPanel";
+import TroubleshootLink from "@/components/TroubleshootLink";
 import { orderTracksByBpmFlow, summarizeBpmFlow, type BpmFlowMode } from "@/lib/smartMixEngine/v2/bpmFlow";
 import { normalizeSmartMixTuningConfig } from "@/lib/smartMixEngine/v2/tuning";
 import styles from "./generated-playlists.module.css";
@@ -579,6 +580,7 @@ export default function GeneratedPlaylistsPage() {
             return (
               <article id={`playlist-${playlist.id}`} key={playlist.id} className={`${styles.playlistCard} ${isSelected ? styles.selectedCard : ""}`}>
                 <div className={styles.cardTop}>
+                  <TroubleshootLink resourceType="GENERATED_PLAYLIST" resourceId={playlist.id} category="PLAYLIST_CANDIDATES" compact />
                   <div>
                     <h3>{playlist.plexPlaylistTitle}</h3>
                     <p>{sourceLabel(playlist.sourceType)}</p>

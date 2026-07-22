@@ -79,6 +79,20 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.8",
+    title: "AI-Assisted Troubleshooting",
+    releaseDate: "July 22, 2026",
+    badges: ["AI", "Diagnostics", "Privacy", "Security", "Jobs", "Recipes", "Plex", "Export", "Accessibility", "Mobile"],
+    changes: [
+      "Added persistent deterministic-first troubleshooting sessions with guided problem selection, explicit category approval, sanitized previews, progress, history, export, and deletion.",
+      "Added recursive secret removal and session-scoped pseudonyms before diagnostic data can be previewed, stored, audited, exported, or submitted to an AI provider.",
+      "Added structured findings for candidate exhaustion, job failures, provider and Plex health, and library metadata gaps, plus ordered candidate funnels and deterministic what-if previews.",
+      "Added governed structured AI explanations that must cite deterministic finding IDs and can create only separately persisted, allowlisted, reviewable suggestions.",
+      "Added stale-version protection, exact before/after confirmation, normal recipe schema validation, revision history, and audit events for explicitly approved supported changes.",
+      "No settings are changed automatically. External AI troubleshooting, logs, and track-level metadata remain disabled by default.",
+    ],
+  },
+  {
     version: "2.4.7",
     title: "Explainable AI Recommendations",
     releaseDate: "July 22, 2026",

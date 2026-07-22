@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import { AlertCircle, ArrowDown, ArrowLeft, CheckCircle2, Copy, Download, Edit3, Flag, GitBranch, GitCompareArrows, Layers3, Loader2, LockKeyhole, Play, RefreshCw, RotateCcw, Save, Share2, ShieldAlert, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import styles from "./recipe-detail.module.css";
+import TroubleshootLink from "@/components/TroubleshootLink";
 
 const categories = ["Driving", "Workout", "Party", "Focus", "Chill", "Relaxation", "Sleep", "Discovery", "Deep Cuts", "Recently Added", "Forgotten Favorites", "Decade Mixes", "Seasonal Mixes", "Genre Journeys", "Artist Radio", "Album Exploration", "Mood Progressions", "Mood", "Decade", "Genre", "Artist", "Seasonal", "Custom"];
 const sections = ["Recipe Foundation", "Overview", "Mood and Energy", "BPM Flow", "Discovery", "Scoring", "Artist and Album Variety", "Playlist Identity", "Refresh and Automation", "Effective Configuration", "Import Mapping", "Governance", "Validation", "Generated Playlists"];
@@ -259,6 +260,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
 
   return <main className={styles.page}>
     <header className={styles.header}>
+      <TroubleshootLink resourceType="RECIPE" resourceId={draft.id} category="PLAYLIST_CANDIDATES" compact />
       <div><Link href="/recipes" className={styles.back}><ArrowLeft size={15} /> Recipe Library</Link><h2>{draft.name}</h2><p>Schema v{draft.schemaVersion} · Recipe v{draft.recipeVersion} · {draft.category}</p></div>
       <div className={styles.headerActions}><Link href={`/recipes/${draft.id}/edit`} className={styles.primary}><Edit3 size={15} /> Open Studio</Link><Link href={`/recipes/${draft.id}/compare`}><GitCompareArrows size={15} /> Compare</Link><button onClick={() => exportCommunity("json")}><Share2 size={15} /> Community JSON</button><button onClick={() => exportCommunity("bundle")}><Download size={15} /> Community bundle</button><button onClick={copyShareCode}><Copy size={15} /> Copy share code</button><button onClick={() => setShowClone(true)}><Copy size={15} /> Clone</button><button onClick={validate} disabled={validating}>{validating ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} Validate</button><button className={styles.primary} onClick={save} disabled={!dirty || saving}>{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Save</button></div>
     </header>

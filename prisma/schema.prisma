@@ -157,6 +157,8 @@ model User {
   metadataSuggestionExports      MetadataSuggestionExport[]        @relation("MetadataSuggestionExporter")
   metadataSuggestionAuditEvents  MetadataSuggestionAuditEvent[]    @relation("MetadataSuggestionAuditActor")
   aiAdvisorySetting              AiAdvisorySetting?
+  troubleshootingSessions        TroubleshootingSession[]
+  troubleshootingSetting         TroubleshootingSetting?
 }
 
 model SyncSettings {
@@ -6453,4 +6455,158 @@ model AiAdvisorySetting {
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
   user                       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TroubleshootingSession {
+  id                          String                      @id @default(uuid())
+  userId                      String
+  householdId                 String?
+  status                      String                      @default("DRAFT")
+  problemCategory             String
+  problemDescription          String?
+  relatedResourceType         String?
+  relatedResourceId           String?
+  privacySelectionsJson       Json                        @default("[]")
+  deterministicOnly           Boolean                     @default(true)
+  diagnosticTimeWindowMinutes Int                         @default(60)
+  bundleVersion               String                      @default("1")
+  sanitizationVersion         String                      @default("1.0")
+  diagnosticVersion           String                      @default("1.0")
+  sanitizedBundleJson         Json?
+  redactionSummaryJson        Json?
+  aiProviderId                String?
+  aiProviderName              String?
+  aiModel                     String?
+  aiRequestStatus             String?
+  aiUsageJson                 Json?
+  aiCost                      Float?
+  aiExplanationJson           Json?
+  errorCode                   String?
+  errorMessage                String?
+  summary                     String?
+  evidenceStrengthSummary     String?
+  targetVersion               String?
+  progressJson                Json?
+  exportStatus                String?
+  createdAt                   DateTime                    @default(now())
+  updatedAt                   DateTime                    @updatedAt
+  completedAt                 DateTime?
+  expiresAt                   DateTime?
+  cancelledAt                 DateTime?
+  deletedAt                   DateTime?
+  user                        User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  findings                    TroubleshootingFinding[]
+  suggestions                 TroubleshootingSuggestion[]
+  auditEvents                 TroubleshootingAuditEvent[]
+
+  @@index([userId, createdAt])
+  @@index([userId, status, updatedAt])
+  @@index([householdId, createdAt])
+  @@index([relatedResourceType, relatedResourceId])
+  @@index([expiresAt])
+}
+
+model TroubleshootingFinding {
+  id                    String                 @id @default(uuid())
+  sessionId             String
+  checkId               String
+  checkVersion          String
+  category              String
+  title                 String
+  severity              String
+  evidenceStrength      String
+  summary               String
+  observedValuesJson    Json                   @default("{}")
+  expectedValuesJson    Json                   @default("{}")
+  evidenceJson          Json                   @default("[]")
+  affectedResourcesJson Json                   @default("[]")
+  possibleActionsJson   Json                   @default("[]")
+  limitationsJson       Json                   @default("[]")
+  dataFreshness         String?
+  createdAt             DateTime               @default(now())
+  session               TroubleshootingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, checkId])
+  @@index([sessionId, severity])
+  @@index([checkId, createdAt])
+}
+
+model TroubleshootingSuggestion {
+  id                       String                 @id @default(uuid())
+  sessionId                String
+  source                   String
+  supportingFindingIdsJson Json                   @default("[]")
+  actionType               String
+  targetResourceType       String?
+  targetResourceId         String?
+  settingPath              String?
+  title                    String
+  currentValueJson         Json?
+  proposedValueJson        Json?
+  explanation              String
+  expectedEffect           String
+  possibleSideEffectsJson  Json                   @default("[]")
+  riskLevel                String
+  reversible               Boolean
+  backupRecommended        Boolean                @default(false)
+  manualOnly               Boolean                @default(true)
+  requiredPermission       String?
+  status                   String                 @default("PROPOSED")
+  targetVersion            String?
+  simulationJson           Json?
+  simulationInputHash      String?
+  validationResultJson     Json?
+  applyResultJson          Json?
+  rollbackReference        String?
+  reviewerId               String?
+  reviewReason             String?
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  reviewedAt               DateTime?
+  appliedAt                DateTime?
+  session                  TroubleshootingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, status, createdAt])
+  @@index([targetResourceType, targetResourceId])
+  @@index([reviewerId, reviewedAt])
+}
+
+model TroubleshootingAuditEvent {
+  id               String                 @id @default(uuid())
+  sessionId        String
+  actorId          String?
+  eventType        String
+  objectType       String
+  objectId         String
+  summary          String?
+  safeMetadataJson Json?
+  createdAt        DateTime               @default(now())
+  session          TroubleshootingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model TroubleshootingSetting {
+  id                             String   @id @default(uuid())
+  userId                         String   @unique
+  enabled                        Boolean  @default(true)
+  aiAssistedEnabled              Boolean  @default(false)
+  defaultDeterministicOnly       Boolean  @default(true)
+  defaultPrivacyCategoriesJson   Json     @default("[\"PROVIDER_STATUS\",\"PLEX_STATUS\",\"LIBRARY_STATISTICS\",\"RECENT_JOB_HISTORY\"]")
+  maximumLogWindowMinutes        Int      @default(1440)
+  maximumBundleBytes             Int      @default(524288)
+  retentionDays                  Int      @default(30)
+  autoDeleteExpired              Boolean  @default(true)
+  permitTrackMetadata            Boolean  @default(false)
+  permitSanitizedLogs            Boolean  @default(false)
+  requireAdminApprovalForChanges Boolean  @default(true)
+  whatIfSimulationsEnabled       Boolean  @default(true)
+  allowExport                    Boolean  @default(true)
+  maximumAiRequestsPerDay        Int      @default(5)
+  advancedDetailsByDefault       Boolean  @default(false)
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime @updatedAt
+  user                           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

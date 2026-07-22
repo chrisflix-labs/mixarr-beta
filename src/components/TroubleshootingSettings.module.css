@@ -1,0 +1,19 @@
+.wrapper { display: grid; gap: 1rem; }
+.flags { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+.flag { display: flex; align-items: flex-start; gap: .65rem; padding: .75rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(255,255,255,.025); cursor: pointer; }
+.flag input { margin-top: .18rem; accent-color: var(--accent); }
+.flag span, .flag strong, .flag small { display: block; }
+.flag strong { font-size: .84rem; }
+.flag small, .notice, .status { color: var(--muted); font-size: .75rem; line-height: 1.45; }
+.flag small { margin-top: .18rem; }
+.limits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+.limits > label { display: grid; gap: .35rem; color: var(--muted); font-size: .78rem; font-weight: 700; }
+.inputRow { display: flex; align-items: center; gap: .5rem; }
+.inputRow input { width: 100%; min-width: 0; padding: .55rem .6rem; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--fg); background: rgba(0,0,0,.18); }
+.inputRow small { min-width: 4rem; color: var(--muted); font-weight: 500; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.actions button { padding: .62rem .82rem; border: 1px solid var(--accent); border-radius: var(--radius-sm); color: white; background: var(--accent); font-weight: 800; cursor: pointer; }
+.actions button:disabled { opacity: .5; cursor: not-allowed; }
+.actions span { color: var(--muted); font-size: .78rem; }
+.notice, .status { margin: 0; }
+@media (max-width: 640px) { .flags, .limits { grid-template-columns: 1fr; } }

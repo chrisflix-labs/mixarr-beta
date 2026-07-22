@@ -1,0 +1,3 @@
+import { NextResponse } from "next/server"; import { troubleshootingApiError, troubleshootingUserId } from "@/lib/troubleshooting/api"; import { getTroubleshootingSettings, updateTroubleshootingSettings } from "@/lib/troubleshooting/service";
+export async function GET() { try { return NextResponse.json({ settings: await getTroubleshootingSettings(troubleshootingUserId()) }); } catch (error) { return troubleshootingApiError(error); } }
+export async function PATCH(request: Request) { try { return NextResponse.json({ settings: await updateTroubleshootingSettings(troubleshootingUserId(), await request.json()) }); } catch (error) { return troubleshootingApiError(error); } }

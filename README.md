@@ -1,6 +1,6 @@
 # Mixarr
 
-Current release: **v2.4.7 — Explainable AI Recommendations**. See [the v2.4.7 guide](docs/EXPLAINABLE_AI_RECOMMENDATIONS_V247.md) for five-layer explanations, request-to-rule and rule-to-track traceability, assumption review, semantic diffs, privacy-aware exports, household notes, and deterministic reproducibility without another AI call.
+Current release: **v2.4.8 — AI-Assisted Troubleshooting**. See [the v2.4.8 guide](docs/AI_ASSISTED_TROUBLESHOOTING_V248.md) for deterministic-first diagnostics, explicit privacy selection, sanitized bundle previews, advisory AI explanations, safe simulations, and approval-bound suggestions.
 
 **Mixarr** is a self-hosted Plex music playlist and library enhancement app for people who want smarter ways to explore, repair, and playlist their Plex music libraries.
 
@@ -42,6 +42,7 @@ Mixarr is not affiliated with Plex. Back up important playlists and settings bef
 | Playlist Collections | Organizes playlists into reusable groups with multiple memberships, shared defaults and exclusions, primary-group inheritance, explainable health, ordering, pause/resume, cloning, and bounded group regeneration. |
 | Smart Mix explanations | Shows why v2 tracks were selected or rejected, separates score from confidence, compares candidates, explains transitions and fallbacks, and summarizes generation-wide decisions. |
 | Explainable AI recommendations | Preserves original requests, structured AI interpretations, generated recipe fields, deterministic validation and track events, responsibility labels, assumptions, alternatives, semantic diffs, exports, and reproducibility snapshots. |
+| AI-assisted troubleshooting | Collects only approved diagnostic categories, sanitizes them before preview or persistence, runs deterministic checks first, and optionally asks the governed AI layer to explain findings and propose reviewable actions. No setting changes without explicit approval. |
 | Advanced playlist regeneration | Analyzes Smart Mix v2 playlists, locks keeper tracks, previews targeted replacements, preserves curves, and supports server-side undo. |
 | Playlist version history | Saves generated playlist states, compares tracks/settings/scores, pins restore points, and safely restores earlier versions without deleting later history. |
 | Smart Refresh Scheduling | Evaluates quality, compatible tracks, playback repetition, identity drift, relevant metadata, and safeguards before previewing or applying a meaningful refresh. |

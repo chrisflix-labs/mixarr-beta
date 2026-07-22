@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.8 - AI-Assisted Troubleshooting
+
+- Added a persistent Troubleshooting Center with guided problem selection, explicit diagnostic privacy controls, sanitized previews, progress, history, exports, and deletion.
+- Added centralized recursive credential redaction and per-session stable pseudonyms for emails, paths, hosts, and IP addresses before preview, storage, export, audit context, or AI submission.
+- Added deterministic checks for candidate exhaustion, provider and Plex health, metadata gaps, and recent job failures, including ordered candidate funnels and the 11-of-50 acceptance fixture.
+- Added governed, structured AI explanations that can reference only deterministic finding IDs and allowlisted suggestion types; deterministic results survive AI failures and limits.
+- Added separately persisted suggestions, review decisions, stale-target checks, non-persistent recipe simulations through the existing playlist preview engine, exact-diff confirmation, validated recipe revisions, and audit history.
+- External AI troubleshooting, log sharing, and track-level metadata sharing remain disabled by default. No settings are changed automatically.
+
 ## v2.4.7 - Explainable AI Recommendations
 
 - Added a versioned five-layer explanation model spanning immutable user requests, structured AI interpretation, generated configuration, deterministic engine evaluation, and final track outcomes.

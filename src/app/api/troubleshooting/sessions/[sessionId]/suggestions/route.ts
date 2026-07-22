@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { troubleshootingApiError, troubleshootingUserId } from "@/lib/troubleshooting/api"; import { getTroubleshootingSession } from "@/lib/troubleshooting/service";
+export async function GET(_: Request, { params }: { params: { sessionId: string } }) { try { const row = await getTroubleshootingSession(troubleshootingUserId(), params.sessionId); return NextResponse.json({ suggestions: row.suggestions }); } catch (error) { return troubleshootingApiError(error); } }
