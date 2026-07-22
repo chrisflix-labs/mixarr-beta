@@ -133,12 +133,14 @@ export async function verifyAiProviderCredentials(providerId: string, signal?: A
 }
 
 export async function recordAiExecutionHealth(providerId: string, success: boolean, latencyMs: number, error?: unknown) {
+  const activeProvider = await prisma.aiProviderConfig.findFirst({ where: { id: providerId, deletedAt: null }, select: { id: true } }).catch(() => null);
+  if (!activeProvider) return;
   const current = await prisma.aiProviderHealth.findUnique({ where: { providerConfigId: providerId } }).catch(() => null);
   const failures = success ? 0 : (current?.consecutiveFailureCount || 0) + 1;
   const normalized = success ? null : error instanceof AiError ? error : normalizeProviderError(error);
   const now = new Date();
   await prisma.aiProviderHealth.upsert({ where: { providerConfigId: providerId }, create: { providerConfigId: providerId, healthState: success ? "HEALTHY" : failureHealthState(normalized!.category), authenticationState: success ? "HEALTHY" : "NOT_TESTED", inferenceState: success ? "HEALTHY" : "FAILED", lastCheckAt: now, lastSuccessfulCheckAt: success ? now : undefined, lastSuccessfulInferenceAt: success ? now : undefined, lastFailedRequestAt: success ? undefined : now, latencyMs, consecutiveFailureCount: failures, errorCategory: normalized?.category, sanitizedMessage: success ? "Request completed successfully." : safeMessage(normalized!) }, update: { healthState: success ? "HEALTHY" : failureHealthState(normalized!.category), authenticationState: success ? "HEALTHY" : current?.authenticationState, inferenceState: success ? "HEALTHY" : "FAILED", lastCheckAt: now, lastSuccessfulCheckAt: success ? now : undefined, lastSuccessfulInferenceAt: success ? now : undefined, lastFailedRequestAt: success ? undefined : now, latencyMs, consecutiveFailureCount: failures, errorCategory: normalized?.category || null, sanitizedMessage: success ? "Request completed successfully." : safeMessage(normalized!) } }).catch(() => null);
-  if (success) await prisma.aiProviderConfig.update({ where: { id: providerId }, data: { lastSuccessfulConnectionAt: now } }).catch(() => null);
+  if (success) await prisma.aiProviderConfig.updateMany({ where: { id: providerId, deletedAt: null }, data: { lastSuccessfulConnectionAt: now } }).catch(() => null);
 }
 
 export async function refreshAiProviderModels(providerId: string, signal?: AbortSignal, userId?: string) {
@@ -178,7 +180,7 @@ export async function runDueAiHealthChecks(concurrency = 2) {
   const global = await prisma.aiGlobalSetting.findUnique({ where: { id: "global" } });
   if (!global?.enabled) return { tested: 0, skipped: true };
   const now = new Date();
-  const providers = await prisma.aiProviderConfig.findMany({ where: { enabled: true, healthCheckEnabled: true, OR: [{ health: null }, { health: { nextEligibleCheckAt: { lte: now } } }, { health: { nextEligibleCheckAt: null, lastCheckAt: { lte: new Date(now.getTime() - 60_000) } } }] }, select: { id: true, healthCheckIntervalMinutes: true, health: true } });
+  const providers = await prisma.aiProviderConfig.findMany({ where: { enabled: true, deletedAt: null, healthCheckEnabled: true, OR: [{ health: null }, { health: { nextEligibleCheckAt: { lte: now } } }, { health: { nextEligibleCheckAt: null, lastCheckAt: { lte: new Date(now.getTime() - 60_000) } } }] }, select: { id: true, healthCheckIntervalMinutes: true, health: true } });
   const due = providers.filter((provider) => !provider.health?.lastCheckAt || now.getTime() - provider.health.lastCheckAt.getTime() >= provider.healthCheckIntervalMinutes * 60_000);
   let cursor = 0;
   await Promise.all(Array.from({ length: Math.min(concurrency, due.length) }, async () => { while (cursor < due.length) { const item = due[cursor++]; await testAiProviderConnection(item.id, undefined, undefined, true).catch(() => null); } }));

@@ -62,7 +62,7 @@ type GovernedReservation = Awaited<ReturnType<typeof reserveAiBudget>>;
 
 async function findCheaperCandidate(input: { request: AiRequest; primary: PreparedCandidate; required: AiCapability[]; userId?: string; preferredPreview: Awaited<ReturnType<typeof previewAiRequest>> }) {
   if (input.required.includes("reasoning_models")) return null;
-  const models = await prisma.aiProviderModel.findMany({ where: { availabilityStatus: "AVAILABLE", provider: { enabled: true } }, select: { providerConfigId: true, modelIdentifier: true, contextSize: true, maximumCombinedTokens: true }, take: 200 });
+  const models = await prisma.aiProviderModel.findMany({ where: { availabilityStatus: "AVAILABLE", provider: { enabled: true, deletedAt: null } }, select: { providerConfigId: true, modelIdentifier: true, contextSize: true, maximumCombinedTokens: true }, take: 200 });
   const evaluated: Array<{ prepared: PreparedCandidate; preview: Awaited<ReturnType<typeof previewAiRequest>>; policy: { providerId: string; model: string; estimatedCost: number; local: boolean; paid: boolean; capabilities: string[]; contextTokens: number } }> = [];
   for (const model of models) {
     if (model.providerConfigId === input.primary.config.id && model.modelIdentifier === input.primary.model) continue;

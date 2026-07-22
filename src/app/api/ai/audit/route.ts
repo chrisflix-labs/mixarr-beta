@@ -35,10 +35,11 @@ export async function GET(request: Request) {
         totalTokenCount: true, cachedTokenCount: true, reasoningTokenCount: true, estimatedCost: true, actualCost: true,
         usageSource: true, pricingProfileId: true, responseByteCount: true, fallbackReason: true,
         budgetControlResult: true, limitControlResult: true, blockReason: true, errorCategory: true,
-        sanitizedErrorCode: true, createdAt: true
+        sanitizedErrorCode: true, createdAt: true, provider: { select: { deletedAt: true } }
       }
     });
     const hasMore = rows.length > take;
-    return NextResponse.json({ records: rows.slice(0, take), nextCursor: hasMore ? rows[take - 1].id : null });
+    const records = rows.slice(0, take).map(({ provider, ...row }) => ({ ...row, providerDeleted: !!provider?.deletedAt, providerDisplayName: provider?.deletedAt ? `${row.providerDisplayName || row.providerType || "Deleted provider"} (Deleted)` : row.providerDisplayName }));
+    return NextResponse.json({ records, nextCursor: hasMore ? rows[take - 1].id : null });
   } catch (error) { return aiRouteError(error); }
 }

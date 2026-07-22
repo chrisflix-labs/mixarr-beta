@@ -45,6 +45,11 @@
 .capabilities, .actions { display: flex; flex-wrap: wrap; gap: .35rem; }
 .capabilities span { padding: .25rem .4rem; border-radius: 999px; background: rgba(124,111,247,.1); color: #cbc7ff; font-size: .62rem; }
 .actions .danger { color: #ffabab; }
+.danger { color: #ffabab !important; }
+.modalBackdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 1rem; background: rgba(0,0,0,.72); }
+.confirmDialog { width: min(100%, 520px); padding: 1.2rem; border: 1px solid var(--line); border-radius: var(--radius-lg); background: #171922; box-shadow: 0 24px 80px rgba(0,0,0,.45); }
+.confirmDialog h2 { margin: 0 0 .65rem; }
+.confirmDialog p { margin: 0; color: var(--muted); line-height: 1.55; }
 .empty { display: grid; justify-items: center; gap: .55rem; padding: 2.5rem 1rem; border: 1px dashed var(--line); border-radius: var(--radius-lg); text-align: center; color: var(--muted); }
 .empty h3, .empty p { margin: 0; }
 .editor { margin-top: .5rem; }

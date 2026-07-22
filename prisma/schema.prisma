@@ -5682,6 +5682,8 @@ model AiProviderConfig {
   updatedAt                   DateTime              @updatedAt
   lastConnectionTestAt        DateTime?
   lastSuccessfulConnectionAt  DateTime?
+  disabledAt                  DateTime?
+  deletedAt                   DateTime?
   fallbackProvider            AiProviderConfig?     @relation("AiProviderFallback", fields: [fallbackProviderId], references: [id], onDelete: SetNull)
   fallbackFor                 AiProviderConfig[]    @relation("AiProviderFallback")
   models                      AiProviderModel[]
@@ -5701,6 +5703,7 @@ model AiProviderConfig {
   @@index([providerType, enabled])
   @@index([enabled, priority])
   @@index([fallbackProviderId])
+  @@index([deletedAt])
 }
 
 model AiProviderModel {
@@ -5931,6 +5934,7 @@ model AiBudgetReservation {
   status           String           @default("ACTIVE")
   expiresAt        DateTime
   releasedAt       DateTime?
+  resolutionReason String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   provider         AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Restrict)
