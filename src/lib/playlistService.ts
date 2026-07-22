@@ -2771,6 +2771,7 @@ export async function regenerateGeneratedPlaylistFromPreview({
     });
 
     void import("./playlistChains/service").then((module) => module.queueAffectedChainMaintenance(userId, generatedPlaylist.id)).catch(() => undefined);
+    void import("./aiAdvisory/service").then((module) => module.queueAutomaticPlaylistRefreshSummary(userId, generatedPlaylist.id)).catch(() => undefined);
 
     return {
       success: true,
@@ -3222,6 +3223,7 @@ export async function applyAdvancedPlaylistRegeneration({
   }
   trainPlaylistIdentity({ userId, playlistId: generatedPlaylistId, source: "REGENERATION" }).catch(() => undefined);
   void import("./playlistChains/service").then((module) => module.queueAffectedChainMaintenance(userId, generatedPlaylistId)).catch(() => undefined);
+  void import("./aiAdvisory/service").then((module) => module.queueAutomaticPlaylistRefreshSummary(userId, generatedPlaylistId)).catch(() => undefined);
   console.info("[SmartMixV2:Regeneration] changes applied", { playlistId: generatedPlaylistId, regenerationId: regeneration.id, engineVersion: REGENERATION_ENGINE_VERSION, mode: regeneration.mode, replacements: acceptedChanges.length });
   return {
     success: true,

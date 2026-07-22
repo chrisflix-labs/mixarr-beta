@@ -157,6 +157,19 @@ function PlaylistHealthSummaryCard({ summary }: { summary: Awaited<ReturnType<ty
   </article>;
 }
 
+function AiMetadataSummaryCard({ summary }: { summary: { pending: number; high: number; conflicts: number; playlistsWithoutSummaries: number; summariesThisMonth: number; costThisMonth: number; lastScan: Date | null } }) {
+  return <article className={styles.managementCard}>
+    <div className={styles.cardTitle}><Sparkles size={20} /><div><h3>AI Summaries &amp; Metadata</h3><p>Advisory analysis with no metadata-write path.</p></div></div>
+    <div className={styles.managementMetrics}>
+      <Link href="/ai/metadata-suggestions"><b>{summary.pending}</b><span>Pending suggestions</span></Link>
+      <Link href="/ai/metadata-suggestions?confidence=HIGH"><b>{summary.high}</b><span>High confidence</span></Link>
+      <Link href="/ai/metadata-suggestions?confidence=CONFLICTING_SOURCES"><b>{summary.conflicts}</b><span>Source conflicts</span></Link>
+      <Link href="/ai/playlist-summaries"><b>{summary.playlistsWithoutSummaries}</b><span>Without summaries</span></Link>
+    </div>
+    <div className={styles.managementFooter}><span>{summary.summariesThisMonth} summaries this month · {summary.costThisMonth.toFixed(4)} USD · last scan {summary.lastScan ? summary.lastScan.toLocaleString() : "never"}</span><Link href="/ai/metadata-suggestions" className={styles.secondaryAction}>Review suggestions</Link></div>
+  </article>;
+}
+
 function ProductPreviewPanel({ showExperimental }: { showExperimental: boolean }) {
   return <details className={styles.productPanel}>
     <summary>
@@ -203,6 +216,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
   let smartRefresh = { monitored: 0, recommended: 0, deferred: 0, healthy: 0, fixedSchedule: 0, manualOnly: 0, playlists: [] } as Awaited<ReturnType<typeof getSmartRefreshDashboardSummary>>;
   let smartActions = { pending: 0, high: 0, medium: 0, low: 0, waiting: 0, snoozed: 0, recentlyCompleted: 0, failed: 0, byType: {} } as Awaited<ReturnType<typeof getSmartActionSummary>>;
   let playlistHealth = { monitored: 0, unmonitored: 0, averageScore: null, healthy: 0, attention: 0, openAlerts: 0, criticalAlerts: 0, acknowledgedAlerts: 0 } as Awaited<ReturnType<typeof getPlaylistHealthDashboard>>["summary"];
+  let aiMetadata = { pending: 0, high: 0, conflicts: 0, playlistsWithoutSummaries: 0, summariesThisMonth: 0, costThisMonth: 0, lastScan: null as Date | null };
 
   if (user && !developmentPreview) {
     const results = await Promise.all([
@@ -246,6 +260,16 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
     smartActions = results[12];
     playlistHealth = results[13];
     recipeSummary = results[14];
+    const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
+    aiMetadata = await Promise.all([
+      prisma.metadataSuggestion.count({ where: { ownerId: user.id, status: { in: ["PENDING", "CONFLICT"] } } }),
+      prisma.metadataSuggestion.count({ where: { ownerId: user.id, confidenceLevel: "HIGH", status: { in: ["PENDING", "CONFLICT"] } } }),
+      prisma.metadataSuggestion.count({ where: { ownerId: user.id, confidenceLevel: "CONFLICTING_SOURCES", status: { in: ["PENDING", "CONFLICT"] } } }),
+      prisma.generatedPlaylist.count({ where: { userId: user.id, aiSummaries: { none: { status: "COMPLETED", archivedAt: null } } } }),
+      prisma.playlistAiSummary.count({ where: { createdById: user.id, generatedAt: { gte: monthStart }, status: "COMPLETED" } }),
+      prisma.aiRequestAudit.aggregate({ where: { userId: user.id, featureKey: { in: ["playlist_ai_summaries", "metadata_suggestions"] }, createdAt: { gte: monthStart } }, _sum: { actualCost: true } }),
+      prisma.metadataAnalysisJob.findFirst({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    ]).then(([pending, high, conflicts, playlistsWithoutSummaries, summariesThisMonth, cost, lastScan]) => ({ pending, high, conflicts, playlistsWithoutSummaries, summariesThisMonth, costThisMonth: Number(cost._sum.actualCost || 0), lastScan: lastScan?.createdAt || null })).catch(() => aiMetadata);
   }
 
   const quickWidgets = dashboardWidgetsForSection("quick-actions");
@@ -288,6 +312,7 @@ export default async function Home({ searchParams }: { searchParams?: { dashboar
         <SmartRefreshSummaryCard summary={smartRefresh} />
         <SmartActionSummaryCard summary={smartActions} />
         <PlaylistHealthSummaryCard summary={playlistHealth} />
+        <AiMetadataSummaryCard summary={aiMetadata} />
       </section>
 
       <section className={`${styles.dashboardSection} ${styles.lowPrioritySection}`} aria-label="Product and preview information">

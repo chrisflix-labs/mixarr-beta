@@ -145,6 +145,15 @@ model User {
   aiRecipeProposalApplications   AiRecipeProposal[]                @relation("AiRecipeProposalApplier")
   aiRecipeProposalApprovals      AiRecipeProposal[]                @relation("AiRecipeProposalApprover")
   aiRecipeAuditEvents            AiRecipeAuditEvent[]              @relation("AiRecipeAuditActor")
+  playlistAnalysisSnapshots      PlaylistAnalysisSnapshot[]
+  playlistAiSummaries            PlaylistAiSummary[]               @relation("PlaylistAiSummaryCreator")
+  metadataAnalysisJobs           MetadataAnalysisJob[]
+  metadataSuggestions            MetadataSuggestion[]              @relation("MetadataSuggestionOwner")
+  metadataSuggestionReviews      MetadataSuggestionReview[]        @relation("MetadataSuggestionReviewer")
+  metadataIgnoreRules            MetadataIgnoreRule[]              @relation("MetadataIgnoreRuleCreator")
+  metadataSuggestionExports      MetadataSuggestionExport[]        @relation("MetadataSuggestionExporter")
+  metadataSuggestionAuditEvents  MetadataSuggestionAuditEvent[]    @relation("MetadataSuggestionAuditActor")
+  aiAdvisorySetting              AiAdvisorySetting?
 }
 
 model SyncSettings {
@@ -255,6 +264,8 @@ model Library {
   smartActions                SmartAction[]
   recipeImportAnalyses        RecipeImportAnalysis[]
   savedRecipeMappingRules     SavedRecipeMappingRule[]
+  metadataAnalysisJobs        MetadataAnalysisJob[]
+  metadataSuggestions         MetadataSuggestion[]
   createdAt                   DateTime                    @default(now())
   updatedAt                   DateTime                    @updatedAt
 
@@ -434,6 +445,7 @@ model Track {
   playlistChainTransitions   PlaylistChainTransitionTrack[]
   rotationStatistics         TrackRotationStatistic[]
   smartExperimentTracks      SmartExperimentTrack[]
+  metadataSuggestionTracks   MetadataSuggestionTrack[]
 
   @@unique([libraryId, plexId])
   @@unique([plexServerId, plexLibraryId, ratingKey])
@@ -1929,6 +1941,7 @@ model GeneratedPlaylist {
   serverId                     String?
   plexPlaylistRatingKey        String?
   plexPlaylistTitle            String
+  localPlaylistNotes           String?
   plexOwnerName                String?
   plexOwnerAccountId           String?
   plexPlaylistUrl              String?
@@ -2034,6 +2047,9 @@ model GeneratedPlaylist {
   householdActivities          HouseholdActivity[]
   externalSnapshots            ExternalStateSnapshot[]
   reconciliations              PlaylistReconciliation[]
+  analysisSnapshots            PlaylistAnalysisSnapshot[]
+  aiSummaries                  PlaylistAiSummary[]
+  metadataSuggestions          MetadataSuggestion[]
 
   @@unique([userId, plexPlaylistRatingKey])
   @@index([userId, updatedAt])
@@ -5942,4 +5958,293 @@ model AiSecureDebugPayload {
 
   @@index([requestId])
   @@index([expiresAt])
+}
+
+// v2.4.6 playlist analysis is deterministic and privacy-scoped before any AI
+// request. Snapshots contain advisory input only and never authorize writes.
+model PlaylistAnalysisSnapshot {
+  id                   String                     @id @default(uuid())
+  userId               String
+  playlistId           String
+  sourceRevisionId     String?
+  previousSnapshotId   String?
+  schemaVersion        String                     @default("1.0")
+  privacyMode          String                     @default("METADATA_LIMITED")
+  analysisJson         Json
+  aggregatePayloadJson Json
+  fullPayloadJson      Json?
+  trackCount           Int                        @default(0)
+  fingerprint          String
+  createdAt            DateTime                   @default(now())
+  user                 User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlist             GeneratedPlaylist          @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  previousSnapshot     PlaylistAnalysisSnapshot?  @relation("PlaylistSnapshotHistory", fields: [previousSnapshotId], references: [id], onDelete: SetNull)
+  nextSnapshots        PlaylistAnalysisSnapshot[] @relation("PlaylistSnapshotHistory")
+  summaries            PlaylistAiSummary[]
+
+  @@index([playlistId, createdAt])
+  @@index([userId, createdAt])
+  @@index([fingerprint])
+}
+
+model PlaylistAiSummary {
+  id                      String                   @id @default(uuid())
+  playlistId              String
+  snapshotId              String
+  createdById             String
+  summaryType             String
+  generatedText           String
+  originalAiGeneratedText String?
+  providerConfigId        String?
+  providerDisplayName     String?
+  model                   String?
+  privacyMode             String                   @default("METADATA_LIMITED")
+  promptTemplateVersion   String
+  requestId               String?
+  inputTokenCount         Int?
+  outputTokenCount        Int?
+  estimatedCost           Decimal?                 @db.Decimal(18, 6)
+  actualCost              Decimal?                 @db.Decimal(18, 6)
+  status                  String                   @default("COMPLETED")
+  errorCode               String?
+  errorDetails            String?
+  preferred               Boolean                  @default(false)
+  manuallyEdited          Boolean                  @default(false)
+  archivedAt              DateTime?
+  generatedAt             DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  playlist                GeneratedPlaylist        @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  snapshot                PlaylistAnalysisSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  createdBy               User                     @relation("PlaylistAiSummaryCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([playlistId, summaryType, generatedAt])
+  @@index([playlistId, preferred])
+  @@index([createdById, generatedAt])
+  @@index([status, generatedAt])
+}
+
+model MetadataAnalysisJob {
+  id                      String               @id @default(uuid())
+  userId                  String
+  libraryId               String?
+  status                  String               @default("QUEUED")
+  privacyMode             String               @default("METADATA_LIMITED")
+  providerConfigId        String?
+  providerDisplayName     String?
+  model                   String?
+  requestId               String?
+  batchSize               Int                  @default(50)
+  librariesScanned        Int                  @default(0)
+  tracksScanned           Int                  @default(0)
+  candidateIssuesFound    Int                  @default(0)
+  aiBatchesCompleted      Int                  @default(0)
+  suggestionsCreated      Int                  @default(0)
+  suggestionsDeduplicated Int                  @default(0)
+  suggestionsSuppressed   Int                  @default(0)
+  conflictsFound          Int                  @default(0)
+  completedBatchCount     Int                  @default(0)
+  failedBatchCount        Int                  @default(0)
+  progressJson            Json?
+  warningsJson            Json?
+  errorDetails            String?
+  cancellationRequestedAt DateTime?
+  startedAt               DateTime?
+  completedAt             DateTime?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  user                    User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  library                 Library?             @relation(fields: [libraryId], references: [id], onDelete: SetNull)
+  suggestions             MetadataSuggestion[]
+
+  @@index([userId, status, createdAt])
+  @@index([libraryId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+// Suggestions are advisory review artifacts. No model in this group contains an
+// apply flag or a relation to a metadata-write operation.
+model MetadataSuggestion {
+  id                         String                         @id @default(uuid())
+  ownerId                    String
+  libraryId                  String?
+  playlistId                 String?
+  analysisJobId              String?
+  suggestionType             String
+  field                      String
+  existingValue              String?
+  suggestedValue             String?
+  reason                     String
+  confidenceScore            Float
+  confidenceLevel            String
+  detectionMethod            String
+  sourceMetadataJson         Json
+  conflictingSourceJson      Json?
+  affectedTrackCount         Int                            @default(0)
+  affectedAlbumCount         Int                            @default(0)
+  affectedArtistCount        Int                            @default(0)
+  affectedAlbumsJson         Json
+  affectedArtistsJson        Json
+  plexImpact                 Boolean                        @default(false)
+  sourceLibraryImpact        Boolean                        @default(false)
+  embeddedTagImpact          Boolean                        @default(false)
+  providerConfigId           String?
+  providerDisplayName        String?
+  model                      String?
+  fingerprint                String
+  status                     String                         @default("PENDING")
+  ignoreRuleId               String?
+  duplicateSuggestionIdsJson Json?
+  firstDetectedAt            DateTime                       @default(now())
+  lastDetectedAt             DateTime                       @default(now())
+  detectionCount             Int                            @default(1)
+  reviewedAt                 DateTime?
+  archivedAt                 DateTime?
+  createdAt                  DateTime                       @default(now())
+  updatedAt                  DateTime                       @updatedAt
+  owner                      User                           @relation("MetadataSuggestionOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  library                    Library?                       @relation(fields: [libraryId], references: [id], onDelete: SetNull)
+  playlist                   GeneratedPlaylist?             @relation(fields: [playlistId], references: [id], onDelete: SetNull)
+  analysisJob                MetadataAnalysisJob?           @relation(fields: [analysisJobId], references: [id], onDelete: SetNull)
+  tracks                     MetadataSuggestionTrack[]
+  sources                    MetadataSuggestionSource[]
+  reviews                    MetadataSuggestionReview[]
+  auditEvents                MetadataSuggestionAuditEvent[]
+
+  @@unique([ownerId, fingerprint])
+  @@index([ownerId, status, createdAt])
+  @@index([libraryId, status, createdAt])
+  @@index([playlistId, createdAt])
+  @@index([confidenceLevel, confidenceScore])
+  @@index([suggestionType, status])
+  @@index([field, status])
+  @@index([createdAt])
+}
+
+model MetadataSuggestionTrack {
+  id              String             @id @default(uuid())
+  suggestionId    String
+  trackId         String?
+  trackIdentifier String
+  titleSnapshot   String
+  artistSnapshot  String?
+  albumSnapshot   String?
+  createdAt       DateTime           @default(now())
+  suggestion      MetadataSuggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  track           Track?             @relation(fields: [trackId], references: [id], onDelete: SetNull)
+
+  @@unique([suggestionId, trackIdentifier])
+  @@index([suggestionId, id])
+  @@index([trackId])
+}
+
+model MetadataSuggestionSource {
+  id             String             @id @default(uuid())
+  suggestionId   String
+  sourceType     String
+  field          String
+  valueJson      Json?
+  available      Boolean            @default(false)
+  queried        Boolean            @default(false)
+  supportsValue  Boolean?
+  sourceRecordId String?
+  createdAt      DateTime           @default(now())
+  suggestion     MetadataSuggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+
+  @@index([suggestionId, sourceType])
+  @@index([sourceType, field])
+}
+
+model MetadataSuggestionReview {
+  id             String             @id @default(uuid())
+  suggestionId   String
+  reviewerId     String
+  previousStatus String
+  newStatus      String
+  notes          String?
+  bulkRequestId  String?
+  createdAt      DateTime           @default(now())
+  suggestion     MetadataSuggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  reviewer       User               @relation("MetadataSuggestionReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([suggestionId, createdAt])
+  @@index([reviewerId, createdAt])
+  @@index([bulkRequestId])
+}
+
+model MetadataIgnoreRule {
+  id              String    @id @default(uuid())
+  creatorId       String
+  scope           String
+  description     String
+  matchJson       Json
+  enabled         Boolean   @default(true)
+  suppressedCount Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  disabledAt      DateTime?
+  creator         User      @relation("MetadataIgnoreRuleCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@index([creatorId, enabled, createdAt])
+  @@index([scope, enabled])
+}
+
+model MetadataSuggestionExport {
+  id                 String   @id @default(uuid())
+  exporterId         String
+  format             String
+  filename           String
+  filterJson         Json
+  suggestionCount    Int
+  affectedTrackCount Int
+  createdAt          DateTime @default(now())
+  exporter           User     @relation("MetadataSuggestionExporter", fields: [exporterId], references: [id], onDelete: Cascade)
+
+  @@index([exporterId, createdAt])
+}
+
+model MetadataSuggestionAuditEvent {
+  id                  String              @id @default(uuid())
+  suggestionId        String?
+  actorId             String?
+  action              String
+  objectType          String
+  objectId            String
+  libraryId           String?
+  playlistId          String?
+  requestOrJobId      String?
+  suggestionCount     Int                 @default(0)
+  affectedTrackCount  Int                 @default(0)
+  previousStatus      String?
+  newStatus           String?
+  providerDisplayName String?
+  model               String?
+  safeMetadataJson    Json?
+  createdAt           DateTime            @default(now())
+  suggestion          MetadataSuggestion? @relation(fields: [suggestionId], references: [id], onDelete: SetNull)
+  actor               User?               @relation("MetadataSuggestionAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([suggestionId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([requestOrJobId])
+}
+
+model AiAdvisorySetting {
+  id                         String   @id @default(uuid())
+  userId                     String   @unique
+  playlistSummariesEnabled   Boolean  @default(true)
+  metadataSuggestionsEnabled Boolean  @default(false)
+  defaultSummaryTypesJson    Json
+  automaticRefreshSummaries  Boolean  @default(false)
+  plexDescriptionMaxLength   Int      @default(500)
+  metadataAnalysisBatchSize  Int      @default(50)
+  minimumConfidenceToDisplay Float    @default(0)
+  retainSummaryHistory       Boolean  @default(true)
+  retainRejectedSuggestions  Boolean  @default(true)
+  deterministicChecksEnabled Boolean  @default(true)
+  aiAssistedChecksEnabled    Boolean  @default(true)
+  allowFullTrackMetadata     Boolean  @default(false)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+  user                       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

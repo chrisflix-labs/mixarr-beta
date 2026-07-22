@@ -79,6 +79,20 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.6",
+    title: "AI Playlist Summaries and Metadata Suggestions",
+    releaseDate: "July 21, 2026",
+    badges: ["AI", "Metadata", "Playlists", "Privacy", "Security", "History", "Export", "Jobs", "Accessibility", "Mobile"],
+    changes: [
+      "Added deterministic privacy-scoped playlist analysis and individually selectable factual summary, progression, change, Plex-friendly, and household formats.",
+      "Added governed previews, structured response validation, unsupported-claim rejection, summary history, edits with original values, preferred summaries, local notes, comparison, archive, copy, and export.",
+      "Added opt-in metadata candidate scans with bounded batches, cancellation, partial-result retention, stable fingerprints, deduplication, source evidence, conflicts, and AI-assisted review.",
+      "Added permission-scoped responsive review, complete filters and sorting, paginated details, selection-safe bulk decisions, notes, ignore rules, CSV/JSON exports, dashboard metrics, and audits.",
+      "Metadata suggestions are advisory only. Approval never modifies Plex, the source library, embedded tags, filenames, or folders, and AI_METADATA_WRITES_ENABLED remains hard-coded false.",
+      "Upgrade: apply migration 20260724010000_ai_playlist_summaries_metadata_suggestions_v246. Both coordinator features and metadata scans remain disabled until explicitly enabled; no work starts during migration.",
+    ],
+  },
+  {
     version: "2.4.5",
     title: "Mood, Activity and Intent Intelligence",
     releaseDate: "July 21, 2026",

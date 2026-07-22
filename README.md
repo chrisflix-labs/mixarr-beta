@@ -1,6 +1,6 @@
 # Mixarr
 
-Current release: **v2.4.5 — Mood, Activity and Intent Intelligence**. See [the v2.4.5 guide](docs/MOOD_ACTIVITY_INTENT_INTELLIGENCE_V245.md) for local-first natural-language intent, editable phases, energy/BPM curves, privacy-safe custom terminology, presets, and deterministic generation.
+Current release: **v2.4.6 — AI Playlist Summaries and Metadata Suggestions**. See [the v2.4.6 guide](docs/AI_PLAYLIST_SUMMARIES_METADATA_SUGGESTIONS_V246.md) for privacy-scoped summaries, reviewable metadata suggestions, source evidence, safe bulk review, ignore rules, exports, and the hard no-metadata-write boundary.
 
 **Mixarr** is a self-hosted Plex music playlist and library enhancement app for people who want smarter ways to explore, repair, and playlist their Plex music libraries.
 

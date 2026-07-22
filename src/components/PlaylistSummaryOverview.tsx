@@ -1,0 +1,7 @@
+"use client";
+import { useEffect, useState } from "react";
+import { Sparkles } from "lucide-react";
+import PlaylistAiSummaries from "./PlaylistAiSummaries";
+import styles from "./PlaylistSummaryOverview.module.css";
+export default function PlaylistSummaryOverview() { const [playlists,setPlaylists]=useState<any[]>([]),[error,setError]=useState(""); useEffect(()=>{fetch("/api/generated-playlists",{cache:"no-store"}).then(async(response)=>{const body=await response.json();if(!response.ok)throw new Error(body.error||"Playlists unavailable.");setPlaylists(body.playlists||[]);}).catch((caught)=>setError(caught instanceof Error?caught.message:"Playlists unavailable."));},[]); return <main className={styles.page}><header><span><Sparkles/> AI · privacy-scoped</span><h1>Playlist Summaries</h1><p>Generate selected factual descriptions, compare history, and copy Plex-friendly text without applying anything to Plex.</p></header>{error&&<p className={styles.error}>{error}</p>}<section className={styles.list}>{playlists.length?playlists.map((playlist)=><article key={playlist.id}><div className={styles.title}><div><h2>{playlist.plexPlaylistTitle}</h2><p>{playlist.trackCount} tracks · {playlist.recipeName||playlist.sourceType}</p></div></div><PlaylistAiSummaries playlistId={playlist.id} playlistName={playlist.plexPlaylistTitle} /></article>):!error&&<div className={styles.empty}>No generated playlists are available for summaries.</div>}</section></main>; }
+

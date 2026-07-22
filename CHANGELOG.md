@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.6 - AI Playlist Summaries and Metadata Suggestions
+
+- Added deterministic, privacy-scoped playlist analysis and 14 individually selectable factual summary formats, including refresh comparisons, Plex-friendly plain text, and household descriptions.
+- Added governed request previews, strict structured output, unsupported-claim rejection, summary history, original-text preservation, preferred summaries, comparison, archive, export, copy, and local playlist notes.
+- Added opt-in deterministic and AI-assisted metadata scans with bounded batching, cancellation, partial-result retention, stable fingerprints, deduplication, source evidence, conflicts, and unavailable-source labels.
+- Added responsive metadata review with complete filtering/sorting, paginated detail, confirmation-bound single and bulk decisions, ignore rules, CSV/JSON exports, progress, audits, and permission-scoped APIs.
+- Added additive migration `20260724010000_ai_playlist_summaries_metadata_suggestions_v246`, dashboard/navigation integration, configuration examples, documentation, and safety-focused tests.
+- Metadata suggestions are advisory only. Approval records agreement but never modifies Plex, source-library metadata, embedded tags, filenames, or folders. `AI_METADATA_WRITES_ENABLED` remains hard-coded false.
+
 ## v2.4.5 - Mood, Activity and Intent Intelligence
 
 - Added a local-first, versioned structured intent layer for canonical moods, activities, time-of-day contexts, positive and negative preferences, hard requirements, confidence, warnings, and conflicts.

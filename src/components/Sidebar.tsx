@@ -44,9 +44,16 @@ const activityLinks = [
   { href: "/roadmap", label: "Roadmap", icon: Map, isActive: (pathname: string) => pathname.startsWith("/roadmap") },
 ];
 
+const aiLinks = [
+  { href: "/ai/playlist-summaries", label: "Playlist Summaries", icon: Sparkles, isActive: (pathname: string) => pathname.startsWith("/ai/playlist-summaries") },
+  { href: "/ai/metadata-suggestions", label: "Metadata Suggestions", icon: Tags, isActive: (pathname: string) => pathname.startsWith("/ai/metadata-suggestions") },
+  { href: "/settings/ai/metadata-ignore-rules", label: "AI Advisory Settings", icon: ShieldCheck, isActive: (pathname: string) => pathname.startsWith("/settings/ai/metadata-ignore-rules") },
+];
+
 const navGroups = [
   { id: "playlists", label: "Playlists", icon: ListMusic, links: playlistLinks },
   { id: "library", label: "Library", icon: ListMusic, links: libraryLinks },
+  { id: "ai", label: "AI", icon: Brain, links: aiLinks },
   { id: "activity", label: "Activity", icon: History, links: activityLinks },
 ];
 
