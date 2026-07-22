@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    shm_size: "512mb"
     container_name: mixarr_db
     restart: always
     environment:
