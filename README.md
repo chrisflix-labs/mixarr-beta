@@ -1,5 +1,7 @@
 # Mixarr
 
+Current release: **v2.4.5 — Mood, Activity and Intent Intelligence**. See [the v2.4.5 guide](docs/MOOD_ACTIVITY_INTENT_INTELLIGENCE_V245.md) for local-first natural-language intent, editable phases, energy/BPM curves, privacy-safe custom terminology, presets, and deterministic generation.
+
 **Mixarr** is a self-hosted Plex music playlist and library enhancement app for people who want smarter ways to explore, repair, and playlist their Plex music libraries.
 
 [![Discord](https://img.shields.io/badge/Discord-Mixarr%20Beta-5865F2?logo=discord&logoColor=white)](https://discord.gg/B7xMvAhaF)

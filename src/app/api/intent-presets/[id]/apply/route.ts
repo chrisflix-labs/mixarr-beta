@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { intentApiError, intentUserId } from "@/lib/intentIntelligence/api"; import { applyPreset } from "@/lib/intentIntelligence/service";
+export async function POST(_request: Request, { params }: { params: { id: string } }) { try { return NextResponse.json(await applyPreset(intentUserId(), params.id)); } catch (caught) { return intentApiError(caught); } }

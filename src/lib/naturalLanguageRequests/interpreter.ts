@@ -5,6 +5,9 @@ import { defaultMixRecipeDocument, mixRecipeDocumentSchema, type MixRecipeDocume
 import { playlistConfigSchema } from "../playlistService";
 import { naturalLanguageInterpretationSchema, NATURAL_LANGUAGE_FEATURE_KEY, type NaturalLanguageInterpretation } from "./contracts";
 import { defaultNaturalLanguageRecipe, mergeRecipePatch } from "./normalization";
+import { interpretIntentLocally, type RuntimeDictionaryMapping } from "../intentIntelligence/interpreter";
+import { adaptIntentToDeterministicInputs } from "../intentIntelligence/adapter";
+import { dictionaryDefinitionSchema, type StructuredIntent } from "../intentIntelligence/contracts";
 export { interpretationRequiresClarification, mergeRecipePatch } from "./normalization";
 
 const SYSTEM_INSTRUCTIONS = `You interpret playlist intent; you never select tracks or execute actions. Return only JSON for Mixarr's strict natural-language interpretation contract.
@@ -51,16 +54,71 @@ async function resolveEntitiesLocally(userId: string, interpretation: NaturalLan
   return { interpretation: { ...interpretation, ambiguities, unresolvedEntities: unresolved }, entities };
 }
 
+async function loadIntentDictionaries(userId: string): Promise<RuntimeDictionaryMapping[]> {
+  const rows = await prisma.intentDictionaryEntry.findMany({
+    where: { enabled: true, OR: [{ ownerId: userId }, { household: { members: { some: { userId, isActive: true } } }, visibility: "HOUSEHOLD" }, { visibility: "ADMIN" }] },
+    orderBy: [{ priority: "desc" }, { updatedAt: "desc" }], take: 500,
+  });
+  return rows.map((row) => ({
+    id: row.id, phrase: row.phrase, aliases: Array.isArray(row.aliasesJson) ? row.aliasesJson.filter((item): item is string => typeof item === "string") : [],
+    definition: dictionaryDefinitionSchema.parse(row.definitionJson), priority: row.priority,
+    source: row.visibility === "PERSONAL" ? "PERSONAL_DICTIONARY" : row.visibility === "HOUSEHOLD" ? "HOUSEHOLD_DICTIONARY" : "ADMIN_DICTIONARY",
+  }));
+}
+
+function localLegacyInterpretation(intent: StructuredIntent): NaturalLanguageInterpretation {
+  const adapter = adaptIntentToDeterministicInputs(intent);
+  const explicitConstraints: NaturalLanguageInterpretation["explicitConstraints"] = intent.hardRequirements.flatMap((item, index) => {
+    const map: Record<string, NaturalLanguageInterpretation["explicitConstraints"][number]["field"]> = { minimum_bpm: "minimumBpm", maximum_bpm: "maximumBpm", bpm_range: "minimumBpm", isExplicit: "explicitContent", isLive: "activity", genre: "excludedGenres" };
+    const field = map[item.deterministicMapping.field];
+    return field ? [{ id: `intent-hard-${index + 1}`, field, value: item.deterministicMapping.value, originalWording: item.sourcePhrase, explanation: `${item.target} is an explicit ${item.strength.toLowerCase()} rule.`, confidence: item.confidence }] : [];
+  });
+  const inferredConstraints: NaturalLanguageInterpretation["inferredConstraints"] = intent.categories.map((item, index) => ({
+    id: `intent-category-${index + 1}`, field: ["coding", "reading", "studying", "workout", "running", "driving", "party", "dinner", "sleep"].includes(item.name) ? "activity" : "mood",
+    value: item.name, originalWording: item.sourcePhrase, explanation: `${item.sourcePhrase} maps to the canonical ${item.name.replace(/_/g, " ")} intent.`, confidence: item.confidence,
+  }));
+  const ambiguities = intent.conflicts.map((conflict, index) => ({
+    id: conflict.id || `intent-conflict-${index + 1}`, originalPhrase: conflict.itemIds.join(" and "), proposedInterpretation: conflict.explanation,
+    reason: conflict.explanation, alternatives: conflict.itemIds.map((itemId) => ({ id: itemId, label: `Keep ${itemId.replace(/_/g, " ")}`, value: itemId })),
+    affectedFields: ["activity" as const], confidence: conflict.type === "HARD_CONFLICT" ? .98 : .75,
+    requiresConfirmation: conflict.type === "HARD_CONFLICT", resolution: conflict.resolution ? { action: "custom" as const, value: conflict.resolution } : null,
+  }));
+  return naturalLanguageInterpretationSchema.parse({
+    detectedLanguage: "en", intent: "create_playlist", summary: intent.summary, confidence: { overall: intent.overallConfidence, phaseBoundaries: intent.phaseBoundaryConfidence },
+    explicitConstraints, inferredConstraints, assumptions: [], ambiguities, unresolvedEntities: [], unsupportedRequests: [],
+    recipePatch: adapter.recipePatch, warnings: adapter.explanation.warnings, structuredIntent: intent, interpretationSource: intent.interpretationSource,
+  });
+}
+
+function providerSafeRequest(original: string, intent: StructuredIntent) {
+  if (!intent.matchedPhrases.some((item) => item.source !== "BUILT_IN")) return original;
+  return `Interpret this already-local, generic playlist intent without private terminology: ${JSON.stringify({ summary: intent.summary, categories: intent.categories.map((item) => item.name), phases: intent.phases, hardRequirements: intent.hardRequirements.map((item) => ({ target: item.target, mapping: item.deterministicMapping })), softPreferences: intent.softPreferences.map((item) => ({ target: item.target, mapping: item.deterministicMapping })), energyCurve: intent.energyCurve, bpmCurve: intent.bpmCurve })}`;
+}
+
 export async function interpretNaturalLanguage(input: { userId: string; requestText: string; privacyMode?: "LOCAL_ONLY" | "METADATA_LIMITED" | "ANONYMOUS_METADATA" | "FULL_METADATA"; previous?: { interpretation: NaturalLanguageInterpretation; recipe: MixRecipeDocument; revisionText: string } }) {
   const governance = await getAiGovernanceSettings();
   const privacyMode = input.privacyMode || governance.privacyMode as "LOCAL_ONLY" | "METADATA_LIMITED" | "ANONYMOUS_METADATA" | "FULL_METADATA";
+  const [settings, dictionaries] = await Promise.all([
+    prisma.intentInterpretationSetting.findUnique({ where: { userId: input.userId } }),
+    loadIntentDictionaries(input.userId),
+  ]);
+  const localText = input.previous ? `${input.requestText}. Revision: ${input.previous.revisionText}` : input.requestText;
+  let localIntent = interpretIntentLocally({ text: localText, dictionaries, maximumPhases: settings?.maximumPhases || 6 });
+  const localInterpretation = localLegacyInterpretation(localIntent);
+  const localAdapter = adaptIntentToDeterministicInputs(localIntent);
+  let localRecipe = mergeRecipePatch(input.previous?.recipe || defaultNaturalLanguageRecipe("Requested Playlist", localIntent.summary), localAdapter.recipePatch);
+  const providerAllowed = privacyMode !== "LOCAL_ONLY" && Boolean(settings?.providerAssistanceEnabled);
+  if (!providerAllowed) {
+    return { interpretation: localInterpretation, recipe: localRecipe, response: { providerId: undefined, model: "deterministic-local-v1", estimatedCost: 0, actualCost: 0, usage: { inputTokens: 0, outputTokens: 0 } }, privacyMode, providerDisplayName: "Local deterministic interpreter", entities: { libraries: [], playlists: [], recipes: [], artists: [], albums: [] } };
+  }
   const revisionContext = input.previous
     ? `\nCurrent approved-as-draft recipe (preserve unaffected fields): ${JSON.stringify(input.previous.recipe)}\nRevision requested: ${input.previous.revisionText}`
     : "";
+  try {
   const response = await aiRequestCoordinator.complete({
     featureKey: NATURAL_LANGUAGE_FEATURE_KEY,
     systemInstructions: SYSTEM_INSTRUCTIONS,
-    messages: [{ role: "user", content: `${input.requestText}${revisionContext}` }],
+    messages: [{ role: "user", content: `${providerSafeRequest(input.requestText, localIntent)}${revisionContext}` }],
     responseFormat: { type: "json", name: "mixarr_natural_language_interpretation", schema: naturalLanguageInterpretationSchema, unknownFields: "reject" },
     privacyMode,
     maxOutputTokens: 2400,
@@ -71,10 +129,12 @@ export async function interpretNaturalLanguage(input: { userId: string; requestT
     requiredCapabilities: ["structured_json"],
     metadata: { workflow: "interpret_only", deterministic_execution: false },
   }, input.userId);
-  const raw = naturalLanguageInterpretationSchema.parse(response.data);
+  const providerRaw = naturalLanguageInterpretationSchema.parse(response.data);
+  localIntent = { ...localIntent, interpretationSource: "LOCAL_RULES_WITH_PROVIDER" };
+  const raw = naturalLanguageInterpretationSchema.parse({ ...providerRaw, structuredIntent: localIntent, interpretationSource: "LOCAL_RULES_WITH_PROVIDER", warnings: [...providerRaw.warnings, ...localIntent.warnings] });
   const provider = await prisma.aiProviderConfig.findUnique({ where: { id: response.providerId }, select: { displayName: true } });
   const resolved = await resolveEntitiesLocally(input.userId, raw);
-  let base = input.previous?.recipe || defaultNaturalLanguageRecipe("Requested Playlist", raw.summary);
+  let base = localRecipe;
   const source = resolved.entities.playlists.length === 1 ? resolved.entities.playlists[0] : null;
   if (source && raw.intent === "similar_playlist") {
     const sourceGeneration = playlistConfigSchema.parse(source.filters);
@@ -83,4 +143,10 @@ export async function interpretNaturalLanguage(input: { userId: string; requestT
   let recipe = mergeRecipePatch(base, raw.recipePatch);
   if (resolved.entities.libraries.length === 1) recipe = mixRecipeDocumentSchema.parse({ ...recipe, generation: { ...recipe.generation, libraryId: resolved.entities.libraries[0].id, serverId: resolved.entities.libraries[0].serverId }, automationPolicy: { ...recipe.automationPolicy, libraryId: resolved.entities.libraries[0].id, enabled: false } });
   return { interpretation: resolved.interpretation, recipe, response, privacyMode, providerDisplayName: provider?.displayName || response.providerId, entities: resolved.entities };
+  } catch (error) {
+    localIntent = { ...localIntent, interpretationSource: "AI_PROVIDER_FALLBACK_REJECTED", warnings: [...localIntent.warnings, "Provider assistance was unavailable or returned invalid output; Mixarr safely used the local deterministic interpretation."] };
+    const fallback = localLegacyInterpretation(localIntent);
+    localRecipe = mergeRecipePatch(input.previous?.recipe || defaultNaturalLanguageRecipe("Requested Playlist", localIntent.summary), adaptIntentToDeterministicInputs(localIntent).recipePatch);
+    return { interpretation: fallback, recipe: localRecipe, response: { providerId: undefined, model: "deterministic-local-v1", estimatedCost: 0, actualCost: 0, usage: { inputTokens: 0, outputTokens: 0 }, fallbackReason: error instanceof Error ? error.message : "Provider unavailable" }, privacyMode, providerDisplayName: "Local deterministic interpreter (provider fallback)", entities: { libraries: [], playlists: [], recipes: [], artists: [], albums: [] } };
+  }
 }

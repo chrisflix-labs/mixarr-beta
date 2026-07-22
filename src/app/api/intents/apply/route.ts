@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { intentApiError, intentUserId } from "@/lib/intentIntelligence/api"; import { applyIntent } from "@/lib/intentIntelligence/service";
+export async function POST(request: Request) { try { const body = await request.json(); return NextResponse.json(await applyIntent(intentUserId(), body.id, body)); } catch (caught) { return intentApiError(caught); } }

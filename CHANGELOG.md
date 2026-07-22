@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.5 - Mood, Activity and Intent Intelligence
+
+- Added a local-first, versioned structured intent layer for canonical moods, activities, time-of-day contexts, positive and negative preferences, hard requirements, confidence, warnings, and conflicts.
+- Added editable 2–6 phase playlist progressions with normalized shares plus energy, valence, vocal, tempo, and transition targets.
+- Added deterministic energy/BPM curve sampling and curve-aware ordering without changing the authoritative candidate filtering, scoring, safety, duplicate, and compatibility systems.
+- Added personal and household interpretation dictionaries, saved intent presets, strict owner/household authorization, local custom-term resolution, and provider-safe generic context redaction.
+- Added intent validation, coverage estimation, persistence, audit events, settings, CRUD APIs, responsive review UI, documentation, and additive database migration `20260723010000_mood_activity_intent_intelligence_v245`.
+- Provider assistance remains optional and governed by the existing provider configuration, privacy, permissions, budgets, limits, timeouts, structured validation, and fallback controls. Final track selection remains deterministic.
+
 ## v2.4.4 - AI-Assisted Recipe Creation
 
 Added:

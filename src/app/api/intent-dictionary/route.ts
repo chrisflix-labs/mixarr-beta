@@ -1,0 +1,3 @@
+import { NextResponse } from "next/server"; import { intentApiError, intentUserId } from "@/lib/intentIntelligence/api"; import { createDictionaryEntry, listDictionary } from "@/lib/intentIntelligence/service";
+export async function GET(request: Request) { try { const url = new URL(request.url); return NextResponse.json(await listDictionary(intentUserId(), Number(url.searchParams.get("page")) || 1, Number(url.searchParams.get("pageSize")) || 50)); } catch (caught) { return intentApiError(caught); } }
+export async function POST(request: Request) { try { return NextResponse.json({ entry: await createDictionaryEntry(intentUserId(), await request.json()) }, { status: 201 }); } catch (caught) { return intentApiError(caught); } }

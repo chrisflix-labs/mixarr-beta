@@ -1,0 +1,3 @@
+import { NextResponse } from "next/server"; import { intentApiError, intentUserId } from "@/lib/intentIntelligence/api"; import { deletePreset, updatePreset } from "@/lib/intentIntelligence/service";
+export async function PUT(request: Request, { params }: { params: { id: string } }) { try { return NextResponse.json({ preset: await updatePreset(intentUserId(), params.id, await request.json()) }); } catch (caught) { return intentApiError(caught); } }
+export async function DELETE(_request: Request, { params }: { params: { id: string } }) { try { return NextResponse.json(await deletePreset(intentUserId(), params.id)); } catch (caught) { return intentApiError(caught); } }

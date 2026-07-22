@@ -171,6 +171,13 @@ export const playlistConfigSchema = z.object({
   conflictSensitivity: moodBlendSliderSchema.default(70),
   selectedMoodPreset: z.string().trim().max(80).default("balanced_flow"),
   contextSelection: contextSelectionSchema.optional().nullable(),
+  intentOrdering: z.object({
+    schemaVersion: z.literal(1),
+    phases: z.array(z.object({ id: z.string().trim().min(1).max(80), label: z.string().trim().min(1).max(100), targetShare: z.number().min(0).max(1) }).strict()).max(6).default([]),
+    energyCurve: z.object({ shape: z.string().max(40), points: z.array(z.object({ position: z.number().min(0).max(1), value: z.number().min(0).max(1) }).strict()).min(2).max(24), tolerance: z.number().min(0).max(1), hard: z.boolean().default(false), confidence: z.number().min(0).max(1).optional() }).strict().nullable().default(null),
+    bpmCurve: z.object({ shape: z.string().max(40), points: z.array(z.object({ position: z.number().min(0).max(1), value: z.number().min(30).max(300) }).strict()).min(2).max(24), tolerance: z.number().min(0).max(80), hard: z.boolean().default(false), confidence: z.number().min(0).max(1).optional() }).strict().nullable().default(null),
+    smoothTransitions: z.boolean().default(true),
+  }).strict().optional().nullable(),
   engineVersion: z.enum(smartMixEngineVersions).default(SMART_MIX_ENGINE_V1),
   scoringModel: z.string().trim().min(1).max(80).optional(),
   allowStableFallback: z.boolean().optional(),

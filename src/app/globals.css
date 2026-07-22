@@ -235,6 +235,8 @@ tr:hover {
   background: var(--bg);
 }
 
+.intent-settings{display:grid;gap:16px}.intent-toggle-grid,.intent-number-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.settings-toggle-row{display:flex;gap:9px;align-items:flex-start;border:1px solid var(--line);padding:11px;border-radius:10px}.settings-toggle-row small,.intent-dictionary small{display:block;color:var(--muted);margin-top:3px}.intent-number-grid label{display:grid;gap:5px;font-size:.82rem}.intent-number-grid input,.intent-dictionary input,.intent-dictionary select{min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:inherit;padding:9px}.intent-settings button{display:inline-flex;align-items:center;gap:7px;width:max-content}.intent-settings button svg{width:16px}.intent-dictionary{border-top:1px solid var(--line);padding-top:14px}.intent-dictionary h4{display:flex;gap:8px;align-items:center}.intent-dictionary>div{display:grid;grid-template-columns:minmax(160px,1fr) minmax(130px,220px) auto;gap:8px}.intent-dictionary ul{list-style:none;padding:0;display:grid;gap:7px}.intent-dictionary li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px;border:1px solid var(--line);border-radius:8px}.intent-dictionary li button{padding:7px}
+
 @media (max-width: 768px) {
   .rule-row {
     flex-wrap: wrap;
@@ -243,4 +245,5 @@ tr:hover {
     flex: 1 1 calc(50% - 0.5rem);
     min-width: 120px;
   }
+  .intent-dictionary>div{grid-template-columns:1fr}.intent-dictionary>div button{width:100%;justify-content:center}
 }

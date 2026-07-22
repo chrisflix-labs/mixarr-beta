@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { playlistRuleSchema } from "../playlistService";
+import { structuredIntentSchema } from "../intentIntelligence/contracts";
 
 export const NATURAL_LANGUAGE_FEATURE_KEY = "natural_language_playlist_requests";
 export const NATURAL_LANGUAGE_REQUEST_STATUSES = [
@@ -60,9 +61,11 @@ const recipePatchSchema = z.object({
     limit: z.number().int().min(1).max(5000).optional(),
     rules: z.array(playlistRuleSchema).max(25).optional(),
     negativeFilters: z.object({ excludeHoliday: z.boolean().optional(), excludeLive: z.boolean().optional(), excludeRemasters: z.boolean().optional(), excludeExplicit: z.boolean().optional(), excludeIntroOutro: z.boolean().optional(), minRating: z.number().min(0).max(10).nullable().optional(), excludePlayedWithinDays: z.number().int().min(1).max(3650).nullable().optional() }).strict().optional(),
+    engineVersion: z.literal("v2").optional(), moodBlendMode: z.enum(["off", "smooth_transition", "strict_matching", "mixed_mood"]).optional(), selectedMoodPath: z.array(z.string().max(40)).max(12).optional(), allowedMoods: z.array(z.string().max(40)).max(12).optional(), transitionSmoothness: percent.optional(),
+    intentOrdering: z.object({ schemaVersion: z.literal(1), phases: z.array(z.object({ id: z.string(), label: z.string(), targetShare: unit }).strict()).max(6), energyCurve: z.unknown().nullable(), bpmCurve: z.unknown().nullable(), smoothTransitions: z.boolean() }).strict().optional(),
   }).strict().default({}),
-  targets: z.object({ selectedMoods: z.array(z.string().trim().min(1).max(120)).max(50).optional(), primaryMood: z.string().trim().max(80).nullable().optional(), minimumEnergy: unit.nullable().optional(), maximumEnergy: unit.nullable().optional(), targetEnergy: unit.nullable().optional(), energyProgression: z.enum(["steady", "rising", "falling", "wave", "mixed"]).optional() }).strict().default({}),
-  bpmFlow: z.object({ minimumBpm: z.number().min(30).max(300).nullable().optional(), maximumBpm: z.number().min(30).max(300).nullable().optional(), targetBpm: z.number().min(30).max(300).nullable().optional(), mode: z.enum(["RAMP_UP", "RAMP_DOWN", "STEADY", "NATURAL", "CUSTOM", "DISABLED"]).optional(), maximumBpmGap: z.number().min(1).max(80).optional() }).strict().default({}),
+  targets: z.object({ selectedMoods: z.array(z.string().trim().min(1).max(120)).max(50).optional(), primaryMood: z.string().trim().max(80).nullable().optional(), secondaryMoods: z.array(z.string().max(120)).max(50).optional(), moodBlendMode: z.enum(["off", "smooth_transition", "strict_matching", "mixed_mood"]).optional(), moodTransition: z.enum(["none", "smooth", "sectioned"]).optional(), moodCurve: z.array(z.object({ start: percent, end: percent, mood: z.string() }).strict()).max(12).optional(), minimumEnergy: unit.nullable().optional(), maximumEnergy: unit.nullable().optional(), targetEnergy: unit.nullable().optional(), energyProgression: z.enum(["steady", "rising", "falling", "wave", "mixed"]).optional() }).strict().default({}),
+  bpmFlow: z.object({ minimumBpm: z.number().min(30).max(300).nullable().optional(), maximumBpm: z.number().min(30).max(300).nullable().optional(), targetBpm: z.number().min(30).max(300).nullable().optional(), mode: z.enum(["RAMP_UP", "RAMP_DOWN", "STEADY", "NATURAL", "CUSTOM", "DISABLED"]).optional(), sections: z.array(z.object({ start: percent, end: percent, targetBpm: z.number().min(30).max(300) }).strict()).max(12).optional(), maximumBpmGap: z.number().min(1).max(80).optional() }).strict().default({}),
   discovery: z.object({ level: z.enum(["low", "medium", "high", "custom"]).optional(), deepCutPercentage: percent.optional(), familiarityBalance: percent.optional(), avoidOverplayedTracks: z.boolean().optional(), favorUnderplayedPlexTracks: z.boolean().optional(), recentlyAddedPreference: percent.optional() }).strict().default({}),
   variety: z.object({ maximumTracksPerArtist: z.number().int().min(1).max(5000).optional(), minimumArtistSpacing: z.number().int().min(0).max(5000).optional(), maximumTracksPerAlbum: z.number().int().min(1).max(5000).optional(), minimumAlbumSpacing: z.number().int().min(0).max(5000).optional(), recentlyPlayedExclusionDays: z.number().int().min(0).max(3650).optional() }).strict().default({}),
   refreshPolicy: z.object({ mode: z.enum(["manual", "scheduled"]).optional(), frequencyDays: z.number().int().min(1).max(3650).nullable().optional() }).strict().default({}),
@@ -81,6 +84,8 @@ export const naturalLanguageInterpretationSchema = z.object({
   unsupportedRequests: z.array(z.object({ originalWording: z.string().trim().min(1).max(500), explanation: z.string().trim().min(1).max(800) }).strict()).max(50).default([]),
   recipePatch: recipePatchSchema,
   warnings: z.array(z.string().trim().min(1).max(800)).max(50).default([]),
+  structuredIntent: structuredIntentSchema.optional(),
+  interpretationSource: z.enum(["LOCAL_RULES", "LOCAL_DICTIONARY", "LOCAL_RULES_WITH_PROVIDER", "AI_PROVIDER_FALLBACK_REJECTED"]).optional(),
 }).strict();
 
 export const createNaturalLanguageRequestSchema = z.object({

@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { naturalLanguageApiError, naturalLanguageUserId } from "@/lib/naturalLanguageRequests/api"; import { updateNaturalLanguageStructuredIntent } from "@/lib/naturalLanguageRequests/service";
+export async function PUT(request: Request, { params }: { params: { id: string } }) { try { return NextResponse.json({ request: await updateNaturalLanguageStructuredIntent(naturalLanguageUserId(), params.id, await request.json()) }); } catch (caught) { return naturalLanguageApiError(caught); } }

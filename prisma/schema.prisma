@@ -135,10 +135,16 @@ model User {
   naturalLanguageRequests        NaturalLanguageRequest[]          @relation("NaturalLanguageRequestOwner")
   naturalLanguageApprovals       NaturalLanguageRequest[]          @relation("NaturalLanguageRequestApprover")
   naturalLanguageRequestAudits   NaturalLanguageRequestAudit[]
-  aiRecipeRequests               AiRecipeRequest[]                @relation("AiRecipeRequestOwner")
-  aiRecipeProposalApplications   AiRecipeProposal[]               @relation("AiRecipeProposalApplier")
-  aiRecipeProposalApprovals      AiRecipeProposal[]               @relation("AiRecipeProposalApprover")
-  aiRecipeAuditEvents            AiRecipeAuditEvent[]             @relation("AiRecipeAuditActor")
+  intentInterpretations          IntentInterpretation[]            @relation("IntentInterpretationOwner")
+  intentInterpretationApprovals  IntentInterpretation[]            @relation("IntentInterpretationApprover")
+  intentDictionaryEntries        IntentDictionaryEntry[]
+  intentPresets                  IntentPreset[]
+  intentAuditEvents              IntentAuditEvent[]                @relation("IntentAuditActor")
+  intentInterpretationSetting    IntentInterpretationSetting?
+  aiRecipeRequests               AiRecipeRequest[]                 @relation("AiRecipeRequestOwner")
+  aiRecipeProposalApplications   AiRecipeProposal[]                @relation("AiRecipeProposalApplier")
+  aiRecipeProposalApprovals      AiRecipeProposal[]                @relation("AiRecipeProposalApprover")
+  aiRecipeAuditEvents            AiRecipeAuditEvent[]              @relation("AiRecipeAuditActor")
 }
 
 model SyncSettings {
@@ -1175,13 +1181,13 @@ model PlaylistRecipe {
   recipeOverrides            RecipeOverride[]
   inheritanceSnapshots       EffectiveRecipeSnapshot[]
   naturalLanguageRequests    NaturalLanguageRequest[]
-  aiGenerated               Boolean                   @default(false)
-  aiRecipeStatus            String?
-  aiProvenanceJson          Json?
-  lastAiProposalId          String?
-  manuallyEditedAfterAi     Boolean                   @default(false)
-  aiRecipeRequests          AiRecipeRequest[]
-  aiRecipeProposals         AiRecipeProposal[]
+  aiGenerated                Boolean                   @default(false)
+  aiRecipeStatus             String?
+  aiProvenanceJson           Json?
+  lastAiProposalId           String?
+  manuallyEditedAfterAi      Boolean                   @default(false)
+  aiRecipeRequests           AiRecipeRequest[]
+  aiRecipeProposals          AiRecipeProposal[]
 
   @@unique([userId, slug])
   @@index([userId, sourceRecipeId])
@@ -1255,6 +1261,7 @@ model NaturalLanguageRequest {
   finalRecipe             PlaylistRecipe?                  @relation(fields: [finalRecipeId], references: [id], onDelete: SetNull)
   revisions               NaturalLanguageRequestRevision[]
   auditEvents             NaturalLanguageRequestAudit[]
+  intentInterpretation    IntentInterpretation?
 
   @@index([ownerId, status, updatedAt])
   @@index([approvedById, approvedAt])
@@ -1296,6 +1303,129 @@ model NaturalLanguageRequestAudit {
   actor       User?                  @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([requestId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+}
+
+/// Versioned, user-reviewable intent. The JSON document is validated against the
+/// application schema before it can be adapted into deterministic recipe inputs.
+model IntentInterpretation {
+  id                     String                  @id @default(uuid())
+  ownerId                String
+  naturalLanguageId      String?                 @unique
+  schemaVersion          Int                     @default(1)
+  sourceText             String?
+  sourceTextHash         String
+  sourceRetained         Boolean                 @default(true)
+  summary                String
+  status                 String                  @default("NEEDS_REVIEW")
+  interpretationSource   String                  @default("LOCAL_RULES")
+  structuredIntentJson   Json
+  approvedIntentJson     Json?
+  adapterOutputJson      Json?
+  coverageEstimateJson   Json?
+  conflictResolutionJson Json?
+  providerConfigId       String?
+  overallConfidence      Float                   @default(0)
+  requiresReview         Boolean                 @default(true)
+  revision               Int                     @default(1)
+  approvedById           String?
+  approvedAt             DateTime?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  deletedAt              DateTime?
+  owner                  User                    @relation("IntentInterpretationOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  approvedBy             User?                   @relation("IntentInterpretationApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  naturalLanguage        NaturalLanguageRequest? @relation(fields: [naturalLanguageId], references: [id], onDelete: SetNull)
+  auditEvents            IntentAuditEvent[]
+
+  @@index([ownerId, status, updatedAt])
+  @@index([ownerId, deletedAt, updatedAt])
+  @@index([approvedById, approvedAt])
+  @@index([interpretationSource, updatedAt])
+}
+
+model IntentDictionaryEntry {
+  id               String     @id @default(uuid())
+  ownerId          String
+  householdId      String?
+  schemaVersion    Int        @default(1)
+  phrase           String
+  normalizedPhrase String
+  aliasesJson      Json       @default("[]")
+  description      String?
+  definitionJson   Json
+  visibility       String     @default("PERSONAL")
+  enabled          Boolean    @default(true)
+  priority         Int        @default(100)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  owner            User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  household        Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, normalizedPhrase])
+  @@index([ownerId, enabled, updatedAt])
+  @@index([householdId, visibility, enabled])
+  @@index([normalizedPhrase, enabled])
+}
+
+model IntentPreset {
+  id            String     @id @default(uuid())
+  ownerId       String
+  householdId   String?
+  schemaVersion Int        @default(1)
+  name          String
+  description   String?
+  intentJson    Json
+  visibility    String     @default("PERSONAL")
+  enabled       Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  owner         User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  household     Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, name])
+  @@index([ownerId, enabled, updatedAt])
+  @@index([householdId, visibility, enabled])
+}
+
+model IntentInterpretationSetting {
+  id                             String   @id @default(uuid())
+  userId                         String   @unique
+  enabled                        Boolean  @default(true)
+  localEnabled                   Boolean  @default(true)
+  providerAssistanceEnabled      Boolean  @default(false)
+  defaultProviderId              String?
+  automaticSoftPreferenceMinimum Float    @default(0.6)
+  inferredHardRequirementMinimum Float    @default(0.9)
+  maximumPhases                  Int      @default(6)
+  defaultEnergyTolerance         Float    @default(0.12)
+  defaultBpmTolerance            Float    @default(10)
+  coverageEstimationEnabled      Boolean  @default(true)
+  reviewRequired                 Boolean  @default(true)
+  personalDictionariesEnabled    Boolean  @default(true)
+  householdDictionariesEnabled   Boolean  @default(true)
+  presetsEnabled                 Boolean  @default(true)
+  retainSourceText               Boolean  @default(true)
+  retentionDays                  Int      @default(90)
+  auditDetailLevel               String   @default("SUMMARY")
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime @updatedAt
+  user                           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model IntentAuditEvent {
+  id               String                @id @default(uuid())
+  interpretationId String?
+  actorId          String?
+  action           String
+  result           String                @default("SUCCESS")
+  summaryJson      Json?
+  createdAt        DateTime              @default(now())
+  interpretation   IntentInterpretation? @relation(fields: [interpretationId], references: [id], onDelete: Cascade)
+  actor            User?                 @relation("IntentAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([interpretationId, createdAt])
   @@index([actorId, createdAt])
   @@index([action, createdAt])
 }
@@ -1935,6 +2065,8 @@ model Household {
   preferences             HouseholdPreference[]
   playlistConfigurations  HouseholdPlaylistConfiguration[]
   activities              HouseholdActivity[]
+  intentDictionaryEntries IntentDictionaryEntry[]
+  intentPresets           IntentPreset[]
 
   @@unique([ownerId, name])
   @@index([ownerId, status, updatedAt])
@@ -5371,29 +5503,29 @@ model AiProviderModel {
 }
 
 model AiProviderHealth {
-  id                      String           @id @default(uuid())
-  providerConfigId        String           @unique
-  healthState             String           @default("NOT_TESTED")
-  lastCheckAt             DateTime?
-  lastSuccessfulCheckAt   DateTime?
-  latencyMs               Int?
-  errorCategory           String?
-  sanitizedMessage        String?
-  discoveredModelCount    Int              @default(0)
-  consecutiveFailureCount Int              @default(0)
-  nextEligibleCheckAt     DateTime?
-  authenticationState     String           @default("NOT_TESTED")
-  discoveryState          String           @default("NOT_TESTED")
-  inferenceState          String           @default("NOT_TESTED")
-  lastAuthenticationAt    DateTime?
-  lastDiscoveryAt         DateTime?
+  id                        String           @id @default(uuid())
+  providerConfigId          String           @unique
+  healthState               String           @default("NOT_TESTED")
+  lastCheckAt               DateTime?
+  lastSuccessfulCheckAt     DateTime?
+  latencyMs                 Int?
+  errorCategory             String?
+  sanitizedMessage          String?
+  discoveredModelCount      Int              @default(0)
+  consecutiveFailureCount   Int              @default(0)
+  nextEligibleCheckAt       DateTime?
+  authenticationState       String           @default("NOT_TESTED")
+  discoveryState            String           @default("NOT_TESTED")
+  inferenceState            String           @default("NOT_TESTED")
+  lastAuthenticationAt      DateTime?
+  lastDiscoveryAt           DateTime?
   lastSuccessfulInferenceAt DateTime?
-  lastFailedRequestAt     DateTime?
-  endpointMode            String?
-  lastHttpStatus          Int?
-  providerRequestId       String?
-  updatedAt               DateTime         @updatedAt
-  provider                AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Cascade)
+  lastFailedRequestAt       DateTime?
+  endpointMode              String?
+  lastHttpStatus            Int?
+  providerRequestId         String?
+  updatedAt                 DateTime         @updatedAt
+  provider                  AiProviderConfig @relation(fields: [providerConfigId], references: [id], onDelete: Cascade)
 
   @@index([healthState, nextEligibleCheckAt])
 }
@@ -5618,7 +5750,7 @@ model AiProviderAttempt {
 // AI recipe output remains an untrusted review artifact. A proposal can become a
 // disabled recipe revision only through an explicit, permission-checked apply.
 model AiRecipeRequest {
-  id                    String             @id @default(uuid())
+  id                    String               @id @default(uuid())
   ownerId               String
   recipeId              String?
   recipeVersion         Int?
@@ -5627,25 +5759,25 @@ model AiRecipeRequest {
   providerConfigId      String?
   providerDisplayName   String?
   model                 String?
-  privacyMode           String             @default("METADATA_LIMITED")
-  status                String             @default("PREPARING")
+  privacyMode           String               @default("METADATA_LIMITED")
+  status                String               @default("PREPARING")
   contextFingerprint    String
   sourceUpdatedAt       DateTime?
   promptTemplateVersion String
   inputTokenCount       Int?
   outputTokenCount      Int?
-  estimatedCost         Decimal?           @db.Decimal(18, 6)
-  actualCost            Decimal?           @db.Decimal(18, 6)
+  estimatedCost         Decimal?             @db.Decimal(18, 6)
+  actualCost            Decimal?             @db.Decimal(18, 6)
   aiResponseIdentifier  String?
   errorCategory         String?
   errorMessage          String?
-  remote                Boolean            @default(false)
+  remote                Boolean              @default(false)
   cancelledAt           DateTime?
   completedAt           DateTime?
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
-  owner                 User               @relation("AiRecipeRequestOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  recipe                PlaylistRecipe?    @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  owner                 User                 @relation("AiRecipeRequestOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  recipe                PlaylistRecipe?      @relation(fields: [recipeId], references: [id], onDelete: SetNull)
   proposal              AiRecipeProposal?
   auditEvents           AiRecipeAuditEvent[]
 
@@ -5655,11 +5787,11 @@ model AiRecipeRequest {
 }
 
 model AiRecipeProposal {
-  id                        String          @id @default(uuid())
-  requestId                 String          @unique
+  id                        String               @id @default(uuid())
+  requestId                 String               @unique
   recipeId                  String?
-  status                    String          @default("DRAFT")
-  schemaVersion             String          @default("1.0")
+  status                    String               @default("DRAFT")
+  schemaVersion             String               @default("1.0")
   originalProposalJson      Json
   proposedConfigurationJson Json?
   analysisJson              Json
@@ -5671,11 +5803,11 @@ model AiRecipeProposal {
   compatibilityJson         Json?
   safetyWarningsJson        Json
   unsupportedRequestsJson   Json
-  confidenceScore           Float           @default(0)
+  confidenceScore           Float                @default(0)
   previousConfigurationJson Json?
   previousRecipeVersion     Int?
-  manuallyEdited            Boolean         @default(false)
-  differsFromAiProposal     Boolean         @default(false)
+  manuallyEdited            Boolean              @default(false)
+  differsFromAiProposal     Boolean              @default(false)
   appliedById               String?
   appliedAt                 DateTime?
   approvedById              String?
@@ -5684,12 +5816,12 @@ model AiRecipeProposal {
   supersededAt              DateTime?
   quarantinedAt             DateTime?
   statusReason              String?
-  createdAt                 DateTime        @default(now())
-  updatedAt                 DateTime        @updatedAt
-  request                   AiRecipeRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  recipe                    PlaylistRecipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
-  appliedBy                 User?           @relation("AiRecipeProposalApplier", fields: [appliedById], references: [id], onDelete: SetNull)
-  approvedBy                User?           @relation("AiRecipeProposalApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+  request                   AiRecipeRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  recipe                    PlaylistRecipe?      @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  appliedBy                 User?                @relation("AiRecipeProposalApplier", fields: [appliedById], references: [id], onDelete: SetNull)
+  approvedBy                User?                @relation("AiRecipeProposalApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   auditEvents               AiRecipeAuditEvent[]
 
   @@index([recipeId, status, createdAt])
@@ -5697,29 +5829,29 @@ model AiRecipeProposal {
 }
 
 model AiRecipeAuditEvent {
-  id             String            @id @default(uuid())
-  requestId      String
-  proposalId     String?
-  recipeId       String?
-  actorId        String?
-  eventType      String
-  action         String
-  provider       String?
-  model          String?
-  privacyMode    String?
-  remote         Boolean           @default(false)
-  statusBefore   String?
-  statusAfter    String?
-  reason         String?
-  estimatedCost  Decimal?          @db.Decimal(18, 6)
-  actualCost     Decimal?          @db.Decimal(18, 6)
-  inputTokens    Int?
-  outputTokens   Int?
-  metadataJson   Json?
-  createdAt      DateTime          @default(now())
-  request        AiRecipeRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  proposal       AiRecipeProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
-  actor          User?             @relation("AiRecipeAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  id            String            @id @default(uuid())
+  requestId     String
+  proposalId    String?
+  recipeId      String?
+  actorId       String?
+  eventType     String
+  action        String
+  provider      String?
+  model         String?
+  privacyMode   String?
+  remote        Boolean           @default(false)
+  statusBefore  String?
+  statusAfter   String?
+  reason        String?
+  estimatedCost Decimal?          @db.Decimal(18, 6)
+  actualCost    Decimal?          @db.Decimal(18, 6)
+  inputTokens   Int?
+  outputTokens  Int?
+  metadataJson  Json?
+  createdAt     DateTime          @default(now())
+  request       AiRecipeRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  proposal      AiRecipeProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  actor         User?             @relation("AiRecipeAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([requestId, createdAt])
   @@index([proposalId, createdAt])

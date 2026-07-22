@@ -78,6 +78,20 @@
 .approval{position:sticky;bottom:16px;z-index:5;background:rgba(13,17,29,.96);backdrop-filter:blur(18px)}
 .approval>div:last-child{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .state{min-height:55vh;display:grid;place-items:center;align-content:center;gap:12px;color:var(--text-secondary)}
+.intentBadges{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.intentBadges>label{display:flex;align-items:center;gap:6px;border:1px solid rgba(139,124,255,.38);background:rgba(139,124,255,.1);padding:7px 10px;border-radius:999px;font-weight:700}.intentBadges input{width:70px}.intentBadges button{padding:2px;background:transparent;border:0}.intentBadges button svg{width:14px}
+.intentBadges small{color:var(--text-secondary);font-weight:500}
+.privacyNote{display:flex;align-items:center;gap:10px;border:1px solid rgba(78,211,160,.32);background:rgba(35,137,101,.09);padding:12px;border-radius:11px}
+.privacyNote svg{color:#4ed3a0;flex:0 0 auto}.privacyNote strong,.privacyNote small{display:block}.privacyNote small{color:var(--text-secondary);margin-top:3px}
+.conflictList{border:1px solid rgba(240,143,102,.5);background:rgba(240,143,102,.08);padding:14px;border-radius:12px;margin-top:16px}
+.conflictList article+article{border-top:1px solid rgba(255,255,255,.1);margin-top:10px;padding-top:10px}.conflictList p{margin:5px 0}.conflictList small{color:var(--text-secondary)}
+.preferenceEditor{margin-top:16px}.preferenceList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.preferenceList label{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid rgba(255,255,255,.11);border-radius:10px;padding:10px}.preferenceList strong,.preferenceList small{display:block}.preferenceList small{color:var(--text-secondary);margin-top:3px}.preferenceList select{border:1px solid rgba(255,255,255,.14);border-radius:8px;background:#0b0f1d;color:inherit;padding:8px}
+.phaseEditor{margin-top:22px;border-top:1px solid rgba(255,255,255,.1);padding-top:18px}.phaseList{display:grid;gap:9px;margin:12px 0}
+.phaseList article{display:grid;grid-template-columns:auto minmax(160px,1fr) 120px minmax(140px,1fr) auto;gap:10px;align-items:flex-end;border:1px solid rgba(255,255,255,.11);border-radius:12px;padding:11px;background:rgba(255,255,255,.025)}
+.phasePosition{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:rgba(139,124,255,.16);align-self:center}.phaseList label{font-size:.75rem;color:var(--text-secondary)}
+.phaseList input{display:inline-block;width:100%;margin-top:4px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:#0b0f1d;color:inherit;padding:8px}.phaseList label:nth-of-type(2){display:grid;grid-template-columns:1fr auto;align-items:flex-end}.phaseList label:nth-of-type(2) input{grid-row:2;grid-column:1}.phaseList label:nth-of-type(2) span{grid-row:2;grid-column:2;padding:8px 4px}.phaseList>article>small{align-self:center;color:var(--text-secondary)}
+.phaseActions{display:flex;gap:4px}.phaseActions button{padding:7px}.phaseActions svg{width:15px;height:15px}.phaseActions button:last-child{color:#ff9aa8}
+.curveGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}.curveCard{min-width:0;border:1px solid rgba(255,255,255,.11);border-radius:12px;padding:13px;background:rgba(255,255,255,.025)}.curveCard h3{margin:0 0 5px}.curveCard small{display:block;color:var(--text-secondary);overflow-wrap:anywhere;margin-top:7px}.curveBars{height:70px;display:flex;gap:8px;align-items:flex-end;margin:10px 0;border-bottom:1px solid rgba(255,255,255,.18)}.curveBars span{flex:1;min-width:8px;border-radius:4px 4px 0 0;background:linear-gradient(#8b7cff,#4ed3a0)}
 
 @media(max-width:900px){.page{padding:20px}
 .reviewGrid{grid-template-columns:1fr}
@@ -87,6 +101,7 @@
 .approval>div:last-child{width:100%;justify-content:stretch}
 .approval button{flex:1}
 .status{width:100%}
+.phaseList article{grid-template-columns:auto 1fr 100px}.phaseList>article>small,.phaseActions{grid-column:2/-1}
 }
 
 @media(max-width:560px){.page{padding:14px;gap:14px}
@@ -98,6 +113,8 @@
 .recipeGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .approval>div:last-child{display:grid;grid-template-columns:1fr 1fr}
 .approval button{width:100%}
+.curveGrid{grid-template-columns:1fr}.phaseList article{grid-template-columns:auto 1fr}.phaseList label:nth-of-type(2),.phaseList>article>small,.phaseActions{grid-column:2}.phaseActions{flex-wrap:wrap}
+.preferenceList{grid-template-columns:1fr}.preferenceList label{align-items:stretch;flex-direction:column}
 }
 
 

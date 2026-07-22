@@ -14,6 +14,9 @@ import { previewAiRequest } from "@/ai/governance/service";
 import { resolveAiProvider } from "@/ai/services/providerService";
 import { ambiguityResolutionSchema, createNaturalLanguageRequestSchema, naturalLanguageInterpretationSchema, revisionRequestSchema, type NaturalLanguageInterpretation } from "./contracts";
 import { interpretNaturalLanguage, interpretationRequiresClarification } from "./interpreter";
+import { mergeRecipePatch } from "./normalization";
+import { structuredIntentSchema } from "../intentIntelligence/contracts";
+import { adaptIntentToDeterministicInputs } from "../intentIntelligence/adapter";
 
 export const NATURAL_LANGUAGE_PERMISSIONS = [
   "SUBMIT_NATURAL_LANGUAGE_REQUESTS", "VIEW_PERSONAL_REQUESTS", "VIEW_HOUSEHOLD_REQUESTS",
@@ -51,7 +54,7 @@ export async function requireNaturalLanguagePermission(userId: string, permissio
 }
 
 async function ownedRequest(userId: string, requestId: string, includeHistory = false) {
-  const row = await prisma.naturalLanguageRequest.findUnique({ where: { id: requestId }, include: { finalRecipe: true, ...(includeHistory ? { revisions: { orderBy: { revision: "desc" as const } }, auditEvents: { orderBy: { createdAt: "desc" as const }, take: 100 } } : {}) } });
+  const row = await prisma.naturalLanguageRequest.findUnique({ where: { id: requestId }, include: { finalRecipe: true, intentInterpretation: { select: { id: true } }, ...(includeHistory ? { revisions: { orderBy: { revision: "desc" as const } }, auditEvents: { orderBy: { createdAt: "desc" as const }, take: 100 } } : {}) } });
   if (!row) throw requestError("REQUEST_NOT_FOUND", "Natural-language request not found.", 404);
   await requireNaturalLanguagePermission(userId, "VIEW_PERSONAL_REQUESTS", row.ownerId);
   return row;
@@ -81,6 +84,8 @@ function publicRequest(row: any) {
     approvalCurrent: row.approvedAt != null && row.approvalRevision === row.currentRevision,
     analysisStale: row.analysisRevision !== row.currentRevision,
     previewStale: row.previewRevision !== row.currentRevision,
+    intentInterpretationId: row.intentInterpretation?.id || null,
+    intentInterpretation: undefined,
     originalRequestHash: undefined, interpretationJson: undefined, draftRecipeJson: undefined, validationJson: undefined,
     candidateEstimateJson: undefined, compatibilityJson: undefined, previewJson: undefined,
   };
@@ -97,6 +102,10 @@ export async function listNaturalLanguageRequests(userId: string, options: { sta
 export async function previewNaturalLanguageRequest(userId: string, raw: unknown) {
   await requireNaturalLanguagePermission(userId, "SUBMIT_NATURAL_LANGUAGE_REQUESTS", userId);
   const input = createNaturalLanguageRequestSchema.parse(raw);
+  const intentSettings = await prisma.intentInterpretationSetting.findUnique({ where: { userId } });
+  if (input.privacyMode === "LOCAL_ONLY" || !intentSettings?.providerAssistanceEnabled) {
+    return { provider: { id: null, name: "Local deterministic interpreter", location: "LOCAL" }, model: "deterministic-local-v1", privacyMode: "LOCAL_ONLY", cost: { currency: "USD", maximumEstimatedCost: 0 }, limits: { estimatedInputTokens: 0, maxOutputTokens: 0 }, privacy: { localOnly: true }, metadataShared: {}, notShared: ["Request text", "personal dictionary definitions", "household terminology", "Plex credentials", "library inventory"], plexMutation: false, localFirst: true };
+  }
   const [global, feature, governance] = await Promise.all([
     prisma.aiGlobalSetting.findUnique({ where: { id: "global" } }),
     prisma.aiFeatureSetting.findUnique({ where: { featureKey: "natural_language_playlist_requests" } }),
@@ -156,6 +165,16 @@ async function persistInterpretation(input: { requestId: string; userId: string;
       errorCode: result.previewError ? "PREVIEW_GENERATION_FAILED" : null, errorMessage: result.previewError,
     } });
     await tx.naturalLanguageRequestRevision.upsert({ where: { requestId_revision: { requestId: input.requestId, revision: input.revision } }, create: { requestId: input.requestId, revision: input.revision, revisionText: input.revisionText, interpretationJson: json(input.interpretation), draftRecipeJson: json(input.recipe), validationJson: json(result.validation), candidateEstimateJson: result.analysis?.candidateEstimate ? json(result.analysis.candidateEstimate) : undefined, compatibilityJson: result.analysis?.compatibility ? json(result.analysis.compatibility) : undefined, previewJson: result.preview ? json(result.preview) : undefined, changeSummaryJson: json(changeSummary), createdById: input.userId }, update: { interpretationJson: json(input.interpretation), draftRecipeJson: json(input.recipe), validationJson: json(result.validation), candidateEstimateJson: result.analysis?.candidateEstimate ? json(result.analysis.candidateEstimate) : undefined, compatibilityJson: result.analysis?.compatibility ? json(result.analysis.compatibility) : undefined, previewJson: result.preview ? json(result.preview) : undefined, changeSummaryJson: json(changeSummary) } });
+    if (input.interpretation.structuredIntent) {
+      const structured = input.interpretation.structuredIntent;
+      const adapter = { recipePatch: { generation: input.recipe.generation, targets: input.recipe.targets, bpmFlow: input.recipe.bpmFlow }, deterministicTrackSelection: true };
+      const intentRow = await tx.intentInterpretation.upsert({
+        where: { naturalLanguageId: input.requestId },
+        create: { ownerId: input.userId, naturalLanguageId: input.requestId, schemaVersion: structured.schemaVersion, sourceText: current.originalRequestRetained ? current.originalRequest : null, sourceTextHash: current.originalRequestHash, sourceRetained: current.originalRequestRetained, summary: structured.summary, status: structured.requiresReview ? "NEEDS_REVIEW" : "READY", interpretationSource: structured.interpretationSource, structuredIntentJson: json(structured), adapterOutputJson: json(adapter), coverageEstimateJson: result.analysis?.candidateEstimate ? json(result.analysis.candidateEstimate) : undefined, providerConfigId: input.provider.id, overallConfidence: structured.overallConfidence, requiresReview: structured.requiresReview, revision: input.revision },
+        update: { schemaVersion: structured.schemaVersion, summary: structured.summary, status: structured.requiresReview ? "NEEDS_REVIEW" : "READY", interpretationSource: structured.interpretationSource, structuredIntentJson: json(structured), approvedIntentJson: undefined, adapterOutputJson: json(adapter), coverageEstimateJson: result.analysis?.candidateEstimate ? json(result.analysis.candidateEstimate) : undefined, providerConfigId: input.provider.id, overallConfidence: structured.overallConfidence, requiresReview: structured.requiresReview, revision: input.revision, approvedById: null, approvedAt: null },
+      });
+      await tx.intentAuditEvent.create({ data: { interpretationId: intentRow.id, actorId: input.userId, action: structured.interpretationSource === "AI_PROVIDER_FALLBACK_REJECTED" ? "FALLBACK_TO_LOCAL_INTERPRETATION" : "LOCAL_INTERPRETATION_COMPLETED", summaryJson: json({ revision: input.revision, confidence: structured.overallConfidence, categories: structured.categories.map((item) => item.name), phaseCount: structured.phases.length, conflictCount: structured.conflicts.length }) } });
+    }
     await audit(input.requestId, input.userId, input.revision, input.revisionText ? "REQUEST_REVISED" : "INTERPRETATION_COMPLETED", { status, validationValid: result.validation.valid, candidateEstimate: result.analysis?.candidateEstimate, previewGenerated: !!result.preview, previewError: result.previewError }, "SUCCESS", tx);
     return publicRequest(updated);
   });
@@ -222,6 +241,22 @@ export async function updateNaturalLanguageDraft(userId: string, requestId: stri
   await prisma.naturalLanguageRequest.update({ where: { id: requestId }, data: { status: "ANALYZING", approvalRevision: null, approvedAt: null, approvedById: null } });
   await audit(requestId, userId, nextRevision, row.approvedAt ? "APPROVAL_INVALIDATED" : "DRAFT_RECIPE_EDITED", { changedFields: compareRecipeDocuments(previous, recipe).map((item) => item.path) });
   return persistInterpretation({ requestId, userId, interpretation, recipe, revision: nextRevision, revisionText: "Recipe Studio edit", provider: { id: row.providerConfigId || undefined, name: row.providerDisplayName || undefined, model: row.model || undefined, privacyMode: row.privacyMode }, previousRecipe: previous });
+}
+
+export async function updateNaturalLanguageStructuredIntent(userId: string, requestId: string, raw: unknown) {
+  const row = await ownedRequest(userId, requestId);
+  await requireNaturalLanguagePermission(userId, "EDIT_REQUEST_INTERPRETATIONS", row.ownerId);
+  if (terminalStatuses.has(row.status) || row.status === "EXECUTING") throw requestError("REQUEST_NOT_EDITABLE", "This request can no longer be edited.", 409);
+  const structured = structuredIntentSchema.parse((raw as any)?.intent ?? raw);
+  const previous = mixRecipeDocumentSchema.parse(row.draftRecipeJson);
+  const currentInterpretation = naturalLanguageInterpretationSchema.parse(row.interpretationJson);
+  const adapter = adaptIntentToDeterministicInputs(structured);
+  const recipe = mergeRecipePatch(previous, adapter.recipePatch);
+  const resolvedConflictIds = new Set(structured.conflicts.filter((conflict) => conflict.resolution).map((conflict) => conflict.id));
+  const interpretation = naturalLanguageInterpretationSchema.parse({ ...currentInterpretation, summary: structured.summary, confidence: { ...currentInterpretation.confidence, overall: structured.overallConfidence, phaseBoundaries: structured.phaseBoundaryConfidence }, structuredIntent: structured, interpretationSource: structured.interpretationSource, recipePatch: adapter.recipePatch, warnings: adapter.explanation.warnings, ambiguities: currentInterpretation.ambiguities.map((ambiguity) => resolvedConflictIds.has(ambiguity.id) ? { ...ambiguity, resolution: { action: "custom", value: structured.conflicts.find((conflict) => conflict.id === ambiguity.id)?.resolution } } : ambiguity) });
+  const nextRevision = row.currentRevision + 1;
+  await prisma.naturalLanguageRequest.update({ where: { id: requestId }, data: { status: "ANALYZING", approvalRevision: null, approvedAt: null, approvedById: null } });
+  return persistInterpretation({ requestId, userId, interpretation, recipe, revision: nextRevision, revisionText: "Structured intent edit", provider: { id: row.providerConfigId || undefined, name: row.providerDisplayName || undefined, model: row.model || undefined, privacyMode: row.privacyMode }, previousRecipe: previous });
 }
 
 function applyAmbiguityValue(recipe: MixRecipeDocument, fields: string[], value: unknown) {
@@ -304,7 +339,15 @@ export async function approveNaturalLanguageRequest(userId: string, requestId: s
   if (unresolvedBlocking(interpretation).length || interpretation.unresolvedEntities.length) throw requestError("BLOCKING_AMBIGUITIES", "All blocking ambiguities and entities must be resolved.", 409);
   if (!validation.valid) throw requestError("INVALID_RECIPE", "The canonical recipe is invalid.", 422);
   assertTransition(row.status, "APPROVED");
-  const updated = await prisma.naturalLanguageRequest.update({ where: { id: requestId }, data: { status: "APPROVED", approvalRevision: row.currentRevision, approvedById: userId, approvedAt: new Date() } });
+  const approvedAt = new Date();
+  const updated = await prisma.$transaction(async (tx) => {
+    const request = await tx.naturalLanguageRequest.update({ where: { id: requestId }, data: { status: "APPROVED", approvalRevision: row.currentRevision, approvedById: userId, approvedAt } });
+    if (interpretation.structuredIntent) {
+      const intentRow = await tx.intentInterpretation.update({ where: { naturalLanguageId: requestId }, data: { status: "APPROVED", approvedIntentJson: json(interpretation.structuredIntent), approvedById: userId, approvedAt, requiresReview: false } });
+      await tx.intentAuditEvent.create({ data: { interpretationId: intentRow.id, actorId: userId, action: "INTERPRETATION_APPROVED", summaryJson: json({ revision: row.currentRevision }) } });
+    }
+    return request;
+  });
   await audit(requestId, userId, row.currentRevision, "APPROVAL_GRANTED", { revision: row.currentRevision });
   return publicRequest(updated);
 }

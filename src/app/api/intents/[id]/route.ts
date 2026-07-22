@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server"; import { intentApiError, intentUserId } from "@/lib/intentIntelligence/api"; import { deleteIntent, getIntent, updateIntent } from "@/lib/intentIntelligence/service";
+export async function GET(_request: Request, { params }: { params: { id: string } }) { try { return NextResponse.json({ intent: await getIntent(intentUserId(), params.id) }); } catch (caught) { return intentApiError(caught); } }
+export async function PUT(request: Request, { params }: { params: { id: string } }) { try { return NextResponse.json({ intent: await updateIntent(intentUserId(), params.id, await request.json()) }); } catch (caught) { return intentApiError(caught); } }
+export async function DELETE(_request: Request, { params }: { params: { id: string } }) { try { return NextResponse.json(await deleteIntent(intentUserId(), params.id)); } catch (caught) { return intentApiError(caught); } }

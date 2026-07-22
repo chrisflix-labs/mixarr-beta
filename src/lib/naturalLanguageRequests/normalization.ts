@@ -11,7 +11,8 @@ export function mergeRecipePatch(base: MixRecipeDocument, patch: NaturalLanguage
 }
 
 export function interpretationRequiresClarification(interpretation: NaturalLanguageInterpretation) {
-  return interpretation.ambiguities.some((item) => item.requiresConfirmation && !item.resolution)
+  return Boolean(interpretation.structuredIntent?.requiresReview)
+    || interpretation.ambiguities.some((item) => item.requiresConfirmation && !item.resolution)
     || interpretation.assumptions.some((item) => item.blocking && !item.accepted)
     || interpretation.unresolvedEntities.length > 0
     || interpretation.unsupportedRequests.length > 0;

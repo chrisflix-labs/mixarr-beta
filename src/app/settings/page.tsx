@@ -16,6 +16,7 @@ import PlaylistIdentitySettings from "@/components/PlaylistIdentitySettings";
 import ContextualMixSettings from "@/components/ContextualMixSettings";
 import SmartMixExplanationSettings from "@/components/SmartMixExplanationSettings";
 import OrchestrationSettings from "@/components/OrchestrationSettings";
+import IntentInterpretationSettings from "@/components/IntentInterpretationSettings";
 import PlaylistChainSettings from "@/components/PlaylistChainSettings";
 import SmartExperimentSettings from "@/components/SmartExperimentSettings";
 import SmartActionSettings from "@/components/SmartActionSettings";
@@ -73,6 +74,12 @@ export default async function SettingsPage() {
         </span>
         <span aria-hidden="true">&rarr;</span>
       </Link>
+
+      <section className={`glass-panel ${styles.section}`} aria-labelledby="intent-interpretation-settings">
+        <h3 id="intent-interpretation-settings" className={styles.sectionTitle}><Brain size={20} color="var(--accent)"/> Intelligence · Intent Interpretation</h3>
+        <p className={styles.sectionDesc}>Configure local-first mood, activity, phase, preference, energy, and BPM interpretation. Optional provider assistance reuses the existing governed provider configuration.</p>
+        <IntentInterpretationSettings/>
+      </section>
 
       <Link href="/library-coverage?tab=settings" className={`glass-panel ${styles.healthLink}`}>
         <BarChart3 size={24} />

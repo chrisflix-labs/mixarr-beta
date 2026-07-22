@@ -79,6 +79,21 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.5",
+    title: "Mood, Activity and Intent Intelligence",
+    releaseDate: "July 21, 2026",
+    badges: ["Mood", "Energy", "BPM", "Privacy", "Recipes", "Playlists", "Accessibility", "Mobile", "Security"],
+    changes: [
+      "Added local-first natural-language mood, activity, time-of-day, positive/negative preference, and hard-versus-soft requirement interpretation with confidence and conflict detection.",
+      "Added editable multi-stage phases, emotional progression, and normalized energy and BPM curves with deterministic tolerance-aware ordering and transition scoring.",
+      "Added personal and household terminology plus saved intent presets; private phrases are resolved locally and their definitions and aliases are never sent to remote providers.",
+      "Added strict intent schemas, authenticated CRUD APIs, library coverage estimates, user settings, additive persistence and audits, accessible curve summaries, and mobile phase editing.",
+      "Optional provider enhancement reuses existing governance, privacy, permission, budget, token, timeout, validation, cost, and fallback controls.",
+      "Interpretation is an adapter layer only: Mixarr's existing deterministic metadata, filtering, safety, scoring, duplicate handling, compatibility, and final track selection remain authoritative.",
+      "Upgrade: apply migration 20260723010000_mood_activity_intent_intelligence_v245. Existing requests, recipes, playlists, providers, and user data are preserved.",
+    ],
+  },
+  {
     version: "2.4.4",
     title: "AI-Assisted Recipe Creation",
     releaseDate: "July 21, 2026",

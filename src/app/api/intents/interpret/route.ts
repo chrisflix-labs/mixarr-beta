@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { intentApiError, intentUserId } from "@/lib/intentIntelligence/api"; import { interpretAndStoreIntent } from "@/lib/intentIntelligence/service";
+export async function POST(request: Request) { try { return NextResponse.json(await interpretAndStoreIntent(intentUserId(), await request.json()), { status: 201 }); } catch (caught) { return intentApiError(caught); } }

@@ -15,6 +15,7 @@ import { canonicalTrackKey } from "../../playlistCoordination/overlap";
 import { scoreCrossPlaylistCandidate } from "../../playlistCoordination/scoring";
 import { PLAYLIST_GENERATION_LIMITS } from "../../playlistGenerationLimits";
 import type { PlaylistGenerationControl } from "../../playlistGenerationControl";
+import { orderTracksByIntentCurves } from "../../intentIntelligence/ordering";
 
 export * from "./metadataFallbacks";
 export * from "./bpmFlow";
@@ -387,7 +388,8 @@ export function runSmartMixEngineV2<TTrack extends Record<string, any>>({
     tuningConfig: tuning,
     baseScore: (track) => track.score,
   });
-  const selectedCandidates = applyDuplicatePolicy(bpmOrderedCandidates, config, targetCandidateCount);
+  const intentOrderedCandidates = orderTracksByIntentCurves(bpmOrderedCandidates, config.intentOrdering as any);
+  const selectedCandidates = applyDuplicatePolicy(intentOrderedCandidates, config, targetCandidateCount);
   const safety = applyPlaylistSafetyRules(scoredPinnedTracks.concat(selectedCandidates), config);
   const bpmFlow = summarizeBpmFlow(safety.tracks, tuning.bpmFlow);
   const tracks = attachBpmTransitionMetadata(safety.tracks.map(removeInternalSortIndex), bpmFlow);
@@ -533,7 +535,8 @@ export async function runSmartMixEngineV2Async<TTrack extends Record<string, any
   const tunedSelection = await selectTunedCandidatesAsync(duplicateCandidates, config, targetCandidateCount, control);
   await control.setStage("optimizing", "Optimizing BPM and mood flow", { eligibleCandidates: duplicateCandidates.length, selectedTracks: tunedSelection.tracks.length, optimizationPasses: 0 });
   const bpmOrderedCandidates = await orderTracksByBpmFlowAsync({ tracks: tunedSelection.tracks, tuningConfig: tuning, baseScore: (track) => track.score, control });
-  const selectedCandidates = applyDuplicatePolicy(bpmOrderedCandidates, config, targetCandidateCount);
+  const intentOrderedCandidates = orderTracksByIntentCurves(bpmOrderedCandidates, config.intentOrdering as any);
+  const selectedCandidates = applyDuplicatePolicy(intentOrderedCandidates, config, targetCandidateCount);
   const safety = applyPlaylistSafetyRules(scoredPinnedTracks.concat(selectedCandidates), config);
   const bpmFlow = summarizeBpmFlow(safety.tracks, tuning.bpmFlow);
   const tracks = attachBpmTransitionMetadata(safety.tracks.map(removeInternalSortIndex), bpmFlow);
