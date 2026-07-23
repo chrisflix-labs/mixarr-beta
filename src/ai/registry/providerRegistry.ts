@@ -35,7 +35,7 @@ const compatible = (type: AiProviderType, displayName: string, description: stri
 };
 
 const ollama = new OllamaAdapter();
-registry.register(ollama, { type: "ollama", displayName: "Ollama", description: "Local or remote Ollama server.", available: true, defaultBaseUrl: "http://localhost:11434", defaultAuthenticationType: "NONE", defaultLocation: "LOCAL", knownCapabilities: { chat_messages: "CONFIRMED", streaming: "CONFIRMED", structured_json: "REPORTED", model_discovery: "CONFIRMED", local_operation: "ASSUMED", remote_operation: "CONFIRMED" } });
+registry.register(ollama, { type: "ollama", displayName: "Ollama", description: "Local or remote Ollama server.", available: true, defaultBaseUrl: "http://ollama:11434", defaultAuthenticationType: "NONE", defaultLocation: "LOCAL", knownCapabilities: { chat_messages: "CONFIRMED", streaming: "CONFIRMED", structured_json: "REPORTED", model_discovery: "CONFIRMED", local_operation: "ASSUMED", remote_operation: "CONFIRMED" } });
 compatible("litellm", "LiteLLM", "LiteLLM OpenAI-compatible proxy.", "http://localhost:4000/v1", "BEARER", "UNKNOWN");
 compatible("lm_studio", "LM Studio", "Local or remote LM Studio server.", "http://localhost:1234/v1", "NONE", "LOCAL");
 compatible("deepseek", "DeepSeek", "DeepSeek chat and reasoning models.", "https://api.deepseek.com", "BEARER", "REMOTE");

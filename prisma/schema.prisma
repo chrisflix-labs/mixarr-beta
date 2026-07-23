@@ -159,6 +159,9 @@ model User {
   aiAdvisorySetting              AiAdvisorySetting?
   troubleshootingSessions        TroubleshootingSession[]
   troubleshootingSetting         TroubleshootingSetting?
+  aiOnboardingProgress           AiOnboardingProgress?
+  aiRequestTemplates             AiRequestTemplate[]               @relation("AiRequestTemplateOwner")
+  aiQualityFeedback              AiQualityFeedback[]               @relation("AiQualityFeedbackAuthor")
 }
 
 model SyncSettings {
@@ -6402,6 +6405,74 @@ model AiSecureDebugPayload {
 
   @@index([requestId])
   @@index([expiresAt])
+}
+
+// v2.4.10 keeps setup resumable without enabling AI or contacting a provider.
+// Activation is a separate, validated administrative transaction.
+model AiOnboardingProgress {
+  id                      String    @id @default(uuid())
+  userId                  String    @unique
+  currentStep             Int       @default(1)
+  completedStepsJson      Json      @default("[]")
+  configurationJson       Json      @default("{}")
+  privacyAcceptedAt       DateTime?
+  privacyPolicyVersion    String?
+  externalCostAcceptedAt  DateTime?
+  testRequestId           String?
+  reviewedRecipeRequestId String?
+  status                  String    @default("IN_PROGRESS")
+  activatedAt             DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, updatedAt])
+}
+
+model AiRequestTemplate {
+  id                String    @id @default(uuid())
+  ownerId           String
+  householdId       String?
+  name              String
+  description       String?
+  requestText       String
+  variablesJson     Json      @default("[]")
+  defaultFeature    String    @default("natural_language_playlist_requests")
+  defaultProviderId String?
+  defaultModel      String?
+  visibility        String    @default("PRIVATE")
+  usageCount        Int       @default(0)
+  lastUsedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  owner             User      @relation("AiRequestTemplateOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, updatedAt])
+  @@index([householdId, visibility, updatedAt])
+  @@index([visibility, updatedAt])
+}
+
+model AiQualityFeedback {
+  id               String   @id @default(uuid())
+  authorId         String
+  requestId        String
+  resultId         String?
+  featureKey       String
+  providerConfigId String?
+  providerName     String?
+  model            String?
+  recipeVersion    Int?
+  rating           String
+  reason           String?
+  comment          String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  author           User     @relation("AiQualityFeedbackAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([authorId, requestId, resultId])
+  @@index([requestId, createdAt])
+  @@index([providerConfigId, model, createdAt])
+  @@index([featureKey, rating, createdAt])
 }
 
 // v2.4.6 playlist analysis is deterministic and privacy-scoped before any AI

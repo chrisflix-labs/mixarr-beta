@@ -46,6 +46,7 @@ const activityLinks = [
 ];
 
 const aiLinks = [
+  { href: "/ai", label: "AI Intelligence", icon: Brain, isActive: (pathname: string) => pathname === "/ai" },
   { href: "/ai/playlist-summaries", label: "Playlist Summaries", icon: Sparkles, isActive: (pathname: string) => pathname.startsWith("/ai/playlist-summaries") },
   { href: "/ai/metadata-suggestions", label: "Metadata Suggestions", icon: Tags, isActive: (pathname: string) => pathname.startsWith("/ai/metadata-suggestions") },
   { href: "/settings/ai/metadata-ignore-rules", label: "AI Advisory Settings", icon: ShieldCheck, isActive: (pathname: string) => pathname.startsWith("/settings/ai/metadata-ignore-rules") },
@@ -237,6 +238,7 @@ export default function Sidebar({ user, appVersion }: { user: any; appVersion: s
             <div className={styles.mobileMenuSections}>
               <MobileMenuSection title="Playlist Tools" links={playlistLinks.slice(3)} pathname={pathname} />
               <MobileMenuSection title="Library" links={libraryLinks.map((link) => link.href === "/library" ? { ...link, label: "Library" } : link)} pathname={pathname} />
+              <MobileMenuSection title="AI" links={aiLinks} pathname={pathname} />
               <MobileMenuSection title="Activity" links={activityLinks} pathname={pathname} />
               <MobileMenuSection title="App" links={[{ href: "/settings", label: "Settings", icon: Settings, isActive: (currentPath: string) => currentPath.startsWith("/settings") }]} pathname={pathname} />
             </div>

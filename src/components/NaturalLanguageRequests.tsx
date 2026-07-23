@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Check, CheckCircle2, Clock3, Copy, Eye, FilePenLine, Loader2, Play, Plus, RefreshCw, Save, Send, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
 import styles from "./NaturalLanguageRequests.module.css";
 
@@ -13,7 +13,8 @@ function fmt(value: unknown) { return typeof value === "object" ? JSON.stringify
 
 export function NaturalLanguageRequestHome() {
   const router = useRouter();
-  const [text, setText] = useState(""); const [privacyMode, setPrivacyMode] = useState("LOCAL_ONLY"); const [retain, setRetain] = useState(true);
+  const searchParams = useSearchParams();
+  const [text, setText] = useState(() => String(searchParams.get("request") || "").slice(0, 10000)); const [privacyMode, setPrivacyMode] = useState("LOCAL_ONLY"); const [retain, setRetain] = useState(true);
   const [preflight, setPreflight] = useState<any>(null); const [requests, setRequests] = useState<any[]>([]); const [busy, setBusy] = useState(""); const [error, setError] = useState("");
   useEffect(() => { api("/api/natural-language-requests").then((value) => setRequests(value.requests || [])).catch(() => undefined); }, []);
   async function preview() { setBusy("preview"); setError(""); try { setPreflight(await api("/api/natural-language-requests/preflight", { method: "POST", body: JSON.stringify({ request: text, privacyMode, retainOriginalRequest: retain }) })); } catch (caught) { setError(caught instanceof Error ? caught.message : "Preflight failed."); } finally { setBusy(""); } }

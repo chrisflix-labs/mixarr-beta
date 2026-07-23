@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.10 - AI-Assisted Mix Intelligence Polish
+
+- Added the primary `/ai` intelligence center with real provider, model, privacy, request, token, cost, budget, queue, approval, warning, feature, success, and failure state.
+- Added resumable ten-step administrator onboarding with separate activation, local-only completion, provider/model health validation, privacy payload previews, backend cost limits, optional features, a safe provider test gate, generated-recipe review, and final approval summary.
+- Added permission-scoped natural-language request history, reusable validated request templates, household-aware sharing, variable previews, and private thumbs feedback that is never forwarded to providers.
+- Added provider comparison and guidance links, clearer Ollama Docker networking defaults, mobile AI navigation, responsive cards, keyboard focus states, semantic status announcements, and screen-reader labels.
+- Reused v2.4.x governance, provider registry, request coordinator, queue, audit, recipe revision, metadata review, explanations, troubleshooting, authorization, sanitization, cost reservation, and validation systems rather than introducing parallel AI infrastructure.
+- Added additive migration `20260728010000_ai_intelligence_polish_v2410`, release documentation, roadmap and release-note updates, and v2.4.10 integration tests. AI, external providers, paid fallback, metadata writes, and features remain disabled until explicitly reviewed and activated.
+
 ## v2.4.9 - AI Governance, Security and Reliability
 
 - Added deny-by-default granular AI permissions, explicit provider/model approvals, per-feature and per-privacy-mode allowlists, model capability declarations, and external-provider/data-category controls.

@@ -79,6 +79,20 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.10",
+    title: "AI-Assisted Mix Intelligence Polish",
+    releaseDate: "July 22, 2026",
+    badges: ["AI", "Dashboard", "Privacy", "Security", "History", "Feedback", "Accessibility", "Mobile", "Reliability", "Settings"],
+    changes: [
+      "Added one AI Intelligence center for provider, model, privacy, request, cost, token, budget, queue, approval, warning, feature, and recent outcome state backed by persisted Mixarr data.",
+      "Added resumable guided setup with local-only and external modes, provider/model health gates, payload previews, cost and request limits, optional features, provider testing, generated-recipe review, and a separate final activation action.",
+      "Added permission-scoped request history, saved variable templates with household-aware access, private quality feedback, and direct navigation to recipes, suggestions, explanations, audit, controls, and deterministic-first troubleshooting.",
+      "Improved Ollama Docker endpoint defaults and guidance, primary and mobile navigation, responsive layouts, focus visibility, semantic controls, live announcements, and status labels that do not rely on color.",
+      "AI remains optional. External processing, paid fallback, provider/model/features, and metadata sharing require explicit backend-validated configuration; AI output cannot approve, apply, or execute itself.",
+      "Upgrade: apply migration 20260728010000_ai_intelligence_polish_v2410. It adds inert onboarding, template, and feedback records and does not enable AI or change provider secrets.",
+    ],
+  },
+  {
     version: "2.4.9",
     title: "AI Governance, Security and Reliability",
     releaseDate: "July 22, 2026",
