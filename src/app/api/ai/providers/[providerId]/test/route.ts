@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { aiRouteError, requireAiAdmin } from "@/ai/services/api";
+import { aiRouteError, requireAiPermission } from "@/ai/services/api";
 import { testAiProviderConnection } from "@/ai/health/service";
 import { previewAiRequest } from "@/ai/governance/service";
 import { resolveAiProvider } from "@/ai/services/providerService";
@@ -18,7 +18,7 @@ function testError(error: unknown) {
 
 export async function GET(request: Request, { params }: { params: { providerId: string } }) {
   try {
-    const userId = await requireAiAdmin();
+    const userId = await requireAiPermission("ai.provider.manage");
     const provider = await resolveAiProvider(params.providerId);
     const requestedModel = new URL(request.url).searchParams.get("model")?.trim();
     const model = requestedModel || provider.defaultModel || "__connection_test__";
@@ -28,6 +28,6 @@ export async function GET(request: Request, { params }: { params: { providerId: 
 }
 
 export async function POST(request: Request, { params }: { params: { providerId: string } }) {
-  try { const userId = await requireAiAdmin(); const body = await request.json().catch(() => ({})); const model = typeof body?.model === "string" && body.model.trim() ? body.model.trim() : undefined; return NextResponse.json(await testAiProviderConnection(params.providerId, request.signal, userId, false, model)); }
+  try { const userId = await requireAiPermission("ai.provider.manage"); const body = await request.json().catch(() => ({})); const model = typeof body?.model === "string" && body.model.trim() ? body.model.trim() : undefined; return NextResponse.json(await testAiProviderConnection(params.providerId, request.signal, userId, false, model)); }
   catch (error) { return testError(error); }
 }

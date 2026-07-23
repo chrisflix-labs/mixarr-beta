@@ -4,6 +4,7 @@ import { z } from "zod";
 import prisma from "../prisma";
 import { APP_VERSION_NUMBER } from "../appVersion";
 import { isUserAdmin } from "../auth";
+import { requireAiPermission } from "../../ai/governance/permissions";
 import { aiRequestCoordinator } from "@/ai/request-coordinator";
 import { previewAiRequest } from "@/ai/governance/service";
 import { resolveAiProvider } from "@/ai/services/providerService";
@@ -51,6 +52,7 @@ async function assertHouseholdAccess(userId: string, householdId?: string | null
 }
 
 async function ownedSession(userId: string, sessionId: string, details = false) {
+  await requireAiPermission(userId, "ai.troubleshoot");
   const row = await prisma.troubleshootingSession.findFirst({ where: { id: sessionId, userId, deletedAt: null }, include: details ? { findings: { orderBy: [{ severity: "desc" }, { createdAt: "asc" }] }, suggestions: { orderBy: { createdAt: "asc" } }, auditEvents: { orderBy: { createdAt: "desc" }, take: 100 } } : undefined });
   if (!row) throw fail("SESSION_NOT_FOUND", "Troubleshooting session not found or outside your permitted scope.", 404);
   return row as any;
@@ -70,11 +72,13 @@ async function assertResourceAccess(userId: string, type?: string | null, id?: s
 }
 
 export async function getTroubleshootingSettings(userId: string) {
+  await requireAiPermission(userId, "ai.troubleshoot");
   const row = await settingFor(userId);
   return { ...row, defaultPrivacyCategories: row.defaultPrivacyCategoriesJson, categories: CATEGORY_DETAILS };
 }
 
 export async function updateTroubleshootingSettings(userId: string, raw: unknown) {
+  await requireAiPermission(userId, "ai.troubleshoot");
   const current = await settingFor(userId);
   const schema = createSessionSchema.pick({ deterministicOnly: true, privacyCategories: true }).partial().extend({
     enabled: createSessionSchema.shape.deterministicOnly.optional(), aiAssistedEnabled: createSessionSchema.shape.deterministicOnly.optional(),
@@ -91,6 +95,7 @@ export async function updateTroubleshootingSettings(userId: string, raw: unknown
 }
 
 export async function createTroubleshootingSession(userId: string, raw: unknown) {
+  await requireAiPermission(userId, "ai.troubleshoot");
   const input = createSessionSchema.parse(raw); const setting = await settingFor(userId);
   if (!setting.enabled) throw fail("TROUBLESHOOTING_DISABLED", "Troubleshooting is disabled in settings.", 403);
   await assertHouseholdAccess(userId, input.householdId); await assertResourceAccess(userId, input.relatedResourceType, input.relatedResourceId);
@@ -120,6 +125,7 @@ export async function updateTroubleshootingSession(userId: string, sessionId: st
 }
 
 export async function listTroubleshootingSessions(userId: string, options: { page?: number; pageSize?: number } = {}) {
+  await requireAiPermission(userId, "ai.troubleshoot");
   const page = Math.max(1, options.page || 1), pageSize = Math.min(50, Math.max(1, options.pageSize || 20));
   const where = { userId, deletedAt: null }; const [sessions, total] = await Promise.all([prisma.troubleshootingSession.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize, include: { _count: { select: { findings: true, suggestions: true } } } }), prisma.troubleshootingSession.count({ where })]);
   return { sessions, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } };
@@ -218,12 +224,12 @@ export async function previewTroubleshootingAiRequest(userId: string, sessionId:
   const preview = await previewAiRequest({ request, provider, model, userId }); return { provider: { id: provider.id, name: provider.displayName, location: provider.locationClassification }, model, privacyMode: preview.privacyMode, estimatedInputTokens: preview.limits.estimatedInputTokens, maximumOutputTokens: preview.limits.maxOutputTokens, estimatedCost: preview.cost.expectedEstimatedCost, maximumEstimatedCost: preview.cost.maximumEstimatedCost, currency: preview.cost.currency, approvedCategories: session.privacySelectionsJson, trackLevelIncluded: (session.privacySelectionsJson as string[]).includes("TRACK_METADATA"), omittedByPolicy: preview.privacyReport, localOnly: preview.privacyMode === "LOCAL_ONLY", submitted: false };
 }
 
-export async function explainTroubleshootingSession(userId: string, sessionId: string) {
+export async function explainTroubleshootingSession(userId: string, sessionId: string, externalConfirmation = false) {
   const session = await ownedSession(userId, sessionId, true), setting = await settingFor(userId); if (session.status !== "READY_FOR_ANALYSIS") throw fail("DETERMINISTIC_DIAGNOSTICS_REQUIRED", "Complete deterministic diagnostics before requesting an AI explanation.", 409); if (session.deterministicOnly || !setting.aiAssistedEnabled) throw fail("AI_TROUBLESHOOTING_DISABLED", "AI troubleshooting is disabled. Deterministic findings remain available.", 409);
   const today = new Date(); today.setHours(0, 0, 0, 0); const used = await prisma.troubleshootingSession.count({ where: { userId, createdAt: { gte: today }, aiRequestStatus: { in: ["REQUESTING", "COMPLETED", "FAILED"] } } }); if (used >= setting.maximumAiRequestsPerDay) throw fail("AI_DAILY_LIMIT_REACHED", "The troubleshooting AI request limit has been reached. Deterministic findings remain available.", 429);
   await prisma.troubleshootingSession.update({ where: { id: sessionId }, data: { status: "REQUESTING_AI", aiRequestStatus: "REQUESTING", progressJson: json({ stage: "WAITING_FOR_AI_PROVIDER", percent: 88 }) } }); await audit(sessionId, userId, "AI_EXPLANATION_REQUESTED", "AI explanation requested after deterministic diagnostics.", { categories: session.privacySelectionsJson });
   try {
-    const context = minimalAiContext(session); const response = await aiRequestCoordinator.complete<AiTroubleshootingResponse>({ featureKey: TROUBLESHOOTING_FEATURE_KEY, systemInstructions: "Explain only the deterministic findings provided. Do not invent facts, metrics, resources, settings, or confidence percentages. Every cause and action must cite provided finding IDs. Use only allowlisted action types. Never recommend automatic destructive actions. State that no settings have been changed.", messages: [{ role: "user", content: JSON.stringify(context) }], responseFormat: { type: "json", name: "mixarr_troubleshooting_explanation_v1", schema: aiTroubleshootingResponseSchema, unknownFields: "reject" }, maxOutputTokens: 2000, maxResponseBytes: 128_000, timeoutMs: 120_000, requestSource: "FOREGROUND", metadata: { workflow: "troubleshooting_explanation", sessionId, findingCount: session.findings.length }, contextTrimmingStrategy: "REMOVE_LOWEST_PRIORITY", allowFallback: true }, userId);
+    const context = minimalAiContext(session); const response = await aiRequestCoordinator.complete<AiTroubleshootingResponse>({ featureKey: TROUBLESHOOTING_FEATURE_KEY, systemInstructions: "Explain only the deterministic findings provided. Do not invent facts, metrics, resources, settings, or confidence percentages. Every cause and action must cite provided finding IDs. Use only allowlisted action types. Never recommend automatic destructive actions. State that no settings have been changed.", messages: [{ role: "user", content: JSON.stringify(context) }], responseFormat: { type: "json", name: "mixarr_troubleshooting_explanation_v1", schema: aiTroubleshootingResponseSchema, unknownFields: "reject" }, maxOutputTokens: 2000, maxResponseBytes: 128_000, timeoutMs: 120_000, requestSource: "FOREGROUND", metadata: { workflow: "troubleshooting_explanation", sessionId, findingCount: session.findings.length }, contextTrimmingStrategy: "REMOVE_LOWEST_PRIORITY", allowFallback: true, externalConfirmation, promptTemplateVersion: "troubleshooting-explanation-1.0" }, userId);
     const explanation = response.data!; validateAiReferences(explanation, session.findings); const sanitized = new DiagnosticSanitizer().sanitize(explanation); if (containsLikelySecret(sanitized)) throw fail("AI_RESPONSE_SANITIZATION_FAILED", "The AI response failed the final privacy scan and was not displayed.", 502);
     await persistAiSuggestions(session, sanitized);
     await prisma.troubleshootingSession.update({ where: { id: sessionId }, data: { status: "COMPLETE", aiRequestStatus: "COMPLETED", aiProviderId: response.providerId, aiProviderName: response.providerType, aiModel: response.model, aiUsageJson: response.usage ? json(response.usage) : undefined, aiCost: response.actualCost ?? response.estimatedCost, aiExplanationJson: json(sanitized), summary: sanitized.summary, completedAt: new Date(), progressJson: json({ stage: "COMPLETE", percent: 100 }) } }); await audit(sessionId, userId, "AI_EXPLANATION_COMPLETED", "AI explanation validated and stored.", { provider: response.providerType, model: response.model, usage: response.usage, cost: response.actualCost ?? response.estimatedCost, responseValidation: "PASSED" }); return ownedSession(userId, sessionId, true);

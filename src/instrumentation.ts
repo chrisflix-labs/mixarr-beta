@@ -76,6 +76,15 @@ export async function register() {
     } catch (error) {
       console.warn("[AI Health] Optional scheduler startup skipped", sanitizeErrorText(error));
     }
+
+    try {
+      const { registerDefaultAiJobHandlers } = await import("./ai/queue/handlers");
+      const { initializeAiQueueWorker } = await import("./ai/queue/worker");
+      registerDefaultAiJobHandlers();
+      await initializeAiQueueWorker();
+    } catch (error) {
+      console.warn("[AI Queue] Optional worker startup skipped", sanitizeErrorText(error));
+    }
   }
 
   try {

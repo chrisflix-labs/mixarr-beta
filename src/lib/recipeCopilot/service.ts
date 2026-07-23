@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "../prisma";
 import { isUserAdmin } from "../auth";
+import { requireAiPermission } from "../../ai/governance/permissions";
 import { analyzeRecipeDraft } from "../recipeStudioService";
 import { defaultRecipeStudioDraft } from "../recipeStudio";
 import { parsePlaylistRecipe, playlistRecipeSchema, updatePlaylistRecipeData } from "../playlistRecipes";
@@ -40,7 +41,10 @@ export async function requireRecipeAiPermission(userId: string, permission: Reci
   if (!userId) throw failure("UNAUTHORIZED", "Authentication is required.", 401);
   const admin = await isUserAdmin(userId);
   if (ownerId && ownerId !== userId && !admin) throw failure("PERMISSION_DENIED", "This AI recipe artifact is not accessible to the current user.", 403);
-  if (adminPermissions.has(permission) && !admin) throw failure("PERMISSION_DENIED", "Administrator permission is required for this AI recipe action.", 403);
+  const granular = permission === "recipe.ai.review" || permission === "recipe.ai.approve" || permission === "recipe.ai.quarantine" ? "ai.recipe.review" : permission === "recipe.ai.configure" ? "ai.provider.manage" : permission === "recipe.ai.create" || permission === "recipe.ai.refine" || permission === "recipe.ai.optimize" ? "ai.recipe.create" : "ai.use";
+  await requireAiPermission(userId, "ai.use");
+  if (!admin) await requireAiPermission(userId, granular);
+  if (adminPermissions.has(permission) && !admin && granular === "ai.provider.manage") throw failure("PERMISSION_DENIED", "Administrator permission is required for this AI recipe action.", 403);
   return { userId, admin };
 }
 
@@ -157,6 +161,8 @@ export async function runRecipeCopilot(userId: string, recipeId: string | null, 
       privacyMode: availability.privacyMode as any, maxOutputTokens: 4000, maxResponseBytes: 512_000,
       temperature: 0.1, requestSource: "FOREGROUND", allowFallback: false, requiredCapabilities: ["structured_json"],
       contextTrimmingStrategy: "REMOVE_LOWEST_PRIORITY", signal,
+      externalConfirmation: input.externalConfirmation, idempotencyKey: input.idempotencyKey,
+      promptTemplateVersion: RECIPE_COPILOT_PROMPT_VERSION,
       metadata: { workflow: "recipe_copilot", action: input.action, advisory_only: true, automatic_activation: false },
     }, userId);
     const output = recipeCopilotResponseSchema.parse(response.data);
@@ -277,6 +283,7 @@ export async function changeRecipeCopilotProposalStatus(userId: string, proposal
           : { aiRecipeStatus: "QUARANTINED", approvalState: "QUARANTINED", quarantineState: "QUARANTINED", quarantineReason: String(raw.reason || "AI recipe proposal quarantined.").slice(0, 1000), enabled: false },
     });
     await auditAiRecipe({ requestId: proposal.requestId, proposalId: proposal.id, recipeId: proposal.recipeId, actorId: userId, eventType: operation === "approve" ? "RECIPE_APPROVED" : operation === "reject" ? "SUGGESTED_MODIFICATION_REJECTED" : "RECIPE_QUARANTINED", action: proposal.request.action, provider: proposal.request.providerDisplayName, model: proposal.request.model, privacyMode: proposal.request.privacyMode, remote: proposal.request.remote, statusBefore: proposal.status, statusAfter: target, reason: raw.reason || null }, tx);
+    await tx.aiApprovalEvent.create({ data: { requestId: proposal.requestId, artifactType: "AI_RECIPE_PROPOSAL", artifactId: proposal.id, reviewerId: userId, decision: target, reviewNotes: String(raw.reason || raw.confirmation || "").slice(0, 2000) || null, artifactHash: recipeFingerprint(proposal.proposedConfigurationJson || proposal.originalProposalJson), validationState: String((proposal.validationJson as any)?.recipe?.valid === false ? "FAILED" : "PASSED"), safetyState: proposal.status === "QUARANTINED" || target === "QUARANTINED" ? "BLOCKED" : "REVIEWED", diffJson: json(proposal.changesJson || []), executionMode: operation === "approve" ? "HUMAN_REVIEW" : "HUMAN_DECISION" } });
     return result;
   });
   if (proposal.recipeId) await writeRecipeAudit({ recipeId: proposal.recipeId, recipeVersion: proposal.recipe?.recipeVersion, eventType: `AI_RECIPE_${target}`, actorId: userId, correlationId: proposal.requestId, description: `AI recipe proposal ${target.toLowerCase()}. The recipe remains inactive.`, previousState: { aiRecipeStatus: proposal.status }, newState: { aiRecipeStatus: target, enabled: false }, metadata: { reason: raw.reason || null, automaticActivation: false } });

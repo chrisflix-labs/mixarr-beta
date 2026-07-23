@@ -6,7 +6,7 @@ import { resolveAiProvider } from "@/ai/services/providerService";
 import { PLAYLIST_SUMMARY_SYSTEM_PROMPT, playlistSummaryPrompt } from "@/ai/playlistSummaries/prompts";
 import { METADATA_SUGGESTION_SYSTEM_PROMPT, metadataSuggestionPrompt } from "@/ai/metadataSuggestions/prompts";
 import {
-  METADATA_SUGGESTION_FEATURE_KEY, PLAYLIST_SUMMARY_FEATURE_KEY, PLAYLIST_SUMMARY_PROMPT_VERSION,
+  METADATA_SUGGESTION_FEATURE_KEY, METADATA_SUGGESTION_PROMPT_VERSION, PLAYLIST_SUMMARY_FEATURE_KEY, PLAYLIST_SUMMARY_PROMPT_VERSION,
   SUMMARY_TYPES, advisorySettingsSchema, aiMetadataCandidateResponseSchema, bulkReviewRequestSchema,
   createIgnoreRuleSchema, exportRequestSchema, generateSummaryRequestSchema, metadataScanRequestSchema,
   reviewRequestSchema, summaryProviderResponseSchema, updateIgnoreRuleSchema, updateSummarySchema,
@@ -106,7 +106,8 @@ async function aiSelection(featureKey: string, options: { providerId?: string; m
   const model = options.model || feature.preferredModel || provider.defaultModel;
   if (!model) throw fail("MODEL_NOT_CONFIGURED", "No AI model is configured for this feature.", 409);
   const privacyMode = options.privacyMode || governance?.privacyMode || "METADATA_LIMITED";
-  const aiRequest = { featureKey, providerId, model, systemInstructions: request.systemInstructions, messages: [{ role: "user" as const, content: request.message }], responseFormat: { type: "json" as const, name: featureKey, schema: request.responseSchema, unknownFields: "reject" as const }, privacyMode: privacyMode as any, maxOutputTokens: request.maxOutputTokens, maxResponseBytes: 512_000, temperature: 0.1, requestSource: "FOREGROUND" as const, allowFallback: false, requiredCapabilities: ["structured_json" as const], contextTrimmingStrategy: "REMOVE_LOWEST_PRIORITY" as const, metadataRecords: request.metadataRecords };
+  const promptTemplateVersion = featureKey === PLAYLIST_SUMMARY_FEATURE_KEY ? PLAYLIST_SUMMARY_PROMPT_VERSION : METADATA_SUGGESTION_PROMPT_VERSION;
+  const aiRequest = { featureKey, providerId, model, systemInstructions: request.systemInstructions, messages: [{ role: "user" as const, content: request.message }], responseFormat: { type: "json" as const, name: featureKey, schema: request.responseSchema, unknownFields: "reject" as const }, privacyMode: privacyMode as any, maxOutputTokens: request.maxOutputTokens, maxResponseBytes: 512_000, temperature: 0.1, requestSource: "FOREGROUND" as const, allowFallback: false, requiredCapabilities: ["structured_json" as const], contextTrimmingStrategy: "REMOVE_LOWEST_PRIORITY" as const, metadataRecords: request.metadataRecords, promptTemplateVersion };
   const preview = await previewAiRequest({ request: aiRequest, provider, model, userId });
   return { provider, providerId, model, privacyMode, preview, aiRequest };
 }
@@ -135,7 +136,7 @@ export async function generatePlaylistSummaries(userId: string, playlistId: stri
   const selection = await aiSelection(PLAYLIST_SUMMARY_FEATURE_KEY, input, userId, { systemInstructions: PLAYLIST_SUMMARY_SYSTEM_PROMPT, message: playlistSummaryPrompt({ types: input.summaryTypes, payload: built.privacy.payload, notes: input.notes, plexLimit: settings.plexDescriptionMaxLength }), responseSchema: summaryProviderResponseSchema, maxOutputTokens: 4000, metadataRecords: [{ playlist_analysis: built.privacy.payload }] });
   if (selection.preview.privacyMode === "FULL_METADATA" && selection.preview.provider.location !== "LOCAL" && input.previewAcknowledged !== true) throw fail("AI_PREVIEW_ACKNOWLEDGMENT_REQUIRED", "Review and acknowledge the full-metadata request preview before generation.", 409);
   try {
-    const response = await aiRequestCoordinator.complete(selection.aiRequest, userId);
+    const response = await aiRequestCoordinator.complete({ ...selection.aiRequest, externalConfirmation: input.previewAcknowledged === true }, userId);
     const output = summaryProviderResponseSchema.parse(response.data);
     const requested = new Set(input.summaryTypes); const returned = new Set(output.summaries.map((summary) => summary.type));
     if (returned.size !== output.summaries.length || output.summaries.some((summary) => !requested.has(summary.type)) || input.summaryTypes.some((type) => !returned.has(type))) throw fail("INVALID_AI_RESPONSE", "The provider did not return exactly the requested summary types.", 422);

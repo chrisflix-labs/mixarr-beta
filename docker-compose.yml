@@ -29,8 +29,10 @@ services:
       # - "9090:9090"
     environment:
       - NODE_ENV=production
+      - MIXARR_AI_ENABLED=${MIXARR_AI_ENABLED:-true}
       # Recommended: set AI_CREDENTIAL_ENCRYPTION_KEY in .env or inject it
-      # through your container platform's secret management. AI is off by default.
+      # through your container platform's secret management. Provider access is
+      # still deny-by-default until an administrator explicitly approves it.
     depends_on:
       db:
         condition: service_healthy

@@ -5581,6 +5581,10 @@ model AiGlobalSetting {
   maximumServerResponseBytes   Int       @default(1048576)
   defaultTimeoutMs             Int       @default(30000)
   privacyWarningAcknowledgedAt DateTime?
+  emergencyShutdown            Boolean   @default(false)
+  emergencyShutdownReason      String?
+  emergencyShutdownBy          String?
+  emergencyShutdownAt          DateTime?
   updatedBy                    String?
   createdAt                    DateTime  @default(now())
   updatedAt                    DateTime  @updatedAt
@@ -5640,6 +5644,34 @@ model AiGovernanceSetting {
   auditRetentionDays                Int      @default(90)
   usageSummaryRetentionDays         Int      @default(730)
   errorRetentionDays                Int      @default(90)
+  externalProvidersAllowed          Boolean  @default(false)
+  requireExternalConfirmation       Boolean  @default(true)
+  allowedExternalFeaturesJson       Json     @default("[]")
+  allowedExternalDataJson           Json     @default("[]")
+  requestMetadataRetentionDays      Int      @default(365)
+  requestBodyRetentionDays          Int      @default(0)
+  responseMetadataRetentionDays     Int      @default(365)
+  responseBodyRetentionDays         Int      @default(0)
+  quarantineRetentionDays           Int      @default(30)
+  approvalRetentionDays             Int      @default(730)
+  costRetentionDays                 Int      @default(730)
+  diagnosticRetentionDays           Int      @default(7)
+  redactEmailAddresses              Boolean  @default(true)
+  redactLocalPaths                  Boolean  @default(true)
+  redactInternalHostnames           Boolean  @default(true)
+  redactIpAddresses                 Boolean  @default(true)
+  redactUsernames                   Boolean  @default(true)
+  globalConcurrencyLimit            Int      @default(2)
+  perProviderConcurrencyLimit       Int      @default(1)
+  perModelConcurrencyLimit          Int      @default(1)
+  perUserConcurrencyLimit           Int      @default(1)
+  perFeatureConcurrencyLimit        Int      @default(1)
+  diagnosticConcurrencyLimit        Int      @default(1)
+  healthCheckConcurrencyLimit       Int      @default(1)
+  maximumQueueSize                  Int      @default(100)
+  jobLeaseSeconds                   Int      @default(120)
+  jsonLocalRepairAttempts           Int      @default(1)
+  jsonProviderRepairAttempts        Int      @default(0)
   settingVersion                    Int      @default(1)
   updatedBy                         String?
   createdAt                         DateTime @default(now())
@@ -5651,6 +5683,9 @@ model AiProviderConfig {
   providerType                String
   displayName                 String
   enabled                     Boolean               @default(false)
+  approved                    Boolean               @default(false)
+  approvedBy                  String?
+  approvedAt                  DateTime?
   locationClassification      String                @default("UNKNOWN")
   baseUrl                     String?
   authenticationType          String                @default("NONE")
@@ -5699,6 +5734,15 @@ model AiProviderConfig {
   trustedNetwork              Boolean               @default(false)
   externalAccessWarning       Boolean               @default(true)
   lastLocalStatusValidationAt DateTime?
+  allowedFeaturesJson         Json                  @default("[]")
+  privacyModesJson            Json                  @default("[]")
+  allowLibraryMetadata        Boolean               @default(false)
+  allowDiagnosticData         Boolean               @default(false)
+  allowUserNotes              Boolean               @default(false)
+  allowExternalRequests       Boolean               @default(false)
+  requestsPerMinute           Int?
+  tokensPerMinute             Int?
+  maximumConcurrency          Int?
 
   @@index([providerType, enabled])
   @@index([enabled, priority])
@@ -5717,6 +5761,18 @@ model AiProviderModel {
   discoveredAt          DateTime         @default(now())
   lastSeenAt            DateTime         @default(now())
   availabilityStatus    String           @default("AVAILABLE")
+  enabled               Boolean          @default(false)
+  approved              Boolean          @default(false)
+  approvedBy            String?
+  approvedAt            DateTime?
+  allowedFeaturesJson   Json             @default("[]")
+  capabilitiesJson      Json             @default("[]")
+  structuredOutput      Boolean          @default(false)
+  jsonMode              Boolean          @default(false)
+  toolCalling           Boolean          @default(false)
+  deprecated            Boolean          @default(false)
+  lastSuccessfulUseAt   DateTime?
+  maximumConcurrency    Int?
   maximumInputTokens    Int?
   maximumOutputTokens   Int?
   maximumCombinedTokens Int?
@@ -5802,6 +5858,28 @@ model AiRequestAudit {
   safeMetadataJson            Json?
   promptHash                  String?
   logicalRequestId            String?
+  idempotencyKey              String?
+  contentFingerprint          String?
+  parentRequestId             String?
+  promptTemplateVersion       String?
+  requestBodyJson             Json?
+  requestBodyPurgedAt         DateTime?
+  externalDataCategoriesJson  Json?
+  redactionResultJson         Json?
+  injectionResultJson         Json?
+  structuredOutputResult      String?
+  schemaValidationResult      String?
+  policyValidationResult      String?
+  deterministicResult         String?
+  safetyAnalysisResult        String?
+  quarantineStatus            String?
+  approvalStatus              String?
+  approvedBy                  String?
+  approvedAt                  DateTime?
+  generatedRecipeId           String?
+  playlistJobId               String?
+  queueWaitMs                 Int?
+  providerDurationMs          Int?
   requestSource               String                @default("FOREGROUND")
   background                  Boolean               @default(false)
   locationClassification      String?
@@ -5839,6 +5917,7 @@ model AiRequestAudit {
   attempts                    AiProviderAttempt[]
   reservations                AiBudgetReservation[]
 
+  @@unique([userId, idempotencyKey])
   @@index([createdAt])
   @@index([featureKey, createdAt])
   @@index([providerConfigId, createdAt])
@@ -5849,6 +5928,159 @@ model AiRequestAudit {
   @@index([requestSource, createdAt])
   @@index([blockReason, createdAt])
   @@index([providerModelClassification, createdAt])
+  @@index([contentFingerprint, createdAt])
+  @@index([quarantineStatus, createdAt])
+  @@index([approvalStatus, createdAt])
+}
+
+// v2.4.9 grants are deny-by-default. Administrators are resolved dynamically and
+// therefore do not require rows in this table.
+model AiPermissionGrant {
+  id         String    @id @default(uuid())
+  userId     String
+  permission String
+  grantedBy  String
+  reason     String?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  revokedBy  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([userId, permission])
+  @@index([permission, revokedAt])
+  @@index([userId, expiresAt])
+}
+
+model AiJob {
+  id                      String    @id @default(uuid())
+  requestId               String    @unique
+  requestAuditId          String?
+  userId                  String?
+  featureKey              String
+  jobType                 String
+  priority                Int       @default(100)
+  providerConfigId        String?
+  model                   String?
+  status                  String    @default("PENDING")
+  waitingReason           String?
+  attemptCount            Int       @default(0)
+  maximumAttempts         Int       @default(1)
+  payloadJson             Json?
+  progressJson            Json?
+  resultReferenceJson     Json?
+  idempotencyKey          String
+  contentFingerprint      String
+  workerId                String?
+  leaseExpiresAt          DateTime?
+  heartbeatAt             DateTime?
+  nextRetryAt             DateTime?
+  cancellationRequestedAt DateTime?
+  cancelledAt             DateTime?
+  errorCode               String?
+  redactedErrorMessage    String?
+  queuedAt                DateTime  @default(now())
+  startedAt               DateTime?
+  completedAt             DateTime?
+  expiresAt               DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@unique([userId, idempotencyKey])
+  @@index([status, priority, queuedAt])
+  @@index([leaseExpiresAt, status])
+  @@index([providerConfigId, status])
+  @@index([userId, status])
+  @@index([featureKey, status])
+}
+
+model AiResponseRecord {
+  id                    String    @id @default(uuid())
+  requestId             String    @unique
+  jobId                 String?
+  providerConfigId      String?
+  model                 String?
+  schemaVersion         String
+  status                String    @default("RECEIVED")
+  bodyJson              Json?
+  bodyText              String?
+  bodyPurgedAt          DateTime?
+  repairAttempts        Int       @default(0)
+  repairMethod          String?
+  responseHash          String
+  validationSummaryJson Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([providerConfigId, model])
+}
+
+model AiQuarantineRecord {
+  id                     String    @id @default(uuid())
+  requestId              String
+  responseRecordId       String?
+  jobId                  String?
+  userId                 String?
+  featureKey             String
+  providerConfigId       String?
+  model                  String?
+  severity               String
+  status                 String    @default("OPEN")
+  reasonCodesJson        Json
+  nonOverridable         Boolean   @default(false)
+  safeRequestPreview     String?
+  safeResponsePreview    String?
+  validationFailuresJson Json?
+  redactionResultJson    Json?
+  resolvedBy             String?
+  resolvedAt             DateTime?
+  resolution             String?
+  resolutionNotes        String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([status, severity, createdAt])
+  @@index([requestId])
+  @@index([userId, createdAt])
+}
+
+model AiApprovalEvent {
+  id                 String    @id @default(uuid())
+  requestId          String
+  artifactType       String
+  artifactId         String
+  reviewerId         String
+  decision           String
+  reviewNotes        String?
+  artifactHash       String
+  validationState    String
+  safetyState        String
+  diffJson           Json?
+  executionMode      String?
+  invalidatedAt      DateTime?
+  invalidationReason String?
+  createdAt          DateTime  @default(now())
+
+  @@index([artifactType, artifactId, createdAt])
+  @@index([requestId, createdAt])
+  @@index([reviewerId, createdAt])
+}
+
+model AiSecurityEvent {
+  id              String   @id @default(uuid())
+  requestId       String?
+  actorId         String?
+  eventType       String
+  severity        String
+  reasonCodesJson Json
+  safeDetailsJson Json?
+  correlationId   String?
+  createdAt       DateTime @default(now())
+
+  @@index([requestId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([severity, createdAt])
 }
 
 model AiProviderBudget {

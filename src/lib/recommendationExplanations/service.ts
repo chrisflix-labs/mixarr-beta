@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "../prisma";
 import { isUserAdmin } from "../auth";
+import { requireAiPermission } from "../../ai/governance/permissions";
 import type { SmartMixDecisionExplanation } from "../smartMixExplanations/types";
 import { buildReproducibilitySnapshot, calculateReproducibilityStatus, confidenceCategory, explanationHash, redactExplanationExport, semanticDiff, trackEvaluationsFromDecision, validationResultsFromProposal } from "./core";
 import { RECOMMENDATION_EXPLANATION_SCHEMA_VERSION, type FieldInterpretation, type GeneratedSetting } from "./types";
@@ -57,6 +58,7 @@ async function canAccessExplanation(userId: string, row: any, modify = false) {
 }
 
 async function explanationRow(userId: string, resourceId: string, modify = false) {
+  await requireAiPermission(userId, "ai.use");
   const row = await prisma.recommendationExplanation.findFirst({ where: { OR: [
     { id: resourceId }, { aiProposalId: resourceId }, { aiRequestId: resourceId }, { recipeId: resourceId },
     { generatedPlaylistId: resourceId }, { generation: { generationId: resourceId } },

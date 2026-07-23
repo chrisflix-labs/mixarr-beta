@@ -5,7 +5,7 @@ import { aiFeatureByKey } from "../features/registry";
 import { aiProviderRegistry } from "../registry/providerRegistry";
 import { resolveAiProvider } from "../services/providerService";
 import { oneWayPromptHash } from "../security";
-import { safeMetadataSchema, parseStructuredResponse } from "../validation";
+import { safeMetadataSchema, parseStructuredResponseDetailed } from "../validation";
 import { abortableDelay, isRetryEligible, retryDelayMs } from "../utilities/retry";
 import { sanitizePromptText } from "../utilities/prompt";
 import { completeAiAudit, createAiAudit, failAiAudit, setAiAuditStatus } from "../audit/service";
@@ -14,6 +14,12 @@ import { createAiRequestSignal, nextStreamEvent } from "../utilities/cancellatio
 import { previewAiRequest, reconcileAiBudgetReservation, recordBlockedAiRequest, reserveAiBudget } from "../governance/service";
 import { selectCheaperEligibleModel } from "../governance/policy";
 import { unexpectedAiError } from "../governance/logging";
+import { assertAiExecutionPolicy } from "../governance/executionPolicy";
+import { requireAiFeaturePermission } from "../governance/permissions";
+import { detectPromptInjection } from "../security/promptInjection";
+import { redactAiContent } from "../security/redaction";
+import { inspectAiResponse } from "../security/responseSecurity";
+import { quarantineAiResponse, storeAiResponse } from "../quarantine/service";
 
 const supportedCapability = new Set<AiCapabilityConfidence>(["CONFIRMED", "REPORTED", "ASSUMED", "MANUALLY_ENABLED"]);
 const fallbackCategories = new Set<AiErrorCategory>(["PROVIDER_UNAVAILABLE", "CONNECTION_FAILED", "RATE_LIMITED", "REQUEST_TIMEOUT", "TLS_ERROR", "PROVIDER_OVERLOADED"]);
@@ -22,18 +28,20 @@ export function missingCapabilities(required: AiCapability[], resolved: Record<s
   return required.filter((capability) => !supportedCapability.has(resolved[capability] || "UNKNOWN"));
 }
 
-async function prepareCandidate(config: ResolvedAiProviderConfig, model: string | undefined, required: AiCapability[], allowStreamingFallback?: boolean) {
+async function prepareCandidate(config: ResolvedAiProviderConfig, model: string | undefined, required: AiCapability[], request: AiRequest, allowStreamingFallback?: boolean) {
   if (!config.enabled) throw new AiError("PROVIDER_DISABLED");
   if (!model) throw new AiError("MODEL_NOT_CONFIGURED");
+  const policy = await assertAiExecutionPolicy({ request, provider: config, model, requiredCapabilities: required });
   const adapter = aiProviderRegistry.get(config.providerType);
   if (!adapter.available) throw new AiError("PROVIDER_UNSUPPORTED");
   const capabilities = { ...(await adapter.detectCapabilities(config, model)), ...config.capabilityOverrides };
   const missing = missingCapabilities(Array.from(new Set(required)), capabilities);
   if (missing.length && !(missing.length === 1 && missing[0] === "streaming" && allowStreamingFallback)) throw new AiError("CAPABILITY_UNAVAILABLE", `Provider lacks required capability: ${missing.join(", ")}.`);
-  return { config, model, adapter, capabilities, streamFallback: missing.includes("streaming") };
+  return { config, model, adapter, capabilities, streamFallback: missing.includes("streaming"), policy };
 }
 
-async function selection<T>(request: AiRequest<T>) {
+async function selection<T>(request: AiRequest<T>, userId?: string) {
+  await requireAiFeaturePermission(userId, request.featureKey);
   const global = await prisma.aiGlobalSetting.findUnique({ where: { id: "global" } });
   if (!global?.enabled) throw new AiError("AI_DISABLED");
   const definition = aiFeatureByKey.get(request.featureKey);
@@ -44,7 +52,7 @@ async function selection<T>(request: AiRequest<T>) {
   if (!providerId) throw new AiError("PROVIDER_NOT_CONFIGURED");
   const config = await resolveAiProvider(providerId);
   const required = [...definition.requiredCapabilities, ...(request.requiredCapabilities || []), ...(request.stream ? ["streaming" as const] : []), ...(request.responseFormat ? ["structured_json" as const] : [])];
-  const primary = await prepareCandidate(config, request.model || feature.preferredModel || config.defaultModel, required, request.allowStreamingFallback);
+  const primary = await prepareCandidate(config, request.model || feature.preferredModel || config.defaultModel, required, request, request.allowStreamingFallback);
   let fallback: Awaited<ReturnType<typeof prepareCandidate>> | null = null;
   const featureFallbackId = feature.fallbackBehavior === "EXPLICIT_PROVIDER" ? feature.fallbackProviderId : null;
   const fallbackId = request.allowFallback ? (featureFallbackId || config.fallbackProviderId) : null;
@@ -52,7 +60,7 @@ async function selection<T>(request: AiRequest<T>) {
     const fallbackConfig = await resolveAiProvider(fallbackId);
     const safeConfiguration = (feature.safeConfigurationJson || {}) as Record<string, unknown>;
     const remoteFallbackBlocked = config.locationClassification === "LOCAL" && fallbackConfig.locationClassification === "REMOTE" && safeConfiguration.allowRemoteFallback !== true;
-    if (!remoteFallbackBlocked) fallback = await prepareCandidate(fallbackConfig, fallbackConfig.defaultModel, required, request.allowStreamingFallback);
+    if (!remoteFallbackBlocked) fallback = await prepareCandidate(fallbackConfig, fallbackConfig.defaultModel, required, request, request.allowStreamingFallback);
   }
   return { global, feature, primary, fallback, required };
 }
@@ -68,7 +76,7 @@ async function findCheaperCandidate(input: { request: AiRequest; primary: Prepar
     if (model.providerConfigId === input.primary.config.id && model.modelIdentifier === input.primary.model) continue;
     try {
       const config = await resolveAiProvider(model.providerConfigId);
-      const prepared = await prepareCandidate(config, model.modelIdentifier, input.required, input.request.allowStreamingFallback);
+      const prepared = await prepareCandidate(config, model.modelIdentifier, input.required, input.request, input.request.allowStreamingFallback);
       if (input.request.stream && (!prepared.adapter.stream || prepared.streamFallback)) continue;
       const preview = await previewAiRequest({ request: input.request, provider: config, model: model.modelIdentifier, userId: input.userId });
       const capabilities = Object.entries(prepared.capabilities).filter(([, confidence]) => supportedCapability.has(confidence || "UNKNOWN")).map(([capability]) => capability);
@@ -117,7 +125,13 @@ async function enforceBudget(config: ResolvedAiProviderConfig) {
 }
 
 function normalizedRequest<T>(request: AiRequest<T>) {
-  return { ...request, systemInstructions: request.systemInstructions ? sanitizePromptText(request.systemInstructions, 20_000) : undefined, messages: request.messages.slice(0, 100).map((message) => ({ role: message.role, content: sanitizePromptText(message.content, 20_000) })), metadata: safeMetadataSchema.parse(request.metadata || {}), temperature: request.temperature == null ? undefined : Math.max(0, Math.min(2, request.temperature)) };
+  const injection = detectPromptInjection({ systemInstructions: request.systemInstructions, messages: request.messages, metadataRecords: request.metadataRecords });
+  if (injection.blocked) throw new AiError("AI_PROMPT_INJECTION_BLOCKED", undefined, 409, undefined, { severity: injection.severity, reasons: injection.reasons });
+  const configuredSecrets = Object.entries(process.env).filter(([key, value]) => !!value && value!.length >= 4 && /SECRET|TOKEN|PASSWORD|API_KEY|DATABASE_URL/i.test(key)).map(([, value]) => value!);
+  const redacted = redactAiContent({ systemInstructions: request.systemInstructions, messages: request.messages, metadataRecords: request.metadataRecords }, { configuredSecrets, blockOnPrivateKey: true });
+  if (redacted.result.blockedEntirely) throw new AiError("AI_PROMPT_INJECTION_BLOCKED", undefined, 409, undefined, { reasons: ["private_key_detected"] });
+  const safe = redacted.value;
+  return { request: { ...request, systemInstructions: safe.systemInstructions ? sanitizePromptText(safe.systemInstructions, 20_000) : undefined, messages: safe.messages.slice(0, 100).map((message) => ({ role: message.role, content: sanitizePromptText(message.content, 20_000) })), metadataRecords: safe.metadataRecords, metadata: safeMetadataSchema.parse(request.metadata || {}), temperature: request.temperature == null ? undefined : Math.max(0, Math.min(2, request.temperature)) }, injection, redaction: redacted.result };
 }
 
 async function executeWithRetries<T>(input: { request: AiRequest<T>; candidate: { config: ResolvedAiProviderConfig; model: string; adapter: AiProviderAdapter }; requestId: string; auditId?: string; signal: AbortSignal; maxBytes: number; started: number; startingRetries: number; timedOut: () => boolean; maximumRetryAttempts: number; retryAfterPossibleBilling: boolean; revalidate: () => Promise<unknown> }) {
@@ -171,13 +185,19 @@ function logAuditFailure(error: unknown, input: { requestId: string; request: Ai
 
 export class AiRequestCoordinator {
   async complete<T = unknown>(raw: AiRequest<T>, userId?: string): Promise<AiResponse<T>> {
-    const request = normalizedRequest(raw); const requestId = crypto.randomUUID(); let selected: Awaited<ReturnType<typeof selection>>;
-    try { selected = await selection(request); } catch (error) { const normalized = error instanceof AiError ? error : unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, userId, governanceDecisionStage: "provider_selection" }); await recordBlockedAiRequest({ requestId, featureKey: request.featureKey, userId, requestSource: request.requestSource, error: normalized }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId })); throw normalized; }
+    const requestId = crypto.randomUUID();
+    let secured: ReturnType<typeof normalizedRequest<T>>;
+    try { secured = normalizedRequest(raw); }
+    catch (error) { const normalized = error instanceof AiError ? error : new AiError("INVALID_REQUEST"); await recordBlockedAiRequest({ requestId, featureKey: raw.featureKey, userId, requestSource: raw.requestSource, error: normalized }); await prisma.aiSecurityEvent.create({ data: { requestId, actorId: userId, eventType: "AI_REQUEST_SECURITY_BLOCKED", severity: "BLOCKED", reasonCodesJson: (normalized.details?.reasons as string[]) || [normalized.category], correlationId: raw.correlationId || requestId } }).catch(() => null); throw normalized; }
+    const request = secured.request; let selected: Awaited<ReturnType<typeof selection>>;
+    try { selected = await selection(request, userId); } catch (error) { const normalized = error instanceof AiError ? error : (error as any)?.status === 403 ? new AiError("PERMISSION_DENIED", undefined, 403) : unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, userId, governanceDecisionStage: "provider_selection" }); await recordBlockedAiRequest({ requestId, featureKey: request.featureKey, userId, requestSource: request.requestSource, error: normalized }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId })); throw normalized; }
+    if (userId && request.idempotencyKey) { const duplicate = await prisma.aiRequestAudit.findUnique({ where: { userId_idempotencyKey: { userId, idempotencyKey: request.idempotencyKey } } }); if (duplicate) throw new AiError("AI_DUPLICATE_REQUEST", undefined, 409, undefined, { request_id: duplicate.requestId, status: duplicate.status }); }
     let maxBytes = Math.min(request.maxResponseBytes || selected.global.maximumServerResponseBytes, selected.global.maximumServerResponseBytes);
     const started = Date.now(); let retries = 0; let reservationId: string | undefined;
     let auditId: string | undefined;
-    try { auditId = (await createAiAudit({ requestId, correlationId: request.correlationId || requestId, featureKey: request.featureKey, providerConfigId: selected.primary.config.id, providerType: selected.primary.config.providerType, providerDisplayName: selected.primary.config.displayName, model: selected.primary.model, streaming: false, userId, metadata: request.metadata, requestSource: request.requestSource, locationClassification: selected.primary.config.locationClassification, promptHash: oneWayPromptHash([request.systemInstructions || "", ...request.messages.map((message) => message.content)]) })).id; }
-    catch (error) { unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, userId, providerId: selected.primary.config.id, providerType: selected.primary.config.providerType, model: selected.primary.model, governanceDecisionStage: "audit_persistence" }); }
+    const contentFingerprint = oneWayPromptHash([request.systemInstructions || "", ...request.messages.map((message) => message.content)]);
+    try { auditId = (await createAiAudit({ requestId, correlationId: request.correlationId || requestId, featureKey: request.featureKey, providerConfigId: selected.primary.config.id, providerType: selected.primary.config.providerType, providerDisplayName: selected.primary.config.displayName, model: selected.primary.model, streaming: false, userId, metadata: request.metadata, requestSource: request.requestSource, locationClassification: selected.primary.config.locationClassification, promptHash: contentFingerprint, contentFingerprint, idempotencyKey: request.idempotencyKey, promptTemplateVersion: request.promptTemplateVersion, redactionResult: secured.redaction, injectionResult: secured.injection, externalDataCategories: selected.primary.policy.externalDataCategories })).id; }
+    catch (error) { throw unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, userId, providerId: selected.primary.config.id, providerType: selected.primary.config.providerType, model: selected.primary.model, governanceDecisionStage: "audit_persistence" }); }
     let governed: Awaited<ReturnType<typeof reserveAiBudget>>; let cheaperFallback: Awaited<ReturnType<typeof selectCheaperEligibleModel>> = null;
     try { const admission = await reserveWithOptionalCheaperFallback({ request, primary: selected.primary, required: selected.required, userId, requestId, auditId }); governed = admission.governed; selected.primary = admission.candidate; cheaperFallback = admission.fallback; reservationId = governed.reservation.id; }
     catch (error) { const normalized = error instanceof AiError ? error : unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, userId, providerId: selected.primary.config.id, providerType: selected.primary.config.providerType, model: selected.primary.model, governanceDecisionStage: "budget_and_policy_admission" }); if (auditId) await prisma.aiRequestAudit.update({ where: { id: auditId }, data: { status: "BLOCKED", completedAt: new Date(), errorCategory: normalized.category, sanitizedErrorCode: normalized.category, blockReason: normalized.category, budgetControlResult: normalized.category.includes("BUDGET") ? "BLOCKED" : null, limitControlResult: "BLOCKED" } }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model })); throw normalized; }
@@ -202,21 +222,31 @@ export class AiRequestCoordinator {
       }
       if (cheaperFallback) response.warnings.push(`A cheaper compatible model was selected, saving an estimated ${cheaperFallback.estimatedSavings.toFixed(6)} ${governed.preview.cost.currency}.`);
       retries = response.retryCount;
-      if (request.responseFormat) response.data = parseStructuredResponse(response.content || "", request.responseFormat, maxBytes, governed.preview.responseLimits.maximumStructuredItems);
+      const responseInspection = inspectAiResponse(response.content || "");
+      const stored = await storeAiResponse({ requestId, providerConfigId: response.providerId, model: response.model, schemaVersion: request.responseFormat?.name || "text-1", body: response.content || "", status: "RECEIVED", validationSummary: responseInspection });
+      if (!responseInspection.safe) { await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, severity: responseInspection.severity, reasons: responseInspection.reasons, requestPreview: { feature: request.featureKey }, responsePreview: response.content }); throw new AiError("AI_RESPONSE_QUARANTINED"); }
+      if (request.responseFormat) {
+        try { const parsed = parseStructuredResponseDetailed(response.content || "", request.responseFormat, maxBytes, governed.preview.responseLimits.maximumStructuredItems); response.data = parsed.data; if (parsed.repaired) await prisma.aiResponseRecord.update({ where: { id: stored.id }, data: { repairAttempts: 1, repairMethod: parsed.repairMethod, status: "SCHEMA_VALIDATED" } }); }
+        catch (error) { await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, reasons: ["schema_validation_failed"], requestPreview: { feature: request.featureKey }, responsePreview: response.content, validationFailures: (error as AiError).details }); throw new AiError("AI_RESPONSE_QUARANTINED"); }
+      }
       const bytes = Buffer.byteLength(response.content || "", "utf8"); if (bytes > maxBytes) throw new AiError("RESPONSE_TOO_LARGE");
       if (response.estimatedCost == null) response.estimatedCost = governed.preview.cost.expectedEstimatedCost;
-      if (auditId) await completeAiAudit(requestId, response, bytes).catch((error) => { unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, userId, providerId: response.providerId, providerType: response.providerType, model: response.model, governanceDecisionStage: "audit_persistence" }); }); await reconcileAiBudgetReservation(reservationId, response.actualCost ?? response.estimatedCost, "RECONCILED"); return response;
+      try { await completeAiAudit(requestId, response, bytes); } catch (error) { await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, reasons: ["audit_persistence_failed"], requestPreview: { feature: request.featureKey }, responsePreview: response.content }).catch(() => null); throw new AiError("INTERNAL_AI_ERROR"); } await reconcileAiBudgetReservation(reservationId, response.actualCost ?? response.estimatedCost, "RECONCILED"); await prisma.aiProviderModel.updateMany({ where: { providerConfigId: response.providerId, modelIdentifier: response.model }, data: { lastSuccessfulUseAt: new Date() } }); return response;
     } catch (error) {
       let normalized = normalizeProviderError(error); if (timed.timedOut()) normalized = new AiError("REQUEST_TIMEOUT"); retries = Number((error as any)?.retryCount || retries);
-      if (auditId) await failAiAudit(requestId, { category: normalized.category, retryCount: retries, latencyMs: Date.now() - started, cancelled: normalized.category === "REQUEST_CANCELLED", timedOut: normalized.category === "REQUEST_TIMEOUT" }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model }));
+      if (auditId && normalized.category !== "AI_RESPONSE_QUARANTINED") await failAiAudit(requestId, { category: normalized.category, retryCount: retries, latencyMs: Date.now() - started, cancelled: normalized.category === "REQUEST_CANCELLED", timedOut: normalized.category === "REQUEST_TIMEOUT" }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model }));
       await reconcileAiBudgetReservation(reservationId, undefined, "RELEASED");
       throw normalized;
     } finally { timed.close(); }
   }
 
   async *stream<T = unknown>(raw: AiRequest<T>, userId?: string): AsyncIterable<AiStreamEvent> {
-    const request = normalizedRequest({ ...raw, stream: true }); const requestId = crypto.randomUUID(); let selected: Awaited<ReturnType<typeof selection>>;
-    try { selected = await selection(request); } catch (error) { const normalized = error instanceof AiError ? error : unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, userId, governanceDecisionStage: "provider_selection" }); await recordBlockedAiRequest({ requestId, featureKey: request.featureKey, userId, requestSource: request.requestSource, error: normalized }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId })); throw normalized; }
+    const requestId = crypto.randomUUID();
+    let secured: ReturnType<typeof normalizedRequest<T>>;
+    try { secured = normalizedRequest({ ...raw, stream: true }); }
+    catch (error) { const normalized = error instanceof AiError ? error : new AiError("INVALID_REQUEST"); await recordBlockedAiRequest({ requestId, featureKey: raw.featureKey, userId, requestSource: raw.requestSource, error: normalized }); throw normalized; }
+    const request = secured.request; let selected: Awaited<ReturnType<typeof selection>>;
+    try { selected = await selection(request, userId); } catch (error) { const normalized = error instanceof AiError ? error : (error as any)?.status === 403 ? new AiError("PERMISSION_DENIED", undefined, 403) : unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, userId, governanceDecisionStage: "provider_selection" }); await recordBlockedAiRequest({ requestId, featureKey: request.featureKey, userId, requestSource: request.requestSource, error: normalized }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId })); throw normalized; }
     if (!selected.primary.adapter.stream || selected.primary.streamFallback) {
       if (!request.allowStreamingFallback) throw new AiError("CAPABILITY_UNAVAILABLE");
       const response = await this.complete({ ...request, stream: false }, userId); yield { type: "started", requestId: response.requestId };
@@ -225,27 +255,31 @@ export class AiRequestCoordinator {
     }
     let maxBytes = Math.min(request.maxResponseBytes || selected.global.maximumServerResponseBytes, selected.global.maximumServerResponseBytes); const started = Date.now(); let bytes = 0; let usage: any; let reservationId: string | undefined;
     let auditId: string | undefined;
-    try { auditId = (await createAiAudit({ requestId, correlationId: request.correlationId || requestId, featureKey: request.featureKey, providerConfigId: selected.primary.config.id, providerType: selected.primary.config.providerType, providerDisplayName: selected.primary.config.displayName, model: selected.primary.model, streaming: true, userId, metadata: request.metadata, requestSource: request.requestSource, locationClassification: selected.primary.config.locationClassification, promptHash: oneWayPromptHash([request.systemInstructions || "", ...request.messages.map((message) => message.content)]) })).id; }
-    catch (error) { unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, userId, providerId: selected.primary.config.id, providerType: selected.primary.config.providerType, model: selected.primary.model, governanceDecisionStage: "audit_persistence" }); }
+    const contentFingerprint = oneWayPromptHash([request.systemInstructions || "", ...request.messages.map((message) => message.content)]);
+    try { auditId = (await createAiAudit({ requestId, correlationId: request.correlationId || requestId, featureKey: request.featureKey, providerConfigId: selected.primary.config.id, providerType: selected.primary.config.providerType, providerDisplayName: selected.primary.config.displayName, model: selected.primary.model, streaming: true, userId, metadata: request.metadata, requestSource: request.requestSource, locationClassification: selected.primary.config.locationClassification, promptHash: contentFingerprint, contentFingerprint, idempotencyKey: request.idempotencyKey, promptTemplateVersion: request.promptTemplateVersion, redactionResult: secured.redaction, injectionResult: secured.injection, externalDataCategories: selected.primary.policy.externalDataCategories })).id; }
+    catch (error) { throw unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, userId, providerId: selected.primary.config.id, providerType: selected.primary.config.providerType, model: selected.primary.model, governanceDecisionStage: "audit_persistence" }); }
     let governed: Awaited<ReturnType<typeof reserveAiBudget>>; let cheaperFallback: Awaited<ReturnType<typeof selectCheaperEligibleModel>> = null; try { const admission = await reserveWithOptionalCheaperFallback({ request, primary: selected.primary, required: selected.required, userId, requestId, auditId }); governed = admission.governed; selected.primary = admission.candidate; cheaperFallback = admission.fallback; reservationId = governed.reservation.id; } catch (error) { const normalized = error instanceof AiError ? error : unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, userId, providerId: selected.primary.config.id, providerType: selected.primary.config.providerType, model: selected.primary.model, governanceDecisionStage: "budget_and_policy_admission" }); if (auditId) await prisma.aiRequestAudit.update({ where: { id: auditId }, data: { status: "BLOCKED", completedAt: new Date(), blockReason: normalized.category, errorCategory: normalized.category, sanitizedErrorCode: normalized.category } }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model })); yield { type: "failed", code: normalized.category, message: normalized.toSafePayload().message }; return; }
     request.metadataRecords = governed.preview.sanitizedMetadata; request.maxOutputTokens = governed.preview.limits.maxOutputTokens; maxBytes = Math.min(maxBytes, governed.preview.responseLimits.maximumResponseBytes);
     const duration = Math.min(governed.preview.timeoutPolicy.totalRequestTimeoutMs, Number(process.env.AI_MAX_STREAM_DURATION_MS || 300_000), Number(process.env.AI_MAX_REQUEST_TIMEOUT_MS || 300_000)); const timed = createAiRequestSignal(request.signal, duration);
     const attempt = auditId ? await prisma.aiProviderAttempt.create({ data: { requestAuditId: auditId, attemptNumber: 1, providerConfigId: selected.primary.config.id, model: selected.primary.model } }).catch((error) => { unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, providerId: selected.primary.config.id, governanceDecisionStage: "audit_persistence" }); return null; }) : null; if (auditId) await setAiAuditStatus(requestId, "STREAMING").catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model })); if (cheaperFallback) yield { type: "warning", message: `A cheaper compatible model was selected, saving an estimated ${cheaperFallback.estimatedSavings.toFixed(6)} ${governed.preview.cost.currency}.` };
+    let streamedContent = "";
     try {
       const iterator = selected.primary.adapter.stream!(request, selected.primary.config, { requestId, providerId: selected.primary.config.id, model: selected.primary.model, signal: timed.signal, maxResponseBytes: maxBytes })[Symbol.asyncIterator]();
       const idleTimeoutMs = Math.min(governed.preview.timeoutPolicy.streamingIdleTimeoutMs, Number(process.env.AI_STREAM_IDLE_TIMEOUT_MS || 30_000), selected.primary.config.requestTimeoutMs);
       while (true) {
         const next = await nextStreamEvent(iterator, idleTimeoutMs, timed.abort); if (next.done) break; const event = next.value;
-        if (event.type === "text_delta" || event.type === "structured_delta") { bytes += Buffer.byteLength(event.delta, "utf8"); if (bytes > maxBytes) throw new AiError("RESPONSE_TOO_LARGE"); }
+        if (event.type === "text_delta" || event.type === "structured_delta") { bytes += Buffer.byteLength(event.delta, "utf8"); if (bytes > maxBytes) throw new AiError("RESPONSE_TOO_LARGE"); streamedContent += event.delta; }
         if (event.type === "usage") usage = event.usage; yield event;
       }
-      const response: AiResponse = { requestId, providerId: selected.primary.config.id, providerType: selected.primary.config.providerType, model: selected.primary.model, usage, latencyMs: Date.now() - started, retryCount: 0, streaming: true, warnings: [] };
-      response.estimatedCost = governed.preview.cost.expectedEstimatedCost; if (attempt) await prisma.aiProviderAttempt.update({ where: { id: attempt.id }, data: { status: "COMPLETED", completedAt: new Date(), providerAcknowledged: true, inputTokens: usage?.inputTokens, outputTokens: usage?.outputTokens } }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model })); await recordAiExecutionHealth(selected.primary.config.id, true, response.latencyMs); if (auditId) await completeAiAudit(requestId, response, bytes).catch((error) => { unexpectedAiError(error, { correlationId: request.correlationId || requestId, featureName: request.featureKey, providerId: response.providerId, governanceDecisionStage: "audit_persistence" }); }); await reconcileAiBudgetReservation(reservationId, response.actualCost ?? response.estimatedCost, "RECONCILED");
+      const response: AiResponse = { requestId, providerId: selected.primary.config.id, providerType: selected.primary.config.providerType, model: selected.primary.model, content: streamedContent, usage, latencyMs: Date.now() - started, retryCount: 0, streaming: true, warnings: [] };
+      const inspection = inspectAiResponse(streamedContent); const stored = await storeAiResponse({ requestId, providerConfigId: response.providerId, model: response.model, schemaVersion: request.responseFormat?.name || "text-stream-1", body: streamedContent, validationSummary: inspection });
+      if (!inspection.safe) { await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, severity: inspection.severity, reasons: inspection.reasons, responsePreview: streamedContent }); throw new AiError("AI_RESPONSE_QUARANTINED"); }
+      response.estimatedCost = governed.preview.cost.expectedEstimatedCost; if (attempt) await prisma.aiProviderAttempt.update({ where: { id: attempt.id }, data: { status: "COMPLETED", completedAt: new Date(), providerAcknowledged: true, inputTokens: usage?.inputTokens, outputTokens: usage?.outputTokens } }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model })); await recordAiExecutionHealth(selected.primary.config.id, true, response.latencyMs); await completeAiAudit(requestId, response, bytes); await reconcileAiBudgetReservation(reservationId, response.actualCost ?? response.estimatedCost, "RECONCILED");
     } catch (error) {
       let normalized = normalizeProviderError(error);
       if (timed.timedOut()) normalized = new AiError("REQUEST_TIMEOUT");
       else if (timed.signal.aborted && ["CONNECTION_FAILED", "REQUEST_CANCELLED"].includes(normalized.category)) normalized = new AiError("REQUEST_CANCELLED");
-      if (attempt) await prisma.aiProviderAttempt.update({ where: { id: attempt.id }, data: { status: "FAILED", completedAt: new Date(), providerAcknowledged: true, errorCategory: normalized.category } }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model })); await recordAiExecutionHealth(selected.primary.config.id, false, Date.now() - started, normalized); if (auditId) await failAiAudit(requestId, { category: normalized.category, retryCount: 0, latencyMs: Date.now() - started, cancelled: normalized.category === "REQUEST_CANCELLED", timedOut: normalized.category === "REQUEST_TIMEOUT" }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model })); await reconcileAiBudgetReservation(reservationId, undefined, "RELEASED");
+      if (attempt) await prisma.aiProviderAttempt.update({ where: { id: attempt.id }, data: { status: "FAILED", completedAt: new Date(), providerAcknowledged: true, errorCategory: normalized.category } }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model })); await recordAiExecutionHealth(selected.primary.config.id, false, Date.now() - started, normalized); if (auditId && normalized.category !== "AI_RESPONSE_QUARANTINED") await failAiAudit(requestId, { category: normalized.category, retryCount: 0, latencyMs: Date.now() - started, cancelled: normalized.category === "REQUEST_CANCELLED", timedOut: normalized.category === "REQUEST_TIMEOUT" }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model })); await reconcileAiBudgetReservation(reservationId, undefined, "RELEASED");
       yield normalized.category === "REQUEST_CANCELLED" ? { type: "cancelled" } : { type: "failed", code: normalized.category, message: normalized.toSafePayload().message };
     } finally { timed.close(); }
   }

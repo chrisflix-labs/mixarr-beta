@@ -77,8 +77,8 @@ export const recipeCopilotRequestSchema = z.object({
   purpose: text(1600).optional(), providerId: z.string().uuid().optional(), model: text(200).optional(),
   privacyMode: z.enum(["LOCAL_ONLY", "METADATA_LIMITED", "ANONYMOUS_METADATA", "FULL_METADATA"]).optional(),
   expectedUpdatedAt: z.string().datetime().optional(), playlistId: z.string().uuid().optional(),
+  externalConfirmation: z.boolean().optional(), idempotencyKey: text(200).optional(),
 }).strict();
 
 export type RecipeCopilotResponse = z.infer<typeof recipeCopilotResponseSchema>;
 export type RecipeCopilotPatch = z.infer<typeof recipeCopilotPatchSchema>;
-

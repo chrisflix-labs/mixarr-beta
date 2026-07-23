@@ -71,12 +71,16 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
   const resultSections = useMemo(() => proposal?.analysis || {}, [proposal]);
 
   async function generate() {
+    const externalConfirmation = availability?.previewRequired
+      ? window.confirm(`This request will send the privacy-filtered fields shown in the preview to ${availability?.provider || "an external AI provider"}. Continue?`)
+      : false;
+    if (availability?.previewRequired && !externalConfirmation) return;
     setRunning(true); setError(""); setProposal(null); setStage("Preparing privacy-aware context");
     const controller = new AbortController(); abort.current = controller;
     try {
       setStage("Waiting for provider");
       const endpoint = action === "from_playlist" ? "/api/recipes/ai/from-playlist" : recipeId && action !== "create" ? `/api/recipes/${encodeURIComponent(recipeId)}/ai/${action}` : action === "create" ? "/api/recipes/ai/create" : "/api/recipes/ai";
-      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal, body: JSON.stringify({ action, instruction, purpose: action === "optimize" ? purpose : undefined, recipe: draft, expectedUpdatedAt: draft.updatedAt, privacyMode: availability?.privacyMode, playlistId: action === "from_playlist" ? playlistId : undefined }) });
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal, body: JSON.stringify({ action, instruction, purpose: action === "optimize" ? purpose : undefined, recipe: draft, expectedUpdatedAt: draft.updatedAt, privacyMode: availability?.privacyMode, playlistId: action === "from_playlist" ? playlistId : undefined, externalConfirmation }) });
       setStage("Validating proposal locally"); const body = await response.json(); if (!response.ok) throw new Error(errorMessage(body, "Recipe Copilot failed."));
       const next = body.proposal; setProposal(next); setEditedRecipe(next.proposedRecipe ? clone(next.proposedRecipe) : null); setSelected(new Set((next.changes || []).map((item: any) => item.path))); setApprovedConfirm(false); setStage("Ready for review");
     } catch (caught) { if ((caught as Error).name === "AbortError") setError("Request cancelled. The current Recipe Studio draft was preserved."); else setError(caught instanceof Error ? caught.message : "Recipe Copilot failed."); setStage("Failed"); }

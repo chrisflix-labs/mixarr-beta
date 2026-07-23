@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.9 - AI Governance, Security and Reliability
+
+- Added deny-by-default granular AI permissions, explicit provider/model approvals, per-feature and per-privacy-mode allowlists, model capability declarations, and external-provider/data-category controls.
+- Added centralized outbound redaction, prompt-template boundaries, prompt-injection detection, strict structured-response validation, bounded local JSON repair, malicious-response inspection, immutable security events, and non-overridable quarantine for critical findings.
+- Added durable idempotent AI jobs with leases, heartbeats, cancellation, stale-job recovery, database-coordinated concurrency limits, queue visibility, and retry-safe request fingerprints.
+- Added versioned prompt provenance, approval records with artifact hashes and diffs, configurable request/response/audit/quarantine retention, and a safe retention purge service.
+- Added database and `MIXARR_AI_ENABLED` emergency shutdown controls that block provider requests, retries, discovery, health checks, and queued execution, while preserving deterministic non-AI functionality.
+- Added the Security & Queue administration UI, governance/capabilities/permissions/jobs/quarantine/retention APIs, migration `20260727010000_ai_governance_security_reliability_v249`, documentation, and local-only security regression tests.
+
 ## v2.4.8 - AI-Assisted Troubleshooting
 
 - Added a persistent Troubleshooting Center with guided problem selection, explicit diagnostic privacy controls, sanitized previews, progress, history, exports, and deletion.

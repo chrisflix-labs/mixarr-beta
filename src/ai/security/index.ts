@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { decryptAiSecret, encryptAiSecret, isAiSecretEncryptionConfigured } from "../../lib/secretStorage";
 import { redactSecrets, sanitizeErrorText } from "../../lib/supportRedaction";
+import { redactAiContent } from "./redaction";
 
 export { isAiSecretEncryptionConfigured };
 export function encryptAiCredentialPayload(value: Record<string, unknown>) { return encryptAiSecret(JSON.stringify(value)); }
@@ -10,6 +11,10 @@ export function decryptAiCredentialPayload(value: string | null | undefined): Re
   return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
 }
 export function redactAiValue<T>(value: T): T { return redactSecrets(value); }
+export { redactAiContent } from "./redaction";
+export { detectPromptInjection } from "./promptInjection";
+export { inspectAiResponse, NON_OVERRIDABLE_QUARANTINE_REASONS } from "./responseSecurity";
+export { validatePromptTemplate, renderValidatedPrompt } from "./promptTemplates";
 export function sanitizeAiError(value: unknown) { return sanitizeErrorText(value, 400) || "Provider request failed."; }
 export function oneWayPromptHash(parts: string[]) { return crypto.createHash("sha256").update(parts.join("\u001f")).digest("hex"); }
 

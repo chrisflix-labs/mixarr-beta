@@ -64,6 +64,42 @@ BEGIN
     ON "Track"("plexServerId", "plexLibraryId", "ratingKey");
 END $$;
 
+-- Mixarr v2.4.9 adds optional per-user idempotency keys to the existing AI
+-- request audit table. Prisma warns about every new unique index during
+-- `db push`, even though this newly added nullable column contains only NULLs.
+-- Prepare and verify the exact index so deployment never needs the broad
+-- data-loss acceptance flag.
+DO $$
+DECLARE
+  duplicate_idempotency_count BIGINT;
+BEGIN
+  IF to_regclass('"AiRequestAudit"') IS NULL THEN
+    -- Fresh database: db push will create the complete table and index.
+    RETURN;
+  END IF;
+
+  ALTER TABLE "AiRequestAudit" ADD COLUMN IF NOT EXISTS "idempotencyKey" TEXT;
+
+  SELECT count(*) INTO duplicate_idempotency_count
+  FROM (
+    SELECT 1
+    FROM "AiRequestAudit"
+    WHERE "userId" IS NOT NULL
+      AND "idempotencyKey" IS NOT NULL
+    GROUP BY "userId", "idempotencyKey"
+    HAVING count(*) > 1
+  ) duplicate_keys;
+
+  IF duplicate_idempotency_count > 0 THEN
+    RAISE EXCEPTION
+      'Mixarr v2.4.9 found % duplicated AI request idempotency keys; no records were changed or removed',
+      duplicate_idempotency_count;
+  END IF;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS "AiRequestAudit_userId_idempotencyKey_key"
+    ON "AiRequestAudit"("userId", "idempotencyKey");
+END $$;
+
 -- Mixarr v2.3.0 adds a required, per-user unique recipe slug. Prepare it in
 -- additive steps so existing Docker installations never need a broad
 -- `--accept-data-loss` acknowledgement just to add the unique index.

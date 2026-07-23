@@ -79,6 +79,20 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.9",
+    title: "AI Governance, Security and Reliability",
+    releaseDate: "July 22, 2026",
+    badges: ["AI", "Security", "Privacy", "Reliability", "Jobs", "Settings", "History", "Diagnostics"],
+    changes: [
+      "Added deny-by-default granular AI permissions and explicit provider, model, feature, privacy-mode, capability, external-feature, and external-data allowlists.",
+      "Added centralized redaction, injection detection, versioned prompt boundaries, bounded JSON repair, strict response schemas, malicious-response inspection, immutable security events, and critical-response quarantine.",
+      "Added durable idempotent jobs with database leases, heartbeats, cancellation, stale-work recovery, queue visibility, and concurrency limits across users, features, providers, and models.",
+      "Added configurable payload, audit, diagnostic, approval, cost, and quarantine retention plus safe purge workflows and artifact-hashed human approval history.",
+      "Added database and MIXARR_AI_ENABLED emergency shutdown controls, explicit external-request confirmation, and an administration dashboard for governance, approvals, quarantine, and queue health.",
+      "Upgrade: apply migration 20260727010000_ai_governance_security_reliability_v249. Existing providers and models require explicit approval before use.",
+    ],
+  },
+  {
     version: "2.4.8",
     title: "AI-Assisted Troubleshooting",
     releaseDate: "July 22, 2026",

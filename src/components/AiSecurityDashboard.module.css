@@ -1,0 +1,10 @@
+.stack{display:grid;gap:1rem}
+.panel,.emergency{padding:1rem;border:1px solid rgba(255,255,255,.12);border-radius:16px;background:rgba(12,18,32,.78)}
+.emergency{display:flex;align-items:center;gap:1rem}.emergency div{flex:1}.active{border-color:#ef4444;background:rgba(127,29,29,.28)}
+.row,.model,.quarantine{display:grid;grid-template-columns:minmax(220px,1fr) auto auto;gap:.75rem;align-items:center;padding:.8rem 0;border-top:1px solid rgba(255,255,255,.09)}
+.row small,.model small{display:block;opacity:.7}.row details,.model details{grid-column:1/-1}
+.checks,.settingsGrid,.numericGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.45rem;padding:.7rem 0}
+.checks label,.settingsGrid label{display:flex;gap:.45rem;align-items:center}.numericGrid label{display:grid;gap:.3rem}.numericGrid input{max-width:160px;padding:.45rem;border-radius:7px;border:1px solid rgba(255,255,255,.14);background:#090d17;color:inherit}
+.quarantine{display:block}.quarantine button{margin:.4rem .5rem .4rem 0}.quarantine pre{white-space:pre-wrap;max-height:180px;overflow:auto;padding:.6rem;background:#090d17;border-radius:8px}
+.table{overflow:auto}.table table{width:100%;border-collapse:collapse}.table th,.table td{text-align:left;padding:.6rem;border-bottom:1px solid rgba(255,255,255,.09)}
+@media(max-width:700px){.emergency{align-items:flex-start;flex-wrap:wrap}.row,.model{grid-template-columns:1fr}.row details,.model details{grid-column:auto}}

@@ -52,6 +52,9 @@ export type AiRequest<T = unknown> = {
   privacyMode?: "LOCAL_ONLY" | "METADATA_LIMITED" | "ANONYMOUS_METADATA" | "FULL_METADATA";
   requestSource?: "FOREGROUND" | "BACKGROUND" | "CONNECTION_TEST" | "MODEL_DISCOVERY";
   backgroundApproval?: boolean;
+  externalConfirmation?: boolean;
+  idempotencyKey?: string;
+  promptTemplateVersion?: string;
   contextSections?: Array<{ id: string; content: string; priority: "REQUIRED" | "HIGH" | "NORMAL" | "LOW" | "OPTIONAL"; kind?: "SYSTEM" | "SAFETY" | "SCHEMA" | "CONTEXT" | "METADATA" }>;
   contextTrimmingStrategy?: "REJECT" | "REMOVE_OLDEST" | "REMOVE_LOWEST_PRIORITY" | "REMOVE_DUPLICATES";
   allowFallback?: boolean;
@@ -93,6 +96,13 @@ export type ResolvedAiProviderConfig = {
   providerType: AiProviderType;
   displayName: string;
   enabled: boolean;
+  approved?: boolean;
+  allowedFeatures?: string[];
+  privacyModes?: string[];
+  allowLibraryMetadata?: boolean;
+  allowDiagnosticData?: boolean;
+  allowUserNotes?: boolean;
+  allowExternalRequests?: boolean;
   locationClassification: "LOCAL" | "REMOTE" | "USER_CLASSIFIED" | "UNKNOWN";
   baseUrl?: string;
   authenticationType: "NONE" | "API_KEY_HEADER" | "BEARER" | "BASIC" | "PROVIDER_SPECIFIC" | "OFFICIAL_OAUTH" | "CUSTOM_SECRET_HEADERS";
