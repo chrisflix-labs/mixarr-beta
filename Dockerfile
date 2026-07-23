@@ -40,9 +40,9 @@ RUN \
 FROM base AS runner
 WORKDIR /app
 ARG TARGETARCH
-ARG NEXT_PUBLIC_APP_VERSION=2.4.10
+ARG NEXT_PUBLIC_APP_VERSION=2.4.11
 LABEL org.opencontainers.image.title="Mixarr" \
-      org.opencontainers.image.version="2.4.10" \
+      org.opencontainers.image.version="2.4.11" \
       org.opencontainers.image.description="Smart Plex playlist engine with deterministic-first AI-assisted troubleshooting"
 
 RUN apt-get update && apt-get install -y openssl ffmpeg aubio-tools python3 python3-venv && rm -rf /var/lib/apt/lists/*
@@ -64,6 +64,11 @@ ENV LOCAL_BPM_TEMP_DIR=/app/tmp/mixarr-bpm
 RUN groupadd --system --gid 1001 nodejs
 RUN useradd --system --uid 1001 --gid 1001 nextjs
 RUN mkdir -p /app/tmp && chown -R nextjs:nodejs /app/tmp
+# Library Intelligence backup directory (v2.4.11). Owned by the app user so a
+# named volume inherits writable ownership. A bind-mounted host directory keeps
+# the host's ownership, so it must be writable by uid 1001 (see the v2.4.11 guide);
+# otherwise the app falls back to a temp directory and warns.
+RUN mkdir -p /app/backups && chown -R nextjs:nodejs /app/backups
 
 COPY --from=builder /app/public ./public
 

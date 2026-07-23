@@ -10,7 +10,15 @@
   flex-shrink: 0;
   position: sticky;
   top: 0;
-  height: 100vh;
+  /* Cap the sidebar to the viewport and let it scroll on its own when the
+     expanded nav groups exceed the available height. Using max-height (not a
+     fixed height) plus overflow keeps `min-height: auto` from forcing the flex
+     container — and therefore the document — taller than the viewport, which
+     was clipping page content. overflow-x is hidden so the inner scrollbar can
+     never introduce horizontal scrolling. */
+  max-height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   z-index: 50;
   box-shadow: 1px 0 12px rgba(0, 0, 0, 0.3);
 }
@@ -23,6 +31,10 @@
     left: 0;
     width: 100vw;
     height: auto;
+    /* Reset the desktop viewport cap/scrolling: the mobile bar is a short
+       fixed row and must not clip the "More" drawer it renders. */
+    max-height: none;
+    overflow: visible;
     flex-direction: row;
     padding: 0.45rem 0.5rem calc(0.45rem + env(safe-area-inset-bottom));
     border-right: none;

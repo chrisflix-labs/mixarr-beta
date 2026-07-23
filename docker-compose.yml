@@ -30,6 +30,9 @@ services:
     environment:
       - NODE_ENV=production
       - MIXARR_AI_ENABLED=${MIXARR_AI_ENABLED:-true}
+      # Where Library Intelligence backups are written (v2.4.11). Mount this on a
+      # volume SEPARATE from the database so backups survive a database volume reset.
+      - MIXARR_BACKUP_DIR=${MIXARR_BACKUP_DIR:-/app/backups}
       # Recommended: set AI_CREDENTIAL_ENCRYPTION_KEY in .env or inject it
       # through your container platform's secret management. Provider access is
       # still deny-by-default until an administrator explicitly approves it.
@@ -38,6 +41,16 @@ services:
         condition: service_healthy
     volumes:
       - mixarr_app_logs:/app/logs
+      # Library Intelligence backups (v2.4.11). Kept on a DIFFERENT volume than the
+      # Postgres database so backups survive a database volume reset. This named
+      # volume inherits the app user's ownership and is writable out of the box.
+      - mixarr_backups:/app/backups
+      # Prefer a host bind mount for easy access? Comment the line above and use:
+      #   - ./mixarr-backups:/app/backups
+      # A bind-mounted host directory keeps the host's ownership, so it MUST be
+      # writable by the container user (uid 1001), e.g. `chown -R 1001:1001
+      # ./mixarr-backups`. Otherwise the app falls back to a temp dir and warns.
+      # Always keep a downloaded copy; deleting the backup location deletes the backup.
       # Optional: mount Plex media read-only so LocalBpmEngine can analyze files directly.
       # If Plex reports /mnt/Music/... but your Docker host stores it at
       # /mnt/plex/Music/..., set MIXARR_PATH_MAPPINGS=/mnt/Music:/media and
@@ -59,5 +72,6 @@ services:
 volumes:
   mixarr_db_data:
   mixarr_app_logs:
+  mixarr_backups:                  # Library Intelligence backups (v2.4.11), separate from the database volume
   #grafana-storage:                 # Uncomment to enable Grafana
   

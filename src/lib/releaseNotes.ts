@@ -79,6 +79,21 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.11",
+    title: "Library Intelligence Backup & Restore",
+    releaseDate: "July 22, 2026",
+    badges: ["Backup", "Library", "Data Enrichment", "Privacy", "Security", "Jobs", "Accessibility", "Mobile", "Database"],
+    changes: [
+      "Added a scoped Library Intelligence Backup that preserves only calculated audio features, BPM/tempo, popularity, track genres, their processing and known no-data states, and the minimum Plex track identity needed to re-match tracks.",
+      "Backups deliberately exclude AI data, API keys, Plex tokens, passwords, secrets, logs, accounts, playlists, recipes, saved requests, notification credentials, and unrelated settings; an explicit field allowlist enforces this and raw absolute media paths are replaced with a SHA-256 hash of the normalized path.",
+      "Added a portable versioned .mixarr-library-backup archive (manifest.json, tracks.ndjson, checksums.json) written and read as background jobs with streaming batched track export, checksum verification, browser download, and a configurable server backup directory (MIXARR_BACKUP_DIR, default /app/backups).",
+      "Added a guided restore that validates untrusted archives (path traversal, zip bombs, oversize, bad checksums, unsupported versions, malformed and hostile field values), previews matches and changes without writing, and applies with Fill Missing Only (default), Prefer Backup, or Keep Current policies.",
+      "Restore uses conservative deterministic matching (GUID, source id, rating key, path hash, then strict metadata fingerprint) so restored features, BPM, popularity, and genres are marked complete without rerunning local Essentia analysis or repeating external lookups; ambiguous matches are never applied automatically and known no-data states are preserved.",
+      "Restore is resumable, idempotent, and safe to run more than once; a backup uploaded before a Plex sync is staged and applied after tracks appear. Restored records keep their original source and timestamp plus explicit restored-from-backup provenance.",
+      "Upgrade: apply migration 20260729010000_library_intelligence_backup_v2411. It adds only job-state, staging, and provenance columns and does not enable AI, queue analysis, or modify existing intelligence data. Keep a downloaded copy or store backups on a volume separate from the Mixarr database.",
+    ],
+  },
+  {
     version: "2.4.10",
     title: "AI-Assisted Mix Intelligence Polish",
     releaseDate: "July 22, 2026",

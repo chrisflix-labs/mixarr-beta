@@ -1,6 +1,8 @@
 # Mixarr
 
-Current release: **v2.4.10 — AI-Assisted Mix Intelligence Polish**. Start at `/ai` for guided setup, provider and privacy status, request history, templates, usage, approvals, audit activity, and troubleshooting links. See [the v2.4.10 guide](docs/AI_ASSISTED_MIX_INTELLIGENCE_V2410.md) and [the v2.4.9 security guide](docs/AI_GOVERNANCE_SECURITY_RELIABILITY_V249.md).
+Current release: **v2.4.11 — Library Intelligence Backup & Restore**. Back up and restore calculated audio features, BPM, popularity, and genres at `/settings/system/library-backup` so a recreated database does not need to reanalyze your library. Backups exclude settings, accounts, Plex tokens, API keys, AI data, logs, and playlists. See [the v2.4.11 guide](docs/LIBRARY_INTELLIGENCE_BACKUP_V2411.md).
+
+Previous release: **v2.4.10 — AI-Assisted Mix Intelligence Polish**. Start at `/ai` for guided setup, provider and privacy status, request history, templates, usage, approvals, audit activity, and troubleshooting links. See [the v2.4.10 guide](docs/AI_ASSISTED_MIX_INTELLIGENCE_V2410.md) and [the v2.4.9 security guide](docs/AI_GOVERNANCE_SECURITY_RELIABILITY_V249.md).
 
 **Mixarr** is a self-hosted Plex music playlist and library enhancement app for people who want smarter ways to explore, repair, and playlist their Plex music libraries.
 
@@ -202,6 +204,35 @@ DATABASE_URL=postgresql://mixarr:mixarrpass@db:5432/mixarrdb?schema=public&conne
 ```
 
 Prefer lowering job concurrency and avoiding overlapping syncs before raising the pool size.
+
+## Library Intelligence Backup & Restore
+
+Mixarr v2.4.11 can back up the **expensive calculated library intelligence** — audio
+features, BPM/tempo, popularity scores, track genres, and their processing and known
+no-data states — plus the minimum Plex track identity needed to re-match tracks. This
+lets you restore into a recreated database without rerunning tens of thousands of
+Essentia analysis and external lookup jobs.
+
+This is **not** a full database or disaster-recovery backup. It never includes settings,
+accounts, Plex tokens, API keys, AI data, logs, playlists, recipes, or raw audio, and it
+stores a hash of the normalized media path rather than raw paths. Manage it at
+**Settings → System → Library Intelligence Backup** (administrators only).
+
+Store backups on a volume **separate** from the database so they survive a database
+volume reset:
+
+```yaml
+services:
+  mixarr:
+    volumes:
+      - ./mixarr-data:/app/data
+      - ./mixarr-backups:/app/backups   # separate from the database volume
+```
+
+Set the directory with `MIXARR_BACKUP_DIR` (default `/app/backups`). Deleting both the
+database and backup locations deletes the backup too, so keep a downloaded copy. To
+restore after recreating the database: reconfigure Plex, run a lightweight library sync,
+then upload and apply the backup. See [the v2.4.11 guide](docs/LIBRARY_INTELLIGENCE_BACKUP_V2411.md).
 
 ## Media Ecosystem Integrations
 

@@ -62,7 +62,11 @@
 
 html, body {
   max-width: 100vw;
-  overflow-x: hidden;
+  /* `clip` (not `hidden`) prevents horizontal scrollbars WITHOUT turning the
+     document into a scroll container. `overflow-x: hidden` here would make the
+     body a scroll container and break the sticky sidebar (it would scroll away
+     with the page instead of pinning). */
+  overflow-x: clip;
   background: var(--bg);
   color: var(--fg);
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -183,10 +187,14 @@ tr:hover {
 
 .main-content {
   flex: 1;
+  /* Allow this flex child to shrink so wide content (tables, etc.) never
+     forces the whole shell wider than the viewport. */
+  min-width: 0;
   padding: 2rem 2.5rem;
-  height: 100vh;
-  overflow-y: auto;
-  padding-bottom: 2rem;
+  /* No fixed height and no internal overflow: the document scrolls naturally,
+     so page content is never clipped when the sidebar is taller than the
+     viewport. Bottom padding keeps the final control clear of the edge. */
+  padding-bottom: 4rem;
 }
 
 @media (max-width: 768px) {
@@ -195,10 +203,8 @@ tr:hover {
   }
   .main-content {
     padding: 1.25rem 1rem;
+    /* Clear the fixed mobile bottom navigation bar. */
     padding-bottom: 100px;
-    height: auto;
-    min-height: 100vh;
-    overflow-y: visible;
   }
 }
 

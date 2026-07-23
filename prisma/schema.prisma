@@ -421,6 +421,10 @@ model Track {
   recentlyAddedProcessedAt   DateTime?
   recentlyAddedStatus        String?
   recentlyAddedBatchId       String?
+  bpmRestoredFromBackupId    String?
+  bpmRestoredAt              DateTime?
+  genreRestoredFromBackupId  String?
+  genreRestoredAt            DateTime?
   library                    Library                          @relation(fields: [libraryId], references: [id], onDelete: Cascade)
   album                      Album                            @relation(fields: [albumId], references: [id], onDelete: Cascade)
   artist                     Artist                           @relation(fields: [artistId], references: [id], onDelete: Cascade)
@@ -982,6 +986,8 @@ model Popularity {
   confidence    Float?
   matchedArtist String?
   matchedTitle  String?
+  restoredFromBackupId String?
+  restoredAt    DateTime?
   lastUpdated   DateTime @default(now())
   track         Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
@@ -1034,6 +1040,8 @@ model AudioFeature {
   valenceSource             String?
   danceabilitySource        String?
   acousticnessSource        String?
+  restoredFromBackupId      String?
+  restoredAt                DateTime?
   lastUpdated               DateTime  @default(now())
   track                     Track     @relation(fields: [trackId], references: [id], onDelete: Cascade)
 }
@@ -6916,4 +6924,137 @@ model TroubleshootingSetting {
   createdAt                      DateTime @default(now())
   updatedAt                      DateTime @updatedAt
   user                           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Library Intelligence Backup & Restore (v2.4.11)
+// Scoped to calculated/collected library intelligence only. Never stores
+// AI data, tokens, credentials, playlists, recipes, logs, or unrelated settings.
+// Archive files hold the exported track records; these tables hold only job
+// state, summaries, provenance, and staged records awaiting a library sync.
+// ---------------------------------------------------------------------------
+
+model LibraryBackupArchive {
+  id                String    @id @default(uuid())
+  userId            String
+  fileName          String
+  storedPath        String? // absolute server path; never exposed to the frontend
+  schemaVersion     Int
+  mixarrVersion     String
+  backupType        String    @default("mixarr-library-intelligence")
+  fileSizeBytes     BigInt    @default(0)
+  archiveSha256     String?
+  trackCount        Int       @default(0)
+  audioFeatureCount Int       @default(0)
+  bpmCount          Int       @default(0)
+  popularityCount   Int       @default(0)
+  genreCount        Int       @default(0)
+  noDataCount       Int       @default(0)
+  countsJson        Json?
+  manifestJson      Json?
+  notes             String?
+  verificationStatus String   @default("unverified") // unverified | verified | failed
+  verifiedAt        DateTime?
+  lastRestoredAt    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([verificationStatus])
+}
+
+model LibraryBackupJob {
+  id            String    @id @default(uuid())
+  userId        String
+  archiveId     String?
+  status        String    @default("preparing") // preparing | reading | exporting | writing | verifying | completed | failed | canceled
+  phase         String    @default("preparing")
+  libraryId     String?
+  notes         String?
+  trackCount    Int       @default(0)
+  processed     Int       @default(0)
+  totalEstimate Int       @default(0)
+  countsJson    Json?
+  error         String?
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId, startedAt])
+  @@index([status])
+}
+
+model LibraryRestoreJob {
+  id                  String    @id @default(uuid())
+  userId              String
+  archiveFileName     String
+  uploadedPath        String? // absolute server path of the uploaded archive; never exposed
+  backupSchemaVersion Int?
+  backupMixarrVersion String?
+  status              String    @default("uploaded")
+  // uploaded | validating | preview_ready | waiting_for_library_sync | matching | restoring |
+  // verifying | completed | completed_with_warnings | failed | canceled | interrupted
+  phase               String    @default("uploaded")
+  conflictPolicy      String    @default("fill_missing")
+  categoryPolicyJson  Json?
+  cancelRequested     Boolean   @default(false)
+  workerId            String?
+  leaseExpiresAt      DateTime?
+  compatibility       String?
+  previewJson         Json?
+  reportJson          Json?
+  error               String?
+  archiveTrackCount   Int       @default(0)
+  matchedCount        Int       @default(0)
+  unmatchedCount      Int       @default(0)
+  ambiguousCount      Int       @default(0)
+  appliedCount        Int       @default(0)
+  lastBatchIndex      Int       @default(0)
+  startedAt           DateTime  @default(now())
+  finishedAt          DateTime?
+  updatedAt           DateTime  @updatedAt
+
+  stagedRecords       LibraryRestoreStagedRecord[]
+  matches             LibraryRestoreMatch[]
+
+  @@index([userId, startedAt])
+  @@index([status])
+}
+
+model LibraryRestoreStagedRecord {
+  id             String   @id @default(uuid())
+  restoreJobId   String
+  recordIndex    Int
+  backupTrackId  String? // internal backup record id
+  fingerprint    String?
+  pathHash       String?
+  plexGuid       String?
+  ratingKey      String?
+  recordJson     Json // the sanitized, allowlisted backup track record
+  matchStatus    String   @default("pending") // pending | matched | applied | ambiguous | unmatched | skipped | invalid
+  matchType      String?
+  matchedTrackId String?
+  appliedBatch   Int?
+  reason         String?
+  createdAt      DateTime @default(now())
+
+  restoreJob     LibraryRestoreJob @relation(fields: [restoreJobId], references: [id], onDelete: Cascade)
+
+  @@index([restoreJobId, matchStatus])
+  @@index([restoreJobId, fingerprint])
+}
+
+model LibraryRestoreMatch {
+  id             String   @id @default(uuid())
+  restoreJobId   String
+  backupTrackId  String?
+  matchedTrackId String?
+  matchType      String // exact_guid | exact_source_id | exact_rating_key | path_hash | metadata_fingerprint | high_confidence_metadata | manual | ambiguous | unmatched
+  confidence     Float?
+  candidatesJson Json?
+  createdAt      DateTime @default(now())
+
+  restoreJob     LibraryRestoreJob @relation(fields: [restoreJobId], references: [id], onDelete: Cascade)
+
+  @@index([restoreJobId, matchType])
 }

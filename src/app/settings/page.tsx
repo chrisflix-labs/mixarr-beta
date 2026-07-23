@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Settings as SettingsIcon, Ban, BarChart3, Bot, Brain, CalendarDays, CircleHelp, Database, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, ListChecks, ListMusic, Map, RefreshCw, ScrollText, Server, ShieldCheck, Wrench } from "lucide-react";
+import { Settings as SettingsIcon, Ban, BarChart3, Bot, Brain, CalendarDays, CircleHelp, Database, DatabaseBackup, ExternalLink, FlaskConical, Github, HeartPulse, History, Info, Key, LifeBuoy, ListChecks, ListMusic, Map, RefreshCw, ScrollText, Server, ShieldCheck, Wrench } from "lucide-react";
 import ProviderTestButton from "@/components/ProviderTestButton";
 import BetaFeatureSettingsForm from "@/components/BetaFeatureSettingsForm";
 import ExternalApiSettingsPanel from "@/components/ExternalApiSettingsPanel";
@@ -81,6 +81,15 @@ export default async function SettingsPage() {
         <span>
           <strong>Troubleshooting &amp; Diagnostic Privacy</strong>
           <small>Choose safe diagnostic categories, preview sanitized bundles, run deterministic checks, and review advisory AI explanations.</small>
+        </span>
+        <span aria-hidden="true">&rarr;</span>
+      </Link>
+
+      <Link href="/settings/system/library-backup" className={`glass-panel ${styles.healthLink}`}>
+        <DatabaseBackup size={24} />
+        <span>
+          <strong>Library Intelligence Backup</strong>
+          <small>Back up and restore calculated audio features, BPM, popularity, and genres so a recreated database does not need to reanalyze your library. Excludes settings, accounts, tokens, AI data, logs, and playlists.</small>
         </span>
         <span aria-hidden="true">&rarr;</span>
       </Link>
