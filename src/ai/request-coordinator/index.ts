@@ -11,7 +11,7 @@ import { sanitizePromptText } from "../utilities/prompt";
 import { completeAiAudit, createAiAudit, failAiAudit, setAiAuditStatus } from "../audit/service";
 import { recordAiExecutionHealth } from "../health/service";
 import { createAiRequestSignal, nextStreamEvent } from "../utilities/cancellation";
-import { previewAiRequest, reconcileAiBudgetReservation, recordBlockedAiRequest, reserveAiBudget } from "../governance/service";
+import { prepareAiRetry, previewAiRequest, reconcileAiBudgetReservation, recordBlockedAiRequest, reserveAiBudget } from "../governance/service";
 import { selectCheaperEligibleModel } from "../governance/policy";
 import { unexpectedAiError } from "../governance/logging";
 import { assertAiExecutionPolicy } from "../governance/executionPolicy";
@@ -134,18 +134,20 @@ function normalizedRequest<T>(request: AiRequest<T>) {
   return { request: { ...request, systemInstructions: safe.systemInstructions ? sanitizePromptText(safe.systemInstructions, 20_000) : undefined, messages: safe.messages.slice(0, 100).map((message) => ({ role: message.role, content: sanitizePromptText(message.content, 20_000) })), metadataRecords: safe.metadataRecords, metadata: safeMetadataSchema.parse(request.metadata || {}), temperature: request.temperature == null ? undefined : Math.max(0, Math.min(2, request.temperature)) }, injection, redaction: redacted.result };
 }
 
-async function executeWithRetries<T>(input: { request: AiRequest<T>; candidate: { config: ResolvedAiProviderConfig; model: string; adapter: AiProviderAdapter }; requestId: string; auditId?: string; signal: AbortSignal; maxBytes: number; started: number; startingRetries: number; timedOut: () => boolean; maximumRetryAttempts: number; retryAfterPossibleBilling: boolean; revalidate: () => Promise<unknown> }) {
+async function executeWithRetries<T>(input: { request: AiRequest<T>; candidate: { config: ResolvedAiProviderConfig; model: string; adapter: AiProviderAdapter }; requestId: string; auditId?: string; signal: AbortSignal; maxBytes: number; started: number; startingRetries: number; timedOut: () => boolean; maximumRetryAttempts: number; retryAfterPossibleBilling: boolean; estimatedAttemptCost: number; beforeRetry: (retryNumber: number, possiblePriorBilling: boolean) => Promise<unknown> }) {
   let retries = input.startingRetries;
+  let possiblePriorBillingCost = 0;
   while (true) {
     const attemptStarted = Date.now();
     const attemptNumber = retries + 1;
-    const attempt = input.auditId ? await prisma.aiProviderAttempt.create({ data: { requestAuditId: input.auditId, attemptNumber, providerConfigId: input.candidate.config.id, model: input.candidate.model, status: "STARTED" } }).catch((error) => { unexpectedAiError(error, { correlationId: input.requestId, featureName: input.request.featureKey, providerId: input.candidate.config.id, governanceDecisionStage: "audit_persistence" }); return null; }) : null;
+    const attempt = input.auditId ? await prisma.aiProviderAttempt.create({ data: { requestAuditId: input.auditId, attemptNumber, providerConfigId: input.candidate.config.id, model: input.candidate.model, status: "STARTED", estimatedCost: input.estimatedAttemptCost } }).catch((error) => { unexpectedAiError(error, { correlationId: input.requestId, featureName: input.request.featureKey, providerId: input.candidate.config.id, governanceDecisionStage: "audit_persistence" }); return null; }) : null;
     try {
       await enforceBudget(input.candidate.config); // Backward-compatible v2.4.0 provider limit.
       const response = await input.candidate.adapter.complete(input.request, input.candidate.config, { requestId: input.requestId, providerId: input.candidate.config.id, model: input.candidate.model, signal: input.signal, maxResponseBytes: input.maxBytes });
       response.retryCount = retries; response.latencyMs = Date.now() - input.started;
       if (attempt) await prisma.aiProviderAttempt.update({ where: { id: attempt.id }, data: { status: "COMPLETED", completedAt: new Date(), providerAcknowledged: true, estimatedCost: response.estimatedCost, actualCost: response.actualCost, inputTokens: response.usage?.inputTokens, outputTokens: response.usage?.outputTokens, cachedTokens: response.usage?.cachedTokens, reasoningTokens: response.usage?.reasoningTokens, safeUsageJson: response.usage?.rawUsage ? sanitizeUsagePayload(response.usage.rawUsage) as any : undefined } }).catch((error) => { unexpectedAiError(error, { correlationId: input.requestId, featureName: input.request.featureKey, providerId: input.candidate.config.id, governanceDecisionStage: "audit_persistence" }); });
       await recordAiExecutionHealth(input.candidate.config.id, true, Date.now() - attemptStarted);
+      if (possiblePriorBillingCost > 0) (response as any).possiblePriorBillingCost = possiblePriorBillingCost;
       return response;
     } catch (error) {
       let normalized = normalizeProviderError(error);
@@ -158,7 +160,9 @@ async function executeWithRetries<T>(input: { request: AiRequest<T>; candidate: 
         await recordAiExecutionHealth(input.candidate.config.id, false, Date.now() - attemptStarted, normalized);
         throw Object.assign(normalized, { retryCount: retries });
       }
-      await input.revalidate(); // Re-evaluate privacy, request counts, retry cost and all budgets before every attempt.
+      const nextRetryNumber = retries - input.startingRetries + 1;
+      await input.beforeRetry(nextRetryNumber, mayHaveBeenBilled); // Retry-only cost and current policy are evaluated only after a transient failure.
+      if (mayHaveBeenBilled) possiblePriorBillingCost += input.estimatedAttemptCost;
       const delay = normalized.retryAfterMs ?? retryDelayMs(retries - input.startingRetries, input.candidate.config.initialRetryDelayMs, input.candidate.config.maximumRetryDelayMs, input.candidate.config.retryBackoffMultiplier);
       retries += 1; if (attempt) await prisma.aiProviderAttempt.update({ where: { id: attempt.id }, data: { retryReason: normalized.category } }).catch((auditError) => logAuditFailure(auditError, { requestId: input.requestId, request: input.request, provider: input.candidate.config, model: input.candidate.model })); if (input.auditId) await setAiAuditStatus(input.requestId, "RETRIED").catch((auditError) => logAuditFailure(auditError, { requestId: input.requestId, request: input.request, provider: input.candidate.config, model: input.candidate.model })); await abortableDelay(delay, input.signal);
     }
@@ -207,7 +211,7 @@ export class AiRequestCoordinator {
     try {
       let response: AiResponse<T>;
       try {
-        response = await executeWithRetries({ request, candidate: selected.primary, requestId, auditId, signal: timed.signal, maxBytes, started, startingRetries: 0, timedOut: timed.timedOut, maximumRetryAttempts: governed.preview.retryPolicy.maximumRetryAttempts, retryAfterPossibleBilling: governed.preview.retryPolicy.retryAfterPossibleBilling, revalidate: () => previewAiRequest({ request, provider: selected.primary.config, model: selected.primary.model, userId }) });
+        response = await executeWithRetries({ request, candidate: selected.primary, requestId, auditId, signal: timed.signal, maxBytes, started, startingRetries: 0, timedOut: timed.timedOut, maximumRetryAttempts: governed.preview.retryPolicy.maximumRetryAttempts, retryAfterPossibleBilling: governed.preview.retryPolicy.retryAfterPossibleBilling, estimatedAttemptCost: governed.preview.cost.maximumEstimatedCost, beforeRetry: (retryNumber, possiblePriorBilling) => prepareAiRetry({ request, provider: selected.primary.config, model: selected.primary.model, userId, requestId, reservationId, retryNumber, possiblePriorBilling, initialAttemptCost: governed.preview.cost.maximumEstimatedCost }) });
       } catch (error) {
         const normalized = normalizeProviderError(error); retries = Number((error as any)?.retryCount || 0);
         if (!selected.fallback || !fallbackCategories.has(normalized.category) || timed.signal.aborted) throw error;
@@ -217,11 +221,12 @@ export class AiRequestCoordinator {
         await reconcileAiBudgetReservation(reservationId, undefined, "RELEASED");
         const fallbackReservation = await reserveAiBudget({ request, provider: selected.fallback.config, model: selected.fallback.model, userId, requestId, auditId }); reservationId = fallbackReservation.reservation.id; governed = fallbackReservation;
         if (auditId) await prisma.aiRequestAudit.update({ where: { id: auditId }, data: { providerConfigId: selected.fallback.config.id, providerType: selected.fallback.config.providerType, providerDisplayName: selected.fallback.config.displayName, model: selected.fallback.model, status: "RETRIED" } }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.fallback!.config, model: selected.fallback!.model }));
-        response = await executeWithRetries({ request, candidate: selected.fallback, requestId, auditId, signal: timed.signal, maxBytes, started, startingRetries: retries + 1, timedOut: timed.timedOut, maximumRetryAttempts: governed.preview.retryPolicy.maximumRetryAttempts, retryAfterPossibleBilling: governed.preview.retryPolicy.retryAfterPossibleBilling, revalidate: () => previewAiRequest({ request, provider: selected.fallback!.config, model: selected.fallback!.model, userId }) });
+        response = await executeWithRetries({ request, candidate: selected.fallback, requestId, auditId, signal: timed.signal, maxBytes, started, startingRetries: retries + 1, timedOut: timed.timedOut, maximumRetryAttempts: governed.preview.retryPolicy.maximumRetryAttempts, retryAfterPossibleBilling: governed.preview.retryPolicy.retryAfterPossibleBilling, estimatedAttemptCost: governed.preview.cost.maximumEstimatedCost, beforeRetry: (retryNumber, possiblePriorBilling) => prepareAiRetry({ request, provider: selected.fallback!.config, model: selected.fallback!.model, userId, requestId, reservationId, retryNumber, possiblePriorBilling, initialAttemptCost: governed.preview.cost.maximumEstimatedCost }) });
         response.warnings.push(`Explicit fallback used after ${selected.primary.config.displayName} was unavailable.`);
       }
       if (cheaperFallback) response.warnings.push(`A cheaper compatible model was selected, saving an estimated ${cheaperFallback.estimatedSavings.toFixed(6)} ${governed.preview.cost.currency}.`);
       retries = response.retryCount;
+      const possiblePriorBillingCost = Number((response as any).possiblePriorBillingCost || 0);
       const responseInspection = inspectAiResponse(response.content || "");
       const stored = await storeAiResponse({ requestId, providerConfigId: response.providerId, model: response.model, schemaVersion: request.responseFormat?.name || "text-1", body: response.content || "", status: "RECEIVED", validationSummary: responseInspection });
       if (!responseInspection.safe) { await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, severity: responseInspection.severity, reasons: responseInspection.reasons, requestPreview: { feature: request.featureKey }, responsePreview: response.content }); throw new AiError("AI_RESPONSE_QUARANTINED"); }
@@ -230,7 +235,13 @@ export class AiRequestCoordinator {
         catch (error) { await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, reasons: ["schema_validation_failed"], requestPreview: { feature: request.featureKey }, responsePreview: response.content, validationFailures: (error as AiError).details }); throw new AiError("AI_RESPONSE_QUARANTINED"); }
       }
       const bytes = Buffer.byteLength(response.content || "", "utf8"); if (bytes > maxBytes) throw new AiError("RESPONSE_TOO_LARGE");
-      if (response.estimatedCost == null) response.estimatedCost = governed.preview.cost.expectedEstimatedCost;
+      if (possiblePriorBillingCost > 0) {
+        // A prior attempt may have been billed but did not return exact usage.
+        // Preserve the provider-reported final-attempt cost on its attempt row,
+        // and account for the logical request conservatively as an estimate.
+        response.estimatedCost = possiblePriorBillingCost + Number(response.actualCost ?? response.estimatedCost ?? governed.preview.cost.expectedEstimatedCost);
+        response.actualCost = undefined;
+      } else if (response.estimatedCost == null) response.estimatedCost = governed.preview.cost.expectedEstimatedCost;
       try { await completeAiAudit(requestId, response, bytes); } catch (error) { await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, reasons: ["audit_persistence_failed"], requestPreview: { feature: request.featureKey }, responsePreview: response.content }).catch(() => null); throw new AiError("INTERNAL_AI_ERROR"); } await reconcileAiBudgetReservation(reservationId, response.actualCost ?? response.estimatedCost, "RECONCILED"); await prisma.aiProviderModel.updateMany({ where: { providerConfigId: response.providerId, modelIdentifier: response.model }, data: { lastSuccessfulUseAt: new Date() } }); return response;
     } catch (error) {
       let normalized = normalizeProviderError(error); if (timed.timedOut()) normalized = new AiError("REQUEST_TIMEOUT"); retries = Number((error as any)?.retryCount || retries);

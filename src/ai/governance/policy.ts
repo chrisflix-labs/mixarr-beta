@@ -107,25 +107,75 @@ export function validatePromptLimits(input: { text: string; messageCount: number
   return { characters, bytes, estimatedInputTokens, maxOutputTokens, effectiveLimits: effective, clamped: input.requestedOutputTokens != null && maxOutputTokens < input.requestedOutputTokens };
 }
 
-function decimalMicros(value: string | number | null | undefined) {
+export const AI_CURRENCY_MICROS = 1_000_000;
+
+export function currencyMicros(value: string | number | null | undefined) {
   if (value == null || value === "") return null; const source = String(value).trim();
   if (!/^\d+(\.\d+)?$/.test(source)) throw new AiError("INVALID_REQUEST", "Pricing values must be non-negative decimals.");
-  const [whole, fraction = ""] = source.split("."); return Number(whole) * 1_000_000 + Number((fraction + "000000").slice(0, 6));
+  const [whole, fraction = ""] = source.split("."); return Number(whole) * AI_CURRENCY_MICROS + Number((fraction + "000000").slice(0, 6));
 }
-function pricedTokens(tokens: number, perMillionMicros: number | null) { return perMillionMicros == null ? 0 : Math.ceil(Math.max(0, Math.ceil(tokens)) * perMillionMicros / 1_000_000); }
-function dollars(micros: number) { return micros / 1_000_000; }
+function pricedTokens(tokens: number, perMillionMicros: number | null) { return perMillionMicros == null ? 0 : Math.ceil(Math.max(0, Math.ceil(tokens)) * perMillionMicros / AI_CURRENCY_MICROS); }
+export function currencyFromMicros(micros: number) { return micros / AI_CURRENCY_MICROS; }
+
+export type AiCostEvaluationScope = "request" | "daily" | "monthly" | "provider" | "user" | "retry";
+export type AiCostEvaluation = {
+  allowed: boolean;
+  scope: AiCostEvaluationScope;
+  estimatedCost: number;
+  currentUsage: number;
+  remainingBudget: number | null;
+  limit: number | null;
+  reasonCode: string | null;
+};
+
+export function evaluateCostLimit(input: { scope: AiCostEvaluationScope; estimatedCost: string | number; currentUsage?: string | number; limit?: string | number | null; reasonCode: string }): AiCostEvaluation {
+  const estimatedMicros = currencyMicros(input.estimatedCost) || 0;
+  const usageMicros = currencyMicros(input.currentUsage || 0) || 0;
+  const limitMicros = currencyMicros(input.limit);
+  const allowed = limitMicros == null || usageMicros + estimatedMicros <= limitMicros;
+  return {
+    allowed,
+    scope: input.scope,
+    estimatedCost: currencyFromMicros(estimatedMicros),
+    currentUsage: currencyFromMicros(usageMicros),
+    remainingBudget: limitMicros == null ? null : currencyFromMicros(Math.max(0, limitMicros - usageMicros)),
+    limit: limitMicros == null ? null : currencyFromMicros(limitMicros),
+    reasonCode: allowed ? null : input.reasonCode,
+  };
+}
+
+export function evaluateRetryCost(input: { incrementalCost: string | number; retryNumber: number; retryLimit?: string | number | null; initialAttemptCost: string | number; cumulativeRequestLimit?: string | number | null }): AiCostEvaluation {
+  const incrementalMicros = currencyMicros(input.incrementalCost) || 0;
+  const retryNumber = Math.max(1, Math.floor(input.retryNumber));
+  const cumulativeRetryMicros = incrementalMicros * retryNumber;
+  const retryLimitMicros = currencyMicros(input.retryLimit);
+  const cumulativeRequestMicros = (currencyMicros(input.initialAttemptCost) || 0) + cumulativeRetryMicros;
+  const cumulativeRequestLimitMicros = currencyMicros(input.cumulativeRequestLimit);
+  const retryAllowed = retryLimitMicros == null || cumulativeRetryMicros <= retryLimitMicros;
+  const cumulativeAllowed = cumulativeRequestLimitMicros == null || cumulativeRequestMicros <= cumulativeRequestLimitMicros;
+  const effectiveLimitMicros = !retryAllowed ? retryLimitMicros : cumulativeRequestLimitMicros;
+  return {
+    allowed: retryAllowed && cumulativeAllowed,
+    scope: "retry",
+    estimatedCost: currencyFromMicros(incrementalMicros),
+    currentUsage: currencyFromMicros(cumulativeRetryMicros - incrementalMicros),
+    remainingBudget: effectiveLimitMicros == null ? null : currencyFromMicros(Math.max(0, effectiveLimitMicros - (!retryAllowed ? cumulativeRetryMicros - incrementalMicros : cumulativeRequestMicros - incrementalMicros))),
+    limit: effectiveLimitMicros == null ? null : currencyFromMicros(effectiveLimitMicros),
+    reasonCode: retryAllowed && cumulativeAllowed ? null : "AI_RETRY_COST_LIMIT_EXCEEDED",
+  };
+}
 
 export type PricingInput = { inputPricePerMillion?: string | number | null; outputPricePerMillion?: string | number | null; cachedInputPricePerMillion?: string | number | null; reasoningPricePerMillion?: string | number | null; fixedRequestCost?: string | number | null; currency?: string; pricingSource?: string | null; lastVerifiedAt?: Date | string | null; estimated?: boolean };
 export function estimateRequestCost(input: { inputTokens: number; maximumOutputTokens: number; expectedOutputTokens?: number; cachedInputTokens?: number; reasoningTokens?: number; retryAllowance?: number; pricing: PricingInput }) {
-  const price = input.pricing; const fixed = decimalMicros(price.fixedRequestCost) || 0;
-  const baseInput = pricedTokens(Math.max(0, input.inputTokens - (input.cachedInputTokens || 0)), decimalMicros(price.inputPricePerMillion));
-  const cached = pricedTokens(input.cachedInputTokens || 0, decimalMicros(price.cachedInputPricePerMillion) ?? decimalMicros(price.inputPricePerMillion));
-  const reasoning = pricedTokens(input.reasoningTokens || 0, decimalMicros(price.reasoningPricePerMillion) ?? decimalMicros(price.outputPricePerMillion));
-  const outputPrice = decimalMicros(price.outputPricePerMillion); const minimumMicros = fixed + baseInput + cached + reasoning;
+  const price = input.pricing; const fixed = currencyMicros(price.fixedRequestCost) || 0;
+  const baseInput = pricedTokens(Math.max(0, input.inputTokens - (input.cachedInputTokens || 0)), currencyMicros(price.inputPricePerMillion));
+  const cached = pricedTokens(input.cachedInputTokens || 0, currencyMicros(price.cachedInputPricePerMillion) ?? currencyMicros(price.inputPricePerMillion));
+  const reasoning = pricedTokens(input.reasoningTokens || 0, currencyMicros(price.reasoningPricePerMillion) ?? currencyMicros(price.outputPricePerMillion));
+  const outputPrice = currencyMicros(price.outputPricePerMillion); const minimumMicros = fixed + baseInput + cached + reasoning;
   const expectedMicros = minimumMicros + pricedTokens(input.expectedOutputTokens ?? Math.ceil(input.maximumOutputTokens / 2), outputPrice);
   const oneMaximum = minimumMicros + pricedTokens(input.maximumOutputTokens, outputPrice); const maximumMicros = oneMaximum * (1 + Math.max(0, input.retryAllowance || 0));
   const ageDays = price.lastVerifiedAt ? Math.floor((Date.now() - new Date(price.lastVerifiedAt).getTime()) / 86_400_000) : null;
-  return { minimumEstimatedCost: dollars(minimumMicros), expectedEstimatedCost: dollars(expectedMicros), maximumEstimatedCost: dollars(maximumMicros), confidence: price.estimated ? "ESTIMATED" : "CONFIGURED", currency: price.currency || "USD", pricingSource: price.pricingSource || "Administrator configuration", pricingAgeDays: ageDays };
+  return { minimumEstimatedCost: currencyFromMicros(minimumMicros), expectedEstimatedCost: currencyFromMicros(expectedMicros), maximumEstimatedCost: currencyFromMicros(maximumMicros), confidence: price.estimated ? "ESTIMATED" : "CONFIGURED", currency: price.currency || "USD", pricingSource: price.pricingSource || "Administrator configuration", pricingAgeDays: ageDays };
 }
 
 export type ContextSection = { id: string; content: string; priority: "REQUIRED" | "HIGH" | "NORMAL" | "LOW" | "OPTIONAL"; kind?: "SYSTEM" | "SAFETY" | "SCHEMA" | "CONTEXT" | "METADATA" };
@@ -153,7 +203,7 @@ export function budgetPeriod(now: Date, resetDay: number) {
 }
 
 export function wouldExceedBudget(limit: string | number | null | undefined, used: string | number, reserved: string | number, pending: string | number) {
-  if (limit == null) return false; const cap = decimalMicros(limit)!; return (decimalMicros(used) || 0) + (decimalMicros(reserved) || 0) + (decimalMicros(pending) || 0) > cap;
+  if (limit == null) return false; const cap = currencyMicros(limit)!; return (currencyMicros(used) || 0) + (currencyMicros(reserved) || 0) + (currencyMicros(pending) || 0) > cap;
 }
 
 export function alertDeduplicationKey(condition: string, scopeType: string, scopeId: string | null | undefined, threshold: number, periodStart: Date) { return [condition, scopeType, scopeId || "global", threshold, periodStart.toISOString()].join(":"); }

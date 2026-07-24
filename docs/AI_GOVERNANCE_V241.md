@@ -31,7 +31,7 @@ Every normal completion and stream passes through `AiRequestCoordinator` and the
 4. Transform typed metadata through the allowlist/anonymization engine. Secret, credential, path, infrastructure, raw-file, and identity fields are always prohibited.
 5. Validate prompt characters, UTF-8 bytes, message count, metadata-record count, estimated input tokens, output tokens, combined tokens, response bytes, and structured limits.
 6. Apply the configured visible context-trimming policy, preserving required system, safety, and structured-schema sections, then recalculate tokens and cost.
-7. Find the effective model-pricing profile and calculate minimum, expected, and maximum estimated cost, including the allowed retry envelope.
+7. Find the effective model-pricing profile and calculate minimum, expected, and maximum estimated cost for the initial attempt only.
 8. Check request counts plus provider, user, background, and global limits. Active reservations count as spent for admission control.
 9. Create an expiring reservation in a serializable transaction before dispatch.
 10. Execute and record each provider attempt separately. Before a retry or fallback, re-run policy and budget checks; possible-billing retries remain off by default.
@@ -62,7 +62,7 @@ Full Metadata requires acceptance of the current versioned warning and can be re
 
 Pricing is stored per provider/model and effective date. Profiles support input, output, cached-input, reasoning-token, and fixed-request charges; currency; source; verification time; estimated/free/local/unpriced state; enablement; duplication; and history. Commercial prices are not hardcoded.
 
-The cost estimator reports a minimum, expected, and maximum estimate; confidence; price source and age; remaining user/provider/global budgets; and admission status. Estimates are never labeled as exact charges. Local providers default to zero monetary cost unless local cost counting and pricing are configured.
+The cost estimator reports a minimum, expected, and maximum one-attempt estimate; confidence; price source and age; remaining user/provider/global budgets; and admission status. Estimates are never labeled as exact charges. Local providers default to zero monetary cost unless local cost counting and pricing are configured. Initial admission never adds the theoretical cost of all possible retries and never applies the retry-only cost limit.
 
 Global, provider, and user budgets support daily/monthly cost and request limits. User limits also control provider/privacy/model eligibility, paid providers, background use, and per-request tokens. Administrators are not exempt unless the explicit exemption setting is enabled.
 
@@ -72,7 +72,9 @@ Reservations expire after ten minutes if a worker disappears. Active and expired
 
 Background AI is globally off by default. Independent controls cover external background use, daily request/cost limits, concurrency, allowed UTC hours, per-feature disablement, user eligibility, and manual approval. Policy is resolved immediately before queued execution, so a queued item cannot retain an older privacy or budget decision.
 
-The strictest connection, first-token, total, streaming-idle, and request timeout applies. Retries are bounded by provider and governance attempt counts, retry cost, cumulative cost, privacy, and remaining budgets. When provider acknowledgement is possible, automatic retry is disabled unless explicitly enabled.
+The strictest connection, first-token, total, streaming-idle, and request timeout applies. Retries are bounded by provider and governance attempt counts, retry cost, cumulative request cost, privacy, and remaining budgets. Retry limits are evaluated only after a recognized transient provider failure and immediately before each real retry. A missing retry-cost limit (`null`) means no separate monetary retry ceiling; zero means only zero-cost retries are allowed. A retry count of zero disables retries. Missing retry settings on installations upgraded from an older release retain these schema defaults and never become an accidental zero-dollar allowance. When provider acknowledgement is possible, automatic retry is disabled unless explicitly enabled.
+
+Unknown pricing for an external model is allowed only when the existing `allowUnpricedExternalModels` policy is enabled. Otherwise the request returns a model-pricing error; it is never translated into a retry-cost failure.
 
 Paid fallback is off by default. A compatible cheaper-model selector must retain required capabilities, context, streaming, structured output, tools, reasoning, and cancellation. Local Only never crosses to external, and local/free requests never cross to paid while paid fallback is disabled. Audit data records the original and selected target, reason, estimated savings, and boundary crossings.
 

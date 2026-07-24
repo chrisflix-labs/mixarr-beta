@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, CheckCircle2, ChevronDown, Clock3, History, Loader2, RotateCcw, ShieldAlert, Sparkles, X } from "lucide-react";
 import styles from "./RecipeCopilot.module.css";
 import RecommendationExplanationPanel from "./RecommendationExplanationPanel";
+import { isRecipeCopilotSetupError, recipeCopilotCanRequest, recipeCopilotErrorMessage, type RecipeCopilotReadiness } from "@/lib/recipeCopilot/readiness";
 
 type Action = "create" | "refine" | "explain" | "diagnose" | "optimize" | "compare_intent" | "from_playlist" | "suggest_names" | "generate_description" | "onboarding";
 type Props = { open: boolean; recipeId?: string; draft: Record<string, any>; dirty: boolean; onClose: () => void; onDraft: (draft: Record<string, any>, persisted?: boolean) => void; onNotice: (message: string) => void };
@@ -22,7 +23,7 @@ const actions: Array<{ id: Action; label: string; hint: string }> = [
 const readOnly = new Set<Action>(["explain", "diagnose", "compare_intent", "suggest_names", "onboarding"]);
 const approvalConfirmation = "I reviewed this AI-generated recipe and understand that its behavior may differ from the original request.";
 
-function errorMessage(body: any, fallback: string) { return body?.error?.message || body?.message || body?.error || fallback; }
+function responseError(body: any, fallback: string) { return { code: body?.error?.code || body?.code || null, message: body?.error?.message || body?.message || (typeof body?.error === "string" ? body.error : fallback) }; }
 function display(value: unknown) { if (value === undefined) return "Not set"; if (typeof value === "string") return value; return JSON.stringify(value); }
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)); }
 function setPath(value: any, path: string, next: unknown) { const parts = path.split("."); let current = value; parts.slice(0, -1).forEach((part) => { if (!current[part] || typeof current[part] !== "object") current[part] = {}; current = current[part]; }); current[parts.at(-1)!] = next; }
@@ -32,11 +33,13 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
   const [action, setAction] = useState<Action>(recipeId ? "refine" : "create");
   const [instruction, setInstruction] = useState("");
   const [purpose, setPurpose] = useState(() => inferredPurpose(draft));
-  const [availability, setAvailability] = useState<any>(null);
+  const [availability, setAvailability] = useState<RecipeCopilotReadiness | null>(null);
   const [preflightState, setPreflightState] = useState<"loading" | "ready" | "error">("loading");
+  const [preflightVersion, setPreflightVersion] = useState(0);
   const [running, setRunning] = useState(false);
   const [stage, setStage] = useState("");
   const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [proposal, setProposal] = useState<any>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editedRecipe, setEditedRecipe] = useState<Record<string, any> | null>(null);
@@ -49,7 +52,8 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
   const dialog = useRef<HTMLElement | null>(null);
   const opener = useRef<HTMLElement | null>(null);
 
-  useEffect(() => { if (!open) return; opener.current = document.activeElement as HTMLElement; closeButton.current?.focus(); setPurpose(inferredPurpose(draft)); return () => opener.current?.focus(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!open) return; opener.current = document.activeElement as HTMLElement; closeButton.current?.focus(); setPurpose(inferredPurpose(draft)); setError(""); setErrorCode(null); setPreflightVersion((value) => value + 1); return () => opener.current?.focus(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!open) return; const refresh = () => setPreflightVersion((value) => value + 1); window.addEventListener("focus", refresh); return () => window.removeEventListener("focus", refresh); }, [open]);
   useEffect(() => { if (!open) return; const keyboard = (event: KeyboardEvent) => { if (event.key === "Escape" && !running) { onClose(); return; } if (event.key !== "Tab") return; const focusable = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]),select:not([disabled]),textarea:not([disabled]),input:not([disabled]),a[href],summary') || []); if (!focusable.length) return; const first = focusable[0], last = focusable.at(-1)!; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } }; window.addEventListener("keydown", keyboard); return () => window.removeEventListener("keydown", keyboard); }, [open, running, onClose]);
   useEffect(() => { if (!open) return; fetch("/api/generated-playlists").then((response) => response.ok ? response.json() : { playlists: [] }).then((body) => setPlaylists((body.playlists || []).map((item: any) => ({ id: item.id, name: item.plexPlaylistTitle, tracks: item.trackCount || item._count?.tracks || 0 })))).catch(() => setPlaylists([])); }, [open]);
   useEffect(() => {
@@ -57,17 +61,17 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
     const timer = setTimeout(async () => {
       try {
         const response = await fetch("/api/recipes/ai/preflight", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, instruction, purpose, recipe: draft }) });
-        const body = await response.json(); if (!response.ok) throw new Error(errorMessage(body, "Copilot preflight failed."));
-        if (!cancelled) { setAvailability(body); setPreflightState("ready"); }
-      } catch (caught) { if (!cancelled) { setAvailability({ available: false, reason: caught instanceof Error ? caught.message : "Copilot preflight failed." }); setPreflightState("error"); } }
+        const body = await response.json(); if (!response.ok) { const failure = responseError(body, "Copilot preflight failed."); throw Object.assign(new Error(failure.message), { code: failure.code }); }
+        if (!cancelled) { setAvailability(body); setPreflightState("ready"); if (body.available) { setError(""); setErrorCode(null); } }
+      } catch (caught) { if (!cancelled) { const code = String((caught as any)?.code || "PREFLIGHT_FAILED"); const message = caught instanceof Error ? caught.message : "Copilot preflight failed."; setAvailability({ available: false, blockedReasonCode: code, blockedReasonMessage: message, code, reason: message }); setPreflightState("error"); } }
     }, 250);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [open, action, instruction, purpose, draft]);
+  }, [open, action, instruction, purpose, draft, preflightVersion]);
 
   const sourceLabel = recipeId ? dirty ? "Current unsaved recipe" : "Last saved recipe" : "New unsaved recipe";
   const changes = proposal?.changes || [];
   const allSelected = changes.length > 0 && selected.size === changes.length;
-  const canRequest = availability?.available === true && !running && (!(["create", "refine", "optimize", "compare_intent"].includes(action)) || instruction.trim().length > 0) && (action !== "from_playlist" || !!playlistId);
+  const canRequest = recipeCopilotCanRequest({ readiness: availability, running, action, instruction, playlistId });
   const resultSections = useMemo(() => proposal?.analysis || {}, [proposal]);
 
   async function generate() {
@@ -81,9 +85,9 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
       setStage("Waiting for provider");
       const endpoint = action === "from_playlist" ? "/api/recipes/ai/from-playlist" : recipeId && action !== "create" ? `/api/recipes/${encodeURIComponent(recipeId)}/ai/${action}` : action === "create" ? "/api/recipes/ai/create" : "/api/recipes/ai";
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal, body: JSON.stringify({ action, instruction, purpose: action === "optimize" ? purpose : undefined, recipe: draft, expectedUpdatedAt: draft.updatedAt, privacyMode: availability?.privacyMode, playlistId: action === "from_playlist" ? playlistId : undefined, externalConfirmation }) });
-      setStage("Validating proposal locally"); const body = await response.json(); if (!response.ok) throw new Error(errorMessage(body, "Recipe Copilot failed."));
+      setStage("Validating proposal locally"); const body = await response.json(); if (!response.ok) { const failure = responseError(body, "Recipe Copilot failed."); throw Object.assign(new Error(failure.message), { code: failure.code }); }
       const next = body.proposal; setProposal(next); setEditedRecipe(next.proposedRecipe ? clone(next.proposedRecipe) : null); setSelected(new Set((next.changes || []).map((item: any) => item.path))); setApprovedConfirm(false); setStage("Ready for review");
-    } catch (caught) { if ((caught as Error).name === "AbortError") setError("Request cancelled. The current Recipe Studio draft was preserved."); else setError(caught instanceof Error ? caught.message : "Recipe Copilot failed."); setStage("Failed"); }
+    } catch (caught) { if ((caught as Error).name === "AbortError") { setErrorCode("REQUEST_CANCELLED"); setError("Request cancelled. The current Recipe Studio draft was preserved."); } else { const code = String((caught as any)?.code || "AI_RECIPE_REQUEST_FAILED"); setErrorCode(code); setError(recipeCopilotErrorMessage(code, caught instanceof Error ? caught.message : "Recipe Copilot failed.", true)); } setStage("Failed"); }
     finally { setRunning(false); abort.current = null; }
   }
 
@@ -95,7 +99,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
     if (!proposal) return; setError(""); setStage(operation === "apply" ? "Applying reviewed changes" : `${operation[0].toUpperCase()}${operation.slice(1)} proposal`);
     try {
       const response = await fetch(`/api/recipes/ai/proposals/${encodeURIComponent(proposal.id)}/${operation}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(operation === "apply" ? { ...body, currentRecipe: draft } : body) });
-      const result = await response.json(); if (!response.ok) throw new Error(errorMessage(result, `Could not ${operation} proposal.`));
+      const result = await response.json(); if (!response.ok) throw new Error(responseError(result, `Could not ${operation} proposal.`).message);
       if (result.proposal) setProposal(result.proposal);
       if (operation === "apply") { const next = result.recipe || result.draft; if (next) onDraft(next, result.persisted === true); onNotice(result.persisted ? "Reviewed AI changes were saved as a new inactive recipe revision. Approval and activation remain separate." : "AI proposal loaded into the unsaved Recipe Studio draft. Review it, then explicitly save when ready."); }
       if (operation === "restore" && result.recipe) { onDraft(result.recipe, true); onNotice("The pre-AI recipe state was restored as a new inactive revision."); }
@@ -105,7 +109,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
   }
 
   async function loadHistory() {
-    try { const response = await fetch(recipeId ? `/api/recipes/${encodeURIComponent(recipeId)}/ai/history` : "/api/recipes/ai?view=history"); const body = await response.json(); if (!response.ok) throw new Error(errorMessage(body, "History unavailable.")); setHistory(body.proposals || []); }
+    try { const response = await fetch(recipeId ? `/api/recipes/${encodeURIComponent(recipeId)}/ai/history` : "/api/recipes/ai?view=history"); const body = await response.json(); if (!response.ok) throw new Error(responseError(body, "History unavailable.").message); setHistory(body.proposals || []); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "History unavailable."); }
   }
 
@@ -114,16 +118,16 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
     <aside ref={dialog} className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby="recipe-copilot-title" aria-describedby="recipe-copilot-description">
       <header className={styles.header}><div><span><Sparkles size={15} /> AI generated · review required</span><h2 id="recipe-copilot-title">Recipe Copilot</h2><p id="recipe-copilot-description">Advisory help inside Recipe Studio. Nothing is approved or activated automatically.</p></div><button ref={closeButton} onClick={onClose} disabled={running} aria-label="Close Recipe Copilot"><X size={19} /></button></header>
       <div className={styles.body}>
-        <div className={styles.context}><strong>{sourceLabel}</strong><span>{availability?.provider || "Provider unavailable"} · {availability?.model || "No model"}</span><span>{availability?.privacyMode?.replaceAll("_", " ") || "Checking privacy"} · {availability?.local ? "Local operation" : "Remote operation"}</span></div>
+        <div className={styles.context}><strong>{sourceLabel}</strong><span>{availability?.providerName || availability?.provider || "Provider not configured"} · {availability?.modelName || availability?.model || "Model not configured"}</span><span>{availability?.privacyMode?.replaceAll("_", " ") || "Checking privacy"} · {availability?.available ? availability?.remoteOperationAllowed ? "Remote operation" : "Local operation" : "Operation unavailable"}</span></div>
         <label className={styles.field}><span>Copilot action</span><select value={action} onChange={(event) => { setAction(event.target.value as Action); setProposal(null); }} aria-label="Recipe Copilot action">{actions.map((item) => <option key={item.id} value={item.id}>{item.label} — {item.hint}</option>)}</select></label>
         <label className={styles.field}><span>Instruction</span><textarea rows={4} value={instruction} onChange={(event) => setInstruction(event.target.value)} placeholder={action === "create" ? "Create a relaxing work playlist with mostly familiar music and a few discoveries." : action === "refine" ? "Reduce artist repetition without changing the purpose." : "What should Copilot focus on?"} maxLength={6000} /></label>
         {action === "from_playlist" && <label className={styles.field}><span>Example playlist</span><select value={playlistId} onChange={(event) => setPlaylistId(event.target.value)}><option value="">Choose an existing playlist</option>{playlists.map((playlist) => <option key={playlist.id} value={playlist.id}>{playlist.name} ({playlist.tracks} tracks)</option>)}</select><small>Mixarr sends aggregate characteristics, not the playlist’s track list.</small></label>}
         {action === "optimize" && <label className={styles.purpose}><span>Presumed purpose — correct this before optimizing</span><textarea rows={3} value={purpose} onChange={(event) => setPurpose(event.target.value)} /></label>}
-        <section className={styles.preflight} aria-live="polite" aria-busy={preflightState === "loading"}>{preflightState === "loading" ? <><Loader2 className="animate-spin" size={16} /> Checking provider, privacy, limits, and cost…</> : availability?.available ? <><CheckCircle2 size={17} /><div><strong>Ready</strong><span>About {Number(availability.estimatedInputTokens || 0).toLocaleString()} input tokens · up to {Number(availability.maximumOutputTokens || 0).toLocaleString()} output</span><span>{availability.local ? "Local cost is governed locally" : `Estimated ${availability.currency || "USD"} ${Number(availability.estimatedCost || 0).toFixed(4)}`}</span><span>No track-level library metadata is included.</span></div></> : <><ShieldAlert size={17} /><div><strong>Request blocked</strong><span>{availability?.reason || "Recipe Copilot is unavailable."}</span><code>{availability?.code}</code></div></>}</section>
-        <div className={styles.actions}><button className={styles.generate} disabled={!canRequest} onClick={() => void generate()}>{running ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />} {running ? stage : action === "explain" || action === "diagnose" ? "Analyze" : "Generate"}</button>{running && <button onClick={cancel}>Cancel</button>}<button onClick={() => void loadHistory()}><History size={15} /> History</button></div>
+        <section className={styles.preflight} aria-live="polite" aria-busy={preflightState === "loading"}>{preflightState === "loading" ? <><Loader2 className="animate-spin" size={16} /> Checking provider, privacy, limits, and cost…</> : availability?.available ? <><CheckCircle2 size={17} /><div><strong>Ready · {availability.providerName || availability.provider} · {availability.modelName || availability.model}</strong><span>About {Number(availability.estimatedInputTokens || 0).toLocaleString()} input tokens · up to {Number(availability.maximumOutputTokens || 0).toLocaleString()} output</span><span>{availability.local ? "Local cost is governed locally" : `Estimated ${availability.currency || "USD"} ${Number(availability.estimatedCost || 0).toFixed(4)}`}</span><span>No track-level library metadata is included.</span></div></> : <><ShieldAlert size={17} /><div><strong>{isRecipeCopilotSetupError(availability?.blockedReasonCode || availability?.code) ? "Setup required" : "Request blocked"}</strong><span>{recipeCopilotErrorMessage(availability?.blockedReasonCode || availability?.code, availability?.blockedReasonMessage || availability?.reason || "Recipe Copilot is unavailable.", false)}</span><code>{availability?.blockedReasonCode || availability?.code}</code>{availability?.canConfigure && availability?.settingsUrl && <a href={availability.settingsUrl}>Open AI provider settings</a>}</div></>}</section>
+        <div className={styles.actions}><button className={styles.generate} disabled={!canRequest} onClick={() => void generate()}>{running ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />} {running ? stage : action === "explain" || action === "diagnose" ? "Analyze" : "Generate"}</button>{running && <button onClick={cancel}>Cancel</button>}<button onClick={() => setPreflightVersion((value) => value + 1)} disabled={running}><RotateCcw size={15} /> Refresh</button><button onClick={() => void loadHistory()}><History size={15} /> History</button></div>
         {!canRequest && availability?.available && !running && ["create", "refine", "optimize", "compare_intent"].includes(action) && !instruction.trim() && <p className={styles.disabledReason}>Enter an instruction to continue.</p>}
         {!canRequest && availability?.available && !running && action === "from_playlist" && !playlistId && <p className={styles.disabledReason}>Choose an example playlist to continue.</p>}
-        {error && <div className={styles.error} role="alert"><AlertTriangle size={17} /><span>{error}</span></div>}
+        {error && <div className={styles.error} role="alert"><AlertTriangle size={17} /><span>{error}{errorCode && <code>{errorCode}</code>}</span></div>}
         {stage && <p className={styles.stage} role="status" aria-live="polite">{stage}</p>}
 
         {proposal && <div className={styles.results}>

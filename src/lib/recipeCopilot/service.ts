@@ -9,7 +9,9 @@ import { approveRecipe, writeRecipeAudit } from "../mixRecipes/governanceService
 import { createExplanationFromRecipeProposal, recordRecommendationExplanationAudit } from "../recommendationExplanations/service";
 import { aiRequestCoordinator } from "@/ai/request-coordinator";
 import { previewAiRequest } from "@/ai/governance/service";
+import { assertAiExecutionPolicy } from "@/ai/governance/executionPolicy";
 import { resolveAiProvider } from "@/ai/services/providerService";
+import { AiError } from "@/ai/errors";
 import { RECIPE_COPILOT_SYSTEM_PROMPT, recipeCopilotUserPrompt } from "@/ai/recipeCopilot/prompts";
 import {
   AI_RECIPE_STATUSES, RECIPE_COPILOT_FEATURE_KEY, RECIPE_COPILOT_PROMPT_VERSION,
@@ -101,33 +103,64 @@ async function playlistExampleContext(userId: string, playlistId?: string) {
 }
 
 export async function getRecipeCopilotAvailability(userId: string, raw: unknown = {}) {
-  await requireRecipeAiPermission(userId, "recipe.ai.use");
+  const permission = await requireRecipeAiPermission(userId, "recipe.ai.use");
   const input = recipeCopilotRequestSchema.partial().parse(raw);
   const [global, feature, governance] = await Promise.all([
     prisma.aiGlobalSetting.findUnique({ where: { id: "global" } }),
     prisma.aiFeatureSetting.findUnique({ where: { featureKey: RECIPE_COPILOT_FEATURE_KEY } }),
     prisma.aiGovernanceSetting.findUnique({ where: { id: "global" } }),
   ]);
-  const disabled = (code: string, reason: string) => ({ available: false as const, code, reason, privacyMode: input.privacyMode || governance?.privacyMode || "METADATA_LIMITED" });
+  const privacyMode = input.privacyMode || governance?.privacyMode || "METADATA_LIMITED";
+  const disabled = (code: string, reason: string, target: { providerId?: string | null; providerName?: string | null; modelId?: string | null; modelName?: string | null } = {}) => ({
+    available: false as const,
+    providerId: target.providerId || null,
+    providerName: target.providerName || null,
+    modelId: target.modelId || null,
+    modelName: target.modelName || target.modelId || null,
+    privacyMode,
+    remoteOperationAllowed: false,
+    blockedReasonCode: code,
+    blockedReasonMessage: reason,
+    canConfigure: permission.admin,
+    settingsUrl: permission.admin ? "/settings/ai" : null,
+    // Backward-compatible fields retained for existing drawer/API consumers.
+    code,
+    reason,
+    provider: target.providerName || null,
+    model: target.modelName || target.modelId || null,
+  });
   if (!global?.enabled) return disabled("AI_DISABLED", "AI is disabled in global settings.");
   if (!feature?.implemented || !feature.enabled) return disabled("FEATURE_DISABLED", "Recipe Copilot is disabled. An administrator must enable it after reviewing provider and governance settings.");
   const providerId = input.providerId || feature.preferredProviderId || global.defaultProviderId;
-  if (!providerId) return disabled("PROVIDER_NOT_CONFIGURED", "No AI provider is configured for Recipe Copilot.");
-  const providerRow = await prisma.aiProviderConfig.findUnique({ where: { id: providerId }, include: { models: { where: { availabilityStatus: "AVAILABLE" }, select: { modelIdentifier: true } } } });
-  if (!providerRow?.enabled) return disabled("PROVIDER_DISABLED", "The selected AI provider is disabled.");
+  if (!providerId) return disabled("AI_PROVIDER_UNAVAILABLE", "No enabled AI provider is available.");
+  const providerRow = await prisma.aiProviderConfig.findUnique({ where: { id: providerId }, include: { models: { select: { modelIdentifier: true, displayName: true, availabilityStatus: true, enabled: true, approved: true, deprecated: true } } } });
+  if (!providerRow || providerRow.deletedAt || !providerRow.enabled) return disabled("AI_PROVIDER_UNAVAILABLE", "No enabled AI provider is available.", { providerId, providerName: providerRow?.displayName });
   const model = input.model || feature.preferredModel || providerRow.defaultModel;
-  if (!model) return disabled("MODEL_NOT_CONFIGURED", "Select a model for Recipe Copilot.");
-  if (providerRow.models.length && !providerRow.models.some((item) => item.modelIdentifier === model)) return disabled("MODEL_UNAVAILABLE", "The selected model is no longer available from this provider.");
+  if (!model) return disabled("AI_MODEL_UNAVAILABLE", "No usable AI model is configured for Recipe Copilot.", { providerId, providerName: providerRow.displayName });
+  const modelRow = providerRow.models.find((item) => item.modelIdentifier === model);
+  if (!modelRow || modelRow.availabilityStatus !== "AVAILABLE" || !modelRow.enabled || !modelRow.approved || modelRow.deprecated) return disabled("AI_MODEL_UNAVAILABLE", "No usable AI model is configured for Recipe Copilot.", { providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow?.displayName });
   try {
     const provider = await resolveAiProvider(providerId);
-    const privacyMode = input.privacyMode || governance?.privacyMode || "METADATA_LIMITED";
     const context = buildPrivacyAwareRecipeContext(input.recipe as Record<string, any> | undefined, privacyMode);
-    const request = { featureKey: RECIPE_COPILOT_FEATURE_KEY, systemInstructions: RECIPE_COPILOT_SYSTEM_PROMPT, messages: [{ role: "user" as const, content: recipeCopilotUserPrompt({ action: input.action || "create", instruction: input.instruction || "", purpose: input.purpose, context: context.recipe }) }], responseFormat: { type: "json" as const, name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, unknownFields: "reject" as const }, privacyMode: privacyMode as any, maxOutputTokens: 4000, requestSource: "FOREGROUND" as const, allowFallback: false, requiredCapabilities: ["structured_json" as const] };
+    const request = { featureKey: RECIPE_COPILOT_FEATURE_KEY, systemInstructions: RECIPE_COPILOT_SYSTEM_PROMPT, messages: [{ role: "user" as const, content: recipeCopilotUserPrompt({ action: input.action || "create", instruction: input.instruction || "", purpose: input.purpose, context: context.recipe }) }], responseFormat: { type: "json" as const, name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, unknownFields: "reject" as const }, privacyMode: privacyMode as any, maxOutputTokens: 4000, requestSource: "FOREGROUND" as const, allowFallback: false, requiredCapabilities: ["structured_json" as const], externalConfirmation: true };
+    await assertAiExecutionPolicy({ request, provider, model, requiredCapabilities: ["chat_messages", "structured_json"] });
     const preview = await previewAiRequest({ request, provider, model, userId });
-    return { available: true as const, providerId, provider: providerRow.displayName, model, privacyMode: preview.privacyMode, local: preview.provider.location === "LOCAL", estimatedInputTokens: preview.limits.estimatedInputTokens, maximumOutputTokens: preview.limits.maxOutputTokens, estimatedCost: preview.cost.expectedEstimatedCost, maximumEstimatedCost: preview.cost.maximumEstimatedCost, currency: preview.cost.currency, contextSummary: { blockedFields: context.blockedFields, recipeIncluded: !!input.recipe, trackLevelLibraryMetadata: false }, previewRequired: preview.privacyMode === "FULL_METADATA" || preview.provider.location !== "LOCAL", warnings: [] as string[] };
+    return { available: true as const, providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow.displayName, privacyMode: preview.privacyMode, remoteOperationAllowed: preview.provider.location !== "LOCAL", blockedReasonCode: null, blockedReasonMessage: null, canConfigure: permission.admin, settingsUrl: permission.admin ? "/settings/ai" : null, provider: providerRow.displayName, model, local: preview.provider.location === "LOCAL", estimatedInputTokens: preview.limits.estimatedInputTokens, maximumOutputTokens: preview.limits.maxOutputTokens, estimatedCost: preview.cost.expectedEstimatedCost, maximumEstimatedCost: preview.cost.maximumEstimatedCost, currency: preview.cost.currency, costDecision: preview.costDecision, contextSummary: { blockedFields: context.blockedFields, recipeIncluded: !!input.recipe, trackLevelLibraryMetadata: false }, previewRequired: preview.privacyMode === "FULL_METADATA" || preview.provider.location !== "LOCAL", warnings: [] as string[] };
   } catch (error) {
     const value = error as any;
-    return disabled(String(value?.category || value?.code || "GOVERNANCE_BLOCKED"), error instanceof Error ? error.message : "AI governance blocked this request.");
+    const originalCode = String(value?.category || value?.code || "GOVERNANCE_BLOCKED");
+    const mappedCode =
+      ["PROVIDER_NOT_CONFIGURED", "PROVIDER_DISABLED", "PROVIDER_NOT_FOUND", "PROVIDER_UNAVAILABLE"].includes(originalCode) ? "AI_PROVIDER_UNAVAILABLE"
+      : ["MODEL_NOT_CONFIGURED", "MODEL_NOT_FOUND", "MODEL_NOT_AVAILABLE", "AI_MODEL_DISABLED", "AI_MODEL_NOT_APPROVED", "AI_MODEL_FEATURE_BLOCKED"].includes(originalCode) ? "AI_MODEL_UNAVAILABLE"
+      : ["MODEL_UNPRICED", "AI_MODEL_PRICING_MISSING"].includes(originalCode) ? "AI_MODEL_PRICING_UNAVAILABLE"
+      : ["AI_GLOBAL_BUDGET_EXCEEDED", "MONTHLY_COST_LIMIT_REACHED"].includes(originalCode) ? "AI_MONTHLY_BUDGET_EXCEEDED"
+      : ["DAILY_REQUEST_LIMIT_REACHED", "AI_DAILY_REQUEST_LIMIT_EXCEEDED", "DAILY_COST_LIMIT_REACHED"].includes(originalCode) ? "AI_DAILY_LIMIT_EXCEEDED"
+      : originalCode;
+    const details = error instanceof AiError ? error.details : undefined;
+    const reason = mappedCode === "AI_REQUEST_COST_LIMIT_EXCEEDED" && details?.estimated_cost != null && details?.limit != null
+      ? `This request is estimated to cost ${Number(details.estimated_cost).toFixed(6)} ${String(details.currency || governance?.currency || "USD")}, which exceeds the per-request limit of ${Number(details.limit).toFixed(6)}.`
+      : error instanceof Error ? error.message : "AI governance blocked this request.";
+    return disabled(mappedCode, reason, { providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow.displayName });
   }
 }
 

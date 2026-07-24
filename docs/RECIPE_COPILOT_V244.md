@@ -65,7 +65,7 @@ Recipe Copilot uses the central v2.4.x AI provider coordinator and respects prov
 - **Anonymous Metadata** applies the central anonymous transformation policy.
 - **Full Metadata** requires the existing acknowledgment and still excludes credentials, tokens, cookies, paths, and unrelated user data.
 
-The preflight displays provider, model, privacy mode, local/remote classification, estimated input/output tokens, estimated cost, and the exact blocking reason. No request is sent when AI or the feature is disabled, a provider/model is unavailable, privacy policy blocks it, access is denied, a limit is reached, or context cannot be safely admitted.
+The preflight displays the resolved provider and model, privacy mode, whether remote operation is allowed, estimated input/output tokens, the one-attempt estimated cost, and the exact blocking reason. It refreshes when the drawer opens, when its request inputs change, when the window regains focus after settings work, or when Refresh is selected. No request is sent when AI or the feature is disabled, a provider/model is unavailable, privacy policy blocks it, access is denied, a limit is reached, or context cannot be safely admitted. Provider, model, pricing, initial-cost, daily, monthly, privacy, authentication, rate-limit, temporary-provider, and real retry-cost failures have separate codes.
 
 ## Permissions and audit
 
@@ -83,4 +83,3 @@ Durable request/proposal records preserve the original request and proposal, pro
 - **Provider failure or cancellation** — unsaved Recipe Studio changes remain intact. Retry still passes normal cost and request protections.
 
 Limitations: estimates are not guarantees; provider explanations can be imperfect; local metadata coverage constrains diagnosis; no provider receives credentials or gains access to Plex mutation, files, plugins, or arbitrary execution.
-

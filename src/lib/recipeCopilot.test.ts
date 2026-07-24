@@ -10,6 +10,7 @@ import {
   statusForProposal,
 } from "./recipeCopilot/core";
 import { defaultRecipeStudioDraft } from "./recipeStudio";
+import { isRecipeCopilotSetupError, recipeCopilotCanRequest, recipeCopilotErrorMessage } from "./recipeCopilot/readiness";
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
 function output(overrides: Record<string, unknown> = {}) {
@@ -87,6 +88,19 @@ describe("v2.4.4 full-stack contracts", () => {
     const ui = read("src/components/RecipeCopilot.tsx"), css = read("src/components/RecipeCopilot.module.css"), studio = read("src/components/RecipeStudio.tsx");
     for (const marker of [/role="dialog"/, /aria-live="polite"/, /Request blocked/, /Current rule/, /Proposed rule/, /Accept all/, /Reject all/, /Apply selected/, /Restore previous/, /approvalConfirmation/, /Nothing is approved or activated automatically/]) assert.match(ui, marker);
     assert.match(css, /:focus-visible/); assert.match(css, /@media\(max-width:620px\)/); assert.match(studio, /AI Copilot/);
+  });
+
+  it("keeps readiness, Generate state, setup errors, and retry errors distinct", () => {
+    assert.equal(recipeCopilotCanRequest({ readiness: { available: true }, running: false, action: "create", instruction: "Make a focus mix", playlistId: "" }), true);
+    assert.equal(recipeCopilotCanRequest({ readiness: { available: false }, running: false, action: "create", instruction: "Make a focus mix", playlistId: "" }), false);
+    assert.equal(recipeCopilotCanRequest({ readiness: { available: true }, running: false, action: "create", instruction: "", playlistId: "" }), false);
+    assert.equal(isRecipeCopilotSetupError("AI_PROVIDER_UNAVAILABLE"), true);
+    assert.match(recipeCopilotErrorMessage("AI_MODEL_UNAVAILABLE", "fallback", false), /compatible model/);
+    assert.equal(recipeCopilotErrorMessage("AI_RETRY_COST_LIMIT_EXCEEDED", "First request has not run.", false), "First request has not run.");
+    assert.match(recipeCopilotErrorMessage("AI_RETRY_COST_LIMIT_EXCEEDED", "fallback", true), /first attempt failed temporarily/i);
+    const service = read("src/lib/recipeCopilot/service.ts"), ui = read("src/components/RecipeCopilot.tsx");
+    for (const marker of ["AI_PROVIDER_UNAVAILABLE", "AI_MODEL_UNAVAILABLE", "AI_MODEL_PRICING_UNAVAILABLE", "blockedReasonCode", "remoteOperationAllowed"]) assert.match(service, new RegExp(marker));
+    assert.match(ui, /Open AI provider settings/); assert.match(ui, /setPreflightVersion/);
   });
 
   it("documents privacy, costs, statuses, troubleshooting, and the non-activation boundary", () => {

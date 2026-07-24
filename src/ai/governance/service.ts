@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma";
 import { isUserAdmin } from "@/lib/auth";
 import type { AiRequest, ResolvedAiProviderConfig } from "../contracts";
 import { AiError } from "../errors";
-import { alertDeduplicationKey, applyMetadataPrivacyPolicy, budgetPeriod, DEFAULT_METADATA_ALLOWLIST, estimateRequestCost, strictestPrivacyMode, trimContext, validatePromptLimits, wouldExceedBudget, type AiPrivacyMode } from "./policy";
+import { alertDeduplicationKey, applyMetadataPrivacyPolicy, budgetPeriod, DEFAULT_METADATA_ALLOWLIST, estimateRequestCost, evaluateCostLimit, evaluateRetryCost, strictestPrivacyMode, trimContext, validatePromptLimits, wouldExceedBudget, type AiPrivacyMode } from "./policy";
 import { classifyProviderAndModel, resolvePaidProviderPermission, type AiClassificationResult } from "./classification";
 import { unexpectedAiError } from "./logging";
 
@@ -58,7 +58,28 @@ export async function saveAiPricingProfile(raw: unknown, actorId: string, id?: s
 export async function duplicateAiPricingProfile(id: string, actorId: string) { const source = await prisma.aiModelPricing.findUnique({ where: { id } }); if (!source) throw new AiError("MODEL_NOT_FOUND"); return saveAiPricingProfile({ ...source, id: undefined, displayName: `${source.displayName} copy`, effectiveAt: new Date(), lastVerifiedAt: null, enabled: false }, actorId); }
 export async function importDiscoveredPricingProfiles(providerConfigId: string, actorId: string) { const [provider, models, existing] = await Promise.all([prisma.aiProviderConfig.findUnique({ where: { id: providerConfigId } }), prisma.aiProviderModel.findMany({ where: { providerConfigId }, orderBy: { displayName: "asc" } }), prisma.aiModelPricing.findMany({ where: { providerConfigId }, select: { modelIdentifier: true } })]); if (!provider) throw new AiError("PROVIDER_NOT_FOUND"); const known = new Set(existing.map((row) => row.modelIdentifier)); const missing = models.filter((model) => !known.has(model.modelIdentifier)); return prisma.$transaction(async (tx) => { const profiles = []; for (const model of missing) profiles.push(await tx.aiModelPricing.create({ data: { providerConfigId, modelIdentifier: model.modelIdentifier, displayName: model.displayName, currency: "USD", pricingSource: "Provider model discovery — pricing required", enabled: false, estimated: true, billingClassification: provider.locationClassification === "LOCAL" ? "LOCAL" : "EXTERNAL", status: "UNPRICED" } })); await tx.aiGovernanceAudit.create({ data: { actorId, action: "DISCOVERED_MODELS_IMPORTED_TO_PRICING", entityType: "AiProviderConfig", entityId: providerConfigId, newValueJson: { importedModelIdentifiers: profiles.map((row) => row.modelIdentifier) } } }); return { imported: profiles.length, profiles }; }); }
 
-type PreviewContext = { request: AiRequest; provider: ResolvedAiProviderConfig; model: string; userId?: string; reserve?: boolean; requestId?: string; auditId?: string; enforceBudgets?: boolean };
+type PreviewContext = { request: AiRequest; provider: ResolvedAiProviderConfig; model: string; userId?: string; reserve?: boolean; requestId?: string; auditId?: string; enforceBudgets?: boolean; estimatedCostOverride?: number };
+
+function logBudgetDecision(input: { request: AiRequest; requestId?: string; userId?: string; providerId?: string; model?: string; attemptNumber: number; retryNumber: number; estimatedInputTokens?: number; estimatedOutputTokens?: number; estimatedCost: number; currentUsage?: number; limit?: number | null; decision: "ALLOWED" | "BLOCKED"; reasonCode?: string | null; scope: string }) {
+  console.info("[AI] Budget decision", {
+    correlationId: input.request.correlationId || input.requestId,
+    userId: input.userId,
+    operation: input.request.featureKey,
+    providerId: input.providerId,
+    modelId: input.model,
+    attemptNumber: input.attemptNumber,
+    retryNumber: input.retryNumber,
+    estimatedInputTokens: input.estimatedInputTokens,
+    estimatedOutputTokens: input.estimatedOutputTokens,
+    estimatedIncrementalCost: input.estimatedCost,
+    currentUsage: input.currentUsage,
+    applicableLimit: input.limit,
+    scope: input.scope,
+    decision: input.decision,
+    reasonCode: input.reasonCode || null,
+  });
+}
+
 export async function previewAiRequest(input: PreviewContext) {
   const [governance, providerRow, modelLimit, pricing, userLimit, feature, acknowledgment] = await Promise.all([
     prisma.aiGovernanceSetting.upsert({ where: { id: "global" }, create: defaultGovernanceData(), update: {} }),
@@ -95,25 +116,39 @@ export async function previewAiRequest(input: PreviewContext) {
   const usablePricing = pricing?.status === "UNPRICED" ? null : pricing;
   const administrativeInferenceTest = input.request.requestSource === "CONNECTION_TEST" && input.request.featureKey === "administrative_connection_test";
   if (external && classification.pricingClassification === "UNPRICED" && !governance.allowUnpricedExternalModels && !administrativeInferenceTest) throw new AiError("MODEL_UNPRICED");
-  const cost = localZeroCost ? { minimumEstimatedCost: 0, expectedEstimatedCost: 0, maximumEstimatedCost: 0, confidence: "LOCAL_ZERO_COST", currency: governance.currency, pricingSource: "Local-provider policy", pricingAgeDays: null } : usablePricing ? estimateRequestCost({ inputTokens: limits.estimatedInputTokens, maximumOutputTokens: limits.maxOutputTokens, retryAllowance: Math.min(governance.maximumRetryAttempts, input.provider.retryCount), pricing: { ...usablePricing, inputPricePerMillion: usablePricing.inputPricePerMillion?.toString(), outputPricePerMillion: usablePricing.outputPricePerMillion?.toString(), cachedInputPricePerMillion: usablePricing.cachedInputPricePerMillion?.toString(), reasoningPricePerMillion: usablePricing.reasoningPricePerMillion?.toString(), fixedRequestCost: usablePricing.fixedRequestCost?.toString() } }) : { minimumEstimatedCost: 0, expectedEstimatedCost: 0, maximumEstimatedCost: 0, confidence: "UNPRICED_ALLOWED", currency: governance.currency, pricingSource: "No pricing configured", pricingAgeDays: null };
-  const retryCost = Math.max(0, cost.maximumEstimatedCost - cost.expectedEstimatedCost); if (governance.maximumRetryCost != null && retryCost > Number(governance.maximumRetryCost) || governance.maximumCumulativeRequestCost != null && cost.maximumEstimatedCost > Number(governance.maximumCumulativeRequestCost)) throw new AiError("AI_RETRY_COST_LIMIT_EXCEEDED");
+  // Admission prices exactly one provider attempt. Retry allowance is evaluated only
+  // after a retryable provider failure, immediately before the next attempt.
+  const cost = localZeroCost ? { minimumEstimatedCost: 0, expectedEstimatedCost: 0, maximumEstimatedCost: 0, confidence: "LOCAL_ZERO_COST", currency: governance.currency, pricingSource: "Local-provider policy", pricingAgeDays: null } : usablePricing ? estimateRequestCost({ inputTokens: limits.estimatedInputTokens, maximumOutputTokens: limits.maxOutputTokens, retryAllowance: 0, pricing: { ...usablePricing, inputPricePerMillion: usablePricing.inputPricePerMillion?.toString(), outputPricePerMillion: usablePricing.outputPricePerMillion?.toString(), cachedInputPricePerMillion: usablePricing.cachedInputPricePerMillion?.toString(), reasoningPricePerMillion: usablePricing.reasoningPricePerMillion?.toString(), fixedRequestCost: usablePricing.fixedRequestCost?.toString() } }) : { minimumEstimatedCost: 0, expectedEstimatedCost: 0, maximumEstimatedCost: 0, confidence: "UNPRICED_ALLOWED", currency: governance.currency, pricingSource: "No pricing configured", pricingAgeDays: null };
+  const requestCostDecision = evaluateCostLimit({ scope: "request", estimatedCost: cost.maximumEstimatedCost, limit: governance.maximumCumulativeRequestCost?.toString(), reasonCode: "AI_REQUEST_COST_LIMIT_EXCEEDED" });
+  if (!requestCostDecision.allowed) {
+    logBudgetDecision({ request: input.request, requestId: input.requestId, userId: input.userId, providerId: providerRow.id, model: input.model, attemptNumber: 1, retryNumber: 0, estimatedInputTokens: limits.estimatedInputTokens, estimatedOutputTokens: limits.maxOutputTokens, estimatedCost: requestCostDecision.estimatedCost, currentUsage: 0, limit: requestCostDecision.limit, decision: "BLOCKED", reasonCode: requestCostDecision.reasonCode, scope: requestCostDecision.scope });
+    throw new AiError("AI_REQUEST_COST_LIMIT_EXCEEDED", undefined, 409, undefined, { estimated_cost: requestCostDecision.estimatedCost, limit: requestCostDecision.limit, currency: cost.currency });
+  }
   const effectiveUserLimit = adminExempt && userLimit ? { ...userLimit, dailyCostLimit: null, monthlyCostLimit: null, dailyRequestLimit: null, monthlyRequestLimit: null, paidProvidersAllowed: true } : userLimit;
-  const remaining = await remainingBudgets({ governance, provider: providerRow, userLimit: effectiveUserLimit, userId: input.userId, estimatedCost: cost.maximumEstimatedCost, enforce: input.enforceBudgets !== false });
+  let remaining;
+  try {
+    remaining = await remainingBudgets({ governance, provider: providerRow, userLimit: effectiveUserLimit, userId: input.userId, estimatedCost: input.estimatedCostOverride ?? cost.maximumEstimatedCost, enforce: input.enforceBudgets !== false, excludeReservationRequestId: input.requestId });
+  } catch (error) {
+    const normalized = error instanceof AiError ? error : new AiError("INTERNAL_AI_ERROR");
+    logBudgetDecision({ request: input.request, requestId: input.requestId, userId: input.userId, providerId: providerRow.id, model: input.model, attemptNumber: 1, retryNumber: 0, estimatedInputTokens: limits.estimatedInputTokens, estimatedOutputTokens: limits.maxOutputTokens, estimatedCost: input.estimatedCostOverride ?? cost.maximumEstimatedCost, decision: "BLOCKED", reasonCode: normalized.category, scope: "budget" });
+    throw error;
+  }
   const allowedPrivacyModes = userLimit?.allowedPrivacyModesJson as string[] | null; if (allowedPrivacyModes?.length && !allowedPrivacyModes.includes(privacyMode)) throw new AiError("AI_PRIVACY_POLICY_BLOCKED");
   const allowedProviders = userLimit?.allowedProviderIdsJson as string[] | null; if (allowedProviders?.length && !allowedProviders.includes(providerRow.id)) throw new AiError("AI_NO_ELIGIBLE_PROVIDER");
   const paidPermission = resolvePaidProviderPermission({ globalAllowed: governance.paidProvidersAllowed, allowUserOverrides: governance.allowUserPaidProviderOverrides, userValue: effectiveUserLimit?.paidProvidersAllowed, adminExempt });
   if (classification.requiresPaidProviderPermission && !paidPermission.allowed) throw new AiError("PAID_PROVIDER_NOT_PERMITTED");
   const policyDecision = { allowed: true, denialCode: null, denialMessage: null, resolvedPolicySource: paidPermission.source, providerClassification: classification.classification, modelClassification: classification.classification, costPricingState: classification.pricingClassification, paidProviderAllowed: paidPermission.value, backgroundRequestAllowed: userLimit?.backgroundRequestsAllowed ?? governance.backgroundAiEnabled };
-  return { allowed: true, feature: input.request.featureKey, provider: { id: providerRow.id, displayName: providerRow.displayName, location: external ? "EXTERNAL" : "LOCAL", classification: classification.classification, classificationReason: classification.reason }, classification, policyDecision, model: input.model, privacyMode, sanitizedMetadata: metadata.payload, privacyReport: metadata.report, limits, responseLimits: { maximumResponseBytes: Math.min(governance.maximumResponseBytes, input.request.maxResponseBytes || governance.maximumResponseBytes), maximumStructuredItems: governance.maximumStructuredItems }, trimmingReport, contextPreview: { sectionsAfter: sections.map((section) => ({ id: section.id, priority: section.priority, kind: section.kind })), contentValuesExcluded: true }, cost, remainingBudgets: remaining, budgetWarningTriggered: remaining.warningTriggered, budgetViolations: remaining.violations, pricingProfileId: pricing?.id || null, timeoutPolicy: { connectionTimeoutMs: governance.connectionTimeoutMs, firstTokenTimeoutMs: governance.firstTokenTimeoutMs, totalRequestTimeoutMs: governance.totalRequestTimeoutMs, streamingIdleTimeoutMs: governance.streamingIdleTimeoutMs, cancellationGraceMs: governance.cancellationGraceMs }, retryPolicy: { maximumRetryAttempts: governance.maximumRetryAttempts, maximumRetryCost: governance.maximumRetryCost == null ? null : Number(governance.maximumRetryCost), maximumCumulativeRequestCost: governance.maximumCumulativeRequestCost == null ? null : Number(governance.maximumCumulativeRequestCost), retryAfterPossibleBilling: governance.retryAfterPossibleBilling }, secureDebugPolicy: { enabled: governance.secureDebugEnabled, retentionHours: governance.secureDebugRetentionHours }, allowPaidProviderFallback: governance.allowPaidProviderFallback, automaticCheaperModelFallback: governance.automaticCheaperModelFallback };
+  logBudgetDecision({ request: input.request, requestId: input.requestId, userId: input.userId, providerId: providerRow.id, model: input.model, attemptNumber: 1, retryNumber: 0, estimatedInputTokens: limits.estimatedInputTokens, estimatedOutputTokens: limits.maxOutputTokens, estimatedCost: input.estimatedCostOverride ?? cost.maximumEstimatedCost, decision: "ALLOWED", scope: "request" });
+  return { allowed: true, feature: input.request.featureKey, provider: { id: providerRow.id, displayName: providerRow.displayName, location: external ? "EXTERNAL" : "LOCAL", classification: classification.classification, classificationReason: classification.reason }, classification, policyDecision, model: input.model, privacyMode, sanitizedMetadata: metadata.payload, privacyReport: metadata.report, limits, responseLimits: { maximumResponseBytes: Math.min(governance.maximumResponseBytes, input.request.maxResponseBytes || governance.maximumResponseBytes), maximumStructuredItems: governance.maximumStructuredItems }, trimmingReport, contextPreview: { sectionsAfter: sections.map((section) => ({ id: section.id, priority: section.priority, kind: section.kind })), contentValuesExcluded: true }, cost, costDecision: requestCostDecision, remainingBudgets: remaining, budgetWarningTriggered: remaining.warningTriggered, budgetViolations: remaining.violations, pricingProfileId: pricing?.id || null, timeoutPolicy: { connectionTimeoutMs: governance.connectionTimeoutMs, firstTokenTimeoutMs: governance.firstTokenTimeoutMs, totalRequestTimeoutMs: governance.totalRequestTimeoutMs, streamingIdleTimeoutMs: governance.streamingIdleTimeoutMs, cancellationGraceMs: governance.cancellationGraceMs }, retryPolicy: { maximumRetryAttempts: governance.maximumRetryAttempts, maximumRetryCost: governance.maximumRetryCost == null ? null : Number(governance.maximumRetryCost), maximumCumulativeRequestCost: governance.maximumCumulativeRequestCost == null ? null : Number(governance.maximumCumulativeRequestCost), retryAfterPossibleBilling: governance.retryAfterPossibleBilling }, secureDebugPolicy: { enabled: governance.secureDebugEnabled, retentionHours: governance.secureDebugRetentionHours }, allowPaidProviderFallback: governance.allowPaidProviderFallback, automaticCheaperModelFallback: governance.automaticCheaperModelFallback };
 }
 
-async function remainingBudgets(input: { governance: any; provider: any; userLimit: any; userId?: string; estimatedCost: number; enforce: boolean }) {
+async function remainingBudgets(input: { governance: any; provider: any; userLimit: any; userId?: string; estimatedCost: number; enforce: boolean; excludeReservationRequestId?: string }) {
   const now = new Date(); const period = budgetPeriod(now, input.governance.budgetResetDay); const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const usageWhere = (extra: any, since: Date) => ({ ...extra, createdAt: { gte: since }, status: "COMPLETED" });
   const requestCountWhere = (extra: any, since: Date) => ({ ...extra, createdAt: { gte: since }, status: { in: ["COMPLETED", "FAILED", "TIMED_OUT", "CANCELLED"] } });
   const [globalUsage, providerMonth, providerDay, userMonth, userDay, globalReserved, providerReserved, userReserved, globalCountDay, globalCountMonth, providerCountDay, providerCountMonth, userCountDay, userCountMonth] = await Promise.all([
     prisma.aiRequestAudit.aggregate({ where: usageWhere({}, period.start), _sum: { actualCost: true, estimatedCost: true } }), prisma.aiRequestAudit.aggregate({ where: usageWhere({ providerConfigId: input.provider.id }, period.start), _sum: { actualCost: true, estimatedCost: true } }), prisma.aiRequestAudit.aggregate({ where: usageWhere({ providerConfigId: input.provider.id }, day), _sum: { actualCost: true, estimatedCost: true } }), input.userId ? prisma.aiRequestAudit.aggregate({ where: usageWhere({ userId: input.userId }, period.start), _sum: { actualCost: true, estimatedCost: true } }) : null, input.userId ? prisma.aiRequestAudit.aggregate({ where: usageWhere({ userId: input.userId }, day), _sum: { actualCost: true, estimatedCost: true } }) : null,
-    prisma.aiBudgetReservation.aggregate({ where: { status: "ACTIVE", expiresAt: { gt: now } }, _sum: { reservedCost: true } }), prisma.aiBudgetReservation.aggregate({ where: { providerConfigId: input.provider.id, status: "ACTIVE", expiresAt: { gt: now } }, _sum: { reservedCost: true } }), input.userId ? prisma.aiBudgetReservation.aggregate({ where: { userId: input.userId, status: "ACTIVE", expiresAt: { gt: now } }, _sum: { reservedCost: true } }) : null,
+    prisma.aiBudgetReservation.aggregate({ where: { status: "ACTIVE", expiresAt: { gt: now }, ...(input.excludeReservationRequestId ? { requestId: { not: input.excludeReservationRequestId } } : {}) }, _sum: { reservedCost: true } }), prisma.aiBudgetReservation.aggregate({ where: { providerConfigId: input.provider.id, status: "ACTIVE", expiresAt: { gt: now }, ...(input.excludeReservationRequestId ? { requestId: { not: input.excludeReservationRequestId } } : {}) }, _sum: { reservedCost: true } }), input.userId ? prisma.aiBudgetReservation.aggregate({ where: { userId: input.userId, status: "ACTIVE", expiresAt: { gt: now }, ...(input.excludeReservationRequestId ? { requestId: { not: input.excludeReservationRequestId } } : {}) }, _sum: { reservedCost: true } }) : null,
     prisma.aiRequestAudit.count({ where: requestCountWhere({}, day) }), prisma.aiRequestAudit.count({ where: requestCountWhere({}, period.start) }), prisma.aiRequestAudit.count({ where: requestCountWhere({ providerConfigId: input.provider.id }, day) }), prisma.aiRequestAudit.count({ where: requestCountWhere({ providerConfigId: input.provider.id }, period.start) }), input.userId ? prisma.aiRequestAudit.count({ where: requestCountWhere({ userId: input.userId }, day) }) : 0, input.userId ? prisma.aiRequestAudit.count({ where: requestCountWhere({ userId: input.userId }, period.start) }) : 0
   ]);
   const cost = (aggregate: any) => Number(aggregate?._sum?.actualCost ?? aggregate?._sum?.estimatedCost ?? 0); const reserved = (aggregate: any) => Number(aggregate?._sum?.reservedCost ?? 0); const providerBudget = input.provider.governanceBudget; const providerMonthlyLimit = providerBudget?.monthlyLimit ?? input.provider.monthlyBudget;
@@ -166,6 +201,61 @@ export async function reserveAiBudget(input: PreviewContext & { requestId: strin
       governanceDecisionStage: "budget_and_policy_admission"
     });
   }
+}
+
+export async function prepareAiRetry(input: PreviewContext & {
+  requestId: string;
+  reservationId?: string;
+  retryNumber: number;
+  possiblePriorBilling: boolean;
+  initialAttemptCost: number;
+}) {
+  const retryNumber = Math.max(1, Math.floor(input.retryNumber));
+  const governance = await prisma.aiGovernanceSetting.upsert({ where: { id: "global" }, create: defaultGovernanceData(), update: {} });
+  const decision = evaluateRetryCost({
+    incrementalCost: input.initialAttemptCost,
+    retryNumber,
+    retryLimit: governance.maximumRetryCost?.toString(),
+    initialAttemptCost: input.initialAttemptCost,
+    cumulativeRequestLimit: governance.maximumCumulativeRequestCost?.toString(),
+  });
+  logBudgetDecision({
+    request: input.request,
+    requestId: input.requestId,
+    userId: input.userId,
+    providerId: input.provider.id,
+    model: input.model,
+    attemptNumber: retryNumber + 1,
+    retryNumber,
+    estimatedCost: decision.estimatedCost,
+    currentUsage: decision.currentUsage,
+    limit: decision.limit,
+    decision: decision.allowed ? "ALLOWED" : "BLOCKED",
+    reasonCode: decision.reasonCode,
+    scope: "retry",
+  });
+  if (!decision.allowed) throw new AiError("AI_RETRY_COST_LIMIT_EXCEEDED", undefined, 409, undefined, {
+    retry_number: retryNumber,
+    estimated_incremental_cost: decision.estimatedCost,
+    cumulative_retry_cost: decision.currentUsage + decision.estimatedCost,
+    retry_limit: governance.maximumRetryCost == null ? null : Number(governance.maximumRetryCost),
+    cumulative_request_limit: governance.maximumCumulativeRequestCost == null ? null : Number(governance.maximumCumulativeRequestCost),
+  });
+
+  // A connection failure known to occur before dispatch can reuse the first
+  // attempt's reservation. Ambiguous failures are retried only when the
+  // administrator opted in, and reserve the cumulative possible charge.
+  const possibleRequestCost = input.possiblePriorBilling ? input.initialAttemptCost * (retryNumber + 1) : input.initialAttemptCost;
+  const preview = await previewAiRequest({ ...input, requestId: input.requestId, estimatedCostOverride: possibleRequestCost });
+  if (input.possiblePriorBilling && input.reservationId) {
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ lockResult: string }>>`SELECT pg_advisory_xact_lock(hashtext('mixarr-ai-budget-reservation'))::text AS "lockResult"`;
+      await previewAiRequest({ ...input, requestId: input.requestId, estimatedCostOverride: possibleRequestCost });
+      const updated = await tx.aiBudgetReservation.updateMany({ where: { id: input.reservationId, requestId: input.requestId, status: "ACTIVE" }, data: { reservedCost: possibleRequestCost } });
+      if (updated.count !== 1) throw new AiError("INTERNAL_AI_ERROR");
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+  return { decision, preview, possibleRequestCost };
 }
 
 export async function reconcileAiBudgetReservation(reservationId: string | undefined, actualCost: number | undefined, status: "RECONCILED" | "RELEASED") {
