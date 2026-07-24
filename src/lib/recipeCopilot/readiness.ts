@@ -8,6 +8,8 @@ export type RecipeCopilotReadiness = {
   remoteOperationAllowed?: boolean;
   blockedReasonCode?: string | null;
   blockedReasonMessage?: string | null;
+  requestedFeature?: string | null;
+  failedCheck?: string | null;
   canConfigure?: boolean;
   settingsUrl?: string | null;
   // Backward-compatible response aliases.

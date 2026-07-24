@@ -85,6 +85,13 @@ export async function register() {
     } catch (error) {
       console.warn("[AI Queue] Optional worker startup skipped", sanitizeErrorText(error));
     }
+
+    try {
+      const { validateAiFeatureConfiguration } = await import("./ai/governance/featureValidation");
+      await validateAiFeatureConfiguration();
+    } catch (error) {
+      console.warn("[AI Governance] Feature identifier validation skipped", sanitizeErrorText(error));
+    }
   }
 
   try {

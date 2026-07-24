@@ -111,7 +111,7 @@ export async function getRecipeCopilotAvailability(userId: string, raw: unknown 
     prisma.aiGovernanceSetting.findUnique({ where: { id: "global" } }),
   ]);
   const privacyMode = input.privacyMode || governance?.privacyMode || "METADATA_LIMITED";
-  const disabled = (code: string, reason: string, target: { providerId?: string | null; providerName?: string | null; modelId?: string | null; modelName?: string | null } = {}) => ({
+  const disabled = (code: string, reason: string, target: { providerId?: string | null; providerName?: string | null; modelId?: string | null; modelName?: string | null; failedCheck?: string | null } = {}) => ({
     available: false as const,
     providerId: target.providerId || null,
     providerName: target.providerName || null,
@@ -121,6 +121,10 @@ export async function getRecipeCopilotAvailability(userId: string, raw: unknown 
     remoteOperationAllowed: false,
     blockedReasonCode: code,
     blockedReasonMessage: reason,
+    // Canonical feature and the exact authorization check that failed, so the
+    // administrator sees precisely which control blocked the request.
+    requestedFeature: RECIPE_COPILOT_FEATURE_KEY,
+    failedCheck: target.failedCheck || null,
     canConfigure: permission.admin,
     settingsUrl: permission.admin ? "/settings/ai" : null,
     // Backward-compatible fields retained for existing drawer/API consumers.
@@ -160,7 +164,8 @@ export async function getRecipeCopilotAvailability(userId: string, raw: unknown 
     const reason = mappedCode === "AI_REQUEST_COST_LIMIT_EXCEEDED" && details?.estimated_cost != null && details?.limit != null
       ? `This request is estimated to cost ${Number(details.estimated_cost).toFixed(6)} ${String(details.currency || governance?.currency || "USD")}, which exceeds the per-request limit of ${Number(details.limit).toFixed(6)}.`
       : error instanceof Error ? error.message : "AI governance blocked this request.";
-    return disabled(mappedCode, reason, { providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow.displayName });
+    const failedCheck = typeof details?.failedCheck === "string" ? details.failedCheck : null;
+    return disabled(mappedCode, reason, { providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow.displayName, failedCheck });
   }
 }
 

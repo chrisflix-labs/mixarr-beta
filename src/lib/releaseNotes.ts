@@ -79,6 +79,21 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.12",
+    title: "AI Provider Feature Authorization Fix",
+    releaseDate: "July 24, 2026",
+    badges: ["Hotfix", "AI", "Bug Fix", "Security", "Privacy"],
+    changes: [
+      "Fixed Recipe Copilot requests being incorrectly rejected with AI_PROVIDER_FEATURE_BLOCKED even when the provider was approved for the feature. A duplicate global external-feature list was shadowing the authoritative per-provider feature approval and returning the wrong error code.",
+      "Added a single canonical AI feature registry and a centralized, deterministic authorization evaluator used identically by the API, durable queue, and execution worker, so every layer reaches the same verdict for the same inputs.",
+      "Provider feature IDs and display-name capitalization no longer affect authorization: legacy and variant identifiers are normalized to canonical IDs, and provider approval remains separate from per-feature approval.",
+      "Errors are now accurate: AI_PROVIDER_FEATURE_BLOCKED is returned only for a genuine provider-feature approval failure, and privacy, external-access, capability, and confirmation failures return their specific codes.",
+      "Added an administrator-safe Effective Authorization diagnostic (API and Security dashboard) that shows the exact ordered check that blocked a provider and feature, plus a sanitized server-side decision log keyed by request ID.",
+      "Recipe Copilot continues to work on unsaved recipes, changes take effect without restarting Mixarr, and governance protections remain fully enforced with no provider-specific exceptions.",
+      "Upgrade: apply migration 20260731010000_ai_provider_feature_authorization_v2412. It idempotently canonicalizes existing feature allowlists, preserves every explicit approval, grants no new permissions, and does not enable AI or external providers.",
+    ],
+  },
+  {
     version: "2.4.11",
     title: "Library Intelligence Backup & Restore",
     releaseDate: "July 22, 2026",
