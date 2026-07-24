@@ -5653,6 +5653,8 @@ model AiGovernanceSetting {
   maximumRetryAttempts              Int      @default(1)
   maximumRetryCost                  Decimal? @db.Decimal(18, 6)
   maximumCumulativeRequestCost      Decimal? @db.Decimal(18, 6)
+  perRequestCostLimitEnabled        Boolean  @default(false)
+  perRequestCostLimitUsd            Decimal? @db.Decimal(18, 6)
   retryAfterPossibleBilling         Boolean  @default(false)
   auditRetentionDays                Int      @default(90)
   usageSummaryRetentionDays         Int      @default(730)
@@ -6102,6 +6104,8 @@ model AiProviderBudget {
   currency                   String           @default("USD")
   dailyLimit                 Decimal?         @db.Decimal(18, 6)
   monthlyLimit               Decimal?         @db.Decimal(18, 6)
+  perRequestCostLimitEnabled Boolean          @default(false)
+  perRequestCostLimitUsd     Decimal?         @db.Decimal(18, 6)
   warningThresholdsJson      Json
   hardLimitEnabled           Boolean          @default(true)
   selectableAfterWarning     Boolean          @default(true)
@@ -6122,6 +6126,8 @@ model AiUserLimit {
   currency                  String   @default("USD")
   dailyCostLimit            Decimal? @db.Decimal(18, 6)
   monthlyCostLimit          Decimal? @db.Decimal(18, 6)
+  perRequestCostLimitEnabled Boolean  @default(false)
+  perRequestCostLimitUsd     Decimal? @db.Decimal(18, 6)
   dailyRequestLimit         Int?
   monthlyRequestLimit       Int?
   maximumInputTokens        Int?

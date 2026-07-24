@@ -128,6 +128,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
         {!canRequest && availability?.available && !running && ["create", "refine", "optimize", "compare_intent"].includes(action) && !instruction.trim() && <p className={styles.disabledReason}>Enter an instruction to continue.</p>}
         {!canRequest && availability?.available && !running && action === "from_playlist" && !playlistId && <p className={styles.disabledReason}>Choose an example playlist to continue.</p>}
         {error && <div className={styles.error} role="alert"><AlertTriangle size={17} /><span>{error}{errorCode && <code>{errorCode}</code>}</span></div>}
+        {availability?.available && <p className={styles.stage}>Per-request cost limit: {availability.perRequestCostLimit?.enabled ? `${availability.perRequestCostLimit.limitUsd} USD · ${availability.perRequestCostLimit.source}` : "Disabled / Unlimited"}</p>}
         {stage && <p className={styles.stage} role="status" aria-live="polite">{stage}</p>}
 
         {proposal && <div className={styles.results}>

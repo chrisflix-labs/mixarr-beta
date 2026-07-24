@@ -9,6 +9,8 @@ export const aiUserPolicySchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/).default("USD"),
   dailyCostLimit: optionalDecimal,
   monthlyCostLimit: optionalDecimal,
+  perRequestCostLimitEnabled: z.boolean().optional(),
+  perRequestCostLimitUsd: optionalDecimal,
   dailyRequestLimit: optionalInteger,
   monthlyRequestLimit: optionalInteger,
   maximumInputTokens: optionalInteger,
@@ -20,10 +22,14 @@ export const aiUserPolicySchema = z.object({
   paidProvidersAllowed: z.boolean().nullable().optional(),
   backgroundRequestsAllowed: z.boolean().nullable().optional(),
   reason: z.string().max(1000).optional()
+}).superRefine((input, context) => {
+  if (input.perRequestCostLimitEnabled === true && (input.perRequestCostLimitUsd == null || !Number.isFinite(Number(input.perRequestCostLimitUsd)) || Number(input.perRequestCostLimitUsd) <= 0)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["perRequestCostLimitUsd"], message: "Enter a per-request cost limit greater than zero when enforcement is enabled." });
+  }
 });
 
 export function fieldErrorsFromZod(error: z.ZodError) {
-  const aliases: Record<string, string> = { userId: "user_uuid", dailyCostLimit: "daily_cost_limit", monthlyCostLimit: "monthly_cost_limit", dailyRequestLimit: "daily_requests", monthlyRequestLimit: "monthly_requests", paidProvidersAllowed: "permit_paid_providers", backgroundRequestsAllowed: "permit_background_requests" };
+  const aliases: Record<string, string> = { userId: "user_uuid", dailyCostLimit: "daily_cost_limit", monthlyCostLimit: "monthly_cost_limit", perRequestCostLimitUsd: "per_request_cost_limit_usd", dailyRequestLimit: "daily_requests", monthlyRequestLimit: "monthly_requests", paidProvidersAllowed: "permit_paid_providers", backgroundRequestsAllowed: "permit_background_requests" };
   const fieldErrors: Record<string, string> = {};
   for (const issue of error.issues) {
     const path = String(issue.path[0] || "form");

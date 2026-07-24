@@ -64,6 +64,59 @@ BEGIN
     ON "Track"("plexServerId", "plexLibraryId", "ratingKey");
 END $$;
 
+-- Mixarr Recipe Copilot per-request cost limits separate the enforcement flag
+-- from the USD amount. Docker installations use db push, so perform the same
+-- one-time legacy backfill as the versioned migration before schema
+-- reconciliation. Existing positive limits remain enabled; zero/null become
+-- disabled and cannot turn into an accidental zero-dollar block.
+DO $$
+DECLARE
+  enabled_column_existed BOOLEAN;
+BEGIN
+  IF to_regclass('"AiGovernanceSetting"') IS NULL THEN
+    -- Fresh database: db push creates the complete disabled-by-default model.
+    RETURN;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'AiGovernanceSetting'
+      AND column_name = 'perRequestCostLimitEnabled'
+  ) INTO enabled_column_existed;
+
+  ALTER TABLE "AiGovernanceSetting"
+    ADD COLUMN IF NOT EXISTS "perRequestCostLimitEnabled" BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "perRequestCostLimitUsd" DECIMAL(18,6);
+
+  IF to_regclass('"AiProviderBudget"') IS NOT NULL THEN
+    ALTER TABLE "AiProviderBudget"
+      ADD COLUMN IF NOT EXISTS "perRequestCostLimitEnabled" BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS "perRequestCostLimitUsd" DECIMAL(18,6);
+  END IF;
+
+  IF to_regclass('"AiUserLimit"') IS NOT NULL THEN
+    ALTER TABLE "AiUserLimit"
+      ADD COLUMN IF NOT EXISTS "perRequestCostLimitEnabled" BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS "perRequestCostLimitUsd" DECIMAL(18,6);
+  END IF;
+
+  IF NOT enabled_column_existed THEN
+    UPDATE "AiGovernanceSetting"
+    SET
+      "perRequestCostLimitEnabled" = COALESCE("maximumCumulativeRequestCost" > 0, false),
+      "perRequestCostLimitUsd" = CASE
+        WHEN "maximumCumulativeRequestCost" > 0 THEN "maximumCumulativeRequestCost"
+        ELSE NULL
+      END,
+      "maximumCumulativeRequestCost" = CASE
+        WHEN "maximumCumulativeRequestCost" > 0 THEN "maximumCumulativeRequestCost"
+        ELSE NULL
+      END;
+  END IF;
+END $$;
+
 -- Mixarr v2.4.9 adds optional per-user idempotency keys to the existing AI
 -- request audit table. Prisma warns about every new unique index during
 -- `db push`, even though this newly added nullable column contains only NULLs.

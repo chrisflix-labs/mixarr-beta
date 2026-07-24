@@ -28,6 +28,19 @@ export function recipeCopilotApiError(error: unknown) {
       : mappedCode === "AI_MONTHLY_BUDGET_EXCEEDED" ? "The configured AI monthly budget has been reached."
       : mappedCode === "AI_RETRY_COST_LIMIT_EXCEEDED" ? "The first attempt failed temporarily, but another attempt would exceed the AI retry cost limit."
       : error.toSafePayload().error.message;
+    if (mappedCode === "AI_REQUEST_COST_LIMIT_EXCEEDED" && error.details) {
+      const details = error.details;
+      const payload = {
+        code: mappedCode,
+        message: "Estimated request cost exceeds the configured per-request limit.",
+        estimated_cost_usd: details.estimated_cost_usd,
+        effective_limit_usd: details.effective_limit_usd,
+        limit_source: details.limit_source,
+        provider: details.provider,
+        feature: details.feature,
+      };
+      return NextResponse.json({ error: payload, ...payload }, { status: error.status });
+    }
     return NextResponse.json({ error: { code: mappedCode, message, ...(mappedCode !== error.category ? { legacyCode: error.category } : {}), ...(error.details ? { details: error.details } : {}) }, code: mappedCode, message }, { status: error.status });
   }
   if (error instanceof ZodError) return NextResponse.json({ error: { code: "INVALID_REQUEST", message: error.issues[0]?.message || "Invalid Recipe Copilot request.", fields: error.flatten() } }, { status: 400 });

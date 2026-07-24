@@ -116,6 +116,43 @@ export function currencyMicros(value: string | number | null | undefined) {
 }
 function pricedTokens(tokens: number, perMillionMicros: number | null) { return perMillionMicros == null ? 0 : Math.ceil(Math.max(0, Math.ceil(tokens)) * perMillionMicros / AI_CURRENCY_MICROS); }
 export function currencyFromMicros(micros: number) { return micros / AI_CURRENCY_MICROS; }
+export function currencyStringFromMicros(micros: number) {
+  return `${Math.floor(micros / AI_CURRENCY_MICROS)}.${String(micros % AI_CURRENCY_MICROS).padStart(6, "0")}`;
+}
+
+export type AiPerRequestLimitSource = "global" | "provider" | "user";
+export type AiPerRequestLimitSetting = {
+  source: AiPerRequestLimitSource;
+  enabled?: boolean | null;
+  value?: string | number | null;
+};
+
+/**
+ * All enabled per-request limits participate and the strictest amount wins.
+ * A missing/disabled scope never supplies a zero. Equal limits prefer the most
+ * specific source (user, then provider, then global) for diagnostics.
+ */
+export function resolvePerRequestCostLimit(settings: AiPerRequestLimitSetting[]) {
+  const specificity: Record<AiPerRequestLimitSource, number> = { global: 0, provider: 1, user: 2 };
+  const configured = settings.map((setting) => {
+    if (setting.enabled !== true) return { source: setting.source, enabled: false as const, limitMicros: null, limitUsd: null };
+    const limitMicros = currencyMicros(setting.value);
+    if (limitMicros == null || limitMicros <= 0) {
+      throw new AiError("INVALID_REQUEST", `The enabled ${setting.source} per-request cost limit must be greater than zero.`, 400, undefined, { limit_source: setting.source });
+    }
+    return { source: setting.source, enabled: true as const, limitMicros, limitUsd: currencyStringFromMicros(limitMicros) };
+  });
+  const active = configured.filter((setting): setting is Extract<typeof setting, { enabled: true }> => setting.enabled);
+  active.sort((left, right) => left.limitMicros - right.limitMicros || specificity[right.source] - specificity[left.source]);
+  const effective = active[0] || null;
+  return {
+    configured,
+    enabled: effective != null,
+    limitMicros: effective?.limitMicros ?? null,
+    limitUsd: effective?.limitUsd ?? null,
+    source: effective?.source ?? null,
+  };
+}
 
 export type AiCostEvaluationScope = "request" | "daily" | "monthly" | "provider" | "user" | "retry";
 export type AiCostEvaluation = {
