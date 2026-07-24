@@ -1,7 +1,35 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 import { integrationApiError, requireIntegrationAdmin } from "@/lib/integrations/api";
-const db = prisma as any;
-export async function GET() { try { await requireIntegrationAdmin(); const users = await db.user.findMany({ select: { id: true, username: true, email: true, generatedPlaylists: { select: { id: true } }, plexUserMappings: { include: { server: { select: { id: true, name: true } }, plexAccount: { select: { id: true, plexUserId: true, username: true, email: true, accountType: true, lastSeenAt: true } } } } } }); const accounts = await db.plexAccount.findMany({ select: { id: true, serverId: true, plexUserId: true, username: true, email: true, accountType: true, lastSeenAt: true } }); const suggestions = users.filter((user: any) => !user.plexUserMappings.length).flatMap((user: any) => accounts.filter((account: any) => account.username.toLowerCase() === user.username.toLowerCase() || (!!account.email && !!user.email && account.email.toLowerCase() === user.email.toLowerCase())).map((account: any) => ({ userId: user.id, plexAccountId: account.id, serverId: account.serverId, confidence: account.email && user.email && account.email.toLowerCase() === user.email.toLowerCase() ? "HIGH" : "MEDIUM" }))); return NextResponse.json({ users: users.map((user: any) => ({ ...user, playlistCount: user.generatedPlaylists.length, generatedPlaylists: undefined })), accounts, suggestions }); } catch (error) { return integrationApiError(error); } }
-export async function PUT(request: Request) { try { await requireIntegrationAdmin(); const body = await request.json(); const account = await db.plexAccount.findFirst({ where: { id: String(body.plexAccountId), serverId: String(body.serverId) } }); if (!account) return NextResponse.json({ error: "Plex account not found." }, { status: 404 }); const mapping = await db.plexUserMapping.upsert({ where: { userId_serverId: { userId: String(body.userId), serverId: account.serverId } }, update: { plexAccountId: account.id, plexUserId: account.plexUserId, plexUsername: account.username, mappingState: "MAPPED", enabled: true, isHomeUser: account.accountType === "HOME", isManagedUser: account.accountType === "MANAGED", defaultPlaylistOwner: !!body.defaultPlaylistOwner, lastVerifiedAt: new Date(), conflictReason: null }, create: { userId: String(body.userId), serverId: account.serverId, plexAccountId: account.id, plexUserId: account.plexUserId, plexUsername: account.username, mappingState: "MAPPED", enabled: true, isHomeUser: account.accountType === "HOME", isManagedUser: account.accountType === "MANAGED", defaultPlaylistOwner: !!body.defaultPlaylistOwner, lastVerifiedAt: new Date() } }); return NextResponse.json({ mapping }); } catch (error) { return integrationApiError(error); } }
-export async function DELETE(request: Request) { try { await requireIntegrationAdmin(); const { userId, serverId } = await request.json(); await db.plexUserMapping.delete({ where: { userId_serverId: { userId: String(userId), serverId: String(serverId) } } }); return NextResponse.json({ removed: true }); } catch (error) { return integrationApiError(error); } }
+import { discoverPlexUsers, removePlexUserMapping, savePlexUserMapping } from "@/lib/integrations/service";
+
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  try {
+    const userId = await requireIntegrationAdmin();
+    return NextResponse.json(await discoverPlexUsers(userId), {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
+  } catch (error) {
+    return integrationApiError(error);
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const actorUserId = await requireIntegrationAdmin();
+    const mapping = await savePlexUserMapping(actorUserId, await request.json());
+    return NextResponse.json({ mapping });
+  } catch (error) {
+    return integrationApiError(error);
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const actorUserId = await requireIntegrationAdmin();
+    return NextResponse.json(await removePlexUserMapping(actorUserId, await request.json()));
+  } catch (error) {
+    return integrationApiError(error);
+  }
+}

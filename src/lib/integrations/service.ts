@@ -3,6 +3,7 @@ import prisma from "../prisma";
 import { decryptSecret, encryptSecret, isSecretEncryptionConfigured } from "../secretStorage";
 import { sanitizeErrorText } from "../supportRedaction";
 import { APP_VERSION } from "../appVersion";
+import { classifyPlexDiscoveryFailure, normalizePlexUsers, type NormalizedPlexUser } from "../plexUsers";
 import {
   API_TOKEN_SCOPES, ApiTokenScope, INTEGRATION_EVENTS, checkMountDependency, classifyAvailability,
   classifyPlaylistChange, createEventEnvelope, diffPlaylistState, generateApiToken, hasRequiredScope,
@@ -59,6 +60,269 @@ async function plexRequest(server: any, pathname: string, init: RequestInit = {}
 function plexRows(data: any, key: "Directory" | "Metadata") {
   const rows = data?.MediaContainer?.[key];
   return Array.isArray(rows) ? rows : [];
+}
+
+function plexAccountRows(data: any) {
+  const rows = data?.MediaContainer?.Account ?? data?.Account ?? [];
+  return Array.isArray(rows) ? rows : rows && typeof rows === "object" ? [rows] : [];
+}
+
+function isUnsupportedAccountDiscovery(error: unknown) {
+  const status = Number((error as any)?.httpStatus || 0);
+  return status === 404 || status === 405 || status === 501;
+}
+
+export async function discoverPlexAccountsForServer(
+  server: any,
+  request: (server: any, pathname: string, init?: RequestInit, timeoutMs?: number) => Promise<{ data: any }> = plexRequest,
+) {
+  console.info("[PlexUserDiscovery] discovery started", { serverId: server.id, serverName: server.name });
+  console.info("[PlexUserDiscovery] Plex server/account selected", { serverId: server.id, serverName: server.name });
+  try {
+    // This authenticated read verifies that the configured per-server token is
+    // valid before account discovery. The token never leaves this server-side call.
+    await request(server, "/library/sections", {}, 10_000);
+    let records: any[] = [];
+    let supported = true;
+    try {
+      records = plexAccountRows((await request(server, "/accounts", {}, 10_000)).data);
+    } catch (error) {
+      if (!isUnsupportedAccountDiscovery(error)) throw error;
+      supported = false;
+    }
+    const owner = server.user ? {
+      id: server.user.plexId,
+      username: server.user.username,
+      email: server.user.email,
+      title: server.user.username,
+      avatarUrl: server.user.thumb,
+    } : null;
+    const normalized = normalizePlexUsers(records, owner);
+    console.info("[PlexUserDiscovery] normalized users discovered", {
+      serverId: server.id,
+      normalizedUserCount: normalized.users.length,
+      malformedRecordsSkipped: normalized.malformedRecordsSkipped,
+      connectionSupportsAccountDiscovery: supported,
+    });
+    console.info("[PlexUserDiscovery] discovery completed", { serverId: server.id, normalizedUserCount: normalized.users.length });
+    return { ...normalized, supported, remoteUserCount: records.length };
+  } catch (error) {
+    const failure = classifyPlexDiscoveryFailure(error);
+    console.warn("[PlexUserDiscovery] discovery failure", { serverId: server.id, category: failure.code });
+    throw new IntegrationError(failure.code, failure.message, failure.status);
+  }
+}
+
+async function persistDiscoveredPlexAccounts(serverId: string, users: NormalizedPlexUser[], supported: boolean, database: any = db) {
+  const now = new Date();
+  await database.$transaction(async (tx: any) => {
+    const discoveredIds = users.map((user) => user.id);
+    if (supported) {
+      await tx.plexAccount.updateMany({ where: { serverId }, data: { isAvailable: false } });
+      if (discoveredIds.length) {
+        await tx.plexUserMapping.updateMany({
+          where: { serverId, plexUserId: { notIn: discoveredIds } },
+          data: { mappingState: "UNAVAILABLE", conflictReason: "The Plex account was not returned by the latest discovery." },
+        });
+      }
+    }
+    for (const user of users) {
+      const account = await tx.plexAccount.upsert({
+        where: { serverId_plexUserId: { serverId, plexUserId: user.id } },
+        create: {
+          serverId,
+          plexUserId: user.id,
+          username: user.title,
+          email: user.email,
+          thumb: user.avatarUrl,
+          accountType: user.accountType,
+          isAvailable: true,
+          lastSeenAt: now,
+        },
+        update: {
+          username: user.title,
+          email: user.email,
+          thumb: user.avatarUrl,
+          accountType: user.accountType,
+          isAvailable: true,
+          lastSeenAt: now,
+        },
+      });
+      await tx.plexUserMapping.updateMany({
+        where: { serverId, plexUserId: user.id },
+        data: {
+          plexAccountId: account.id,
+          plexUsername: user.title,
+          plexEmail: user.email,
+          mappingState: "MAPPED",
+          isHomeUser: user.isHomeUser,
+          isManagedUser: user.isManaged,
+          lastVerifiedAt: now,
+          conflictReason: null,
+        },
+      });
+    }
+  });
+}
+
+export async function discoverPlexUsers(
+  userId: string,
+  database: any = db,
+  discover: (server: any) => ReturnType<typeof discoverPlexAccountsForServer> = discoverPlexAccountsForServer,
+) {
+  const servers = await database.server.findMany({
+    where: { userId, enabled: true },
+    orderBy: { priority: "asc" },
+    include: { user: { select: { plexId: true, username: true, email: true, thumb: true } } },
+  });
+  if (!servers.length) throw new IntegrationError("PLEX_NOT_CONFIGURED", "Configure and connect Plex before mapping users.", 409);
+
+  const users: Array<NormalizedPlexUser & { serverId: string; serverName: string }> = [];
+  const warnings: Array<{ serverId: string; code: string; message: string }> = [];
+  let malformedRecordsSkipped = 0;
+  let completedServers = 0;
+  let firstFailure: IntegrationError | null = null;
+  for (const server of servers) {
+    try {
+      const result = await discover(server);
+      await persistDiscoveredPlexAccounts(server.id, result.users, result.supported, database);
+      users.push(...result.users.map((user) => ({ ...user, serverId: server.id, serverName: server.name })));
+      malformedRecordsSkipped += result.malformedRecordsSkipped;
+      completedServers += 1;
+      if (!result.supported) {
+        warnings.push({
+          serverId: server.id,
+          code: "PLEX_USER_DISCOVERY_UNSUPPORTED",
+          message: `${server.name} does not expose additional Plex accounts through this connection; the connected account is still available.`,
+        });
+      } else if (!result.remoteUserCount) {
+        warnings.push({
+          serverId: server.id,
+          code: "PLEX_NO_ADDITIONAL_USERS",
+          message: `${server.name} returned no additional Plex Home or shared users.`,
+        });
+      }
+    } catch (error) {
+      const failure = error instanceof IntegrationError
+        ? error
+        : new IntegrationError("PLEX_DISCOVERY_FAILED", "Plex account discovery failed.", 502);
+      firstFailure ||= failure;
+      warnings.push({ serverId: server.id, code: failure.code, message: failure.message });
+    }
+  }
+  if (!completedServers && firstFailure) throw firstFailure;
+  return {
+    users,
+    status: users.length ? (warnings.length ? "partial" : "success") : "empty",
+    warnings,
+    malformedRecordsSkipped,
+    refreshedAt: new Date().toISOString(),
+  };
+}
+
+function safeMappingSelect() {
+  return {
+    id: true,
+    userId: true,
+    serverId: true,
+    plexAccountId: true,
+    plexUserId: true,
+    plexUsername: true,
+    plexEmail: true,
+    enabled: true,
+    mappingState: true,
+    isHomeUser: true,
+    isManagedUser: true,
+    createdAt: true,
+    updatedAt: true,
+    server: { select: { id: true, name: true } },
+    plexAccount: { select: { id: true, plexUserId: true, username: true, email: true, thumb: true, accountType: true, isAvailable: true } },
+  };
+}
+
+export async function savePlexUserMapping(actorUserId: string, input: any, database: any = db) {
+  const userId = String(input?.userId || "");
+  const serverId = String(input?.serverId || "");
+  const plexUserId = String(input?.plexUserId || "");
+  const plexAccountId = String(input?.plexAccountId || "");
+  if (!userId || !serverId || (!plexUserId && !plexAccountId)) {
+    throw new IntegrationError("PLEX_MAPPING_INVALID", "A Mixarr user, Plex server, and Plex account are required.", 400);
+  }
+  const [server, targetUser] = await Promise.all([
+    database.server.findFirst({ where: { id: serverId, userId: actorUserId }, select: { id: true } }),
+    database.user.findUnique({ where: { id: userId }, select: { id: true } }),
+  ]);
+  if (!server) throw new IntegrationError("PLEX_SERVER_NOT_FOUND", "Plex server not found.", 404);
+  if (!targetUser) throw new IntegrationError("MIXARR_USER_NOT_FOUND", "Mixarr user not found.", 404);
+  const account = await database.plexAccount.findFirst({
+    where: {
+      serverId,
+      isAvailable: true,
+      ...(plexUserId ? { plexUserId } : { id: plexAccountId }),
+    },
+  });
+  if (!account) {
+    throw new IntegrationError("PLEX_ACCOUNT_UNAVAILABLE", "That Plex account is not in the current discovered account list. Refresh Plex accounts and try again.", 422);
+  }
+  const conflict = await database.plexUserMapping.findFirst({
+    where: { serverId, plexUserId: account.plexUserId, enabled: true, NOT: { userId } },
+    select: { user: { select: { username: true } } },
+  });
+  if (conflict) {
+    throw new IntegrationError("PLEX_ACCOUNT_ALREADY_MAPPED", `That Plex account is already mapped to ${conflict.user.username}. Remove that mapping first.`, 409);
+  }
+  try {
+    await database.plexUserMapping.upsert({
+      where: { userId_serverId: { userId, serverId } },
+      create: {
+        userId,
+        serverId,
+        plexAccountId: account.id,
+        plexUserId: account.plexUserId,
+        plexUsername: account.username,
+        plexEmail: account.email,
+        mappingState: "MAPPED",
+        enabled: true,
+        isHomeUser: account.accountType === "HOME" || account.accountType === "MANAGED" || account.accountType === "OWNER",
+        isManagedUser: account.accountType === "MANAGED",
+        defaultPlaylistOwner: !!input.defaultPlaylistOwner,
+        lastVerifiedAt: new Date(),
+        conflictReason: null,
+      },
+      update: {
+        plexAccountId: account.id,
+        plexUserId: account.plexUserId,
+        plexUsername: account.username,
+        plexEmail: account.email,
+        mappingState: "MAPPED",
+        enabled: true,
+        isHomeUser: account.accountType === "HOME" || account.accountType === "MANAGED" || account.accountType === "OWNER",
+        isManagedUser: account.accountType === "MANAGED",
+        defaultPlaylistOwner: !!input.defaultPlaylistOwner,
+        lastVerifiedAt: new Date(),
+        conflictReason: null,
+      },
+    });
+  } catch (error) {
+    if ((error as any)?.code === "P2002") {
+      throw new IntegrationError("PLEX_ACCOUNT_ALREADY_MAPPED", "That Plex account was assigned to another Mixarr user at the same time. Refresh mappings and try again.", 409);
+    }
+    throw error;
+  }
+  return database.plexUserMapping.findUnique({
+    where: { userId_serverId: { userId, serverId } },
+    select: safeMappingSelect(),
+  });
+}
+
+export async function removePlexUserMapping(actorUserId: string, input: any, database: any = db) {
+  const userId = String(input?.userId || "");
+  const serverId = String(input?.serverId || "");
+  if (!userId || !serverId) throw new IntegrationError("PLEX_MAPPING_INVALID", "A Mixarr user and Plex server are required.", 400);
+  const server = await database.server.findFirst({ where: { id: serverId, userId: actorUserId }, select: { id: true } });
+  if (!server) throw new IntegrationError("PLEX_SERVER_NOT_FOUND", "Plex server not found.", 404);
+  const result = await database.plexUserMapping.deleteMany({ where: { userId, serverId } });
+  return { removed: result.count > 0, userId, serverId };
 }
 
 export async function testPlexServer(serverId: string, userId?: string | null) {

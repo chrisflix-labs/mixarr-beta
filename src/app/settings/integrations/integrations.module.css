@@ -18,6 +18,8 @@
 .wrapper section { display: grid; gap: .8rem; scroll-margin-top: 1rem; }
 .wrapper h2 { margin: 0; font-size: 1.2rem; }
 .wrapper h3 { margin: 0; font-size: .95rem; }
+.sectionHeading { display: flex; align-items: flex-end; justify-content: space-between; gap: .75rem; }
+.sectionHeading p { margin: .25rem 0 0; color: var(--muted); font-size: .76rem; }
 
 .wrapper button,
 .links a {
@@ -87,7 +89,14 @@
 .row span, .mapping span { min-width: 0; }
 .row strong, .row small, .mapping strong, .mapping small { display: block; overflow-wrap: anywhere; }
 .row small, .mapping small { color: var(--muted); font-size: .7rem; margin-top: .15rem; }
-.mapping { grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) minmax(180px, .8fr); }
+.mapping { grid-template-columns: minmax(150px, 1fr) minmax(180px, 1fr) minmax(230px, 1.2fr) auto; }
+.mappingActions { display: flex; align-items: center; justify-content: flex-end; gap: .4rem; min-width: 118px; }
+.mappingActions small { color: var(--muted); }
+.mappingActions button { white-space: nowrap; }
+.discoveryStatus, .discoveryWarning, .discoveryError p { margin: 0; font-size: .78rem; line-height: 1.45; }
+.discoveryStatus { color: var(--muted); }
+.discoveryWarning { color: var(--warning); }
+.discoveryError { display: flex; align-items: center; justify-content: space-between; gap: .75rem; color: #ffb0b0; }
 
 .mapping select,
 .subpanel input,
@@ -109,9 +118,10 @@
 .tokenReveal code { overflow: auto; padding: .45rem; background: rgba(0, 0, 0, .25); }
 
 @media (max-width: 760px) {
-  .header { align-items: stretch; flex-direction: column; }
+  .header, .sectionHeading { align-items: stretch; flex-direction: column; }
   .split, .mapping { grid-template-columns: 1fr; }
   .card dl, .scopes { grid-template-columns: 1fr; }
   .row { grid-template-columns: 1fr; }
   .row em, .row button { width: fit-content; }
+  .mappingActions { justify-content: flex-start; min-width: 0; }
 }

@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import prisma from "../prisma";
 import { acquireJobLock, attachJobHistoryToLock, setJobPhase } from "../jobLock";
 import { safeFinishJobHistory, safeRecordJobHistory, safeStartJobHistory } from "../jobHistory";
+import { discoverPlexAccountsForServer, serverAccessToken } from "../integrations/service";
 import { normalizePlaybackEvent } from "./normalization";
 import { ensurePlaybackSettings, rebuildPlaybackProfilesForUser } from "./service";
 
@@ -27,31 +28,6 @@ function rowsFromContainer(payload: any, key: string) {
 
 export class PlexPlaybackHistoryClient {
   constructor(private server: { uri: string; accessToken: string }) {}
-
-  async listAccounts(owner: { plexId: number; username: string; email: string | null; thumb: string | null }) {
-    try {
-      const response = await axios.get(`${this.server.uri}/accounts`, { headers: plexHeaders(this.server.accessToken), timeout: 20_000 });
-      const accounts = rowsFromContainer(response.data, "Account");
-      if (accounts.length) return accounts.map((account: any) => ({
-        plexUserId: String(account.id ?? account.accountID ?? account.key),
-        username: String(account.name ?? account.title ?? account.username ?? `Plex user ${account.id}`),
-        email: account.email ? String(account.email) : null,
-        thumb: account.thumb ? String(account.thumb) : null,
-        accountType: account.autoSelectAudio ? "managed" : "account",
-      }));
-    } catch (error) {
-      console.warn("[PlaybackHistorySync] Plex account discovery unavailable; using the server owner only", {
-        message: error instanceof Error ? error.message : "unknown error",
-      });
-    }
-    return [{
-      plexUserId: String(owner.plexId),
-      username: owner.username,
-      email: owner.email,
-      thumb: owner.thumb,
-      accountType: "owner",
-    }];
-  }
 
   async historyPage(input: { plexUserId: string; start: number; since?: Date | null }) {
     const response = await axios.get(`${this.server.uri}/status/sessions/history/all`, {
@@ -145,23 +121,30 @@ export async function syncPlaybackHistoryForServer(input: { serverId: string; mo
     create: { serverId: server.id, currentState: "syncing", lastAttemptedSyncAt: new Date(), syncMode: mode },
     update: { currentState: "syncing", lastAttemptedSyncAt: new Date(), syncMode: mode, errorMessage: null },
   });
-  const client = new PlexPlaybackHistoryClient(server);
+  const client = new PlexPlaybackHistoryClient({ uri: server.uri, accessToken: serverAccessToken(server) });
   let imported = 0;
   let unmatched = 0;
   let warnings = 0;
   let newest = state.lastImportedPlexHistoryAt;
   let oldest = state.oldestAvailablePlexHistoryAt;
   try {
-    const accounts = await client.listAccounts(server.user);
+    const discovery = await discoverPlexAccountsForServer(server);
+    const accounts = discovery.users.map((account) => ({
+      plexUserId: account.id,
+      username: account.title,
+      email: account.email,
+      thumb: account.avatarUrl,
+      accountType: account.accountType,
+    }));
     for (const account of accounts) {
       await prisma.plexAccount.upsert({
         where: { serverId_plexUserId: { serverId: server.id, plexUserId: account.plexUserId } },
-        create: { serverId: server.id, ...account },
-        update: { username: account.username, email: account.email, thumb: account.thumb, accountType: account.accountType, lastSeenAt: new Date() },
+        create: { serverId: server.id, ...account, isAvailable: true },
+        update: { username: account.username, email: account.email, thumb: account.thumb, accountType: account.accountType, isAvailable: true, lastSeenAt: new Date() },
       });
       await prisma.plexUserMapping.updateMany({
         where: { serverId: server.id, plexUserId: account.plexUserId },
-        data: { plexUsername: account.username },
+        data: { plexUsername: account.username, plexEmail: account.email, mappingState: "MAPPED", conflictReason: null, lastVerifiedAt: new Date() },
       });
     }
     const setting = await ensurePlaybackSettings(server.userId);

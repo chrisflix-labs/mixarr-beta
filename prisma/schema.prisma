@@ -4024,6 +4024,7 @@ model PlexAccount {
   email       String?
   thumb       String?
   accountType String?
+  isAvailable Boolean           @default(false)
   lastSeenAt  DateTime          @default(now())
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
@@ -4042,6 +4043,7 @@ model PlexUserMapping {
   plexAccountId        String
   plexUserId           String
   plexUsername         String
+  plexEmail            String?
   enabled              Boolean     @default(true)
   mappingState         String      @default("MAPPED")
   isHomeUser           Boolean     @default(false)
