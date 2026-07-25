@@ -24,7 +24,9 @@ const messages: Record<string, string> = {
   AI_PROVIDER_UNAVAILABLE: "Recipe Copilot is not ready because no enabled AI provider is configured.",
   AI_MODEL_UNAVAILABLE: "Recipe Copilot is not ready because no compatible model is selected.",
   AI_MODEL_PRICING_UNAVAILABLE: "Recipe Copilot cannot estimate this request because pricing is unavailable for the selected model.",
-  AI_DAILY_LIMIT_EXCEEDED: "The applicable daily AI limit has been reached.",
+  AI_REQUEST_COST_LIMIT_EXCEEDED: "The estimated cost of this request exceeds the per-request AI cost limit. An administrator can raise it or choose Unlimited in AI Governance → Budgets → AI cost limits.",
+  AI_DAILY_LIMIT_EXCEEDED: "The applicable daily AI limit has been reached. An administrator can raise it or choose Unlimited in AI Governance → Budgets → AI request limits.",
+  AI_MONTHLY_REQUEST_LIMIT_EXCEEDED: "The applicable monthly AI request limit has been reached. An administrator can change it in AI Governance → Budgets → AI request limits.",
   AI_MONTHLY_BUDGET_EXCEEDED: "The configured AI monthly budget has been reached.",
   AI_PRIVACY_POLICY_BLOCKED: "The active AI privacy policy does not permit this request.",
   AI_PROVIDER_AUTH_FAILED: "The AI provider rejected its configured credentials.",
@@ -50,4 +52,31 @@ export function recipeCopilotCanRequest(input: { readiness: RecipeCopilotReadine
 
 export function isRecipeCopilotSetupError(code: string | null | undefined) {
   return code === "AI_PROVIDER_UNAVAILABLE" || code === "AI_MODEL_UNAVAILABLE" || code === "AI_MODEL_PRICING_UNAVAILABLE";
+}
+
+const requestLimitCodes = new Set(["AI_DAILY_LIMIT_EXCEEDED", "AI_MONTHLY_REQUEST_LIMIT_EXCEEDED"]);
+const costLimitCodes = new Set(["AI_REQUEST_COST_LIMIT_EXCEEDED", "AI_RETRY_COST_LIMIT_EXCEEDED"]);
+
+/** A request-count limit is administrator configuration, so link straight to it. */
+export function isRecipeCopilotRequestLimitError(code: string | null | undefined) {
+  return !!code && requestLimitCodes.has(code);
+}
+
+/** A per-request cost ceiling is likewise configuration, not a setup failure. */
+export function isRecipeCopilotCostLimitError(code: string | null | undefined) {
+  return !!code && costLimitCodes.has(code);
+}
+
+export function recipeCopilotSettingsUrl(code: string | null | undefined) {
+  if (isRecipeCopilotRequestLimitError(code)) return "/settings/ai?section=Budgets#ai-request-limits";
+  if (isRecipeCopilotCostLimitError(code)) return "/settings/ai?section=Budgets#ai-cost-limits";
+  return "/settings/ai";
+}
+
+/** Remaining-request summary shown beside the Ready and Blocked states. */
+export function recipeCopilotDailyRequestSummary(daily: { effectiveMode?: string | null; limit?: number | null; usage?: number | null; remaining?: number | null; resetAt?: string | null } | null | undefined) {
+  if (!daily || daily.limit == null) return "No daily AI request limit is configured.";
+  const reset = daily.resetAt ? new Date(daily.resetAt) : null;
+  const resets = reset && !Number.isNaN(reset.getTime()) ? ` Resets ${reset.toLocaleString()}.` : "";
+  return `${Number(daily.usage || 0).toLocaleString()} of ${Number(daily.limit).toLocaleString()} daily AI requests used · ${Number(daily.remaining ?? 0).toLocaleString()} remaining.${resets}`;
 }

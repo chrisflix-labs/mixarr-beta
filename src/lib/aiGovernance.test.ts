@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { AiError } from "../ai/errors";
-import { alertDeduplicationKey, applyMetadataPrivacyPolicy, budgetPeriod, currencyMicros, estimateRequestCost, estimateTokens, evaluateCostLimit, evaluateRetryCost, resolveEffectiveTokenLimits, resolvePerRequestCostLimit, selectCheaperEligibleModel, strictestPrivacyMode, trimContext, validatePromptLimits, wouldExceedBudget } from "../ai/governance/policy";
+import { alertDeduplicationKey, applyMetadataPrivacyPolicy, budgetPeriod, currencyMicros, estimateRequestCost, estimateTokens, evaluateCostLimit, evaluateRetryCost, resolveEffectiveTokenLimits, selectCheaperEligibleModel, strictestPrivacyMode, trimContext, validatePromptLimits, wouldExceedBudget } from "../ai/governance/policy";
 
 describe("AI governance policy", () => {
   it("applies the strictest privacy mode", () => { assert.equal(strictestPrivacyMode("FULL_METADATA", "METADATA_LIMITED", "ANONYMOUS_METADATA"), "ANONYMOUS_METADATA"); assert.equal(strictestPrivacyMode("LOCAL_ONLY", "FULL_METADATA"), "LOCAL_ONLY"); });
@@ -17,37 +17,6 @@ describe("AI governance policy", () => {
   it("allows and blocks actual retries using incremental and cumulative retry cost", () => { assert.equal(evaluateRetryCost({ incrementalCost: "0.100000", retryNumber: 1, retryLimit: "0.200000", initialAttemptCost: "0.300000", cumulativeRequestLimit: "0.500000" }).allowed, true); assert.equal(evaluateRetryCost({ incrementalCost: "0.100001", retryNumber: 2, retryLimit: "0.200000", initialAttemptCost: "0.100000" }).allowed, false); });
   it("treats a missing retry limit as unlimited and explicit zero as zero monetary allowance", () => { assert.equal(evaluateRetryCost({ incrementalCost: "99.000000", retryNumber: 1, retryLimit: null, initialAttemptCost: 1 }).allowed, true); assert.equal(evaluateRetryCost({ incrementalCost: "0.000001", retryNumber: 1, retryLimit: 0, initialAttemptCost: 0 }).allowed, false); assert.equal(evaluateRetryCost({ incrementalCost: 0, retryNumber: 1, retryLimit: 0, initialAttemptCost: 0 }).allowed, true); });
   it("uses canonical integer micro-units for currency decisions", () => { assert.equal(currencyMicros("1.000001"), 1_000_001); assert.equal(evaluateCostLimit({ scope: "request", estimatedCost: "0.100001", currentUsage: "0.899999", limit: "1.000000", reasonCode: "blocked" }).allowed, true); });
-  it("treats missing and disabled per-request limits as unlimited even when stale values exist", () => {
-    for (const setting of [
-      { source: "global" as const },
-      { source: "global" as const, enabled: false, value: 0 },
-      { source: "global" as const, enabled: false, value: "0.010000" },
-    ]) {
-      const resolved = resolvePerRequestCostLimit([setting]);
-      assert.equal(resolved.enabled, false);
-      assert.equal(evaluateCostLimit({ scope: "request", estimatedCost: "0.002470", limit: resolved.limitUsd, reasonCode: "AI_REQUEST_COST_LIMIT_EXCEEDED" }).allowed, true);
-    }
-  });
-  it("rejects enabled null, zero, negative, blank, and invalid per-request limits instead of producing a zero-dollar block", () => {
-    for (const value of [null, "", 0, "0.000000", -1, "invalid"]) {
-      assert.throws(() => resolvePerRequestCostLimit([{ source: "global", enabled: true, value }]), /greater than zero|non-negative decimals/i);
-    }
-  });
-  it("allows 0.002470 below 0.01 and blocks it above 0.001 with decimal-safe comparisons", () => {
-    const allowed = resolvePerRequestCostLimit([{ source: "global", enabled: true, value: "0.010000" }]);
-    const blocked = resolvePerRequestCostLimit([{ source: "global", enabled: true, value: "0.001000" }]);
-    assert.equal(evaluateCostLimit({ scope: "request", estimatedCost: "0.002470", limit: allowed.limitUsd, reasonCode: "AI_REQUEST_COST_LIMIT_EXCEEDED" }).allowed, true);
-    assert.equal(evaluateCostLimit({ scope: "request", estimatedCost: "0.002470", limit: blocked.limitUsd, reasonCode: "AI_REQUEST_COST_LIMIT_EXCEEDED" }).allowed, false);
-    assert.equal(evaluateCostLimit({ scope: "request", estimatedCost: "0.001000", limit: blocked.limitUsd, reasonCode: "AI_REQUEST_COST_LIMIT_EXCEEDED" }).allowed, true);
-  });
-  it("uses the strictest enabled global, selected-provider, and user limit and ignores missing provider overrides", () => {
-    const inherited = resolvePerRequestCostLimit([{ source: "global", enabled: true, value: "0.010000" }, { source: "provider" }]);
-    assert.deepEqual([inherited.limitUsd, inherited.source], ["0.010000", "global"]);
-    const providerDisabled = resolvePerRequestCostLimit([{ source: "global", enabled: true, value: "0.010000" }, { source: "provider", enabled: false, value: "0.001000" }]);
-    assert.deepEqual([providerDisabled.limitUsd, providerDisabled.source], ["0.010000", "global"]);
-    const strictest = resolvePerRequestCostLimit([{ source: "global", enabled: true, value: "0.010000" }, { source: "provider", enabled: true, value: "0.005000" }, { source: "user", enabled: true, value: "0.007000" }]);
-    assert.deepEqual([strictest.limitUsd, strictest.source], ["0.005000", "provider"]);
-  });
   it("checks pending and reserved cost against hard limits without floating comparison drift", () => { assert.equal(wouldExceedBudget("1.000000", "0.700000", "0.200000", "0.100001"), true); assert.equal(wouldExceedBudget("1.000000", "0.700000", "0.200000", "0.100000"), false); });
   it("calculates custom monthly reset periods in UTC", () => { assert.deepEqual(budgetPeriod(new Date("2026-07-05T12:00:00Z"), 10), { start: new Date("2026-06-10T00:00:00Z"), end: new Date("2026-07-10T00:00:00Z") }); assert.deepEqual(budgetPeriod(new Date("2026-07-15T12:00:00Z"), 10), { start: new Date("2026-07-10T00:00:00Z"), end: new Date("2026-08-10T00:00:00Z") }); });
   it("trims only removable context and preserves required safety/schema sections", () => { const result = trimContext([{ id: "system", content: "required ".repeat(30), priority: "REQUIRED", kind: "SYSTEM" }, { id: "schema", content: "schema ".repeat(20), priority: "NORMAL", kind: "SCHEMA" }, { id: "optional", content: "optional ".repeat(100), priority: "OPTIONAL" }], 110, "REMOVE_LOWEST_PRIORITY"); assert.deepEqual(result.sections.map((section) => section.id), ["system", "schema"]); assert.deepEqual(result.report.removedSections, ["optional"]); });

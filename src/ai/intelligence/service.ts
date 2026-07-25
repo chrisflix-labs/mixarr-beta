@@ -157,11 +157,17 @@ const onboardingConfigurationSchema = z.object({
   model: z.string().trim().max(300).nullable().optional(),
   privacyMode: z.enum(["LOCAL_ONLY", "METADATA_LIMITED", "ANONYMOUS_METADATA", "FULL_METADATA"]).default("LOCAL_ONLY"),
   monthlyBudget: z.number().min(0).max(1_000_000).nullable().default(0),
-  dailyRequestLimit: z.number().int().positive().max(1_000_000).nullable().default(50),
-  monthlyRequestLimit: z.number().int().positive().max(10_000_000).nullable().default(1000),
+  // Unlimited by default. An administrator opts into a cap explicitly, and the
+  // wizard can no longer persist a number that the settings page cannot change.
+  dailyRequestLimitMode: z.enum(["UNLIMITED", "LIMITED"]).default("UNLIMITED"),
+  dailyRequestLimit: z.number().int().positive().max(1_000_000).nullable().default(null),
+  monthlyRequestLimit: z.number().int().positive().max(10_000_000).nullable().default(null),
   maximumInputTokens: z.number().int().min(128).max(2_000_000).default(16000),
   maximumOutputTokens: z.number().int().min(64).max(2_000_000).default(2000),
-  maximumEstimatedRequestCost: z.number().min(0).max(100_000).nullable().default(0),
+  // Unlimited by default. A zero ceiling is still expressible, but only by
+  // choosing Limited explicitly, so the default can never block priced requests.
+  perRequestCostLimitMode: z.enum(["UNLIMITED", "LIMITED"]).default("UNLIMITED"),
+  maximumEstimatedRequestCost: z.number().min(0).max(100_000).nullable().default(null),
   allowPaidFallback: z.boolean().default(false),
   features: z.array(z.string().max(120)).max(20).default([]),
   privacyAccepted: z.boolean().default(false),
@@ -234,13 +240,18 @@ export async function activateAiOnboarding(userId: string) {
     privacyMode: configuration.privacyMode,
     reviewed: true,
     monthlyBudget: configuration.mode === "LOCAL_ONLY" ? 0 : configuration.monthlyBudget,
-    dailyRequestLimit: configuration.dailyRequestLimit,
+    dailyRequestLimitMode: configuration.dailyRequestLimitMode,
+    dailyRequestLimit: configuration.dailyRequestLimitMode === "LIMITED" ? configuration.dailyRequestLimit : null,
     monthlyRequestLimit: configuration.monthlyRequestLimit,
     maximumInputTokens: configuration.maximumInputTokens,
     maximumOutputTokens: configuration.maximumOutputTokens,
     maximumCombinedTokens: configuration.maximumInputTokens + configuration.maximumOutputTokens,
-    perRequestCostLimitEnabled: configuration.mode === "EXTERNAL_PROVIDER" && Number(configuration.maximumEstimatedRequestCost) > 0,
-    perRequestCostLimitUsd: configuration.mode === "EXTERNAL_PROVIDER" && Number(configuration.maximumEstimatedRequestCost) > 0 ? configuration.maximumEstimatedRequestCost : null,
+    // The per-request ceiling has its own column; writing it into the cumulative
+    // retry ceiling is what previously blocked every priced external request.
+    // A local-only setup keeps its explicit zero-cost admission policy.
+    ...(configuration.mode === "LOCAL_ONLY"
+      ? { perRequestCostLimitMode: "LIMITED" as const, maximumEstimatedRequestCost: 0 }
+      : { perRequestCostLimitMode: configuration.perRequestCostLimitMode, maximumEstimatedRequestCost: configuration.perRequestCostLimitMode === "LIMITED" ? configuration.maximumEstimatedRequestCost : null }),
     allowPaidProviderFallback: configuration.mode === "EXTERNAL_PROVIDER" && configuration.allowPaidFallback,
     paidProvidersAllowed: configuration.mode === "EXTERNAL_PROVIDER",
     externalProvidersAllowed: configuration.mode === "EXTERNAL_PROVIDER",

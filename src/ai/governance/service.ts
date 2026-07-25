@@ -4,7 +4,9 @@ import prisma from "@/lib/prisma";
 import { isUserAdmin } from "@/lib/auth";
 import type { AiRequest, ResolvedAiProviderConfig } from "../contracts";
 import { AiError } from "../errors";
-import { alertDeduplicationKey, applyMetadataPrivacyPolicy, budgetPeriod, DEFAULT_METADATA_ALLOWLIST, estimateRequestCost, evaluateCostLimit, evaluateRetryCost, resolvePerRequestCostLimit, strictestPrivacyMode, trimContext, validatePromptLimits, wouldExceedBudget, type AiPrivacyMode } from "./policy";
+import { alertDeduplicationKey, applyMetadataPrivacyPolicy, budgetPeriod, DEFAULT_METADATA_ALLOWLIST, estimateRequestCost, evaluateCostLimit, evaluateRetryCost, strictestPrivacyMode, trimContext, validatePromptLimits, wouldExceedBudget, type AiPrivacyMode } from "./policy";
+import { AI_GLOBAL_REQUEST_LIMIT_MODES, AI_REQUEST_LIMIT_MODES, evaluateRequestLimit, requestLimitAuditDetails, requestLimitResetAt, validateRequestLimitConfiguration } from "./requestLimits";
+import { AI_COST_LIMIT_MODES, costLimitAuditDetails, resolveCostLimit, validateCostLimitConfiguration } from "./costLimits";
 import { classifyProviderAndModel, resolvePaidProviderPermission, type AiClassificationResult } from "./classification";
 import { unexpectedAiError } from "./logging";
 
@@ -13,11 +15,7 @@ export const FULL_METADATA_POLICY_VERSION = "v2.4.1-1";
 const FULL_METADATA_WARNING = "Full Metadata can disclose administrator-approved music metadata to external AI providers. Secrets, file paths, credentials, and infrastructure identifiers remain prohibited.";
 
 const governanceSchema = z.object({
-  privacyMode: z.enum(["LOCAL_ONLY", "METADATA_LIMITED", "ANONYMOUS_METADATA", "FULL_METADATA"]).optional(), reviewed: z.boolean().optional(), currency: z.string().regex(/^[A-Z]{3}$/).optional(), monthlyBudget: z.union([z.number().nonnegative(), z.string().regex(/^\d+(\.\d{1,6})?$/), z.null()]).optional(), budgetResetDay: z.number().int().min(1).max(28).optional(), budgetWarningThresholds: z.array(z.number().min(0).max(1)).min(1).max(10).optional(), hardShutdownEnabled: z.boolean().optional(), countLocalCost: z.boolean().optional(), allowUnpricedExternalModels: z.boolean().optional(), adminExemptionEnabled: z.boolean().optional(), allowPaidProviderFallback: z.boolean().optional(), paidProvidersAllowed: z.boolean().optional(), allowUserPaidProviderOverrides: z.boolean().optional(), automaticCheaperModelFallback: z.boolean().optional(), backgroundAiEnabled: z.boolean().optional(), externalBackgroundAiEnabled: z.boolean().optional(), maximumBackgroundRequestsPerDay: z.number().int().positive().nullable().optional(), maximumBackgroundCostPerDay: z.union([z.number().nonnegative(), z.string(), z.null()]).optional(), maximumBackgroundConcurrency: z.number().int().min(1).max(100).optional(), requireExternalBackgroundApproval: z.boolean().optional(), maximumInputTokens: z.number().int().min(1).max(2_000_000).optional(), maximumOutputTokens: z.number().int().min(1).max(2_000_000).optional(), maximumCombinedTokens: z.number().int().min(2).max(4_000_000).optional(), maximumPromptCharacters: z.number().int().min(100).max(20_000_000).optional(), maximumPromptBytes: z.number().int().min(100).max(50_000_000).optional(), maximumMetadataRecords: z.number().int().min(0).max(100_000).optional(), maximumContextMessages: z.number().int().min(1).max(10_000).optional(), maximumResponseBytes: z.number().int().min(1024).max(20_000_000).optional(), maximumStructuredItems: z.number().int().min(1).max(100_000).optional(), dailyRequestLimit: z.number().int().positive().nullable().optional(), monthlyRequestLimit: z.number().int().positive().nullable().optional(), metadataAllowlist: z.array(z.string().min(1).max(80)).max(100).optional(), anonymousGranularity: z.enum(["STRICT", "BALANCED", "MINIMAL"]).optional(), anonymousYearBandSize: z.number().int().min(5).max(50).optional(), anonymousBpmBandSize: z.number().int().min(5).max(50).optional(), allowUnknownLocalMetadata: z.boolean().optional(), secureDebugEnabled: z.boolean().optional(), secureDebugRetentionHours: z.number().int().min(1).max(168).optional(), defaultContextTrimmingStrategy: z.enum(["REJECT", "REMOVE_OLDEST", "REMOVE_LOWEST_PRIORITY", "REMOVE_DUPLICATES"]).optional(), connectionTimeoutMs: z.number().int().min(500).max(300_000).optional(), firstTokenTimeoutMs: z.number().int().min(500).max(300_000).optional(), totalRequestTimeoutMs: z.number().int().min(1000).max(600_000).optional(), streamingIdleTimeoutMs: z.number().int().min(500).max(300_000).optional(), cancellationGraceMs: z.number().int().min(0).max(30_000).optional(), maximumRetryAttempts: z.number().int().min(0).max(10).optional(), maximumRetryCost: z.union([z.number().nonnegative(), z.string(), z.null()]).optional(), maximumCumulativeRequestCost: z.union([z.number().nonnegative(), z.string(), z.null()]).optional(), perRequestCostLimitEnabled: z.boolean().optional(), perRequestCostLimitUsd: z.preprocess((value) => typeof value === "string" && value.trim() === "" ? null : typeof value === "string" ? value.trim() : value, z.union([z.number().finite(), z.string().regex(/^\d+(\.\d{1,6})?$/, "Enter a valid USD amount with no more than 6 decimal places."), z.null()]).optional()), retryAfterPossibleBilling: z.boolean().optional(), auditRetentionDays: z.number().int().min(1).max(3650).optional(), usageSummaryRetentionDays: z.number().int().min(30).max(3650).optional(), errorRetentionDays: z.number().int().min(1).max(3650).optional(), externalProvidersAllowed: z.boolean().optional(), requireExternalConfirmation: z.boolean().optional(), allowedExternalFeaturesJson: z.array(z.string().max(120)).max(100).optional(), allowedExternalDataJson: z.array(z.string().max(120)).max(100).optional(), requestMetadataRetentionDays: z.number().int().min(0).max(3650).optional(), requestBodyRetentionDays: z.number().int().min(0).max(3650).optional(), responseMetadataRetentionDays: z.number().int().min(0).max(3650).optional(), responseBodyRetentionDays: z.number().int().min(0).max(3650).optional(), quarantineRetentionDays: z.number().int().min(1).max(3650).optional(), approvalRetentionDays: z.number().int().min(1).max(3650).optional(), costRetentionDays: z.number().int().min(1).max(3650).optional(), diagnosticRetentionDays: z.number().int().min(0).max(3650).optional(), redactEmailAddresses: z.boolean().optional(), redactLocalPaths: z.boolean().optional(), redactInternalHostnames: z.boolean().optional(), redactIpAddresses: z.boolean().optional(), redactUsernames: z.boolean().optional(), globalConcurrencyLimit: z.number().int().min(1).max(1000).optional(), perProviderConcurrencyLimit: z.number().int().min(1).max(1000).optional(), perModelConcurrencyLimit: z.number().int().min(1).max(1000).optional(), perUserConcurrencyLimit: z.number().int().min(1).max(1000).optional(), perFeatureConcurrencyLimit: z.number().int().min(1).max(1000).optional(), diagnosticConcurrencyLimit: z.number().int().min(1).max(1000).optional(), healthCheckConcurrencyLimit: z.number().int().min(1).max(1000).optional(), maximumQueueSize: z.number().int().min(1).max(100000).optional(), jobLeaseSeconds: z.number().int().min(30).max(3600).optional(), jsonLocalRepairAttempts: z.number().int().min(0).max(1).optional(), jsonProviderRepairAttempts: z.number().int().min(0).max(1).optional(), reason: z.string().max(1000).optional()
-}).superRefine((input, context) => {
-  if (input.perRequestCostLimitEnabled === true && (input.perRequestCostLimitUsd == null || !Number.isFinite(Number(input.perRequestCostLimitUsd)) || Number(input.perRequestCostLimitUsd) <= 0)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["perRequestCostLimitUsd"], message: "Enter a per-request cost limit greater than zero when enforcement is enabled." });
-  }
+  privacyMode: z.enum(["LOCAL_ONLY", "METADATA_LIMITED", "ANONYMOUS_METADATA", "FULL_METADATA"]).optional(), reviewed: z.boolean().optional(), currency: z.string().regex(/^[A-Z]{3}$/).optional(), monthlyBudget: z.union([z.number().nonnegative(), z.string().regex(/^\d+(\.\d{1,6})?$/), z.null()]).optional(), budgetResetDay: z.number().int().min(1).max(28).optional(), budgetWarningThresholds: z.array(z.number().min(0).max(1)).min(1).max(10).optional(), hardShutdownEnabled: z.boolean().optional(), countLocalCost: z.boolean().optional(), allowUnpricedExternalModels: z.boolean().optional(), adminExemptionEnabled: z.boolean().optional(), allowPaidProviderFallback: z.boolean().optional(), paidProvidersAllowed: z.boolean().optional(), allowUserPaidProviderOverrides: z.boolean().optional(), automaticCheaperModelFallback: z.boolean().optional(), backgroundAiEnabled: z.boolean().optional(), externalBackgroundAiEnabled: z.boolean().optional(), maximumBackgroundRequestsPerDay: z.number().int().positive().nullable().optional(), maximumBackgroundCostPerDay: z.union([z.number().nonnegative(), z.string(), z.null()]).optional(), maximumBackgroundConcurrency: z.number().int().min(1).max(100).optional(), requireExternalBackgroundApproval: z.boolean().optional(), maximumInputTokens: z.number().int().min(1).max(2_000_000).optional(), maximumOutputTokens: z.number().int().min(1).max(2_000_000).optional(), maximumCombinedTokens: z.number().int().min(2).max(4_000_000).optional(), maximumPromptCharacters: z.number().int().min(100).max(20_000_000).optional(), maximumPromptBytes: z.number().int().min(100).max(50_000_000).optional(), maximumMetadataRecords: z.number().int().min(0).max(100_000).optional(), maximumContextMessages: z.number().int().min(1).max(10_000).optional(), maximumResponseBytes: z.number().int().min(1024).max(20_000_000).optional(), maximumStructuredItems: z.number().int().min(1).max(100_000).optional(), dailyRequestLimitMode: z.enum(AI_GLOBAL_REQUEST_LIMIT_MODES).optional(), dailyRequestLimit: z.number().int().positive("Enter 1 or more daily requests, or choose Unlimited. Zero is not a valid limit.").max(1_000_000).nullable().optional(), monthlyRequestLimit: z.number().int().positive("Enter 1 or more monthly requests, or leave the field blank for no monthly request limit.").max(10_000_000).nullable().optional(), metadataAllowlist: z.array(z.string().min(1).max(80)).max(100).optional(), anonymousGranularity: z.enum(["STRICT", "BALANCED", "MINIMAL"]).optional(), anonymousYearBandSize: z.number().int().min(5).max(50).optional(), anonymousBpmBandSize: z.number().int().min(5).max(50).optional(), allowUnknownLocalMetadata: z.boolean().optional(), secureDebugEnabled: z.boolean().optional(), secureDebugRetentionHours: z.number().int().min(1).max(168).optional(), defaultContextTrimmingStrategy: z.enum(["REJECT", "REMOVE_OLDEST", "REMOVE_LOWEST_PRIORITY", "REMOVE_DUPLICATES"]).optional(), connectionTimeoutMs: z.number().int().min(500).max(300_000).optional(), firstTokenTimeoutMs: z.number().int().min(500).max(300_000).optional(), totalRequestTimeoutMs: z.number().int().min(1000).max(600_000).optional(), streamingIdleTimeoutMs: z.number().int().min(500).max(300_000).optional(), cancellationGraceMs: z.number().int().min(0).max(30_000).optional(), maximumRetryAttempts: z.number().int().min(0).max(10).optional(), maximumRetryCost: z.union([z.number().nonnegative(), z.string(), z.null()]).optional(), perRequestCostLimitMode: z.enum(AI_COST_LIMIT_MODES).optional(), maximumEstimatedRequestCost: z.union([z.number().nonnegative(), z.string(), z.null()]).optional(), cumulativeRequestCostLimitMode: z.enum(AI_COST_LIMIT_MODES).optional(), maximumCumulativeRequestCost: z.union([z.number().nonnegative(), z.string(), z.null()]).optional(), retryAfterPossibleBilling: z.boolean().optional(), auditRetentionDays: z.number().int().min(1).max(3650).optional(), usageSummaryRetentionDays: z.number().int().min(30).max(3650).optional(), errorRetentionDays: z.number().int().min(1).max(3650).optional(), externalProvidersAllowed: z.boolean().optional(), requireExternalConfirmation: z.boolean().optional(), allowedExternalFeaturesJson: z.array(z.string().max(120)).max(100).optional(), allowedExternalDataJson: z.array(z.string().max(120)).max(100).optional(), requestMetadataRetentionDays: z.number().int().min(0).max(3650).optional(), requestBodyRetentionDays: z.number().int().min(0).max(3650).optional(), responseMetadataRetentionDays: z.number().int().min(0).max(3650).optional(), responseBodyRetentionDays: z.number().int().min(0).max(3650).optional(), quarantineRetentionDays: z.number().int().min(1).max(3650).optional(), approvalRetentionDays: z.number().int().min(1).max(3650).optional(), costRetentionDays: z.number().int().min(1).max(3650).optional(), diagnosticRetentionDays: z.number().int().min(0).max(3650).optional(), redactEmailAddresses: z.boolean().optional(), redactLocalPaths: z.boolean().optional(), redactInternalHostnames: z.boolean().optional(), redactIpAddresses: z.boolean().optional(), redactUsernames: z.boolean().optional(), globalConcurrencyLimit: z.number().int().min(1).max(1000).optional(), perProviderConcurrencyLimit: z.number().int().min(1).max(1000).optional(), perModelConcurrencyLimit: z.number().int().min(1).max(1000).optional(), perUserConcurrencyLimit: z.number().int().min(1).max(1000).optional(), perFeatureConcurrencyLimit: z.number().int().min(1).max(1000).optional(), diagnosticConcurrencyLimit: z.number().int().min(1).max(1000).optional(), healthCheckConcurrencyLimit: z.number().int().min(1).max(1000).optional(), maximumQueueSize: z.number().int().min(1).max(100000).optional(), jobLeaseSeconds: z.number().int().min(30).max(3600).optional(), jsonLocalRepairAttempts: z.number().int().min(0).max(1).optional(), jsonProviderRepairAttempts: z.number().int().min(0).max(1).optional(), reason: z.string().max(1000).optional()
 });
 
 function defaultGovernanceData() {
@@ -27,24 +25,52 @@ function defaultGovernanceData() {
 export async function getAiGovernanceSettings() {
   const row = await prisma.aiGovernanceSetting.upsert({ where: { id: "global" }, create: defaultGovernanceData(), update: {} });
   if (await prisma.aiAlertThreshold.count() === 0) await prisma.aiAlertThreshold.createMany({ data: [{ scopeType: "GLOBAL", condition: "BUDGET_PERCENT", thresholdsJson: warningThresholds }, { scopeType: "GLOBAL", condition: "HARD_SHUTDOWN", thresholdsJson: [1] }, { scopeType: "GLOBAL", condition: "STALE_PRICING", thresholdsJson: [90] }] });
-  const [acknowledgment, reservations, alerts] = await Promise.all([
+  const now = new Date(); const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const [acknowledgment, reservations, alerts, requestsToday] = await Promise.all([
     prisma.aiPrivacyAcknowledgment.findFirst({ where: { policyVersion: FULL_METADATA_POLICY_VERSION, revokedAt: null }, orderBy: { acceptedAt: "desc" } }),
     prisma.aiBudgetReservation.findMany({ where: { status: "ACTIVE", expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" }, take: 100, select: { id: true, requestId: true, providerConfigId: true, userId: true, featureKey: true, requestSource: true, currency: true, reservedCost: true, expiresAt: true, createdAt: true } }),
-    prisma.aiAlertEvent.findMany({ where: { acknowledgedAt: null }, orderBy: { createdAt: "desc" }, take: 25 })
+    prisma.aiAlertEvent.findMany({ where: { acknowledgedAt: null }, orderBy: { createdAt: "desc" }, take: 25 }),
+    prisma.aiRequestAudit.count({ where: { createdAt: { gte: today }, status: { in: ["COMPLETED", "FAILED", "TIMED_OUT", "CANCELLED"] } } })
   ]);
-  return { ...row, budgetWarningThresholds: row.budgetWarningThresholds, metadataAllowlist: row.metadataAllowlistJson, fullMetadataPolicyVersion: FULL_METADATA_POLICY_VERSION, fullMetadataWarning: FULL_METADATA_WARNING, fullMetadataAcknowledged: !!acknowledgment, acknowledgment, reservations, alerts };
+  // Resolved so the administrative interface always shows the same effective state
+  // the admission check will apply, including for legacy rows without a mode.
+  const globalDailyRequests = evaluateRequestLimit({ period: "DAILY", now, scopes: [{ scope: "GLOBAL", mode: row.dailyRequestLimitMode, limit: row.dailyRequestLimit, usage: requestsToday }] });
+  return { ...row, budgetWarningThresholds: row.budgetWarningThresholds, metadataAllowlist: row.metadataAllowlistJson, fullMetadataPolicyVersion: FULL_METADATA_POLICY_VERSION, fullMetadataWarning: FULL_METADATA_WARNING, fullMetadataAcknowledged: !!acknowledgment, acknowledgment, reservations, alerts, dailyRequestUsage: { usage: requestsToday, effectiveMode: globalDailyRequests.effective?.effectiveMode || "UNLIMITED", limit: globalDailyRequests.limit, remaining: globalDailyRequests.remaining, resetAt: globalDailyRequests.resetAt || requestLimitResetAt("DAILY", now).toISOString(), exceeded: !globalDailyRequests.allowed }, requestLimitModes: AI_REQUEST_LIMIT_MODES, costLimitModes: AI_COST_LIMIT_MODES, costLimits: { perRequest: resolveCostLimit({ control: "PER_REQUEST", mode: row.perRequestCostLimitMode, limit: row.maximumEstimatedRequestCost?.toString() }), cumulativeRequest: resolveCostLimit({ control: "CUMULATIVE_REQUEST", mode: row.cumulativeRequestCostLimitMode, limit: row.maximumCumulativeRequestCost?.toString() }) } };
 }
 
 export async function updateAiGovernanceSettings(raw: unknown, actorId: string) {
   const input = governanceSchema.parse(raw); const previous = await prisma.aiGovernanceSetting.upsert({ where: { id: "global" }, create: defaultGovernanceData(), update: {} });
   if (input.privacyMode === "FULL_METADATA") { const ack = await prisma.aiPrivacyAcknowledgment.findFirst({ where: { policyVersion: FULL_METADATA_POLICY_VERSION, revokedAt: null } }); if (!ack) throw new AiError("AI_PRIVACY_POLICY_BLOCKED", undefined, 409, undefined, { reason: "FULL_METADATA_ACKNOWLEDGMENT_REQUIRED" }); }
-  resolvePerRequestCostLimit([{
-    source: "global",
-    enabled: input.perRequestCostLimitEnabled ?? previous.perRequestCostLimitEnabled,
-    value: input.perRequestCostLimitUsd !== undefined ? input.perRequestCostLimitUsd : previous.perRequestCostLimitUsd?.toString(),
-  }]);
   const { reason, budgetWarningThresholds, metadataAllowlist, ...values } = input;
-  const data = { ...values, monthlyBudget: values.monthlyBudget as any, maximumBackgroundCostPerDay: values.maximumBackgroundCostPerDay as any, maximumRetryCost: values.maximumRetryCost as any, maximumCumulativeRequestCost: values.maximumCumulativeRequestCost as any, perRequestCostLimitUsd: values.perRequestCostLimitUsd as any, ...(budgetWarningThresholds ? { budgetWarningThresholds } : {}), ...(metadataAllowlist ? { metadataAllowlistJson: metadataAllowlist } : {}), settingVersion: { increment: 1 }, updatedBy: actorId } as any;
+  // Mode and limit are stored together, so validate the merged pair: patching one
+  // must never leave "Limited" without a usable number of requests.
+  if (values.dailyRequestLimitMode !== undefined || values.dailyRequestLimit !== undefined) {
+    const decision = validateRequestLimitConfiguration({
+      mode: values.dailyRequestLimitMode ?? previous.dailyRequestLimitMode,
+      limit: values.dailyRequestLimit !== undefined ? values.dailyRequestLimit : previous.dailyRequestLimit,
+      allowInherit: false,
+    });
+    if (!decision.ok) throw new AiError("INVALID_REQUEST", decision.error, 400, undefined, { field: `dailyRequestLimit${decision.field === "mode" ? "Mode" : ""}` });
+    values.dailyRequestLimitMode = decision.mode as "UNLIMITED" | "LIMITED";
+    values.dailyRequestLimit = decision.limit;
+  }
+  // The two monetary ceilings are separate controls with separate modes. Zero
+  // stays expressible under Limited; it is only ever ambiguous without a mode.
+  for (const control of [
+    { control: "PER_REQUEST" as const, modeKey: "perRequestCostLimitMode" as const, limitKey: "maximumEstimatedRequestCost" as const },
+    { control: "CUMULATIVE_REQUEST" as const, modeKey: "cumulativeRequestCostLimitMode" as const, limitKey: "maximumCumulativeRequestCost" as const },
+  ]) {
+    if (values[control.modeKey] === undefined && values[control.limitKey] === undefined) continue;
+    const decision = validateCostLimitConfiguration({
+      control: control.control,
+      mode: values[control.modeKey] ?? previous[control.modeKey],
+      limit: values[control.limitKey] !== undefined ? values[control.limitKey] : previous[control.limitKey],
+    });
+    if (!decision.ok) throw new AiError("INVALID_REQUEST", decision.error, 400, undefined, { field: decision.field === "mode" ? control.modeKey : control.limitKey });
+    values[control.modeKey] = decision.mode;
+    values[control.limitKey] = decision.limit;
+  }
+  const data = { ...values, monthlyBudget: values.monthlyBudget as any, maximumBackgroundCostPerDay: values.maximumBackgroundCostPerDay as any, maximumRetryCost: values.maximumRetryCost as any, maximumCumulativeRequestCost: values.maximumCumulativeRequestCost as any, ...(budgetWarningThresholds ? { budgetWarningThresholds } : {}), ...(metadataAllowlist ? { metadataAllowlistJson: metadataAllowlist } : {}), settingVersion: { increment: 1 }, updatedBy: actorId } as any;
   return prisma.$transaction(async (tx) => {
     const updated = await tx.aiGovernanceSetting.update({ where: { id: "global" }, data });
     await tx.aiGovernanceAudit.create({ data: { actorId, action: "GLOBAL_GOVERNANCE_UPDATED", entityType: "AiGovernanceSetting", entityId: "global", previousValueJson: previous as any, newValueJson: updated as any, reason } });
@@ -69,7 +95,7 @@ export async function importDiscoveredPricingProfiles(providerConfigId: string, 
 
 type PreviewContext = { request: AiRequest; provider: ResolvedAiProviderConfig; model: string; userId?: string; reserve?: boolean; requestId?: string; auditId?: string; enforceBudgets?: boolean; estimatedCostOverride?: number };
 
-function logBudgetDecision(input: { request: AiRequest; requestId?: string; userId?: string; providerId?: string; model?: string; attemptNumber: number; retryNumber: number; estimatedInputTokens?: number; estimatedOutputTokens?: number; estimatedCost: number; currentUsage?: number; limit?: number | null; limitSource?: string | null; configuredLimits?: unknown; decision: "ALLOWED" | "BLOCKED"; reasonCode?: string | null; scope: string }) {
+function logBudgetDecision(input: { request: AiRequest; requestId?: string; userId?: string; providerId?: string; model?: string; attemptNumber: number; retryNumber: number; estimatedInputTokens?: number; estimatedOutputTokens?: number; estimatedCost: number; currentUsage?: number; limit?: number | null; decision: "ALLOWED" | "BLOCKED"; reasonCode?: string | null; scope: string }) {
   console.info("[AI] Budget decision", {
     correlationId: input.request.correlationId || input.requestId,
     userId: input.userId,
@@ -83,8 +109,6 @@ function logBudgetDecision(input: { request: AiRequest; requestId?: string; user
     estimatedIncrementalCost: input.estimatedCost,
     currentUsage: input.currentUsage,
     applicableLimit: input.limit,
-    limitSource: input.limitSource || null,
-    configuredLimits: input.configuredLimits,
     scope: input.scope,
     decision: input.decision,
     reasonCode: input.reasonCode || null,
@@ -130,26 +154,16 @@ export async function previewAiRequest(input: PreviewContext) {
   // Admission prices exactly one provider attempt. Retry allowance is evaluated only
   // after a retryable provider failure, immediately before the next attempt.
   const cost = localZeroCost ? { minimumEstimatedCost: 0, expectedEstimatedCost: 0, maximumEstimatedCost: 0, confidence: "LOCAL_ZERO_COST", currency: governance.currency, pricingSource: "Local-provider policy", pricingAgeDays: null } : usablePricing ? estimateRequestCost({ inputTokens: limits.estimatedInputTokens, maximumOutputTokens: limits.maxOutputTokens, retryAllowance: 0, pricing: { ...usablePricing, inputPricePerMillion: usablePricing.inputPricePerMillion?.toString(), outputPricePerMillion: usablePricing.outputPricePerMillion?.toString(), cachedInputPricePerMillion: usablePricing.cachedInputPricePerMillion?.toString(), reasoningPricePerMillion: usablePricing.reasoningPricePerMillion?.toString(), fixedRequestCost: usablePricing.fixedRequestCost?.toString() } }) : { minimumEstimatedCost: 0, expectedEstimatedCost: 0, maximumEstimatedCost: 0, confidence: "UNPRICED_ALLOWED", currency: governance.currency, pricingSource: "No pricing configured", pricingAgeDays: null };
-  const perRequestCostLimit = resolvePerRequestCostLimit([
-    { source: "global", enabled: governance.perRequestCostLimitEnabled, value: governance.perRequestCostLimitUsd?.toString() },
-    { source: "provider", enabled: providerRow.governanceBudget?.perRequestCostLimitEnabled, value: providerRow.governanceBudget?.perRequestCostLimitUsd?.toString() },
-    { source: "user", enabled: effectiveUserLimitForCost(userLimit, adminExempt)?.perRequestCostLimitEnabled, value: effectiveUserLimitForCost(userLimit, adminExempt)?.perRequestCostLimitUsd?.toString() },
-  ]);
-  const requestCostDecision = evaluateCostLimit({ scope: "request", estimatedCost: cost.maximumEstimatedCost, limit: perRequestCostLimit.limitUsd, reasonCode: "AI_REQUEST_COST_LIMIT_EXCEEDED" });
+  // Admission enforces the per-request ceiling only. The cumulative ceiling is a
+  // separate control evaluated in prepareAiRetry, and an unset or Unlimited
+  // ceiling must never be read as a limit of exactly zero.
+  const perRequestCostLimit = resolveCostLimit({ control: "PER_REQUEST", mode: governance.perRequestCostLimitMode, limit: governance.maximumEstimatedRequestCost?.toString() });
+  const requestCostDecision = evaluateCostLimit({ scope: "request", estimatedCost: cost.maximumEstimatedCost, limit: perRequestCostLimit.limit, reasonCode: "AI_REQUEST_COST_LIMIT_EXCEEDED" });
   if (!requestCostDecision.allowed) {
-    logBudgetDecision({ request: input.request, requestId: input.requestId, userId: input.userId, providerId: providerRow.id, model: input.model, attemptNumber: 1, retryNumber: 0, estimatedInputTokens: limits.estimatedInputTokens, estimatedOutputTokens: limits.maxOutputTokens, estimatedCost: requestCostDecision.estimatedCost, currentUsage: 0, limit: requestCostDecision.limit, limitSource: perRequestCostLimit.source, configuredLimits: perRequestCostLimit.configured, decision: "BLOCKED", reasonCode: requestCostDecision.reasonCode, scope: requestCostDecision.scope });
-    throw new AiError("AI_REQUEST_COST_LIMIT_EXCEEDED", undefined, 409, undefined, {
-      estimated_cost_usd: Number(requestCostDecision.estimatedCost).toFixed(6),
-      effective_limit_usd: perRequestCostLimit.limitUsd,
-      limit_source: perRequestCostLimit.source,
-      provider: providerRow.displayName.trim().toLowerCase().replace(/[\s-]+/g, "_"),
-      feature: input.request.featureKey,
-      estimated_cost: requestCostDecision.estimatedCost,
-      limit: requestCostDecision.limit,
-      currency: cost.currency,
-    });
+    logBudgetDecision({ request: input.request, requestId: input.requestId, userId: input.userId, providerId: providerRow.id, model: input.model, attemptNumber: 1, retryNumber: 0, estimatedInputTokens: limits.estimatedInputTokens, estimatedOutputTokens: limits.maxOutputTokens, estimatedCost: requestCostDecision.estimatedCost, currentUsage: 0, limit: requestCostDecision.limit, decision: "BLOCKED", reasonCode: requestCostDecision.reasonCode, scope: requestCostDecision.scope });
+    throw new AiError("AI_REQUEST_COST_LIMIT_EXCEEDED", undefined, 409, undefined, costLimitAuditDetails({ control: "PER_REQUEST", resolution: perRequestCostLimit, estimatedCost: requestCostDecision.estimatedCost, currency: cost.currency }));
   }
-  const effectiveUserLimit = adminExempt && userLimit ? { ...userLimit, dailyCostLimit: null, monthlyCostLimit: null, dailyRequestLimit: null, monthlyRequestLimit: null, paidProvidersAllowed: true } : userLimit;
+  const effectiveUserLimit = adminExempt && userLimit ? { ...userLimit, dailyCostLimit: null, monthlyCostLimit: null, dailyRequestLimitMode: "UNLIMITED", dailyRequestLimit: null, monthlyRequestLimit: null, paidProvidersAllowed: true } : userLimit;
   let remaining;
   try {
     remaining = await remainingBudgets({ governance, provider: providerRow, userLimit: effectiveUserLimit, userId: input.userId, estimatedCost: input.estimatedCostOverride ?? cost.maximumEstimatedCost, enforce: input.enforceBudgets !== false, excludeReservationRequestId: input.requestId });
@@ -163,12 +177,8 @@ export async function previewAiRequest(input: PreviewContext) {
   const paidPermission = resolvePaidProviderPermission({ globalAllowed: governance.paidProvidersAllowed, allowUserOverrides: governance.allowUserPaidProviderOverrides, userValue: effectiveUserLimit?.paidProvidersAllowed, adminExempt });
   if (classification.requiresPaidProviderPermission && !paidPermission.allowed) throw new AiError("PAID_PROVIDER_NOT_PERMITTED");
   const policyDecision = { allowed: true, denialCode: null, denialMessage: null, resolvedPolicySource: paidPermission.source, providerClassification: classification.classification, modelClassification: classification.classification, costPricingState: classification.pricingClassification, paidProviderAllowed: paidPermission.value, backgroundRequestAllowed: userLimit?.backgroundRequestsAllowed ?? governance.backgroundAiEnabled };
-  logBudgetDecision({ request: input.request, requestId: input.requestId, userId: input.userId, providerId: providerRow.id, model: input.model, attemptNumber: 1, retryNumber: 0, estimatedInputTokens: limits.estimatedInputTokens, estimatedOutputTokens: limits.maxOutputTokens, estimatedCost: input.estimatedCostOverride ?? cost.maximumEstimatedCost, limit: requestCostDecision.limit, limitSource: perRequestCostLimit.source, configuredLimits: perRequestCostLimit.configured, decision: "ALLOWED", scope: "request" });
-  return { allowed: true, feature: input.request.featureKey, provider: { id: providerRow.id, displayName: providerRow.displayName, location: external ? "EXTERNAL" : "LOCAL", classification: classification.classification, classificationReason: classification.reason }, classification, policyDecision, model: input.model, privacyMode, sanitizedMetadata: metadata.payload, privacyReport: metadata.report, limits, responseLimits: { maximumResponseBytes: Math.min(governance.maximumResponseBytes, input.request.maxResponseBytes || governance.maximumResponseBytes), maximumStructuredItems: governance.maximumStructuredItems }, trimmingReport, contextPreview: { sectionsAfter: sections.map((section) => ({ id: section.id, priority: section.priority, kind: section.kind })), contentValuesExcluded: true }, cost, costDecision: { ...requestCostDecision, enabled: perRequestCostLimit.enabled, source: perRequestCostLimit.source, effectiveLimitUsd: perRequestCostLimit.limitUsd }, perRequestCostLimit, remainingBudgets: remaining, budgetWarningTriggered: remaining.warningTriggered, budgetViolations: remaining.violations, pricingProfileId: pricing?.id || null, timeoutPolicy: { connectionTimeoutMs: governance.connectionTimeoutMs, firstTokenTimeoutMs: governance.firstTokenTimeoutMs, totalRequestTimeoutMs: governance.totalRequestTimeoutMs, streamingIdleTimeoutMs: governance.streamingIdleTimeoutMs, cancellationGraceMs: governance.cancellationGraceMs }, retryPolicy: { maximumRetryAttempts: governance.maximumRetryAttempts, maximumRetryCost: governance.maximumRetryCost == null ? null : Number(governance.maximumRetryCost), maximumCumulativeRequestCost: governance.maximumCumulativeRequestCost == null ? null : Number(governance.maximumCumulativeRequestCost), retryAfterPossibleBilling: governance.retryAfterPossibleBilling }, secureDebugPolicy: { enabled: governance.secureDebugEnabled, retentionHours: governance.secureDebugRetentionHours }, allowPaidProviderFallback: governance.allowPaidProviderFallback, automaticCheaperModelFallback: governance.automaticCheaperModelFallback };
-}
-
-function effectiveUserLimitForCost<T>(userLimit: T, adminExempt: boolean) {
-  return adminExempt ? null : userLimit;
+  logBudgetDecision({ request: input.request, requestId: input.requestId, userId: input.userId, providerId: providerRow.id, model: input.model, attemptNumber: 1, retryNumber: 0, estimatedInputTokens: limits.estimatedInputTokens, estimatedOutputTokens: limits.maxOutputTokens, estimatedCost: input.estimatedCostOverride ?? cost.maximumEstimatedCost, decision: "ALLOWED", scope: "request" });
+  return { allowed: true, feature: input.request.featureKey, provider: { id: providerRow.id, displayName: providerRow.displayName, location: external ? "EXTERNAL" : "LOCAL", classification: classification.classification, classificationReason: classification.reason }, classification, policyDecision, model: input.model, privacyMode, sanitizedMetadata: metadata.payload, privacyReport: metadata.report, limits, responseLimits: { maximumResponseBytes: Math.min(governance.maximumResponseBytes, input.request.maxResponseBytes || governance.maximumResponseBytes), maximumStructuredItems: governance.maximumStructuredItems }, trimmingReport, contextPreview: { sectionsAfter: sections.map((section) => ({ id: section.id, priority: section.priority, kind: section.kind })), contentValuesExcluded: true }, cost, costDecision: requestCostDecision, remainingBudgets: remaining, budgetWarningTriggered: remaining.warningTriggered, budgetViolations: remaining.violations, pricingProfileId: pricing?.id || null, timeoutPolicy: { connectionTimeoutMs: governance.connectionTimeoutMs, firstTokenTimeoutMs: governance.firstTokenTimeoutMs, totalRequestTimeoutMs: governance.totalRequestTimeoutMs, streamingIdleTimeoutMs: governance.streamingIdleTimeoutMs, cancellationGraceMs: governance.cancellationGraceMs }, costLimitPolicy: { perRequest: { mode: perRequestCostLimit.effectiveMode, limit: perRequestCostLimit.limitNumber, currency: cost.currency, configurationIssue: perRequestCostLimit.configurationIssue } }, retryPolicy: { maximumRetryAttempts: governance.maximumRetryAttempts, maximumRetryCost: governance.maximumRetryCost == null ? null : Number(governance.maximumRetryCost), cumulativeRequestCostLimitMode: governance.cumulativeRequestCostLimitMode, maximumCumulativeRequestCost: resolveCostLimit({ control: "CUMULATIVE_REQUEST", mode: governance.cumulativeRequestCostLimitMode, limit: governance.maximumCumulativeRequestCost?.toString() }).limitNumber, retryAfterPossibleBilling: governance.retryAfterPossibleBilling }, secureDebugPolicy: { enabled: governance.secureDebugEnabled, retentionHours: governance.secureDebugRetentionHours }, allowPaidProviderFallback: governance.allowPaidProviderFallback, automaticCheaperModelFallback: governance.automaticCheaperModelFallback };
 }
 
 async function remainingBudgets(input: { governance: any; provider: any; userLimit: any; userId?: string; estimatedCost: number; enforce: boolean; excludeReservationRequestId?: string }) {
@@ -182,20 +192,37 @@ async function remainingBudgets(input: { governance: any; provider: any; userLim
   ]);
   const cost = (aggregate: any) => Number(aggregate?._sum?.actualCost ?? aggregate?._sum?.estimatedCost ?? 0); const reserved = (aggregate: any) => Number(aggregate?._sum?.reservedCost ?? 0); const providerBudget = input.provider.governanceBudget; const providerMonthlyLimit = providerBudget?.monthlyLimit ?? input.provider.monthlyBudget;
   const violations: string[] = [];
-  if (providerBudget?.dailyRequestLimit != null && providerCountDay >= providerBudget.dailyRequestLimit || input.governance.dailyRequestLimit != null && globalCountDay >= input.governance.dailyRequestLimit || input.userLimit?.dailyRequestLimit != null && userCountDay >= input.userLimit.dailyRequestLimit) violations.push("DAILY_REQUEST_LIMIT_REACHED");
-  if (providerBudget?.monthlyRequestLimit != null && providerCountMonth >= providerBudget.monthlyRequestLimit || input.governance.monthlyRequestLimit != null && globalCountMonth >= input.governance.monthlyRequestLimit || input.userLimit?.monthlyRequestLimit != null && userCountMonth >= input.userLimit.monthlyRequestLimit) violations.push("AI_DAILY_REQUEST_LIMIT_EXCEEDED");
+  // Request-count limits are throttles rather than spending controls: an absent or
+  // non-positive limit means "no limit at this scope", never "zero requests".
+  const dailyRequests = evaluateRequestLimit({ period: "DAILY", now, scopes: [
+    { scope: "GLOBAL", mode: input.governance.dailyRequestLimitMode, limit: input.governance.dailyRequestLimit, usage: globalCountDay },
+    { scope: "PROVIDER", scopeId: input.provider.id, scopeLabel: input.provider.displayName, configured: !!providerBudget, mode: providerBudget?.dailyRequestLimitMode, limit: providerBudget?.dailyRequestLimit, usage: providerCountDay },
+    { scope: "USER", scopeId: input.userId, configured: !!input.userLimit, mode: input.userLimit?.dailyRequestLimitMode, limit: input.userLimit?.dailyRequestLimit, usage: userCountDay },
+  ] });
+  const monthlyRequests = evaluateRequestLimit({ period: "MONTHLY", resetAt: period.end, scopes: [
+    { scope: "GLOBAL", mode: input.governance.monthlyRequestLimit == null ? "UNLIMITED" : "LIMITED", limit: input.governance.monthlyRequestLimit, usage: globalCountMonth },
+    { scope: "PROVIDER", scopeId: input.provider.id, scopeLabel: input.provider.displayName, configured: !!providerBudget, mode: providerBudget?.monthlyRequestLimit == null ? "UNLIMITED" : "LIMITED", limit: providerBudget?.monthlyRequestLimit, usage: providerCountMonth },
+    { scope: "USER", scopeId: input.userId, configured: !!input.userLimit, mode: input.userLimit?.monthlyRequestLimit == null ? "UNLIMITED" : "LIMITED", limit: input.userLimit?.monthlyRequestLimit, usage: userCountMonth },
+  ] });
+  if (!dailyRequests.allowed) violations.push("DAILY_REQUEST_LIMIT_REACHED");
+  if (!monthlyRequests.allowed) violations.push("MONTHLY_REQUEST_LIMIT_REACHED");
   if (providerBudget?.dailyLimit && wouldExceedBudget(providerBudget.dailyLimit.toString(), cost(providerDay), reserved(providerReserved), input.estimatedCost) || providerMonthlyLimit != null && wouldExceedBudget(providerMonthlyLimit.toString(), cost(providerMonth), reserved(providerReserved), input.estimatedCost)) violations.push("AI_PROVIDER_BUDGET_EXCEEDED");
   if (input.userLimit?.dailyCostLimit != null && wouldExceedBudget(input.userLimit.dailyCostLimit.toString(), cost(userDay), reserved(userReserved), input.estimatedCost)) violations.push("DAILY_COST_LIMIT_REACHED");
   if (input.userLimit?.monthlyCostLimit != null && wouldExceedBudget(input.userLimit.monthlyCostLimit.toString(), cost(userMonth), reserved(userReserved), input.estimatedCost)) violations.push("MONTHLY_COST_LIMIT_REACHED");
   if (input.governance.monthlyBudget && input.governance.hardShutdownEnabled && wouldExceedBudget(input.governance.monthlyBudget.toString(), cost(globalUsage), reserved(globalReserved), input.estimatedCost)) violations.push("AI_GLOBAL_BUDGET_EXCEEDED");
   if (input.enforce && violations.length) {
     const code = violations[0] as any;
-    throw new AiError(code, undefined, 409, undefined, code === "AI_GLOBAL_BUDGET_EXCEEDED" ? { monthly_limit: Number(input.governance.monthlyBudget), current_usage: cost(globalUsage), reserved_cost: reserved(globalReserved), estimated_request_cost: input.estimatedCost, reset_at: period.end.toISOString() } : undefined);
+    const details =
+      code === "AI_GLOBAL_BUDGET_EXCEEDED" ? { monthly_limit: Number(input.governance.monthlyBudget), current_usage: cost(globalUsage), reserved_cost: reserved(globalReserved), estimated_request_cost: input.estimatedCost, reset_at: period.end.toISOString() }
+      : code === "DAILY_REQUEST_LIMIT_REACHED" ? requestLimitAuditDetails(dailyRequests)
+      : code === "MONTHLY_REQUEST_LIMIT_REACHED" ? requestLimitAuditDetails(monthlyRequests)
+      : undefined;
+    throw new AiError(code, undefined, 409, undefined, details);
   }
   const remaining = (limit: any, used: number, held: number) => limit == null ? null : Math.max(0, Number(limit) - used - held);
   const crosses = (limit: any, used: number, held: number, thresholds: unknown) => limit != null && Array.isArray(thresholds) && thresholds.length > 0 && (used + held + input.estimatedCost) / Number(limit) >= Math.min(...thresholds.map(Number));
   const warningTriggered = crosses(input.governance.monthlyBudget, cost(globalUsage), reserved(globalReserved), input.governance.budgetWarningThresholds) || crosses(providerMonthlyLimit, cost(providerMonth), reserved(providerReserved), providerBudget?.warningThresholdsJson);
-  return { user: remaining(input.userLimit?.monthlyCostLimit, cost(userMonth), reserved(userReserved)), provider: remaining(providerMonthlyLimit, cost(providerMonth), reserved(providerReserved)), global: remaining(input.governance.monthlyBudget, cost(globalUsage), reserved(globalReserved)), resetAt: period.end.toISOString(), warningTriggered, violations };
+  return { user: remaining(input.userLimit?.monthlyCostLimit, cost(userMonth), reserved(userReserved)), provider: remaining(providerMonthlyLimit, cost(providerMonth), reserved(providerReserved)), global: remaining(input.governance.monthlyBudget, cost(globalUsage), reserved(globalReserved)), resetAt: period.end.toISOString(), warningTriggered, violations, dailyRequests, monthlyRequests };
 }
 
 export async function reserveAiBudget(input: PreviewContext & { requestId: string; auditId?: string }) {
@@ -241,12 +268,13 @@ export async function prepareAiRetry(input: PreviewContext & {
 }) {
   const retryNumber = Math.max(1, Math.floor(input.retryNumber));
   const governance = await prisma.aiGovernanceSetting.upsert({ where: { id: "global" }, create: defaultGovernanceData(), update: {} });
+  const cumulativeCostLimit = resolveCostLimit({ control: "CUMULATIVE_REQUEST", mode: governance.cumulativeRequestCostLimitMode, limit: governance.maximumCumulativeRequestCost?.toString() });
   const decision = evaluateRetryCost({
     incrementalCost: input.initialAttemptCost,
     retryNumber,
     retryLimit: governance.maximumRetryCost?.toString(),
     initialAttemptCost: input.initialAttemptCost,
-    cumulativeRequestLimit: governance.maximumCumulativeRequestCost?.toString(),
+    cumulativeRequestLimit: cumulativeCostLimit.limit,
   });
   logBudgetDecision({
     request: input.request,
@@ -268,7 +296,7 @@ export async function prepareAiRetry(input: PreviewContext & {
     estimated_incremental_cost: decision.estimatedCost,
     cumulative_retry_cost: decision.currentUsage + decision.estimatedCost,
     retry_limit: governance.maximumRetryCost == null ? null : Number(governance.maximumRetryCost),
-    cumulative_request_limit: governance.maximumCumulativeRequestCost == null ? null : Number(governance.maximumCumulativeRequestCost),
+    cumulative_request_limit: cumulativeCostLimit.limitNumber,
   });
 
   // A connection failure known to occur before dispatch can reuse the first

@@ -12,6 +12,9 @@ import { previewAiRequest } from "@/ai/governance/service";
 import { assertAiExecutionPolicy } from "@/ai/governance/executionPolicy";
 import { resolveAiProvider } from "@/ai/services/providerService";
 import { AiError } from "@/ai/errors";
+import { describeRequestLimitFromDetails } from "@/ai/governance/requestLimits";
+import { describeCostLimitFromDetails } from "@/ai/governance/costLimits";
+import { recipeCopilotSettingsUrl } from "./readiness";
 import { RECIPE_COPILOT_SYSTEM_PROMPT, recipeCopilotUserPrompt } from "@/ai/recipeCopilot/prompts";
 import {
   AI_RECIPE_STATUSES, RECIPE_COPILOT_FEATURE_KEY, RECIPE_COPILOT_PROMPT_VERSION,
@@ -111,7 +114,7 @@ export async function getRecipeCopilotAvailability(userId: string, raw: unknown 
     prisma.aiGovernanceSetting.findUnique({ where: { id: "global" } }),
   ]);
   const privacyMode = input.privacyMode || governance?.privacyMode || "METADATA_LIMITED";
-  const disabled = (code: string, reason: string, target: { providerId?: string | null; providerName?: string | null; modelId?: string | null; modelName?: string | null; failedCheck?: string | null; estimatedCostUsd?: string | null; effectiveLimitUsd?: string | null; limitSource?: string | null } = {}) => ({
+  const disabled = (code: string, reason: string, target: { providerId?: string | null; providerName?: string | null; modelId?: string | null; modelName?: string | null; failedCheck?: string | null; requestLimit?: Record<string, unknown> | null } = {}) => ({
     available: false as const,
     providerId: target.providerId || null,
     providerName: target.providerName || null,
@@ -125,11 +128,11 @@ export async function getRecipeCopilotAvailability(userId: string, raw: unknown 
     // administrator sees precisely which control blocked the request.
     requestedFeature: RECIPE_COPILOT_FEATURE_KEY,
     failedCheck: target.failedCheck || null,
-    estimatedCostUsd: target.estimatedCostUsd || null,
-    effectiveLimitUsd: target.effectiveLimitUsd || null,
-    limitSource: target.limitSource || null,
+    // A request-count limit is administrator configuration, so the link opens the
+    // exact control instead of the top of the AI settings page.
+    requestLimit: target.requestLimit || null,
     canConfigure: permission.admin,
-    settingsUrl: permission.admin ? "/settings/ai" : null,
+    settingsUrl: permission.admin ? recipeCopilotSettingsUrl(code) : null,
     // Backward-compatible fields retained for existing drawer/API consumers.
     code,
     reason,
@@ -152,7 +155,8 @@ export async function getRecipeCopilotAvailability(userId: string, raw: unknown 
     const request = { featureKey: RECIPE_COPILOT_FEATURE_KEY, systemInstructions: RECIPE_COPILOT_SYSTEM_PROMPT, messages: [{ role: "user" as const, content: recipeCopilotUserPrompt({ action: input.action || "create", instruction: input.instruction || "", purpose: input.purpose, context: context.recipe }) }], responseFormat: { type: "json" as const, name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, unknownFields: "reject" as const }, privacyMode: privacyMode as any, maxOutputTokens: 4000, requestSource: "FOREGROUND" as const, allowFallback: false, requiredCapabilities: ["structured_json" as const], externalConfirmation: true };
     await assertAiExecutionPolicy({ request, provider, model, requiredCapabilities: ["chat_messages", "structured_json"] });
     const preview = await previewAiRequest({ request, provider, model, userId });
-    return { available: true as const, providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow.displayName, privacyMode: preview.privacyMode, remoteOperationAllowed: preview.provider.location !== "LOCAL", blockedReasonCode: null, blockedReasonMessage: null, canConfigure: permission.admin, settingsUrl: permission.admin ? "/settings/ai" : null, provider: providerRow.displayName, model, local: preview.provider.location === "LOCAL", estimatedInputTokens: preview.limits.estimatedInputTokens, maximumOutputTokens: preview.limits.maxOutputTokens, estimatedCost: preview.cost.expectedEstimatedCost, maximumEstimatedCost: preview.cost.maximumEstimatedCost, currency: preview.cost.currency, costDecision: preview.costDecision, perRequestCostLimit: preview.perRequestCostLimit, contextSummary: { blockedFields: context.blockedFields, recipeIncluded: !!input.recipe, trackLevelLibraryMetadata: false }, previewRequired: preview.privacyMode === "FULL_METADATA" || preview.provider.location !== "LOCAL", warnings: [] as string[] };
+    const dailyRequests = preview.remainingBudgets?.dailyRequests;
+    return { available: true as const, providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow.displayName, privacyMode: preview.privacyMode, remoteOperationAllowed: preview.provider.location !== "LOCAL", blockedReasonCode: null, blockedReasonMessage: null, canConfigure: permission.admin, settingsUrl: permission.admin ? "/settings/ai" : null, dailyRequestLimit: { effectiveMode: dailyRequests?.effective?.effectiveMode || "UNLIMITED", scope: dailyRequests?.effective?.scope || null, limit: dailyRequests?.limit ?? null, usage: dailyRequests?.usage ?? null, remaining: dailyRequests?.remaining ?? null, resetAt: dailyRequests?.resetAt ?? null }, provider: providerRow.displayName, model, local: preview.provider.location === "LOCAL", estimatedInputTokens: preview.limits.estimatedInputTokens, maximumOutputTokens: preview.limits.maxOutputTokens, estimatedCost: preview.cost.expectedEstimatedCost, maximumEstimatedCost: preview.cost.maximumEstimatedCost, currency: preview.cost.currency, costDecision: preview.costDecision, contextSummary: { blockedFields: context.blockedFields, recipeIncluded: !!input.recipe, trackLevelLibraryMetadata: false }, previewRequired: preview.privacyMode === "FULL_METADATA" || preview.provider.location !== "LOCAL", warnings: [] as string[] };
   } catch (error) {
     const value = error as any;
     const originalCode = String(value?.category || value?.code || "GOVERNANCE_BLOCKED");
@@ -161,14 +165,16 @@ export async function getRecipeCopilotAvailability(userId: string, raw: unknown 
       : ["MODEL_NOT_CONFIGURED", "MODEL_NOT_FOUND", "MODEL_NOT_AVAILABLE", "AI_MODEL_DISABLED", "AI_MODEL_NOT_APPROVED", "AI_MODEL_FEATURE_BLOCKED"].includes(originalCode) ? "AI_MODEL_UNAVAILABLE"
       : ["MODEL_UNPRICED", "AI_MODEL_PRICING_MISSING"].includes(originalCode) ? "AI_MODEL_PRICING_UNAVAILABLE"
       : ["AI_GLOBAL_BUDGET_EXCEEDED", "MONTHLY_COST_LIMIT_REACHED"].includes(originalCode) ? "AI_MONTHLY_BUDGET_EXCEEDED"
+      : ["MONTHLY_REQUEST_LIMIT_REACHED"].includes(originalCode) ? "AI_MONTHLY_REQUEST_LIMIT_EXCEEDED"
       : ["DAILY_REQUEST_LIMIT_REACHED", "AI_DAILY_REQUEST_LIMIT_EXCEEDED", "DAILY_COST_LIMIT_REACHED"].includes(originalCode) ? "AI_DAILY_LIMIT_EXCEEDED"
       : originalCode;
     const details = error instanceof AiError ? error.details : undefined;
-    const reason = mappedCode === "AI_REQUEST_COST_LIMIT_EXCEEDED" && details?.estimated_cost_usd != null && details?.effective_limit_usd != null
-      ? `This request is estimated to cost ${String(details.estimated_cost_usd)} USD, which exceeds the ${String(details.limit_source || "configured")} per-request limit of ${String(details.effective_limit_usd)} USD.`
-      : error instanceof Error ? error.message : "AI governance blocked this request.";
+    const requestLimitReason = ["DAILY_REQUEST_LIMIT_REACHED", "MONTHLY_REQUEST_LIMIT_REACHED"].includes(originalCode) ? describeRequestLimitFromDetails(details) : null;
+    const costLimitReason = mappedCode === "AI_REQUEST_COST_LIMIT_EXCEEDED" ? describeCostLimitFromDetails({ currency: governance?.currency, ...details }) : null;
+    const reason = requestLimitReason || costLimitReason
+      || (error instanceof Error ? error.message : "AI governance blocked this request.");
     const failedCheck = typeof details?.failedCheck === "string" ? details.failedCheck : null;
-    return disabled(mappedCode, reason, { providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow.displayName, failedCheck, estimatedCostUsd: details?.estimated_cost_usd == null ? null : String(details.estimated_cost_usd), effectiveLimitUsd: details?.effective_limit_usd == null ? null : String(details.effective_limit_usd), limitSource: details?.limit_source == null ? null : String(details.limit_source) });
+    return disabled(mappedCode, reason, { providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow.displayName, failedCheck, requestLimit: details?.limit == null ? null : { period: originalCode === "MONTHLY_REQUEST_LIMIT_REACHED" ? "MONTHLY" : "DAILY", scope: details.scope ?? null, limit: Number(details.limit), usage: Number(details.current_usage ?? 0), remaining: Number(details.remaining ?? 0), resetAt: details.reset_at ?? null } });
   }
 }
 

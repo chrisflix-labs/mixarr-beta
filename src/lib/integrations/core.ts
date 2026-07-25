@@ -21,6 +21,9 @@ export const API_TOKEN_SCOPES = [
   "integrations.manage",
   "recipes.view", "recipes.import", "recipes.approve", "recipes.manage_trust", "recipes.migrate", "recipes.restore",
   "recipes.audit.view", "recipes.signing_keys.view", "recipes.signing_keys.manage",
+  // Mobile companion app (read-only browse + Direct Play streaming). Granted to
+  // short-lived tokens minted by the Plex-PIN mobile login flow.
+  "library.read", "stream.read",
 ] as const;
 
 export type ApiTokenScope = typeof API_TOKEN_SCOPES[number];

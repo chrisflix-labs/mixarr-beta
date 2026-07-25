@@ -79,6 +79,36 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.14",
+    title: "Per-Request AI Cost Limit Configuration",
+    releaseDate: "July 25, 2026",
+    badges: ["Hotfix", "AI", "Bug Fix", "Settings"],
+    changes: [
+      "Fixed providers configured through the AI setup wizard rejecting every priced external request with AI_REQUEST_COST_LIMIT_EXCEEDED. The wizard's maximum request cost defaulted to zero and was stored in the cumulative retry ceiling, which admission then enforced as a per-request limit of exactly $0.00.",
+      "Separated the per-request estimated cost limit, checked once before dispatch, from the cumulative request cost limit that covers the first attempt plus retries. The per-request ceiling now has its own setting instead of sharing one column with a different control.",
+      "Added an explicit mode to both cost ceilings: Unlimited by default, or Limited with an amount. A zero-dollar limit is still available because it is a real policy — admit only free or local-provider requests — but it must now be chosen deliberately.",
+      "The setup wizard asks for a cost mode instead of defaulting an amount to zero, and a local-only setup is still saved with an explicit $0.00 per-request policy that is stated on the step.",
+      "Added an AI cost limits panel under Budgets with a warning and a confirmation before saving a zero ceiling, an accurate label and mode for the cumulative ceiling, and blocked requests that name the estimated cost, the limit, and where to change it.",
+      "Monthly budgets, provider and user cost limits, request-count limits, retry limits, token limits, privacy modes, provider and feature approval, and the cost estimate itself are unchanged and still enforced.",
+      "Upgrade: apply migration 20260802010000_ai_per_request_cost_limit_v2414. It preserves a positive ceiling exactly, keeps a zero ceiling on local-only installations, and releases a zero ceiling where external providers are permitted so blocked installations recover.",
+    ],
+  },
+  {
+    version: "2.4.13",
+    title: "Daily AI Request Limit Configuration",
+    releaseDate: "July 25, 2026",
+    badges: ["Hotfix", "AI", "Bug Fix", "Settings"],
+    changes: [
+      "Fixed Recipe Copilot and other AI features being blocked by AI_DAILY_LIMIT_EXCEEDED with no usable setting to change the limit. A missing, blank, or zero daily limit was interpreted as zero requests allowed, which blocked every AI request permanently.",
+      "Added an explicit daily request-limit mode so unlimited usage is a choice rather than an absence: Unlimited or Limited globally, plus Inherit at the provider and user scopes. Zero is now rejected with a clear message instead of being stored as an unrecoverable limit.",
+      "Added the missing global control to AI Governance → Budgets → AI request limits, including today's counted requests, remaining requests, and the reset time. The setup wizard now defaults to Unlimited instead of writing 50 requests per day that the settings page could not change.",
+      "Centralized limit precedence in one shared module: every scope is evaluated independently and the strictest wins, a user-level Unlimited cannot weaken the global limit, and a scope left in Limited without a usable number reports a configuration problem instead of blocking the feature.",
+      "Blocked requests now name the responsible scope, the limit, the usage, the reset time, and where to change it, and link straight to the control. The monthly request limit no longer reports a daily error.",
+      "Provider approval, feature approval, per-request cost limits, monthly budgets, cost limits, retry limits, token limits, privacy modes, and provider availability checks are unchanged and still enforced.",
+      "Upgrade: apply migration 20260801010000_ai_daily_request_limit_configuration_v2413. It preserves every existing positive limit exactly, converts stored zero limits to Unlimited so blocked installations recover, deletes no data, and does not enable AI or external providers.",
+    ],
+  },
+  {
     version: "2.4.12",
     title: "AI Provider Feature Authorization Fix",
     releaseDate: "July 24, 2026",

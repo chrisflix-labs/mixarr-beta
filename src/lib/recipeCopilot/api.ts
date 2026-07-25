@@ -2,6 +2,8 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { AiError } from "@/ai/errors";
+import { describeRequestLimitFromDetails } from "@/ai/governance/requestLimits";
+import { describeCostLimitFromDetails } from "@/ai/governance/costLimits";
 
 export function recipeCopilotUserId() {
   const userId = cookies().get("mixarr_session")?.value;
@@ -16,6 +18,7 @@ export function recipeCopilotApiError(error: unknown) {
       : ["MODEL_NOT_CONFIGURED", "MODEL_NOT_FOUND", "MODEL_NOT_AVAILABLE", "AI_MODEL_DISABLED", "AI_MODEL_NOT_APPROVED", "AI_MODEL_FEATURE_BLOCKED"].includes(error.category) ? "AI_MODEL_UNAVAILABLE"
       : ["MODEL_UNPRICED", "AI_MODEL_PRICING_MISSING"].includes(error.category) ? "AI_MODEL_PRICING_UNAVAILABLE"
       : ["AI_GLOBAL_BUDGET_EXCEEDED", "MONTHLY_COST_LIMIT_REACHED"].includes(error.category) ? "AI_MONTHLY_BUDGET_EXCEEDED"
+      : error.category === "MONTHLY_REQUEST_LIMIT_REACHED" ? "AI_MONTHLY_REQUEST_LIMIT_EXCEEDED"
       : ["DAILY_REQUEST_LIMIT_REACHED", "AI_DAILY_REQUEST_LIMIT_EXCEEDED", "DAILY_COST_LIMIT_REACHED"].includes(error.category) ? "AI_DAILY_LIMIT_EXCEEDED"
       : ["AUTHENTICATION_FAILED", "PROVIDER_UNAUTHORIZED"].includes(error.category) ? "AI_PROVIDER_AUTH_FAILED"
       : ["RATE_LIMITED", "PROVIDER_RATE_LIMITED"].includes(error.category) ? "AI_PROVIDER_RATE_LIMITED"
@@ -27,20 +30,9 @@ export function recipeCopilotApiError(error: unknown) {
       : mappedCode === "AI_MODEL_PRICING_UNAVAILABLE" ? "Pricing is unavailable for the selected AI model."
       : mappedCode === "AI_MONTHLY_BUDGET_EXCEEDED" ? "The configured AI monthly budget has been reached."
       : mappedCode === "AI_RETRY_COST_LIMIT_EXCEEDED" ? "The first attempt failed temporarily, but another attempt would exceed the AI retry cost limit."
+      : ["AI_DAILY_LIMIT_EXCEEDED", "AI_MONTHLY_REQUEST_LIMIT_EXCEEDED"].includes(mappedCode) ? describeRequestLimitFromDetails(error.details) || error.toSafePayload().error.message
+      : mappedCode === "AI_REQUEST_COST_LIMIT_EXCEEDED" ? describeCostLimitFromDetails(error.details) || error.toSafePayload().error.message
       : error.toSafePayload().error.message;
-    if (mappedCode === "AI_REQUEST_COST_LIMIT_EXCEEDED" && error.details) {
-      const details = error.details;
-      const payload = {
-        code: mappedCode,
-        message: "Estimated request cost exceeds the configured per-request limit.",
-        estimated_cost_usd: details.estimated_cost_usd,
-        effective_limit_usd: details.effective_limit_usd,
-        limit_source: details.limit_source,
-        provider: details.provider,
-        feature: details.feature,
-      };
-      return NextResponse.json({ error: payload, ...payload }, { status: error.status });
-    }
     return NextResponse.json({ error: { code: mappedCode, message, ...(mappedCode !== error.category ? { legacyCode: error.category } : {}), ...(error.details ? { details: error.details } : {}) }, code: mappedCode, message }, { status: error.status });
   }
   if (error instanceof ZodError) return NextResponse.json({ error: { code: "INVALID_REQUEST", message: error.issues[0]?.message || "Invalid Recipe Copilot request.", fields: error.flatten() } }, { status: 400 });

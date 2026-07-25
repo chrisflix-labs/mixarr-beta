@@ -5635,6 +5635,7 @@ model AiGovernanceSetting {
   maximumContextMessages            Int      @default(100)
   maximumResponseBytes              Int      @default(1048576)
   maximumStructuredItems            Int      @default(1000)
+  dailyRequestLimitMode             String   @default("UNLIMITED")
   dailyRequestLimit                 Int?
   monthlyRequestLimit               Int?
   metadataAllowlistJson             Json
@@ -5652,9 +5653,10 @@ model AiGovernanceSetting {
   cancellationGraceMs               Int      @default(2000)
   maximumRetryAttempts              Int      @default(1)
   maximumRetryCost                  Decimal? @db.Decimal(18, 6)
+  perRequestCostLimitMode           String   @default("UNLIMITED")
+  maximumEstimatedRequestCost       Decimal? @db.Decimal(18, 6)
+  cumulativeRequestCostLimitMode    String   @default("UNLIMITED")
   maximumCumulativeRequestCost      Decimal? @db.Decimal(18, 6)
-  perRequestCostLimitEnabled        Boolean  @default(false)
-  perRequestCostLimitUsd            Decimal? @db.Decimal(18, 6)
   retryAfterPossibleBilling         Boolean  @default(false)
   auditRetentionDays                Int      @default(90)
   usageSummaryRetentionDays         Int      @default(730)
@@ -6104,12 +6106,11 @@ model AiProviderBudget {
   currency                   String           @default("USD")
   dailyLimit                 Decimal?         @db.Decimal(18, 6)
   monthlyLimit               Decimal?         @db.Decimal(18, 6)
-  perRequestCostLimitEnabled Boolean          @default(false)
-  perRequestCostLimitUsd     Decimal?         @db.Decimal(18, 6)
   warningThresholdsJson      Json
   hardLimitEnabled           Boolean          @default(true)
   selectableAfterWarning     Boolean          @default(true)
   allowFallbackWhenExhausted Boolean          @default(false)
+  dailyRequestLimitMode      String           @default("INHERIT")
   dailyRequestLimit          Int?
   monthlyRequestLimit        Int?
   maximumInputTokens         Int?
@@ -6126,8 +6127,7 @@ model AiUserLimit {
   currency                  String   @default("USD")
   dailyCostLimit            Decimal? @db.Decimal(18, 6)
   monthlyCostLimit          Decimal? @db.Decimal(18, 6)
-  perRequestCostLimitEnabled Boolean  @default(false)
-  perRequestCostLimitUsd     Decimal? @db.Decimal(18, 6)
+  dailyRequestLimitMode     String   @default("INHERIT")
   dailyRequestLimit         Int?
   monthlyRequestLimit       Int?
   maximumInputTokens        Int?
