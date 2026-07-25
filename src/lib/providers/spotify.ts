@@ -6,6 +6,7 @@ import {
 } from "../metrics";
 import { RateLimitError, parseRetryAfterMs } from "./rateLimit";
 import { getSpotifyCredentials } from "../externalApiSettings";
+import { logRateLimited } from "../logging";
 
 // See note in audiodb.ts.
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -210,7 +211,7 @@ export const getSpotifyPopularity = async (artist: string, track: string): Promi
       throw new RateLimitError(PROVIDER, retryAfterMs);
     }
 
-    console.error(`Spotify fetch failed for ${artist} - ${track}:`, error.message, status || '');
+    logRateLimited("error", `spotify:popularity:${status || error?.code || "error"}`, "[Spotify] Popularity fetch failed:", String(error?.message || "error").slice(0, 500), status || "");
     return null;
   } finally {
     endTimer();
@@ -294,11 +295,11 @@ export const getSpotifyTrackTags = async (artist: string, track: string): Promis
     }
 
     if (status === 403) {
-      console.warn(`[Spotify] Tag lookup returned 403 Forbidden for ${track}.`);
+      logRateLimited("warn", "spotify:tags:403", "[Spotify] Tag lookup returned 403 Forbidden.");
       return [];
     }
 
-    console.error(`[Spotify] Tag lookup failed for ${artist} - ${track}:`, error.message, status || '');
+    logRateLimited("error", `spotify:tags:${status || error?.code || "error"}`, "[Spotify] Tag lookup failed:", String(error?.message || "error").slice(0, 500), status || "");
     return [];
   } finally {
     endTimer();
@@ -377,11 +378,11 @@ export const getSpotifyAudioFeatures = async (artist: string, track: string): Pr
     
     if (status === 403) {
       // Spotify deprecated the Audio Features endpoint on Nov 27, 2024. It returns 403 Forbidden.
-      console.warn(`[Spotify] Audio Features API is deprecated and returned 403 Forbidden for ${track}.`);
+      logRateLimited("warn", "spotify:audio-features:403", "[Spotify] Audio Features API returned 403 Forbidden.");
       return null;
     }
     
-    console.error(`[Spotify] Error fetching ${artist} - ${track}:`, error.message, status || '');
+    logRateLimited("error", `spotify:audio-features:${status || error?.code || "error"}`, "[Spotify] Audio-feature fetch failed:", String(error?.message || "error").slice(0, 500), status || "");
     return null;
   } finally {
     endTimer();

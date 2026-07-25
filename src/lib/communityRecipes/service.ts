@@ -6,6 +6,7 @@ import { z } from "zod";
 import prisma from "../prisma";
 import { APP_VERSION_NUMBER } from "../appVersion";
 import { isUserAdmin } from "../auth";
+import { assertStorageAvailable, registerActiveManagedFile, resolveStoragePaths } from "../storage";
 import { createPlaylistRecipeData, portableRecipeFromRecord, updatePlaylistRecipeData, type PlaylistRecipeInput } from "../playlistRecipes";
 import { safeRecipeFilename } from "../mixRecipes/transfer";
 import { validateArtwork } from "../mixRecipes/archive";
@@ -80,14 +81,23 @@ function communityData(document: CommunityDocument, preview: CommunityPreview, m
 }
 
 async function storeAssets(userId: string, recipeId: string, document: CommunityDocument) {
-  if (!document.assets || !Object.keys(document.assets).length) return { artworkUrl: null, screenshots: [] as string[] };
-  const directory = path.resolve(process.cwd(), "public", "uploads", "community-recipes", recipeId); await fs.mkdir(directory, { recursive: true });
+  if (!document.assets || !Object.keys(document.assets).length) return { artworkUrl: null, screenshots: [] as string[], release: () => undefined };
+  await assertStorageAvailable("Community recipe artwork", true);
+  const directory = path.resolve(resolveStoragePaths().artwork, "community-recipes", recipeId); await fs.mkdir(directory, { recursive: true });
   const result: Record<string, string> = {};
+  const targetReleases: Array<() => void> = [];
   for (const [sourcePath, base64] of Object.entries(document.assets)) {
     const asset = validateArtwork(new Uint8Array(Buffer.from(base64, "base64"))); const name = `${createHash("sha256").update(`${userId}:${recipeId}:${sourcePath}`).digest("hex").slice(0, 18)}.${asset.extension}`; const target = path.resolve(directory, name);
-    if (!target.startsWith(`${directory}${path.sep}`)) throw communityError("ASSET_PATH", "Managed asset destination is unsafe."); await fs.writeFile(target, asset.data); result[sourcePath] = `/uploads/community-recipes/${recipeId}/${name}`;
+    if (!target.startsWith(`${directory}${path.sep}`)) throw communityError("ASSET_PATH", "Managed asset destination is unsafe.");
+    const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
+    const release = registerActiveManagedFile(temporary);
+    const releaseTarget = registerActiveManagedFile(target);
+    try { await fs.writeFile(temporary, asset.data, { flag: "wx" }); await fs.rename(temporary, target); targetReleases.push(releaseTarget); }
+    catch (error) { releaseTarget(); targetReleases.forEach((item) => item()); targetReleases.length = 0; throw error; }
+    finally { await fs.rm(temporary, { force: true }).catch(() => undefined); release(); }
+    result[sourcePath] = `/api/storage/artwork/community-recipes/${recipeId}/${name}`;
   }
-  return { artworkUrl: document.manifest.artwork ? result[document.manifest.artwork] || null : null, screenshots: document.manifest.screenshots.map((item) => result[item]).filter(Boolean) };
+  return { artworkUrl: document.manifest.artwork ? result[document.manifest.artwork] || null : null, screenshots: document.manifest.screenshots.map((item) => result[item]).filter(Boolean), release: () => targetReleases.forEach((item) => item()) };
 }
 
 export async function installStagedCommunityRecipe(input: { userId: string; stageId: string; name?: string; action?: "new" | "copy" | "update" | "replace"; confirmReplace?: boolean }) {
@@ -119,8 +129,10 @@ export async function installStagedCommunityRecipe(input: { userId: string; stag
     await writeRecipeAudit({ recipeId: result.id, recipeVersion: result.recipeVersion, eventType: governance.quarantine.required ? "RECIPE_QUARANTINED" : "RECIPE_IMPORTED", actorId: input.userId, correlationId, description: governance.quarantine.required ? "Community recipe was imported into quarantine for local review." : "Community recipe was imported after governance review.", validation: { findings: governance.findings, safetyAdjustments: governance.safetyAdjustments }, risk: governance.risk, permissions: governance.permissions, trustState: governance.trustState, riskLevel: governance.risk.riskLevel, metadata: { source: stored.method, planHash: governance.planHash, signatureStatus: governance.signature.status, official: governance.official } }, tx);
     return result;
   });
-  try { const assets = await storeAssets(input.userId, saved.id, document); if (assets.artworkUrl || assets.screenshots.length) { const decorated = await prisma.playlistRecipe.update({ where: { id: saved.id }, data: { artworkUrl: assets.artworkUrl, communityScreenshotsJson: json(assets.screenshots) } }); await prisma.recipeImportSnapshot.update({ where: { id: snapshot.id }, data: { resourceVersions: json({ recipeUpdatedAt: decorated.updatedAt.toISOString() }) } }); } }
+  let releaseAssets: () => void = () => undefined;
+  try { const assets = await storeAssets(input.userId, saved.id, document); releaseAssets = assets.release; if (assets.artworkUrl || assets.screenshots.length) { const decorated = await prisma.playlistRecipe.update({ where: { id: saved.id }, data: { artworkUrl: assets.artworkUrl, communityScreenshotsJson: json(assets.screenshots) } }); await prisma.recipeImportSnapshot.update({ where: { id: snapshot.id }, data: { resourceVersions: json({ recipeUpdatedAt: decorated.updatedAt.toISOString() }) } }); } }
   catch (error) { console.warn("[CommunityRecipe] Optional assets were omitted after import", { recipeId: saved.id, reason: error instanceof Error ? error.message : "unknown" }); }
+  finally { releaseAssets(); }
   try { const { emitIntegrationEvent } = await import("../integrations/service"); const governanceEvent = governance.quarantine.required ? "recipe.quarantined" : "recipe.approval_required"; await emitIntegrationEvent(governanceEvent, { recipe: { id: saved.id, trustState: governance.trustState, signatureStatus: governance.signature.status, riskLevel: governance.risk.riskLevel }, correlationId }, { actorType: "user", actorId: input.userId }, `${governanceEvent}:${correlationId}:${saved.id}`); }
   catch (error) { console.warn("[CommunityRecipe] Governance notification delivery failed", { recipeId: saved.id, reason: error instanceof Error ? error.message : "unknown" }); }
   console.info("[CommunityRecipe] Recipe installed", { userId: input.userId, recipeId: saved.id, communityRecipeId: document.manifest.recipeId, version: document.manifest.version, method: stored.method, trustState: preview.trustState, action });
@@ -137,9 +149,9 @@ export async function exportCommunityRecipe(input: { userId: string; recipeId: s
   const document: CommunityDocument = { manifest: manifestFromRecord(record, input.metadata || {}), recipe: portableRecipeFromRecord(record), changelog: typeof input.metadata?.changelog === "string" ? input.metadata.changelog : record.communityChangelog };
   const binaryAssets: Record<string, Uint8Array> = {};
   if (input.type === "bundle") {
-    const sourceAssets = [record.artworkUrl, ...(Array.isArray(record.communityScreenshotsJson) ? record.communityScreenshotsJson : [])].filter((value): value is string => typeof value === "string" && value.startsWith("/uploads/"));
+    const sourceAssets = [record.artworkUrl, ...(Array.isArray(record.communityScreenshotsJson) ? record.communityScreenshotsJson : [])].filter((value): value is string => typeof value === "string" && (value.startsWith("/uploads/") || value.startsWith("/api/storage/artwork/")));
     for (let index = 0; index < sourceAssets.length; index += 1) {
-      const source = path.resolve(process.cwd(), "public", sourceAssets[index].replace(/^\/+/, "")); const root = path.resolve(process.cwd(), "public", "uploads"); if (!source.startsWith(`${root}${path.sep}`)) continue;
+      const legacy = sourceAssets[index].startsWith("/uploads/"); const root = legacy ? path.resolve(process.cwd(), "public", "uploads") : path.resolve(resolveStoragePaths().artwork); const relative = legacy ? sourceAssets[index].replace(/^\/uploads\//, "") : sourceAssets[index].replace(/^\/api\/storage\/artwork\//, ""); const source = path.resolve(root, relative); if (!source.startsWith(`${root}${path.sep}`)) continue;
       try { const asset = validateCommunityImage(new Uint8Array(await fs.readFile(source))); const target = index === 0 && sourceAssets[index] === record.artworkUrl ? `artwork/cover.${asset.extension}` : `screenshots/screenshot-${index + 1}.${asset.extension}`; binaryAssets[target] = asset.data; if (target.startsWith("artwork/")) document.manifest.artwork = target; else document.manifest.screenshots.push(target); } catch { /* Omit missing or invalid local assets from portable exports. */ }
     }
   }

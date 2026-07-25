@@ -6,6 +6,7 @@ import {
 } from "../metrics";
 import { RateLimitError } from "./rateLimit";
 import { getLastFmCredentials } from "../externalApiSettings";
+import { logRateLimited } from "../logging";
 
 // See note in audiodb.ts.
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -97,7 +98,7 @@ export const getLastFmPopularity = async (artist: string, track: string): Promis
   } catch (error: any) {
     result = classifyError(error);
     const reason = error?.code === "ECONNABORTED" ? "timeout" : (error?.code || error?.message || "error");
-    console.error(`[Last.fm] Popularity fetch failed for ${artist} - ${track} (${reason})`);
+    logRateLimited("error", `lastfm:popularity:${reason}`, `[Last.fm] Popularity fetch failed (${reason}).`);
     // Surface rate-limits so the popularity engine re-queues the track
     // instead of saving a not_found marker that locks it out for 14 days.
     if (result === "rate_limited") {
@@ -143,7 +144,7 @@ export const getLastFmTrackTags = async (artist: string, track: string): Promise
   } catch (error: any) {
     result = classifyError(error);
     const reason = error?.code === "ECONNABORTED" ? "timeout" : (error?.code || error?.message || "error");
-    console.error(`[Last.fm] Tags fetch failed for ${artist} - ${track} (${reason})`);
+    logRateLimited("error", `lastfm:tags:${reason}`, `[Last.fm] Tags fetch failed (${reason}).`);
     // Surface rate limits so the tag router can halt the provider chain
     // instead of silently failing over to a less-preferred provider.
     if (result === "rate_limited") {

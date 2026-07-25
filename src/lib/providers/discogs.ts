@@ -10,6 +10,7 @@ import {
   parseRetryAfterMs,
 } from "./rateLimit";
 import { getDiscogsCredentials } from "../externalApiSettings";
+import { logRateLimited } from "../logging";
 
 const PROVIDER = "discogs";
 
@@ -173,7 +174,7 @@ export const getDiscogsTrackTags = async (artist: string, track: string): Promis
 
     result = classifyError(error);
     const reason = error?.code === "ECONNABORTED" ? "timeout" : (error?.code || error?.message || "error");
-    console.error(`[Discogs] Tags fetch failed for ${artist} - ${track} (${reason})`);
+    logRateLimited("error", `discogs:tags:${reason}`, `[Discogs] Tags fetch failed (${reason}).`);
     if (result === "rate_limited") {
       const retryAfterMs = parseRetryAfterMs(error?.response?.headers?.["retry-after"]);
       discogsCooldown.trigger(retryAfterMs);

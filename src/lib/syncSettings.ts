@@ -1,6 +1,8 @@
 import prisma from "./prisma";
 
 export type SyncEngineOptions = {
+  /** Cooperative cancellation for an in-flight full-library scan. */
+  abortSignal?: AbortSignal | null;
   plexPageSize?: number | null;
   popularityBatchSize?: number | null;
   audioFeatureBatchSize?: number | null;

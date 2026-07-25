@@ -94,6 +94,15 @@ export default async function SettingsPage() {
         <span aria-hidden="true">&rarr;</span>
       </Link>
 
+      <Link href="/settings/system/storage" className={`glass-panel ${styles.healthLink}`}>
+        <Database size={24} />
+        <span>
+          <strong>Storage Diagnostics &amp; Cleanup</strong>
+          <small>Inspect database, WAL, cache, artwork, temporary files, histories, capacity thresholds, and preview safe cleanup.</small>
+        </span>
+        <span aria-hidden="true">&rarr;</span>
+      </Link>
+
       <section className={`glass-panel ${styles.section}`} aria-labelledby="troubleshooting-policy-settings">
         <h3 id="troubleshooting-policy-settings" className={styles.sectionTitle}><Wrench size={20} color="var(--accent)" /> Troubleshooting Policy</h3>
         <p className={styles.sectionDesc}>Set safe defaults, privacy permissions, retention, bundle limits, and AI usage policy. No diagnostic data is shared until a user reviews and approves a session bundle.</p>

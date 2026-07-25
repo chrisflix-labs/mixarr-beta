@@ -1,6 +1,8 @@
 import { mkdir, mkdtemp, readdir, rm, stat } from "fs/promises";
 import os from "os";
 import path from "path";
+import { resolveStoragePaths } from "./storage";
+import { logDebug, logRateLimited } from "./logging";
 import prisma from "./prisma";
 import {
   assertEssentiaAvailable,
@@ -47,7 +49,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const ENGINE = "audio_feature";
 const LOCAL_AUDIO_FEATURE_JOB_KEY = "audio_feature:local";
 const essentiaPythonPath = process.env.LOCAL_BPM_ESSENTIA_PYTHON || "/opt/essentia/bin/python";
-const featureTempRoot = process.env.LOCAL_AUDIO_FEATURE_TEMP_DIR || path.join(os.tmpdir(), "mixarr-audio-features");
+const featureTempRoot = process.env.LOCAL_AUDIO_FEATURE_TEMP_DIR || path.join(resolveStoragePaths().temp, "audio-features");
 
 const localAudioFeatureGlobals = globalThis as typeof globalThis & {
   mixarrLocalAudioFeatureShutdownRequested?: boolean;
@@ -580,11 +582,11 @@ async function analyzeTrackWholeTrack(track: any, tempDir: string): Promise<Loca
       const message = redactedMessage(error);
       if (error instanceof ExtractionFailedAudioFeatureError) {
         extractionErrors.push(`${source.type}: ${message}`);
-        console.warn(`[LocalAudioFeatureEngine] Whole-track extraction failed using ${source.type} for "${trackLabel(track)}": ${message}`);
+        logRateLimited("warn", `local-audio:extract:${source.type}:${message.slice(0, 80)}`, `[LocalAudioFeatureEngine] Whole-track extraction failed using ${source.type}: ${message.slice(0, 500)}`);
       } else {
         validatedSourceCount += 1;
         analyzerErrors.push(`${source.type}: ${message}`);
-        console.warn(`[LocalAudioFeatureEngine] Essentia whole-track analysis failed using ${source.type} for "${trackLabel(track)}": ${message}`);
+        logRateLimited("warn", `local-audio:essentia:${source.type}:${message.slice(0, 80)}`, `[LocalAudioFeatureEngine] Essentia whole-track analysis failed using ${source.type}: ${message.slice(0, 500)}`);
       }
     }
   }
@@ -637,7 +639,7 @@ async function analyzeTrackWindows(track: any, tempDir: string): Promise<LocalAu
       }
       const message = redactedMessage(error);
       extractionErrors.push(`${sampleWindow.label}: ${message}`);
-      console.warn(`[LocalAudioFeatureEngine] Skipping ${sampleWindow.label} sample for "${trackLabel(track)}": ${message}`);
+      logRateLimited("warn", `local-audio:sample:${sampleWindow.label}:${message.slice(0, 80)}`, `[LocalAudioFeatureEngine] Skipping ${sampleWindow.label} sample: ${message.slice(0, 500)}`);
       continue;
     }
 
@@ -653,7 +655,7 @@ async function analyzeTrackWindows(track: any, tempDir: string): Promise<LocalAu
     } catch (error) {
       const message = redactedMessage(error);
       analyzerErrors.push(`${sampleWindow.label}: ${message}`);
-      console.warn(`[LocalAudioFeatureEngine] Essentia failed for "${trackLabel(track)}" (${sampleWindow.label}): ${message}`);
+      logRateLimited("warn", `local-audio:essentia:${sampleWindow.label}:${message.slice(0, 80)}`, `[LocalAudioFeatureEngine] Essentia failed (${sampleWindow.label}): ${message.slice(0, 500)}`);
     }
   }
 
@@ -815,7 +817,7 @@ async function logPostSaveVerification(trackId: string, settings: {
     allowEstimated: settings.allowEstimated,
   });
   const selectedForPartialRetry = effective.partial;
-  console.log("[LocalAudioFeatureEngine] Saved local audio features:", {
+  logDebug("[LocalAudioFeatureEngine] Saved local audio features:", {
     id: saved.id,
     title: `${saved.artist.title} - ${saved.title}`,
     audioFeatureStatus: feature.audioFeatureStatus,
@@ -836,7 +838,7 @@ async function logPostSaveVerification(trackId: string, settings: {
     effectiveAcousticness: effective.acousticness,
     effectiveTempo: effective.tempo,
   });
-  console.log("[LocalAudioFeatureEngine] Completion check after save:", {
+  logDebug("[LocalAudioFeatureEngine] Completion check after save:", {
     complete: effective.complete,
     partial: effective.partial,
     missingFields: effective.missingFields,
@@ -1454,26 +1456,26 @@ export const runLocalAudioFeatureEngine = async (options: SyncEngineOptions = {}
             outcome = "not_found";
             await saveFailure(track.id, "too_short", analysisScope, message);
             progressProcessed += 1;
-            console.warn(
+            logDebug(
               `[LocalAudioFeatureEngine] Persisting audio feature short-track marker for track ${track.id} (too_short)`,
             );
           } else if (error instanceof ExtractionFailedAudioFeatureError) {
             outcome = "error";
             progressFailed += 1;
             await saveFailure(track.id, "extraction_failed", analysisScope, message);
-            console.error(`[LocalAudioFeatureEngine] Extraction failed ${trackLabel(track)}: ${message}`);
+            logRateLimited("error", "audio-feature-extraction-failed", `[LocalAudioFeatureEngine] Extraction failed: ${message}`);
           } else if (error instanceof AnalyzerFailedAudioFeatureError) {
             outcome = "error";
             progressFailed += 1;
             await saveFailure(track.id, "analyzer_failed", analysisScope, message);
-            console.error(`[LocalAudioFeatureEngine] Analyzer failed ${trackLabel(track)}: ${message}`);
+            logRateLimited("error", "audio-feature-analyzer-failed", `[LocalAudioFeatureEngine] Analyzer failed: ${message}`);
           } else {
             outcome = "error";
             progressFailed += 1;
             await saveFailure(track.id, "analyzer_failed", analysisScope, message);
-            console.error(`[LocalAudioFeatureEngine] Failed ${trackLabel(track)}: ${message}`);
+            logRateLimited("error", "audio-feature-track-failed", `[LocalAudioFeatureEngine] Track failed: ${message}`);
           }
-          console.warn(`[LocalAudioFeatureEngine] Track analysis failed but worker will continue: reason=${message}`);
+          logDebug(`[LocalAudioFeatureEngine] Track analysis failed but worker will continue: reason=${message}`);
         } finally {
           endTimer();
           trackAttemptsTotal.inc({ engine: ENGINE, result: outcome });

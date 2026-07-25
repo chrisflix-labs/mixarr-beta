@@ -17,7 +17,7 @@ import {
 } from "./metrics";
 import { safeTrackBatchIterator, type EnrichmentRunSummary } from "./safeTrackBatch";
 import { sanitizeRequiredMetadataString } from "./metadataSanitizer";
-import { logDebug } from "./logging";
+import { logDebug, logRateLimited } from "./logging";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -258,11 +258,9 @@ export const runPopularityEngine = async (options: SyncEngineOptions = {}): Prom
             },
             select: { id: true },
           });
-          console.warn(
-            `[PopularityEngine] Rate-limited while looking up "${track.artist.title} - ${track.title}" (${e.message}); leaving it queued.`,
-          );
+          logRateLimited("warn", "popularity:rate-limited", "[PopularityEngine] Provider rate limit encountered; affected tracks remain queued.");
         } else {
-          console.error(`[PopularityEngine] Unexpected error on track ${track.title}:`, e.message);
+          logRateLimited("error", `popularity:error:${String(e?.code || e?.message || "unknown").slice(0, 80)}`, "[PopularityEngine] Track lookup failed:", String(e?.message || e || "unknown error").slice(0, 500));
           outcome = "error";
           await prisma.track.update({
             where: { id: track.id },

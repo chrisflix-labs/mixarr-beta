@@ -13,7 +13,7 @@ import {
 } from "./metrics";
 import { safeTrackBatchIterator, type EnrichmentRunSummary } from "./safeTrackBatch";
 import { sanitizeRequiredMetadataString } from "./metadataSanitizer";
-import { logDebug } from "./logging";
+import { logDebug, logRateLimited } from "./logging";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -151,7 +151,7 @@ export const runTrackTagEngine = async (options: SyncEngineOptions = {}): Promis
         }
 
       } catch (e: any) {
-        console.error(`[TrackTagEngine] Unexpected error on track ${track.title}:`, e.message);
+        logRateLimited("error", `track-tags:error:${String(e?.code || e?.message || "unknown").slice(0, 80)}`, "[TrackTagEngine] Track lookup failed:", String(e?.message || e || "unknown error").slice(0, 500));
         outcome = "error";
         await prisma.track.update({
           where: { id: track.id },

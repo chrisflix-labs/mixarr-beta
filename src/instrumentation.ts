@@ -22,6 +22,13 @@ export async function register() {
     console.warn("[Readiness] DATABASE_URL is missing. Worker and scheduler startup are disabled until the database is configured.");
   } else {
     try {
+      const { initializeStorageSafety } = await import("./lib/storageStartup");
+      await initializeStorageSafety();
+    } catch (error) {
+      console.error("[Storage] Startup initialization failed", sanitizeErrorText(error));
+    }
+
+    try {
       const { initializeWorkerReliability } = await import("./lib/workerHealth");
       await initializeWorkerReliability();
     } catch (error) {

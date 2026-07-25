@@ -57,6 +57,7 @@ export type ExistingTrackForSync = {
   artistId?: string | null;
   albumId?: string | null;
   canonicalRecordingId?: string | null;
+  recordingFingerprint?: string | null;
   artist?: { title: string | null } | null;
   album?: { title: string | null } | null;
 };

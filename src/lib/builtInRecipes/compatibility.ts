@@ -3,6 +3,7 @@ import { buildTrackWhereClause, playlistConfigSchema } from "../playlistService"
 import { loadLibraryRecipeProfile, listOwnedMusicLibraries } from "../adaptiveRecipeMappingService";
 import { resolveRecipeGenerationConfig } from "../mixRecipes/schema";
 import type { BuiltInRecipeDefinition, MetadataRequirementId } from "./catalog";
+import { setBoundedCache } from "../boundedCache";
 
 export type RecipeCompatibilityLevel = "excellent" | "good" | "limited" | "poor" | "unavailable";
 export type RecipeCompatibilityResult = {
@@ -122,7 +123,7 @@ export async function loadRecipeLibraryStats(userId: string): Promise<RecipeLibr
     local_analysis: total ? clamp(localAnalysis / total) : 0,
   };
   const value = { libraryId: library.id, libraryName: library.name, totalTracks: total, coverage };
-  statsCache.set(cacheKey, { expiresAt: Date.now() + STATS_CACHE_MS, libraryUpdatedAt: library.updatedAt.getTime(), value });
+  setBoundedCache(statsCache, cacheKey, { expiresAt: Date.now() + STATS_CACHE_MS, libraryUpdatedAt: library.updatedAt.getTime(), value });
   return value;
 }
 

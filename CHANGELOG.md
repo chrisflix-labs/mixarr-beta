@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.4.15 - Storage Safety and Large-Library Scalability
+
+- Confirmed and fixed a stock v2.4.14 Docker writable-layer defect: the startup command downloaded Prisma through `npx --yes` three times, leaving roughly 230 MiB under `/tmp/.npm` in every newly created app container.
+- Replaced fragmented runtime paths with configurable `/config` and `/data` roots, moved temporary analysis and artwork out of `/app`, removed backup fallback into ephemeral paths, and added startup mount/permission/capacity validation.
+- Streamed Plex track pages in bounded batches, replaced the O(n²) identity scan with a stable-key map, suppressed writes for unchanged artists/albums/tracks, and added an UNLOGGED per-scan identity staging table for missing-file reconciliation without rewriting 150,000 unchanged rows.
+- Added bounded cache, temp, job, scan, and AI retention, safe startup/scheduled/manual cleanup, disk thresholds, Storage Diagnostics and cleanup APIs/UI, Docker log rotation, and a read-only application root.
+- Added migration `20260803010000_storage_safety_v2415`, storage tests, and a synthetic real-production-path library benchmark.
+
 ## v2.4.14 - Per-Request AI Cost Limit Configuration
 
 - Fixed AI providers configured through the onboarding wizard rejecting every priced external request with `AI_REQUEST_COST_LIMIT_EXCEEDED`. The wizard's "maximum request cost" defaulted to `0` and was written into `maximumCumulativeRequestCost`, which admission read as the per-request ceiling; `evaluateCostLimit` treats a stored `0` as a real ceiling of exactly $0.000000, so any request estimated above zero was refused before dispatch.

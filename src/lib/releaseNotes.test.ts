@@ -13,7 +13,8 @@ import {
 describe("release notes", () => {
   it("sorts release notes from oldest to newest", () => {
     const ordered = getReleaseNotesOldestFirst();
-    ordered.pop(); // v2.4.14 through v2.0.5 are asserted separately below.
+    ordered.pop(); // v2.4.15 through v2.0.5 are asserted separately below.
+    ordered.pop();
     ordered.pop();
     ordered.pop();
     ordered.pop();
@@ -73,7 +74,8 @@ describe("release notes", () => {
 
   it("sorts release notes from newest to oldest", () => {
     const ordered = getReleaseNotesNewestFirst();
-    ordered.shift(); // v2.4.14 through v2.0.5 are asserted separately below.
+    ordered.shift(); // v2.4.15 through v2.0.5 are asserted separately below.
+    ordered.shift();
     ordered.shift();
     ordered.shift();
     ordered.shift();
@@ -427,12 +429,12 @@ describe("release notes", () => {
     assert.deepEqual(ordered.map((note) => note.version), ["v2.0.0", "v1.3.10", "v1.3.9.2", "v1.3.9.1", "v1.3.9", "v1.3.8"]);
   });
 
-  it("adds the v2.4.14 release note at the top", () => {
+  it("adds the v2.4.15 release note at the top", () => {
     const [latest] = getReleaseNotesNewestFirst();
 
-    assert.equal(latest.version, "2.4.14");
-    assert.equal(latest.title, "Per-Request AI Cost Limit Configuration");
-    assert.ok(latest.badges.includes("Hotfix"));
+    assert.equal(latest.version, "2.4.15");
+    assert.equal(latest.title, "Storage Safety and Large-Library Scalability");
+    assert.ok(latest.badges.includes("Storage"));
   });
 
   it("links the sidebar navigation to the release notes page", () => {

@@ -363,6 +363,7 @@ model Track {
   fileFormat                 String?
   bitrate                    Int?
   plexMetadata               Json?
+  recordingFingerprint       String?
   libraryId                  String
   albumId                    String
   artistId                   String
@@ -469,6 +470,11 @@ model Track {
   @@index([canonicalRecordingId, syncStatus])
   @@index([libraryId, duplicateReviewStatus])
   @@index([libraryId, plexGuid])
+  @@index([libraryId, recordingFingerprint])
+  @@index([libraryId, mediaPath])
+  @@index([libraryId, updatedAt])
+  @@index([albumId, syncStatus])
+  @@index([artistId, syncStatus])
 }
 
 model LibraryCoverageSetting {
@@ -979,17 +985,17 @@ model Tag {
 }
 
 model Popularity {
-  id            String   @id @default(uuid())
-  trackId       String   @unique
-  provider      String // deezer, lastfm, spotify
-  score         Float // Normalized score 0-100 or 0-1M
-  confidence    Float?
-  matchedArtist String?
-  matchedTitle  String?
+  id                   String    @id @default(uuid())
+  trackId              String    @unique
+  provider             String // deezer, lastfm, spotify
+  score                Float // Normalized score 0-100 or 0-1M
+  confidence           Float?
+  matchedArtist        String?
+  matchedTitle         String?
   restoredFromBackupId String?
-  restoredAt    DateTime?
-  lastUpdated   DateTime @default(now())
-  track         Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  restoredAt           DateTime?
+  lastUpdated          DateTime  @default(now())
+  track                Track     @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
   @@index([score])
 }
@@ -1296,6 +1302,7 @@ model NaturalLanguageRequest {
   @@index([approvedById, approvedAt])
   @@index([finalRecipeId])
   @@index([expiresAt])
+  @@index([status, createdAt])
 }
 
 model NaturalLanguageRequestRevision {
@@ -3106,6 +3113,7 @@ model RecommendationExplanation {
   @@index([recipeId, recipeVersion, createdAt])
   @@index([generatedPlaylistId, createdAt])
   @@index([reproducibilityStatus, updatedAt])
+  @@index([createdAt])
 }
 
 model ExplanationAssumption {
@@ -3975,6 +3983,20 @@ model SyncLog {
   library                         Library   @relation(fields: [libraryId], references: [id], onDelete: Cascade)
 
   @@index([libraryId, startedAt])
+  @@index([status, startedAt])
+}
+
+// UNLOGGED in PostgreSQL (see v2.4.15 migration). This bounded staging table
+// lets unchanged scans reconcile missing files without rewriting every Track.
+model PlexScanSeenTrack {
+  scanId        String
+  libraryId     String
+  plexRatingKey String
+  createdAt     DateTime @default(now())
+
+  @@id([scanId, plexRatingKey])
+  @@index([libraryId, scanId])
+  @@index([createdAt])
 }
 
 model JobHistory {
@@ -6408,6 +6430,7 @@ model AiGovernanceAudit {
 
   @@index([actorId, createdAt])
   @@index([entityType, entityId, createdAt])
+  @@index([createdAt])
 }
 
 model AiSecureDebugPayload {
@@ -6516,6 +6539,7 @@ model PlaylistAnalysisSnapshot {
   @@index([playlistId, createdAt])
   @@index([userId, createdAt])
   @@index([fingerprint])
+  @@index([createdAt])
 }
 
 model PlaylistAiSummary {
@@ -6943,29 +6967,29 @@ model TroubleshootingSetting {
 // ---------------------------------------------------------------------------
 
 model LibraryBackupArchive {
-  id                String    @id @default(uuid())
-  userId            String
-  fileName          String
-  storedPath        String? // absolute server path; never exposed to the frontend
-  schemaVersion     Int
-  mixarrVersion     String
-  backupType        String    @default("mixarr-library-intelligence")
-  fileSizeBytes     BigInt    @default(0)
-  archiveSha256     String?
-  trackCount        Int       @default(0)
-  audioFeatureCount Int       @default(0)
-  bpmCount          Int       @default(0)
-  popularityCount   Int       @default(0)
-  genreCount        Int       @default(0)
-  noDataCount       Int       @default(0)
-  countsJson        Json?
-  manifestJson      Json?
-  notes             String?
-  verificationStatus String   @default("unverified") // unverified | verified | failed
-  verifiedAt        DateTime?
-  lastRestoredAt    DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                 String    @id @default(uuid())
+  userId             String
+  fileName           String
+  storedPath         String? // absolute server path; never exposed to the frontend
+  schemaVersion      Int
+  mixarrVersion      String
+  backupType         String    @default("mixarr-library-intelligence")
+  fileSizeBytes      BigInt    @default(0)
+  archiveSha256      String?
+  trackCount         Int       @default(0)
+  audioFeatureCount  Int       @default(0)
+  bpmCount           Int       @default(0)
+  popularityCount    Int       @default(0)
+  genreCount         Int       @default(0)
+  noDataCount        Int       @default(0)
+  countsJson         Json?
+  manifestJson       Json?
+  notes              String?
+  verificationStatus String    @default("unverified") // unverified | verified | failed
+  verifiedAt         DateTime?
+  lastRestoredAt     DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([userId, createdAt])
   @@index([verificationStatus])
@@ -7022,8 +7046,8 @@ model LibraryRestoreJob {
   finishedAt          DateTime?
   updatedAt           DateTime  @updatedAt
 
-  stagedRecords       LibraryRestoreStagedRecord[]
-  matches             LibraryRestoreMatch[]
+  stagedRecords LibraryRestoreStagedRecord[]
+  matches       LibraryRestoreMatch[]
 
   @@index([userId, startedAt])
   @@index([status])
@@ -7046,7 +7070,7 @@ model LibraryRestoreStagedRecord {
   reason         String?
   createdAt      DateTime @default(now())
 
-  restoreJob     LibraryRestoreJob @relation(fields: [restoreJobId], references: [id], onDelete: Cascade)
+  restoreJob LibraryRestoreJob @relation(fields: [restoreJobId], references: [id], onDelete: Cascade)
 
   @@index([restoreJobId, matchStatus])
   @@index([restoreJobId, fingerprint])
@@ -7062,7 +7086,7 @@ model LibraryRestoreMatch {
   candidatesJson Json?
   createdAt      DateTime @default(now())
 
-  restoreJob     LibraryRestoreJob @relation(fields: [restoreJobId], references: [id], onDelete: Cascade)
+  restoreJob LibraryRestoreJob @relation(fields: [restoreJobId], references: [id], onDelete: Cascade)
 
   @@index([restoreJobId, matchType])
 }

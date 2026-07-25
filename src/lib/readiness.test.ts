@@ -12,6 +12,7 @@ function check(label: string, status: ReadinessCheck["status"], summary: string)
 function readiness(overrides: Partial<AppReadiness["checks"]> = {}): AppReadiness {
   const checks = {
     database: check("Database", "OK", "Database connection and schema checks passed."),
+    storage: check("Storage", "OK", "Mixarr managed storage has adequate free space."),
     plex: check("Plex", "Warning", "Plex token missing. Plex sync will be unavailable until configured."),
     worker: check("Background Worker", "Warning", "Background worker heartbeat is stale."),
     scheduler: check("Scheduler", "Error", "Scheduler cron schedule is invalid."),
@@ -58,7 +59,7 @@ describe("readiness diagnostics", () => {
 
     assert.equal(
       logLine,
-      "[Readiness] Startup check completed database=ok plex=connected worker=ok scheduler=ok localAnalysis=enabled externalApis=disabled discord=not_configured",
+      "[Readiness] Startup check completed database=ok storage=ok plex=connected worker=ok scheduler=ok localAnalysis=enabled externalApis=disabled discord=not_configured",
     );
   });
 

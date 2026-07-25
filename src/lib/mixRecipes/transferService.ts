@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import prisma from "../prisma";
 import { isUserAdmin } from "../auth";
+import { assertStorageAvailable, registerActiveManagedFile, resolveStoragePaths } from "../storage";
 import { analyzeRecipeForLibrary, persistImportAnalysis, saveConfirmedMappingRules } from "../adaptiveRecipeMappingService";
 import type { AdaptiveMappingDecision } from "../adaptiveRecipeMapping";
 import { createPlaylistRecipeData, parsePlaylistRecipe, portableRecipeFromRecord, updatePlaylistRecipeData, type PlaylistRecipeInput } from "../playlistRecipes";
@@ -64,8 +65,10 @@ export function sanitizeUploadFilename(filename: string) {
 
 async function localArtwork(url: string | null | undefined): Promise<ValidArtwork | null> {
   if (!url || !url.startsWith("/") || url.startsWith("//")) return null;
-  const publicRoot = path.resolve(process.cwd(), "public");
-  const resolved = path.resolve(publicRoot, `.${url.split(/[?#]/)[0]}`);
+  const managed = url.startsWith("/api/storage/artwork/");
+  const publicRoot = managed ? path.resolve(resolveStoragePaths().artwork) : path.resolve(process.cwd(), "public");
+  const relative = managed ? url.replace(/^\/api\/storage\/artwork\//, "") : `.${url.split(/[?#]/)[0]}`;
+  const resolved = path.resolve(publicRoot, relative);
   if (resolved !== publicRoot && !resolved.startsWith(`${publicRoot}${path.sep}`)) return null;
   try { return validateArtwork(new Uint8Array(await fs.readFile(resolved))); } catch { return null; }
 }
@@ -292,14 +295,25 @@ async function writeImportedArtwork(userId: string, recipeId: string, candidate:
   const data = new Uint8Array(Buffer.from(candidate.artworkDataBase64, "base64"));
   const asset = validateArtwork(data);
   const filename = `${safeRecipeFilename(candidate.portable.name)}-${sha256(`${userId}:${recipeId}`).slice(0, 12)}.${asset.extension}`;
-  const directory = path.resolve(process.cwd(), "public", "uploads", "recipe-artwork");
+  await assertStorageAvailable("Recipe artwork import", true);
+  const directory = path.resolve(resolveStoragePaths().artwork, "recipe-artwork");
   await fs.mkdir(directory, { recursive: true });
   const target = path.resolve(directory, filename);
   if (!target.startsWith(`${directory}${path.sep}`)) throw transferError("ARTWORK_INVALID", "Artwork filename is unsafe.");
-  await fs.writeFile(target, asset.data);
-  const artworkUrl = `/uploads/recipe-artwork/${filename}`;
-  await prisma.playlistRecipe.updateMany({ where: { id: recipeId, userId }, data: { artworkUrl } });
-  return artworkUrl;
+  const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
+  const releaseTemporary = registerActiveManagedFile(temporary);
+  const releaseTarget = registerActiveManagedFile(target);
+  try {
+    await fs.writeFile(temporary, asset.data, { flag: "wx" });
+    await fs.rename(temporary, target);
+    const artworkUrl = `/api/storage/artwork/recipe-artwork/${filename}`;
+    await prisma.playlistRecipe.updateMany({ where: { id: recipeId, userId }, data: { artworkUrl } });
+    return artworkUrl;
+  } finally {
+    await fs.rm(temporary, { force: true }).catch(() => undefined);
+    releaseTemporary();
+    releaseTarget();
+  }
 }
 
 function revalidateCandidate(candidate: ImportCandidate) {

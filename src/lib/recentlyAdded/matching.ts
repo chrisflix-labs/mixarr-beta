@@ -6,6 +6,7 @@ import { getAdaptiveScoringSettings } from "../adaptiveScoring";
 import { loadPlaybackScoringContext } from "../playbackAwareness";
 import { scoreNewMusic } from "./scoring";
 import { getRecentlyAddedSettings } from "./settings";
+import { logDebug } from "../logging";
 
 function clamp(value: number) { return Math.min(100, Math.max(0, value)); }
 
@@ -107,7 +108,7 @@ export async function findRecentlyAddedPlaylistMatches({ userId, batchId }: { us
       created += 1;
       trackMatches += 1;
       if (compatibilityScore >= settings.matchThreshold) strong += 1;
-      console.info("[RecentlyAdded] match calculated", { trackId: state.trackId, playlistId: playlist.id, compatibilityScore, reasons });
+      logDebug("[RecentlyAdded] match calculated", { trackId: state.trackId, playlistId: playlist.id, compatibilityScore, reasons });
     }
     const scored = scoreNewMusic(state.track, bestCompatibility || 50);
     await prisma.recentlyAddedTrackState.update({ where: { id: state.id }, data: { status: trackMatches && state.status !== "low_confidence" ? "suggested" : state.status, newMusicScore: scored.score, scoreBreakdownJson: scored.breakdown, matchedAt: new Date() } });

@@ -58,6 +58,12 @@ export function normalizeRecordingText(value: unknown) {
     .trim();
 }
 
+export function recordingFingerprint(artist: unknown, title: unknown) {
+  const normalizedArtist = normalizeRecordingText(artist);
+  const normalizedTitle = normalizeRecordingText(title);
+  return normalizedArtist && normalizedTitle ? `${normalizedArtist}\u001f${normalizedTitle}` : null;
+}
+
 function artistTitle(track: DuplicateComparableTrack) {
   return track.artistTitle ?? track.artist?.title ?? "";
 }
@@ -221,7 +227,7 @@ function selectFieldSource(tracks: any[], field: "bpm" | "energy" | "mood", pref
     .sort((left, right) => right.candidate!.rank - left.candidate!.rank || left.track.id.localeCompare(right.track.id))[0] || null;
 }
 
-export async function refreshCanonicalEnrichment(groupId: string, preferredTrackId?: string | null, db: PrismaClient = prisma) {
+export async function refreshCanonicalEnrichment(groupId: string, preferredTrackId?: string | null, db: any = prisma) {
   const group = await db.canonicalRecording.findUnique({
     where: { id: groupId },
     include: {
@@ -233,7 +239,7 @@ export async function refreshCanonicalEnrichment(groupId: string, preferredTrack
   });
   if (!group || !group.inheritanceEnabled || !group.tracks.length) return { inherited: 0, sourceTrackId: null };
   const effectivePreferredId = preferredTrackId || group.preferredEnrichmentTrackId;
-  const preferred = group.tracks.find((track) => track.id === effectivePreferredId);
+  const preferred = group.tracks.find((track: any) => track.id === effectivePreferredId);
   const source = preferred || selectDuplicateEnrichmentSource(group.tracks)!.source;
   const fieldSources = {
     bpm: selectFieldSource(group.tracks, "bpm", effectivePreferredId),
@@ -322,8 +328,9 @@ export async function assignConfirmedDuplicateGroup(input: {
   candidateTrackId: string;
   assessment: DuplicateAssessment;
   automaticallyShare?: boolean;
+  db?: any;
 }) {
-  const result = await prisma.$transaction(async (tx) => {
+  const execute = async (tx: any) => {
     const candidate = await tx.track.findFirst({ where: { id: input.candidateTrackId, libraryId: input.libraryId }, select: { id: true, canonicalRecordingId: true, title: true, artist: { select: { title: true } } } });
     const track = await tx.track.findFirst({ where: { id: input.trackId, libraryId: input.libraryId }, select: { id: true, title: true, artist: { select: { title: true } } } });
     if (!candidate || !track) throw new Error("Duplicate group member not found");
@@ -348,8 +355,9 @@ export async function assignConfirmedDuplicateGroup(input: {
       },
     });
     return group;
-  });
-  const inherited = input.automaticallyShare === false ? { inherited: 0, sourceTrackId: null } : await refreshCanonicalEnrichment(result.id);
+  };
+  const result = input.db ? await execute(input.db) : await prisma.$transaction(execute);
+  const inherited = input.automaticallyShare === false ? { inherited: 0, sourceTrackId: null } : await refreshCanonicalEnrichment(result.id, undefined, input.db || prisma);
   return { groupId: result.id, ...inherited };
 }
 

@@ -3,6 +3,7 @@ import prisma from "../prisma";
 import { metadataCorrectionRelations } from "../metadataCorrections";
 import { getRecentlyAddedSettings, normalizeRecentlyAddedExclusions } from "./settings";
 import { quarantineDecision, scoreNewMusic } from "./scoring";
+import { logRateLimited } from "../logging";
 
 const WRITE_CHUNK = 200;
 
@@ -119,7 +120,7 @@ export async function analyzeRecentlyAddedTracks({ userId, batchId, trackIds }: 
         failed += 1;
         const message = error instanceof Error ? error.message : "Analysis failed";
         await prisma.recentlyAddedTrackState.update({ where: { id: state.id }, data: { status: "failed", failureReason: message } });
-        console.error("[RecentlyAdded] analysis failed", { trackId: state.trackId, reason: message });
+        logRateLimited("error", `recently-added:analysis:${message.slice(0, 80)}`, "[RecentlyAdded] analysis failed", { reason: message.slice(0, 500) });
       }
     }));
   }

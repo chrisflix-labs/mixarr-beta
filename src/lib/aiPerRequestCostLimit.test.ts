@@ -265,6 +265,6 @@ describe("v2.4.14 administrator and Recipe Copilot interface", () => {
     const docs = read("docs/AI_PER_REQUEST_COST_LIMIT_V2414.md");
     for (const marker of [/maximumEstimatedRequestCost/, /maximumCumulativeRequestCost/, /perRequestCostLimitMode/, /AI_REQUEST_COST_LIMIT_EXCEEDED/, /Unlimited/, /Limited/, /zero/i, /20260802010000_ai_per_request_cost_limit_v2414/]) assert.match(docs, marker);
     assert.match(read("CHANGELOG.md"), /v2\.4\.14 - Per-Request AI Cost Limit Configuration/);
-    assert.equal(JSON.parse(read("package.json")).version, "2.4.14");
+    assert.equal(JSON.parse(read("package.json")).version, "2.4.15");
   });
 });

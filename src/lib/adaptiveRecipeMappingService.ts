@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import prisma from "./prisma";
+import { setBoundedCache } from "./boundedCache";
 import { buildTrackWhereClause, playlistConfigSchema } from "./playlistService";
 import { resolveRecipeGenerationConfig, type MixRecipeDocument } from "./mixRecipes/schema";
 import {
@@ -103,7 +104,7 @@ export async function loadLibraryRecipeProfile(userId: string, requestedLibraryI
       manuallyConfirmed: rule.manuallyConfirmed, libraryId: rule.libraryId,
     })),
   };
-  profileCache.set(`${userId}:${library.id}`, { expiresAt: Date.now() + PROFILE_CACHE_MS, libraryUpdatedAt: library.updatedAt.getTime(), value: profile });
+  setBoundedCache(profileCache, `${userId}:${library.id}`, { expiresAt: Date.now() + PROFILE_CACHE_MS, libraryUpdatedAt: library.updatedAt.getTime(), value: profile });
   return { profile, libraries };
 }
 

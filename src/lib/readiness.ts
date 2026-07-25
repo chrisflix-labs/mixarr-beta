@@ -7,6 +7,7 @@ import { getWorkerHealthSummary, isHeartbeatStale } from "./workerHealth";
 import { sanitizeErrorText } from "./supportRedaction";
 import { getExternalApiSettingsPayload } from "./externalApiSettings";
 import { isSecretEncryptionConfigured } from "./secretStorage";
+import { legacyWritablePathUsage, resolveStoragePaths, storageSafetyStatus } from "./storage";
 
 export type ReadinessStatus = "OK" | "Warning" | "Error" | "Disabled" | "Unknown";
 
@@ -26,6 +27,7 @@ export type AppReadiness = {
   overallStatus: ReadinessStatus;
   checks: {
     database: ReadinessCheck;
+    storage: ReadinessCheck;
     plex: ReadinessCheck;
     worker: ReadinessCheck;
     scheduler: ReadinessCheck;
@@ -406,6 +408,30 @@ function secretsEncryptionCheck() {
     : check("Secrets Encryption", "Warning", "Secret encryption key is not configured. API credentials cannot be saved from the UI.");
 }
 
+export async function storageReadinessCheck(): Promise<ReadinessCheck> {
+  try {
+    const paths = resolveStoragePaths();
+    const [capacity, unexpected] = await Promise.all([
+      storageSafetyStatus(paths.data),
+      legacyWritablePathUsage(),
+    ]);
+    const diagnostics = {
+      dataDirectory: paths.data,
+      filesystemTotalBytes: capacity.totalBytes,
+      filesystemFreeBytes: capacity.freeBytes,
+      filesystemUsedPercent: Number(capacity.usedPercent.toFixed(2)),
+      minimumFreeBytes: capacity.minimumFreeBytes,
+      unexpectedWritablePaths: unexpected,
+    };
+    if (capacity.critical) return check("Storage", "Error", "Mixarr storage is critically low; optional storage-intensive work is blocked.", null, diagnostics);
+    if (capacity.warning) return check("Storage", "Warning", "Mixarr storage has crossed its warning threshold.", null, diagnostics);
+    if (unexpected.length) return check("Storage", "Warning", "Mixarr found data in legacy writable-layer paths.", null, diagnostics);
+    return check("Storage", "OK", "Mixarr managed storage has adequate free space and no unexpected legacy files.", null, diagnostics);
+  } catch (error) {
+    return check("Storage", "Unknown", "Storage readiness could not be inspected.", sanitizeErrorText(error));
+  }
+}
+
 export function buildReadinessMessages(readiness: AppReadiness) {
   return Object.values(readiness.checks)
     .filter((entry) => entry.status === "Warning" || entry.status === "Error")
@@ -420,13 +446,15 @@ export function buildReadinessLogLine(readiness: AppReadiness) {
   const scheduler = c.scheduler.status === "OK" ? "ok" : c.scheduler.status.toLowerCase();
   const localAnalysis = c.localAudioAnalysis.status === "OK" ? "enabled" : c.localAudioAnalysis.status.toLowerCase();
   const externalApis = c.externalApis.status === "OK" ? "ok" : c.externalApis.status.toLowerCase();
+  const storage = c.storage.status === "OK" ? "ok" : c.storage.status.toLowerCase();
   const discord = c.supportLinks.summary.includes("not configured") ? "not_configured" : c.supportLinks.status.toLowerCase();
-  return `[Readiness] Startup check completed database=${db} plex=${plex} worker=${worker} scheduler=${scheduler} localAnalysis=${localAnalysis} externalApis=${externalApis} discord=${discord}`;
+  return `[Readiness] Startup check completed database=${db} storage=${storage} plex=${plex} worker=${worker} scheduler=${scheduler} localAnalysis=${localAnalysis} externalApis=${externalApis} discord=${discord}`;
 }
 
 export async function getAppReadiness(options: { userId?: string | null } = {}): Promise<AppReadiness> {
-  const [database, plex, worker, localAudioAnalysis, externalApis] = await Promise.all([
+  const [database, storage, plex, worker, localAudioAnalysis, externalApis] = await Promise.all([
     databaseCheck(),
+    storageReadinessCheck(),
     plexCheck(options.userId),
     workerCheck(),
     localAudioAnalysisCheck(options.userId),
@@ -436,6 +464,7 @@ export async function getAppReadiness(options: { userId?: string | null } = {}):
   const links = supportLinkChecks();
   const checks = {
     database,
+    storage,
     plex,
     worker,
     scheduler,

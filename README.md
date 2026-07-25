@@ -1,8 +1,8 @@
 # Mixarr
 
-Current release: **v2.4.11 — Library Intelligence Backup & Restore**. Back up and restore calculated audio features, BPM, popularity, and genres at `/settings/system/library-backup` so a recreated database does not need to reanalyze your library. Backups exclude settings, accounts, Plex tokens, API keys, AI data, logs, and playlists. See [the v2.4.11 guide](docs/LIBRARY_INTELLIGENCE_BACKUP_V2411.md).
+Current release: **v2.4.15 — Storage Safety and Large-Library Scalability**. Mixarr now keeps runtime files under mounted `/config` and `/data` roots, bounds cache and history retention, rotates Docker logs, reports storage by category, and scans 150,000-track libraries without continuously rewriting unchanged rows. See [the v2.4.15 storage guide](docs/STORAGE_SAFETY_V2415.md).
 
-Previous release: **v2.4.10 — AI-Assisted Mix Intelligence Polish**. Start at `/ai` for guided setup, provider and privacy status, request history, templates, usage, approvals, audit activity, and troubleshooting links. See [the v2.4.10 guide](docs/AI_ASSISTED_MIX_INTELLIGENCE_V2410.md) and [the v2.4.9 security guide](docs/AI_GOVERNANCE_SECURITY_RELIABILITY_V249.md).
+Previous release: **v2.4.14 — Per-Request AI Cost Limit Configuration**. See [the v2.4.14 guide](docs/AI_PER_REQUEST_COST_LIMIT_V2414.md).
 
 **Mixarr** is a self-hosted Plex music playlist and library enhancement app for people who want smarter ways to explore, repair, and playlist their Plex music libraries.
 
@@ -106,6 +106,28 @@ http://localhost:3000
 ```
 
 From there, connect Plex, choose your music library, start a metadata sync, and use the dashboard/settings tools to run optional metadata, BPM, genre, popularity, and audio-feature jobs.
+
+### Persistent storage and Docker logs
+
+Mixarr v2.4.15 requires both application-owned roots to be persistent. The included Compose file mounts `/config` and `/data`, makes `/app` read-only, limits `/tmp` to a 64 MiB tmpfs, and rotates Docker JSON logs at five 10 MiB files. Preserve the PostgreSQL volume as well.
+
+```yaml
+services:
+  app:
+    volumes:
+      - mixarr_config:/config
+      - mixarr_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+```
+
+Do not remove an abnormally large container before collecting `docker diff`, `du`, inspect, and log evidence. Upgrade, diagnostics, cleanup, and nearly-full-filesystem recovery instructions are in [Storage Safety and Large-Library Scalability](docs/STORAGE_SAFETY_V2415.md).
 
 ## Configuration Notes
 

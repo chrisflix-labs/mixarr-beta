@@ -6,6 +6,7 @@ import { safeRecordJobHistory } from "../jobHistory";
 import { ensureRecommendationProfile } from "./service";
 import { DEFAULT_PLAYBACK_SETTINGS, getPlaybackDashboardSummary, getPlaybackSyncStatus } from "../playbackAwareness";
 import { DEFAULT_ADAPTIVE_SCORING_SETTINGS } from "../adaptiveScoring/service";
+import { setBoundedCache } from "../boundedCache";
 
 export const PERSONALIZATION_EXPORT_FORMAT = "mixarr.personalization";
 export const PERSONALIZATION_EXPORT_SCHEMA_VERSION = 1;
@@ -193,7 +194,7 @@ export async function getPersonalizationDashboardSummary(userId: string, options
   const cached = summaryCache.get(key);
   if (!options.refresh && cached && cached.expiresAt > Date.now()) return cached.value;
   const value = await buildDashboardSummary(userId, days);
-  summaryCache.set(key, { expiresAt: Date.now() + 30_000, value });
+  setBoundedCache(summaryCache, key, { expiresAt: Date.now() + 30_000, value });
   return value;
 }
 

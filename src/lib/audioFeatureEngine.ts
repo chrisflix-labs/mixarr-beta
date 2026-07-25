@@ -19,7 +19,7 @@ import {
 import { safeTrackBatchIterator, type EnrichmentRunSummary } from "./safeTrackBatch";
 import { sanitizeRequiredMetadataString } from "./metadataSanitizer";
 import { completeAudioFeatureWhere, getEffectiveAudioFeatures, noAudioFeatureRecordTrackWhere } from "./audioFeatures";
-import { logDebug } from "./logging";
+import { logDebug, logRateLimited } from "./logging";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -272,7 +272,7 @@ export const runAudioFeatureEngine = async (options: SyncEngineOptions = {}): Pr
           logDebug(`[AudioFeatureEngine] Track "${track.title}" -> Energy: ${finalEnergy}, Mood: ${finalValence}, BPM: ${finalTempo}`);
         } else if (rateLimited) {
           outcome = "rate_limited";
-          console.warn(`[AudioFeatureEngine] Rate-limited providers had no fallback result for "${track.artist.title} - ${track.title}"; leaving it queued.`);
+          logRateLimited("warn", "audio-feature:rate-limited:no-fallback", "[AudioFeatureEngine] Providers are rate-limited; affected tracks remain queued.");
         } else {
           await prisma.audioFeature.upsert({
             where: { trackId: track.id },
@@ -284,9 +284,9 @@ export const runAudioFeatureEngine = async (options: SyncEngineOptions = {}): Pr
       } catch (e: any) {
         if (isRateLimitError(e) || e.message === "NO_TOKEN") {
           outcome = "rate_limited";
-          console.warn(`[AudioFeatureEngine] Rate-limited while looking up "${track.artist.title} - ${track.title}" (${e.message}); leaving it queued.`);
+          logRateLimited("warn", "audio-feature:rate-limited", "[AudioFeatureEngine] Provider rate limit encountered; affected tracks remain queued.");
         } else {
-          console.error(`[AudioFeatureEngine] Unexpected error on track ${track.title}:`, e.message);
+          logRateLimited("error", `audio-feature:error:${String(e?.code || e?.message || "unknown").slice(0, 80)}`, "[AudioFeatureEngine] Track lookup failed:", String(e?.message || e || "unknown error").slice(0, 500));
           outcome = "error";
           const failureReason = String(e?.message || e || "API audio feature lookup failed").slice(0, 1_000);
           await prisma.audioFeature.upsert({

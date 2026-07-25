@@ -61,6 +61,7 @@ export type ReleaseNoteBadge =
   | "Scheduler"
   | "Security"
   | "Settings"
+  | "Storage"
   | "Sharing"
   | "Smart Builder"
   | "Support"
@@ -78,6 +79,21 @@ export type ReleaseNote = {
 };
 
 export const releaseNotes: ReleaseNote[] = [
+  {
+    version: "2.4.15",
+    title: "Storage Safety and Large-Library Scalability",
+    releaseDate: "July 25, 2026",
+    badges: ["Storage", "Database", "Library Sync", "Performance", "Diagnostics", "Bug Fix"],
+    changes: [
+      "Fixed a confirmed 230 MiB Docker writable-layer write on every newly created container by bundling the Prisma CLI instead of downloading it into /tmp through npx during startup.",
+      "Moved cache, temporary audio samples, artwork, backups, exports, jobs, scans, and optional logs into documented configurable /config and /data storage roots; unsafe backup fallback into /app/tmp and /tmp was removed.",
+      "Changed Plex track ingestion to validated 500-record pages, O(1) stable-identity lookup, an UNLOGGED scan-seen table, and unchanged-row suppression so unchanged rescans do not rewrite every Track or retain full incoming metadata in memory.",
+      "Added bounded cache, temporary-file, job, scan, and AI retention at startup and every six hours, with symlink-safe traversal and active-file protection.",
+      "Added administrator Storage Diagnostics, cleanup previews and confirmations, PostgreSQL database/WAL/history sizing, free-space thresholds, unexpected-path reporting, and Docker mount warnings.",
+      "Added Docker /config and /data volumes, a read-only application root, a bounded tmpfs, and json-file log rotation (10 MiB times five files).",
+      "Added the repeatable synthetic production-path scanner benchmark for 150,000 tracks and storage cleanup/report developer commands.",
+    ],
+  },
   {
     version: "2.4.14",
     title: "Per-Request AI Cost Limit Configuration",

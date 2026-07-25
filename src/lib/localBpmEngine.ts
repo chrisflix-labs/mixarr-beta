@@ -4,6 +4,8 @@ import { existsSync } from "fs";
 import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";
+import { resolveStoragePaths } from "./storage";
+import { logDebug, logRateLimited } from "./logging";
 import prisma from "./prisma";
 import {
   bpmBackfillFilterTrackWhere,
@@ -59,7 +61,7 @@ const ffmpegPath = process.env.LOCAL_BPM_FFMPEG_PATH || "ffmpeg";
 const ffprobePath = process.env.LOCAL_BPM_FFPROBE_PATH || "ffprobe";
 const aubioPath = process.env.LOCAL_BPM_AUBIO_PATH || "aubio";
 const essentiaPythonPath = process.env.LOCAL_BPM_ESSENTIA_PYTHON || "/opt/essentia/bin/python";
-const bpmTempRoot = process.env.LOCAL_BPM_TEMP_DIR || path.join(os.tmpdir(), "mixarr-bpm");
+const bpmTempRoot = process.env.LOCAL_BPM_TEMP_DIR || path.join(resolveStoragePaths().temp, "bpm");
 
 type LocalBpmAnalyzerMode = "auto" | "essentia" | "aubio";
 type LocalBpmAnalyzerName = "essentia" | "aubio";
@@ -864,7 +866,7 @@ export async function extractAudioSampleFromSources(
 
   for (const source of sources) {
     const seekStartSeconds = source.type === "plex-transcode" ? 0 : startSeconds;
-    console.log(
+    logDebug(
       `[LocalBpmEngine] Trying ${sourceDescription(source)} for "${trackLabel(track)}" (${windowLabel}).`,
     );
 
@@ -877,7 +879,7 @@ export async function extractAudioSampleFromSources(
         trackLabel(track),
         windowLabel,
       );
-      console.log(
+      logDebug(
         `[LocalBpmEngine] Validated BPM sample using ${source.type} for "${trackLabel(track)}" (${windowLabel}, seekMode=${sample.seekMode}, duration=${sample.duration.toFixed(2)}s, size=${sample.sizeBytes} bytes).`,
       );
       return source.type;
@@ -1202,7 +1204,7 @@ async function analyzeTrackLocally(
   } finally {
     const removedBytes = await directorySize(tempDir).catch(() => 0);
     await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
-    console.log(`[LocalBpmEngine] Temp cleanup for track ${trackLabel(track)} removed ${formatBytes(removedBytes)}.`);
+    logDebug(`[LocalBpmEngine] Temp cleanup for track ${trackLabel(track)} removed ${formatBytes(removedBytes)}.`);
   }
 }
 
@@ -1274,7 +1276,7 @@ async function logSavedBpm(trackId: string) {
     },
   });
 
-  console.log("[LocalBpmEngine] Saved BPM:", saved);
+  logDebug("[LocalBpmEngine] Saved BPM:", saved);
 }
 
 async function saveBpmSuccess(
@@ -1366,14 +1368,14 @@ async function saveBpmSuccess(
       }),
     ]);
   } catch (error) {
-    console.error(`[LocalBpmEngine] Failed to persist BPM for track ${trackId}:`, error);
+    logRateLimited("error", "local-bpm:persist", "[LocalBpmEngine] Failed to persist BPM:", error instanceof Error ? error.message : "unknown error");
     throw error;
   }
 
   try {
     await logSavedBpm(trackId);
   } catch (error) {
-    console.error(`[LocalBpmEngine] Failed to verify saved BPM for track ${trackId}:`, error);
+    logRateLimited("error", "local-bpm:verify", "[LocalBpmEngine] Failed to verify saved BPM:", error instanceof Error ? error.message : "unknown error");
   }
 }
 
@@ -1387,7 +1389,7 @@ async function saveBpmAttemptWithoutResult(
   const analyzedAt = new Date();
   const bpmSource = canonicalBpmSource(source);
 
-  console.log(`[LocalBpmEngine] Persisting BPM ${status} marker for track ${trackId} (${bpmSource})`);
+  logDebug(`[LocalBpmEngine] Persisting BPM ${status} marker for track ${trackId} (${bpmSource})`);
 
   try {
     await prisma.$transaction([
@@ -1423,7 +1425,7 @@ async function saveBpmAttemptWithoutResult(
       }),
     ]);
   } catch (error) {
-    console.error(`[LocalBpmEngine] Failed to persist BPM ${status} marker for track ${trackId}:`, error);
+    logRateLimited("error", `local-bpm:marker:${status}`, `[LocalBpmEngine] Failed to persist BPM ${status} marker:`, error instanceof Error ? error.message : "unknown error");
     throw error;
   }
 }
@@ -1669,7 +1671,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
             analysisScope: localAnalysisScope,
           });
           importedApiBpmAdded += 1;
-          console.log(`[LocalBpmEngine] ${track.artist.title} - ${track.title} -> ${tempo} BPM (Deezer)`);
+          logDebug(`[LocalBpmEngine] ${track.artist.title} - ${track.title} -> ${tempo} BPM (Deezer)`);
           return "processed";
         }
 
@@ -1681,7 +1683,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
             analysisScope: localAnalysisScope,
           });
           localBpmAdded += 1;
-          console.log(`[LocalBpmEngine] ${track.artist.title} - ${track.title} -> ${localBpm.tempo} BPM (${localBpm.analyzerLabel} ${localBpm.windowLabel}, confidence ${localBpm.confidence.toFixed(2)})`);
+          logDebug(`[LocalBpmEngine] ${track.artist.title} - ${track.title} -> ${localBpm.tempo} BPM (${localBpm.analyzerLabel} ${localBpm.windowLabel}, confidence ${localBpm.confidence.toFixed(2)})`);
         } else if (deezerBpm) {
           const tempo = normalizeBpm(deezerBpm);
           await saveBpmSuccess(track.id, tempo, "Deezer", 0.9, {
@@ -1690,7 +1692,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
             analysisScope: localAnalysisScope,
           });
           importedApiBpmAdded += 1;
-          console.log(`[LocalBpmEngine] ${track.artist.title} - ${track.title} -> ${tempo} BPM (Deezer)`);
+          logDebug(`[LocalBpmEngine] ${track.artist.title} - ${track.title} -> ${tempo} BPM (Deezer)`);
         } else if (deezerRateLimited) {
           outcome = "rate_limited";
           console.warn(
@@ -1711,7 +1713,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
           }
         } else {
           await saveBpmAttemptWithoutResult(track.id, metadataSettings.local ? "local_not_found" : "api_not_found", "no_data", undefined, localAnalysisScope);
-          console.log(`[LocalBpmEngine] ${track.artist.title} - ${track.title} -> BPM not found`);
+          logDebug(`[LocalBpmEngine] ${track.artist.title} - ${track.title} -> BPM not found`);
           outcome = "not_found";
         }
       } catch (error: any) {
@@ -1722,12 +1724,10 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
           // days when Deezer might have the canonical BPM available
           // the moment the rate-limit window rolls off.
           outcome = "rate_limited";
-          console.warn(
-            `[LocalBpmEngine] Rate-limited while looking up "${track.artist.title} - ${track.title}" (${error.message}); leaving it queued.`,
-          );
+          logRateLimited("warn", "bpm-rate-limited", `[LocalBpmEngine] Provider rate-limited; affected tracks remain queued.`);
         } else if (isExtractionFailedBpmError(error)) {
           outcome = "error";
-          console.error(`[LocalBpmEngine] Extraction failed ${track.artist.title} - ${track.title}:`, sanitizedErrorMessage(error));
+          logRateLimited("error", "bpm-extraction-failed", "[LocalBpmEngine] Extraction failed:", sanitizedErrorMessage(error));
           if (preserveExistingAubio) {
             console.warn(
               `[LocalBpmEngine] Keeping existing Aubio BPM for "${track.artist.title} - ${track.title}" after extraction failed.`,
@@ -1738,7 +1738,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
         } else if (isShortTrackBpmError(error)) {
           outcome = "not_found";
           const reason = sanitizedErrorMessage(error);
-          console.warn(`[LocalBpmEngine] Short track skipped: ${track.artist.title} - ${track.title} ${reason}`);
+          logDebug(`[LocalBpmEngine] Short track skipped: ${track.artist.title} - ${track.title} ${reason}`);
           if (!preserveExistingAubio) {
             await saveBpmAttemptWithoutResult(track.id, "local_too_short", "too_short", reason, localAnalysisScope);
           }
@@ -1749,7 +1749,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
           );
         } else if (isAnalyzerFailedBpmError(error)) {
           outcome = "error";
-          console.error(`[LocalBpmEngine] Analyzer failed ${track.artist.title} - ${track.title}:`, sanitizedErrorMessage(error));
+          logRateLimited("error", "bpm-analyzer-failed", "[LocalBpmEngine] Analyzer failed:", sanitizedErrorMessage(error));
           if (preserveExistingAubio) {
             console.warn(
               `[LocalBpmEngine] Keeping existing Aubio BPM for "${track.artist.title} - ${track.title}" after Essentia failed.`,
@@ -1758,7 +1758,7 @@ export const runLocalBpmEngine = async (options: SyncEngineOptions = {}) => {
             await saveBpmAttemptWithoutResult(track.id, "local_analyzer_failed", "analyzer_failed", sanitizedErrorMessage(error));
           }
         } else {
-          console.error(`[LocalBpmEngine] Failed ${track.artist.title} - ${track.title}:`, sanitizedErrorMessage(error));
+          logRateLimited("error", "bpm-track-failed", "[LocalBpmEngine] Track failed:", sanitizedErrorMessage(error));
           outcome = "error";
         }
       } finally {

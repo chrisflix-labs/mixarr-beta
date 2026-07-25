@@ -1,14 +1,20 @@
 const http = require("http");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { URL } = require("url");
 
 const PORT = process.env.PORT || 4173;
 const PUBLIC_DIR = path.join(__dirname, "public");
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+// Legacy standalone entrypoint: retain DATA_DIR/DB_FILE compatibility, but do
+// not default runtime state into the application source tree.
+const DATA_DIR = process.env.MIXARR_DATA_DIR || process.env.DATA_DIR || path.join(os.homedir(), ".mixarr", "data");
 const DB_FILE = process.env.DB_FILE || path.join(DATA_DIR, "plexmix-db.json");
+const DB_TEMP_FILE = `${DB_FILE}.tmp`;
 const jobs = new Map();
 const providerCache = new Map();
+const PROVIDER_CACHE_MAX_ENTRIES = Math.max(1, Number(process.env.MIXARR_LEGACY_PROVIDER_CACHE_MAX_ENTRIES || 10000));
+const PROVIDER_CACHE_TTL_MS = Math.max(1, Number(process.env.MIXARR_CACHE_RETENTION_DAYS || 30)) * 86400000;
 const db = loadDb();
 
 const mimeTypes = {
@@ -49,8 +55,10 @@ function loadDb() {
 function saveDb() {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+    fs.writeFileSync(DB_TEMP_FILE, JSON.stringify(db));
+    fs.renameSync(DB_TEMP_FILE, DB_FILE);
   } catch (error) {
+    try { fs.rmSync(DB_TEMP_FILE, { force: true }); } catch {}
     console.warn(`Could not save database file: ${error.message}`);
   }
 }
@@ -368,7 +376,9 @@ async function getPopularity(provider, track, credentials = {}) {
   }
 
   const cacheKey = trackCacheKey(provider, track);
-  if (providerCache.has(cacheKey)) return providerCache.get(cacheKey);
+  const cached = providerCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.result;
+  if (cached) providerCache.delete(cacheKey);
 
   let result;
   if (provider === "deezer") result = await getDeezerPopularity(track);
@@ -376,7 +386,8 @@ async function getPopularity(provider, track, credentials = {}) {
   else if (provider === "spotify") result = await getSpotifyPopularity(track, credentials);
   else throw new Error("Unknown popularity provider.");
 
-  providerCache.set(cacheKey, result);
+  while (providerCache.size >= PROVIDER_CACHE_MAX_ENTRIES) providerCache.delete(providerCache.keys().next().value);
+  providerCache.set(cacheKey, { result, expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS });
   return result;
 }
 

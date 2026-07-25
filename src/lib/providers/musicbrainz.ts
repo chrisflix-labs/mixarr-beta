@@ -5,6 +5,7 @@ import {
 } from "../metrics";
 import { RateLimitError, parseRetryAfterMs } from "./rateLimit";
 import { getMusicBrainzUserAgent } from "../externalApiSettings";
+import { logRateLimited } from "../logging";
 
 const PROVIDER = "musicbrainz";
 const API_ROOT = "https://musicbrainz.org/ws/2";
@@ -166,7 +167,7 @@ export const getMusicBrainzTrackTags = async (artist: string, track: string): Pr
   } catch (error: any) {
     result = classifyError(error);
     const reason = error?.code === "ECONNABORTED" ? "timeout" : (error?.code || error?.message || "error");
-    console.error(`[MusicBrainz] Tags fetch failed for ${artist} - ${track} (${reason})`);
+    logRateLimited("error", `musicbrainz:tags:${reason}`, `[MusicBrainz] Tags fetch failed (${reason}).`);
     if (result === "rate_limited") {
       const retryAfterMs = parseRetryAfterMs(error?.response?.headers?.["retry-after"]);
       throw new RateLimitError(PROVIDER, retryAfterMs);

@@ -1,5 +1,6 @@
 import prisma from "./prisma";
 import { analyzeRecipeStudio, type LibraryAnalysisProfile } from "./recipeStudio";
+import { setBoundedCache } from "./boundedCache";
 
 const analysisCache = new Map<string, { expiresAt: number; profile: LibraryAnalysisProfile }>();
 const analyticsCache = new Map<string, { expiresAt: number; value: Awaited<ReturnType<typeof loadRecipeAnalytics>> }>();
@@ -31,7 +32,7 @@ export async function getRecipeLibraryProfile(userId: string, requestedLibraryId
     prisma.integrationConfiguration.findMany({ select: { key: true, enabled: true, status: true } }),
   ]);
   const profile: LibraryAnalysisProfile = { libraryId: library.id, libraryName: library.name, totalTracks, bpmTracks, energyTracks, moodTracks, popularityTracks, uniqueArtists, uniqueAlbums, explicitTracks, liveTracks, holidayTracks, recentlyAddedTracks, integrations, analyzedAt: new Date().toISOString() };
-  analysisCache.set(cacheKey, { expiresAt: Date.now() + 30_000, profile });
+  setBoundedCache(analysisCache, cacheKey, { expiresAt: Date.now() + 30_000, profile });
   return profile;
 }
 
@@ -75,6 +76,6 @@ export async function getRecipeAnalytics(userId: string) {
   const cached = analyticsCache.get(userId);
   if (cached && cached.expiresAt > Date.now()) return { ...cached.value, cached: true };
   const value = await loadRecipeAnalytics(userId);
-  analyticsCache.set(userId, { expiresAt: Date.now() + 30_000, value });
+  setBoundedCache(analyticsCache, userId, { expiresAt: Date.now() + 30_000, value });
   return { ...value, cached: false };
 }
