@@ -80,6 +80,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.20",
+    title: "Canonical Recipe Copilot Scoring Models",
+    releaseDate: "July 26, 2026",
+    badges: ["AI", "Reliability", "Bug Fix", "Recipes", "UI", "Database"],
+    changes: [
+      "Centralized the engine-backed stable-v2 and experimental-balanced values for Recipe Copilot, Studio, APIs, persistence, imports, and execution.",
+      "Rejected the AI-invented popularity_heavy value before proposal application with exact field-level guidance and no fuzzy conversion.",
+      "Made Apply selected validate the complete candidate with the same draft and save-semantic pipeline used by persistence.",
+      "Added structured 422 save errors, sanitized correlation diagnostics, and review-safe handling for unsupported stored recipe values.",
+      "Added regression coverage proving that valid Copilot changes can be applied, saved, reloaded, and dispatched by the scoring engine.",
+    ],
+  },
+  {
     version: "2.4.19",
     title: "Canonical Recipe Copilot Conflict Detection",
     releaseDate: "July 26, 2026",

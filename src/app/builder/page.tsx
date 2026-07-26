@@ -31,6 +31,7 @@ import {
 import { discoveryPreset, type DiscoveryConfig, type DiscoveryLevel } from "@/lib/smartMixEngine/v2/discovery";
 import PlaylistGenerationProgress from "@/components/PlaylistGenerationProgress";
 import { cancelPlaylistGeneration, generatePlaylistPreviewInBackground, type PlaylistGenerationJobView } from "@/lib/playlistGenerationClient";
+import { DEFAULT_SCORING_MODEL, SCORING_MODELS } from "@/lib/scoringModelCatalog";
 import styles from "./builder.module.css";
 
 type Rule = {
@@ -322,7 +323,7 @@ export default function BuilderPage() {
   const [moodPresetMetadata, setMoodPresetMetadata] = useState<MoodPresetMetadata>({});
   const [bpmPresetMetadata, setBpmPresetMetadata] = useState<BpmPresetMetadata>({});
   const [engineVersion, setEngineVersion] = useState<EngineVersion>("v1");
-  const [scoringModel, setScoringModel] = useState("stable-v2");
+  const [scoringModel, setScoringModel] = useState<string>(DEFAULT_SCORING_MODEL);
   const [betaStatus, setBetaStatus] = useState<BuilderBetaStatus | null>(null);
   const [modelComparison, setModelComparison] = useState<any>(null);
   const [comparingModels, setComparingModels] = useState(false);
@@ -368,7 +369,7 @@ export default function BuilderPage() {
     axios.get("/api/beta/status").then((response) => {
       setBetaStatus(response.data);
       if (!response.data?.enabled) {
-        setScoringModel("stable-v2");
+        setScoringModel(DEFAULT_SCORING_MODEL);
         setMoodBlendSettings(DEFAULT_MOOD_BLEND_BETA_SETTINGS);
       }
     }).catch(() => setBetaStatus(null));
@@ -734,7 +735,7 @@ export default function BuilderPage() {
   const compareScoringModels = async () => {
     setComparingModels(true); setPreviewError("");
     try {
-      const response = await axios.post("/api/smart-mix/compare-models", { modelA: "stable-v2", modelB: "experimental-balanced", request: playlistPayload({ engineVersion: "v2" }) });
+      const response = await axios.post("/api/smart-mix/compare-models", { modelA: DEFAULT_SCORING_MODEL, modelB: SCORING_MODELS[1], request: playlistPayload({ engineVersion: "v2" }) });
       setModelComparison(response.data);
     } catch (error: any) { setPreviewError(error?.response?.data?.reason || error?.response?.data?.error || "Unable to compare scoring models."); }
     finally { setComparingModels(false); }
@@ -801,7 +802,7 @@ export default function BuilderPage() {
     selectedMoodPreset: filters.selectedMoodPreset || DEFAULT_MOOD_BLEND_BETA_SETTINGS.selectedMoodPreset,
     contextSelection: filters.contextSelection || null,
     engineVersion: (filters.engineVersion === "v2" ? "v2" : "v1") as EngineVersion,
-    scoringModel: typeof filters.scoringModel === "string" ? filters.scoringModel : "stable-v2",
+    scoringModel: typeof filters.scoringModel === "string" ? filters.scoringModel : DEFAULT_SCORING_MODEL,
     allowStableFallback: true,
     pinnedTrackIds: filters.pinnedTrackIds || [],
     excludedTrackIds: filters.excludedTrackIds || [],
@@ -969,7 +970,7 @@ export default function BuilderPage() {
     setContextSelection(savedRule.options?.contextSelection || null);
     setContextManualOverrides(savedRule.options?.contextSelection?.manualOverrides || []);
     setContextDefaultTuning(savedRule.options?.contextSelection ? normalizeSmartMixTuningConfig(savedRule.options?.tuningConfig) : null);
-    setScoringModel(betaStatus?.enabled && typeof savedRule.options?.scoringModel === "string" ? savedRule.options.scoringModel : "stable-v2");
+    setScoringModel(betaStatus?.enabled && typeof savedRule.options?.scoringModel === "string" ? savedRule.options.scoringModel : DEFAULT_SCORING_MODEL);
     setPinnedTrackIds([]);
     setExcludedTrackIds([]);
     setTracks([]);
@@ -1031,7 +1032,7 @@ export default function BuilderPage() {
     setContextSelection(filters.contextSelection || null);
     setContextManualOverrides(filters.contextSelection?.manualOverrides || []);
     setContextDefaultTuning(filters.contextSelection ? normalizeSmartMixTuningConfig(filters.tuningConfig) : null);
-    setScoringModel(betaStatus?.enabled && typeof filters.scoringModel === "string" ? filters.scoringModel : "stable-v2");
+    setScoringModel(betaStatus?.enabled && typeof filters.scoringModel === "string" ? filters.scoringModel : DEFAULT_SCORING_MODEL);
     setPinnedTrackIds(filters.pinnedTrackIds || []);
     setExcludedTrackIds(filters.excludedTrackIds || []);
     setTracks([]);
@@ -1964,7 +1965,7 @@ export default function BuilderPage() {
               </select>
             </label>
             <p className={styles.panelSubtext}>{betaStatus.scoringModels.find((model) => model.id === scoringModel)?.description} Risk: Medium. Stable fallback: Stable v2 scoring.</p>
-            <button type="button" className={styles.btnSecondary} onClick={() => { setScoringModel("stable-v2"); clearPreview(); }}>Reset to stable behavior</button>
+            <button type="button" className={styles.btnSecondary} onClick={() => { setScoringModel(DEFAULT_SCORING_MODEL); clearPreview(); }}>Reset to stable behavior</button>
             {betaStatus.features.some((feature) => feature.key === "smartMix.compareScoringModels" && feature.enabled) && <button type="button" className={styles.btnSecondary} disabled={comparingModels} onClick={() => void compareScoringModels()}>{comparingModels ? "Comparing…" : "Compare Stable v2 vs Experimental Balanced"}</button>}
             {modelComparison && <div className={styles.summaryPanel}>
               <h4>Compare Smart Mix Models</h4>
@@ -1981,7 +1982,7 @@ export default function BuilderPage() {
                 <div className={styles.statCard}><span>Experimental variety</span><strong>{modelComparison.modelB.artistVariety} artists · {modelComparison.modelB.albumVariety} albums</strong></div>
               </div>
               <p className={styles.panelSubtext}>This comparison has not saved or changed a playlist. Stable: {modelComparison.modelA.processingTimeMs} ms · Experimental: {modelComparison.modelB.processingTimeMs} ms.</p>
-              <div className={styles.recipeEditActions}><button type="button" className={styles.btnSecondary} onClick={() => { setScoringModel("stable-v2"); setModelComparison(null); clearPreview(); }}>Use Stable Result</button><button type="button" className={styles.btnSecondary} onClick={() => { setScoringModel("experimental-balanced"); setModelComparison(null); clearPreview(); }}>Use Experimental Result</button><button type="button" className={styles.btnSecondary} onClick={saveComparisonReport}>Save Comparison Report</button><a className={styles.btnSecondary} href="/support">Send Beta Feedback</a></div>
+              <div className={styles.recipeEditActions}><button type="button" className={styles.btnSecondary} onClick={() => { setScoringModel(DEFAULT_SCORING_MODEL); setModelComparison(null); clearPreview(); }}>Use Stable Result</button><button type="button" className={styles.btnSecondary} onClick={() => { setScoringModel(SCORING_MODELS[1]); setModelComparison(null); clearPreview(); }}>Use Experimental Result</button><button type="button" className={styles.btnSecondary} onClick={saveComparisonReport}>Save Comparison Report</button><a className={styles.btnSecondary} href="/support">Send Beta Feedback</a></div>
             </div>}
           </div>
         )}
@@ -2286,7 +2287,7 @@ export default function BuilderPage() {
                   <strong>{playlistPreview.summary.tuningPresetName || "Custom"}</strong>
                 </div>
               )}
-              {playlistPreview.summary.engineVersion === "v2" && <div className={styles.statCard}><span>Scoring</span><strong>{playlistPreview.summary.scoringModel || "stable-v2"}{playlistPreview.summary.stableFallbackUsed ? " · stable fallback" : ""}</strong></div>}
+              {playlistPreview.summary.engineVersion === "v2" && <div className={styles.statCard}><span>Scoring</span><strong>{playlistPreview.summary.scoringModel || DEFAULT_SCORING_MODEL}{playlistPreview.summary.stableFallbackUsed ? " · stable fallback" : ""}</strong></div>}
               <div className={styles.statCard}>
                 <span>Matched</span>
                 <strong>{playlistPreview.summary.matchingTrackCount}</strong>

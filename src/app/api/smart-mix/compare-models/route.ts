@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { betaApiError } from "@/lib/betaApi";
 import { recordBetaUsage, requireFeature } from "@/lib/featureFlagService";
 import { generatePlaylistTracksWithStats, playlistConfigSchema } from "@/lib/playlistService";
+import { DEFAULT_SCORING_MODEL, SCORING_MODELS } from "@/lib/scoringModelCatalog";
 import { getScoringModel } from "@/lib/scoringModels";
 
 function identity(track: any) { return String(track?.id || track?.ratingKey || track?.plexId || ""); }
@@ -35,8 +36,8 @@ export async function POST(request: Request) {
   try {
     await requireFeature("smartMix.compareScoringModels", { userId });
     const body = await request.json();
-    const modelA = getScoringModel(body.modelA || "stable-v2");
-    const modelB = getScoringModel(body.modelB || "experimental-balanced");
+    const modelA = getScoringModel(body.modelA || DEFAULT_SCORING_MODEL);
+    const modelB = getScoringModel(body.modelB || SCORING_MODELS[1]);
     if (!modelA || !modelB) return NextResponse.json({ error: "SCORING_MODEL_NOT_FOUND" }, { status: 400 });
     for (const model of [modelA, modelB]) if (model.requiredFeature) await requireFeature(model.requiredFeature, { userId });
     const baseConfig = playlistConfigSchema.parse({ ...body.request, engineVersion: "v2", allowStableFallback: false });

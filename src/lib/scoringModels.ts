@@ -1,10 +1,15 @@
 import { normalizeSmartMixTuningConfig, type SmartMixTuningConfig } from "./smartMixEngine/v2";
 import { getFeatureState, recordBetaUsage } from "./featureFlagService";
 import type { BetaAccessLevel } from "./featureFlagRegistry";
+import {
+  DEFAULT_SCORING_MODEL,
+  SCORING_MODELS,
+  type ScoringModel,
+} from "./scoringModelCatalog";
 
 export type ScoringModelStability = "STABLE" | "EXPERIMENTAL";
 export type ScoringModelDefinition = {
-  id: string;
+  id: ScoringModel;
   name: string;
   version: string;
   stability: ScoringModelStability;
@@ -19,14 +24,14 @@ export type ScoringModelDefinition = {
 const stableWeights = { popularityWeight: 50, moodWeight: 50, energyWeight: 50, bpmWeight: 50, artistVariety: 50, albumVariety: 50 };
 const keepSavedWeights = (config: SmartMixTuningConfig) => normalizeSmartMixTuningConfig(config);
 
-export const scoringModelRegistry: readonly ScoringModelDefinition[] = [
-  {
-    id: "stable-v2", name: "Stable v2", version: "2", stability: "STABLE",
+const scoringModelImplementations: Record<ScoringModel, Omit<ScoringModelDefinition, "id">> = {
+  "stable-v2": {
+    name: "Stable v2", version: "2", stability: "STABLE",
     description: "The supported Smart Mix v2 scoring behavior using saved static weights.",
     supportedFeatures: [], defaultWeights: stableWeights, minimumBetaLevel: "STABLE", requiredFeature: null, apply: keepSavedWeights,
   },
-  {
-    id: "experimental-balanced", name: "Experimental Balanced", version: "1", stability: "EXPERIMENTAL",
+  "experimental-balanced": {
+    name: "Experimental Balanced", version: "1", stability: "EXPERIMENTAL",
     description: "A real alternative model that pulls extreme weights toward balance and increases artist and album variety.",
     supportedFeatures: ["smartMix.experimentalScoring"],
     defaultWeights: { popularityWeight: 48, moodWeight: 58, energyWeight: 58, bpmWeight: 54, artistVariety: 64, albumVariety: 60 },
@@ -47,9 +52,14 @@ export const scoringModelRegistry: readonly ScoringModelDefinition[] = [
       });
     },
   },
-] as const;
+};
 
-export const STABLE_SCORING_MODEL_ID = "stable-v2";
+export const scoringModelRegistry: readonly ScoringModelDefinition[] = SCORING_MODELS.map((id) => ({
+  id,
+  ...scoringModelImplementations[id],
+}));
+
+export const STABLE_SCORING_MODEL_ID = DEFAULT_SCORING_MODEL;
 
 export function getScoringModel(modelId: unknown) {
   const id = typeof modelId === "string" ? modelId : STABLE_SCORING_MODEL_ID;

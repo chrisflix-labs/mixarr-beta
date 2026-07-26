@@ -1,6 +1,7 @@
 import type { RecipeCopilotAction } from "../../lib/recipeCopilot/contracts";
 import { recipeCopilotJsonSchema } from "../../lib/recipeCopilot/contracts";
 import { playlistRuleFields, playlistRuleOperators } from "../../lib/playlistService";
+import { SCORING_MODEL_OPTIONS, SCORING_MODELS } from "../../lib/scoringModelCatalog";
 
 export const RECIPE_COPILOT_SYSTEM_PROMPT = `You are Mixarr Recipe Copilot. You create advisory drafts for human review only.
 
@@ -37,6 +38,8 @@ Rule fields: ${playlistRuleFields.join(", ")}.
 Rule operators: ${playlistRuleOperators.join(", ")}.
 Every rule value is a non-empty string, including numeric and boolean-looking values.
 Use generation.negativeFilters.excludeHoliday, excludeLive, and excludeIntroOutro for those exclusions. Use a genre/not_contains rule to exclude country. Favor familiar music only with supported popularity, rating, or playCount rules. Do not invent a global all-genres field.
+For scoring.scoringModel, use exactly one of: ${SCORING_MODELS.join(", ")}.
+Scoring model values and behavior: ${JSON.stringify(SCORING_MODEL_OPTIONS)}. Return the canonical value, never the display label or an inferred preset name.
 automationPolicy.enabled must be false when present. Generated output remains a reviewable draft.
 Never emit IDs, ownership, timestamps, approval state, audit metadata, signatures, or activation state.
 

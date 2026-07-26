@@ -1,4 +1,5 @@
 import { defaultRecipeStudioDraft } from "../recipeStudio";
+import { SCORING_MODELS, normalizeScoringModel } from "../scoringModelCatalog";
 
 export const RECIPE_PROPOSAL_APPLY_ERROR_CODES = [
   "AI_RECIPE_PROPOSAL_NOT_FOUND",
@@ -11,6 +12,7 @@ export const RECIPE_PROPOSAL_APPLY_ERROR_CODES = [
   "AI_RECIPE_PROPOSAL_BASE_SNAPSHOT_MISSING",
   "AI_RECIPE_PROPOSAL_BASE_SNAPSHOT_INVALID",
   "AI_RECIPE_PROPOSAL_VALUE_NORMALIZATION_FAILED",
+  "AI_RECIPE_PROPOSAL_UNSUPPORTED_ENUM",
   "AI_RECIPE_PROPOSAL_CONFLICT",
   "AI_RECIPE_PROPOSAL_CONFLICT_RESOLUTION_REQUIRED",
   "AI_RECIPE_PROPOSAL_APPLY_FAILED",
@@ -71,7 +73,18 @@ export type ApplyRecipeProposalResult = {
   appliedPaths: string[];
   alreadyAppliedPaths?: string[];
   conflicts?: RecipeProposalConflict[];
-  validationIssues?: Array<{ path: string; message: string }>;
+  validationIssues?: Array<{
+    path: string;
+    code?: string;
+    message: string;
+    receivedValue?: unknown;
+    supportedValues?: readonly string[];
+  }>;
+  proposalSchemaValid?: boolean;
+  patchValid?: boolean;
+  draftSchemaValid?: boolean;
+  saveSemanticValidationValid?: boolean;
+  executionCompatibilityValid?: boolean;
   errorCode?: RecipeProposalApplyErrorCode;
   errorMessage?: string;
 };
@@ -311,13 +324,25 @@ export function canonicalRecipeValueEqual(
 export function normalizeRecipeProposalValueForApply(
   path: RecipeEditablePath,
   input: unknown,
-): { success: true; value: unknown } | { success: false; message: string } {
+): { success: true; value: unknown } | { success: false; code?: RecipeProposalApplyErrorCode; message: string } {
   const value = canonicalRecipeValue(path, input);
   const fallback = defaultRecipeValue(path);
   const invalid = (expected: string) => ({
     success: false as const,
     message: `The proposed value for ${path} must be ${expected}.`,
   });
+
+  if (path === "scoring.scoringModel") {
+    const model = normalizeScoringModel(value);
+    if (model.status === "unsupported") {
+      return {
+        success: false,
+        code: "AI_RECIPE_PROPOSAL_UNSUPPORTED_ENUM",
+        message: `Unsupported scoring model. Use one of: ${SCORING_MODELS.join(", ")}.`,
+      };
+    }
+    return { success: true, value: model.value };
+  }
 
   if (stringPaths.has(path)) {
     if (value === null && fallback === null) return { success: true, value };
@@ -372,7 +397,7 @@ export function applyRecipeProposalChanges<T extends Record<string, unknown>>(
         success: false,
         failures: [{
           path: change.path,
-          code: "AI_RECIPE_PROPOSAL_VALUE_NORMALIZATION_FAILED",
+          code: normalized.code || "AI_RECIPE_PROPOSAL_VALUE_NORMALIZATION_FAILED",
           message: normalized.message,
         }],
       };

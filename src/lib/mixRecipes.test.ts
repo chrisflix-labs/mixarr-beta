@@ -75,8 +75,8 @@ describe("Mix Recipe schema v1", () => {
   });
 
   it("rejects an unknown scoring model", () => {
-    const value = lateNightHighway(); value.scoring.scoringModel = "unknown-model";
-    assert(validateRecipe(value).errors.some((error) => error.code === "unsupported_scoring_model"));
+    const value = lateNightHighway(); (value.scoring as { scoringModel: string }).scoringModel = "unknown-model";
+    assert(validateRecipe(value).errors.some((error) => error.code === "RECIPE_SCORING_MODEL_UNSUPPORTED"));
   });
 
   it("returns warning-only optional metadata guidance", () => {

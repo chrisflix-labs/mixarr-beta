@@ -1,4 +1,4 @@
-import { playlistRecipeSchema } from "../playlistRecipes";
+import { parseCanonicalPlaylistRecipeDraft, playlistRecipeSchema } from "../playlistRecipes";
 import { defaultRecipeStudioDraft } from "../recipeStudio";
 
 const canonicalSections = [
@@ -35,5 +35,5 @@ export function canonicalRecipeDraftSnapshot(value: unknown): Record<string, unk
       };
     }
   }
-  return playlistRecipeSchema.parse(hydrated) as Record<string, unknown>;
+  return parseCanonicalPlaylistRecipeDraft(hydrated).data as Record<string, unknown>;
 }

@@ -106,6 +106,6 @@ describe("v2.4.4 full-stack contracts", () => {
   it("documents privacy, costs, statuses, troubleshooting, and the non-activation boundary", () => {
     const docs = read("docs/RECIPE_COPILOT_V244.md"), changelog = read("CHANGELOG.md");
     for (const marker of [/Local Only/, /Metadata Limited/, /Draft/, /Quarantined/, /candidate estimate/i, /never activated automatically/i, /troubleshooting/i, /Create/, /Refine/, /Explain/, /Diagnose/, /Optimize/]) assert.match(docs, marker);
-    assert.match(changelog, /v2\.4\.4 - AI-Assisted Recipe Creation/); assert.equal(JSON.parse(read("package.json")).version, "2.4.19");
+    assert.match(changelog, /v2\.4\.4 - AI-Assisted Recipe Creation/); assert.equal(JSON.parse(read("package.json")).version, "2.4.20");
   });
 });

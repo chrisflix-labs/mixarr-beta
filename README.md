@@ -1,6 +1,6 @@
 # Mixarr
 
-Current release: **v2.4.19 — Canonical Recipe Copilot Conflict Detection**. Recipe Copilot now captures an authoritative initialized Recipe Studio snapshot before generation, compares each selected field with canonical three-way equality, safely normalizes legacy quoted strings, treats repeated application idempotently, and offers field-level resolution only for genuine edits. Applying remains an unsaved draft operation. See [the v2.4.19 implementation guide](docs/RECIPE_COPILOT_CONFLICTS_V2419.md).
+Current release: **v2.4.20 — Canonical Recipe Copilot Scoring Models**. Mixarr now derives Recipe Copilot output, Recipe Studio controls, save validation, persistence, imports, and execution from the engine’s canonical `stable-v2` and `experimental-balanced` scoring-model catalog. Unsupported AI-invented values are rejected before Apply selected, while existing unsupported stored values are disabled and marked for review. See [the v2.4.20 implementation guide](docs/RECIPE_COPILOT_SCORING_MODELS_V2420.md).
 
 Previous release: **v2.4.14 — Per-Request AI Cost Limit Configuration**. See [the v2.4.14 guide](docs/AI_PER_REQUEST_COST_LIMIT_V2414.md).
 

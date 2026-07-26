@@ -2,6 +2,7 @@ import os from "node:os";
 import type { Prisma } from "@prisma/client";
 import prisma from "./prisma";
 import { APP_VERSION } from "./appVersion";
+import { DEFAULT_SCORING_MODEL } from "./scoringModelCatalog";
 import { getBetaStatus } from "./featureFlagService";
 import { sanitizeDiagnostics, sanitizeErrorText } from "./supportRedaction";
 import { getSupportLinks } from "./support";
@@ -27,7 +28,7 @@ export async function buildBetaFeedbackReport(input: { userId: string; featureKe
     applicationVersion: APP_VERSION,
     smartMixEngineVersion: playlist?.engineVersion || "v2",
     feature: input.featureKey || null,
-    scoringModel: input.scoringModel || playlist?.scoringModel || "stable-v2",
+    scoringModel: input.scoringModel || playlist?.scoringModel || DEFAULT_SCORING_MODEL,
     scoringModelVersion: playlist?.scoringModelVersion || "2",
     accessLevel: status.accessLevel,
     enabledFeatureFlags: status.enabledFeatures,

@@ -11,6 +11,7 @@ import {
   type ApplyRecipeProposalResult, type RecipeProposalChange, type RecipeProposalConflict,
   type RecipeProposalConflictResolution,
 } from "@/lib/recipeCopilot/proposalApply";
+import { SCORING_MODELS } from "@/lib/scoringModelCatalog";
 
 type Action = "create" | "refine" | "explain" | "diagnose" | "optimize" | "compare_intent" | "from_playlist" | "suggest_names" | "generate_description" | "onboarding";
 type Props = {
@@ -136,7 +137,25 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, formReady,
   }
 
   function cancel() { abort.current?.abort(); setStage("Cancelling request"); }
-  function editChange(path: string, raw: string) { try { const existing = getRecipeProposalPath(editedRecipe, path); const value = typeof existing === "string" ? raw : JSON.parse(raw); setEditedRecipe((current) => { const next = clone(current || {}); setPath(next, path, value); return next; }); setInvalidEditPaths((current) => { const next = new Set(current); next.delete(path); return next; }); setError(""); } catch { setInvalidEditPaths((current) => new Set(current).add(path)); setError(`The proposed value for ${path} must be valid JSON.`); } }
+  function editChange(path: string, raw: string) {
+    try {
+      const existing = getRecipeProposalPath(editedRecipe, path);
+      const value = typeof existing === "string" ? raw : JSON.parse(raw);
+      setEditedRecipe((current) => { const next = clone(current || {}); setPath(next, path, value); return next; });
+      if (path === "scoring.scoringModel" && !(SCORING_MODELS as readonly string[]).includes(String(value))) {
+        setInvalidEditPaths((current) => new Set(current).add(path));
+        setErrorCode("AI_RECIPE_PROPOSAL_UNSUPPORTED_ENUM");
+        setErrorDetails({ issues: [{ path, receivedValue: value, supportedValues: SCORING_MODELS }] });
+        setError("Recipe Copilot proposed an unsupported scoring model.");
+        return;
+      }
+      setInvalidEditPaths((current) => { const next = new Set(current); next.delete(path); return next; });
+      setErrorCode(null); setErrorDetails(null); setError("");
+    } catch {
+      setInvalidEditPaths((current) => new Set(current).add(path));
+      setError(`The proposed value for ${path} must be valid JSON.`);
+    }
+  }
   function toggle(id: string) { setSelected((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
 
   async function applySelected(resolutions: Record<string, RecipeProposalConflictResolution> = {}) {
@@ -192,6 +211,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, formReady,
         const path = result.validationIssues?.[0]?.path;
         throw Object.assign(new Error(result.errorMessage || (path ? `Could not apply ${path}.` : "The updated draft did not pass Recipe Studio validation.")), {
           code: result.errorCode || "AI_RECIPE_PROPOSAL_APPLY_FAILED",
+          details: result.validationIssues ? { issues: result.validationIssues } : undefined,
         });
       }
       setApplyConflicts([]);
@@ -203,6 +223,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, formReady,
       const code = String((caught as any)?.code || "AI_RECIPE_PROPOSAL_APPLY_FAILED");
       const message = caught instanceof Error ? caught.message : "The updated draft did not pass Recipe Studio validation.";
       setErrorCode(code);
+      setErrorDetails((caught as any)?.details || null);
       setError(`Your proposal is still available. No recipe fields were changed. ${message}`);
       setStage("Ready for review");
       console.error("[Recipe Copilot] Failed to apply selected changes", {
@@ -252,7 +273,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, formReady,
         <div className={styles.actions}><button className={styles.generate} disabled={!canRequest} onClick={() => void generate()}>{running ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />} {running ? stage : action === "explain" || action === "diagnose" ? "Analyze" : "Generate"}</button>{running && <button onClick={cancel}>Cancel</button>}<button onClick={() => setPreflightVersion((value) => value + 1)} disabled={running}><RotateCcw size={15} /> Refresh</button><button onClick={() => void loadHistory()}><History size={15} /> History</button></div>
         {!canRequest && availability?.available && !running && ["create", "refine", "optimize", "compare_intent"].includes(action) && !instruction.trim() && <p className={styles.disabledReason}>Enter an instruction to continue.</p>}
         {!canRequest && availability?.available && !running && action === "from_playlist" && !playlistId && <p className={styles.disabledReason}>Choose an example playlist to continue.</p>}
-        {error && <div className={styles.error} role="alert"><AlertTriangle size={17} /><span>{errorCode === "AI_RECIPE_PROPOSAL_CONFLICT" && <strong>Some recipe fields changed after this proposal was created</strong>}{errorCode === "AI_RECIPE_PROPOSAL_APPLY_FAILED" && <strong>Could not apply the Recipe Copilot changes</strong>}{["AI_FEATURE_INVALID_JSON_OUTPUT", "AI_FEATURE_INVALID_STRUCTURED_OUTPUT", "AI_FEATURE_STRUCTURED_REPAIR_FAILED"].includes(errorCode || "") && <strong>Recipe Copilot returned an incompatible draft</strong>}{error}{errorDetails?.issues?.[0]?.path && <small>{errorDetails.issues[0].code === "invalid_enum_value" ? "Invalid field" : errorDetails.issues[0].receivedType === "undefined" ? "Missing field" : errorDetails.issues[0].expected === "array" ? "Expected an array at" : "Invalid field"}: {errorDetails.issues[0].path}</small>}{errorDetails && <small>{errorDetails.provider || availability?.provider || "Provider"} · {errorDetails.model || availability?.model || "Model"} · JSON parsed: {errorDetails.jsonParsed ? "yes" : "no"} · Normalized: {errorDetails.normalized ? "yes" : "no"} · Repair attempted: {errorDetails.repairAttempted ? "yes" : "no"}</small>}{errorCode && <code>{errorCode}</code>}{errorRequestId && <small>Request ID: {errorRequestId}</small>}</span></div>}
+        {error && <div className={styles.error} role="alert"><AlertTriangle size={17} /><span>{errorCode === "AI_RECIPE_PROPOSAL_CONFLICT" && <strong>Some recipe fields changed after this proposal was created</strong>}{errorCode === "AI_RECIPE_PROPOSAL_APPLY_FAILED" && <strong>Could not apply the Recipe Copilot changes</strong>}{errorCode === "AI_RECIPE_PROPOSAL_UNSUPPORTED_ENUM" && <strong>Recipe Copilot proposed an unsupported scoring model.</strong>}{["AI_FEATURE_INVALID_JSON_OUTPUT", "AI_FEATURE_INVALID_STRUCTURED_OUTPUT", "AI_FEATURE_STRUCTURED_REPAIR_FAILED"].includes(errorCode || "") && <strong>Recipe Copilot returned an incompatible draft</strong>}{error}{errorDetails?.issues?.[0]?.path && <small>Field: {errorDetails.issues[0].path === "scoring.scoringModel" || String(errorDetails.issues[0].path).endsWith("scoring.scoringModel") ? "Scoring model" : errorDetails.issues[0].path}</small>}{errorDetails?.issues?.[0]?.receivedValue !== undefined && <small>Proposed value: {String(errorDetails.issues[0].receivedValue)}</small>}{errorDetails?.issues?.[0]?.supportedValues && <small>Supported choices: {errorDetails.issues[0].supportedValues.join(", ")}</small>}{errorCode === "AI_RECIPE_PROPOSAL_UNSUPPORTED_ENUM" && <small>Regenerate the proposal or choose a supported model.</small>}{errorDetails && !errorDetails.issues?.[0]?.supportedValues && <small>{errorDetails.provider || availability?.provider || "Provider"} · {errorDetails.model || availability?.model || "Model"} · JSON parsed: {errorDetails.jsonParsed ? "yes" : "no"} · Normalized: {errorDetails.normalized ? "yes" : "no"} · Repair attempted: {errorDetails.repairAttempted ? "yes" : "no"}</small>}{errorCode && <code>{errorCode}</code>}{errorRequestId && <small>Request ID: {errorRequestId}</small>}</span></div>}
         {stage && <p className={styles.stage} role="status" aria-live="polite">{stage}</p>}
 
         {proposal && <div className={styles.results}>

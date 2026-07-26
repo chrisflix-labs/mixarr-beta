@@ -47,12 +47,19 @@ function primitiveType(value: unknown) {
 }
 
 function validationIssues(error: z.ZodError, parsed: unknown) {
-  return error.issues.slice(0, 25).map((issue: any) => ({
-    path: issue.path.join("."),
-    code: issue.code,
-    expected: issue.options || issue.expected,
-    receivedType: primitiveType(valueAtPath(parsed, issue.path)),
-  }));
+  return error.issues.slice(0, 25).map((issue: any) => {
+    const path = issue.path.join(".");
+    const receivedValue = valueAtPath(parsed, issue.path);
+    return {
+      path,
+      code: issue.code,
+      expected: issue.options || issue.expected,
+      receivedType: primitiveType(receivedValue),
+      ...(path.endsWith("scoring.scoringModel") && typeof receivedValue === "string"
+        ? { receivedValue: receivedValue.slice(0, 80) }
+        : {}),
+    };
+  });
 }
 
 export function parseStructuredResponseDetailed<T>(content: string, format: AiResponseFormat<T>, maxBytes: number, maximumStructuredItems = AI_RESPONSE_LIMITS.maxArrayLength): { data: T; repaired: boolean; repairMethod?: string; jsonParsed: true; normalization: { codeFenceRemoved: boolean; objectExtracted: boolean; jsonStringDecoded: boolean; wrapperUnwrapped: boolean } } {

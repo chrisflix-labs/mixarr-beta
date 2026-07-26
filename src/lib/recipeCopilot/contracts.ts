@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { playlistRuleSchema } from "../playlistService";
+import { playlistDuplicateStrategies, playlistRuleSchema } from "../playlistService";
 import { zodToJsonSchema } from "../../ai/validation/jsonSchema";
 import {
   recipeAutomationPolicySchema, recipeBpmFlowSchema, recipeDiscoverySchema,
@@ -9,7 +9,7 @@ import {
 
 export const RECIPE_COPILOT_FEATURE_KEY = "recipe_copilot";
 export const RECIPE_COPILOT_SCHEMA_VERSION = "1.0";
-export const RECIPE_COPILOT_PROMPT_VERSION = "recipe-copilot-1.0";
+export const RECIPE_COPILOT_PROMPT_VERSION = "recipe-copilot-1.1";
 
 export const RECIPE_COPILOT_ACTIONS = [
   "create", "refine", "explain", "diagnose", "optimize", "compare_intent",
@@ -36,7 +36,7 @@ const safetyRulesPatchSchema = z.object({
 
 export const recipeCopilotPatchSchema = z.object({
   metadata: z.object({ name: text(120).min(1).optional(), description: text(1000).optional(), category: text(80).min(1).optional() }).strict().default({}),
-  generation: z.object({ rules: z.array(playlistRuleSchema.strict()).max(25).optional(), limit: z.number().int().min(1).max(5000).optional(), negativeFilters: negativeFiltersPatchSchema.optional(), safetyRules: safetyRulesPatchSchema.optional(), duplicateStrategy: z.enum(["allow", "song_artist", "avoid_recordings", "allow_alternate_copies", "prefer_highest_quality", "prefer_existing_playlist_copy"]).optional(), preferNonLive: z.boolean().optional(), excludeRemasters: z.boolean().optional() }).strict().default({}),
+  generation: z.object({ rules: z.array(playlistRuleSchema.strict()).max(25).optional(), limit: z.number().int().min(1).max(5000).optional(), negativeFilters: negativeFiltersPatchSchema.optional(), safetyRules: safetyRulesPatchSchema.optional(), duplicateStrategy: z.enum(playlistDuplicateStrategies).optional(), preferNonLive: z.boolean().optional(), excludeRemasters: z.boolean().optional() }).strict().default({}),
   scoring: recipeScoringSchema.partial().strict().default({}),
   targets: recipeTargetsSchema.partial().strict().default({}),
   bpmFlow: recipeBpmFlowSchema.partial().strict().default({}),

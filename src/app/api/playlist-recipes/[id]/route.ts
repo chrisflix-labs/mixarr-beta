@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
-import { parsePlaylistRecipe, playlistRecipeSchema, updatePlaylistRecipeData } from "@/lib/playlistRecipes";
+import { parsePlaylistRecipe, updatePlaylistRecipeData, validatePlaylistRecipeDraft } from "@/lib/playlistRecipes";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
 import { legacyRecipeOverrideRows, resolveOwnedRecipe } from "@/lib/recipeInheritance/service";
 import { flattenRecipeValues } from "@/lib/recipeInheritance/resolver";
 import { writeRecipeAudit } from "@/lib/mixRecipes/governanceService";
+import {
+  playlistRecipeCorrelationId,
+  playlistRecipeValidationErrorResponse,
+  playlistRecipeValidationResponse,
+} from "@/lib/playlistRecipeApiValidation";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const userId = cookies().get("mixarr_session")?.value;
@@ -47,6 +52,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const correlationId = playlistRecipeCorrelationId(req);
   const userId = cookies().get("mixarr_session")?.value;
 
   if (!userId) {
@@ -68,14 +74,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (!Number.isFinite(expected.getTime())) return NextResponse.json({ error: "The expected recipe revision is invalid.", code: "RECIPE_REVISION_INVALID" }, { status: 400 });
       if (expected.getTime() !== existing.updatedAt.getTime()) return NextResponse.json({ error: "This recipe changed while you were editing it.", code: "RECIPE_SAVE_CONFLICT", currentRevision: existing.updatedAt.toISOString(), recipeId: existing.id, remediation: "Reload or compare the current recipe before saving again." }, { status: 409 });
     }
-    const parsed = playlistRecipeSchema.parse({
+    const validation = validatePlaylistRecipeDraft({
       name: existing.name, description: existing.description, category: existing.category, artworkUrl: existing.artworkUrl,
       enabled: existing.enabled, sourcePlaylistId: existing.sourcePlaylistId, filters: existing.filtersJson,
       scoring: existing.scoringJson, targets: existing.targetsJson, bpmFlow: existing.bpmFlowJson,
       discovery: existing.discoveryJson, variety: existing.varietyJson, playlistIdentity: existing.identityDefaultsJson,
       refreshPolicy: existing.refreshPolicyJson, automationPolicy: existing.automationPolicyJson,
       ...body,
-    });
+    }, { recipeVersion: existing.recipeVersion + 1 });
+    if (!validation.success) return playlistRecipeValidationResponse(validation.issues, correlationId);
+    const parsed = validation.data;
     if (existing.aiGenerated && parsed.enabled && (existing.aiRecipeStatus !== "APPROVED" || existing.quarantineState !== "NONE")) {
       return NextResponse.json({ error: "AI-generated recipes must be validated and explicitly approved before a separate activation action.", code: "AI_RECIPE_ACTIVATION_BLOCKED" }, { status: 409 });
     }
@@ -112,9 +120,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     return NextResponse.json({ recipe: parsePlaylistRecipe(recipe) });
   } catch (error: any) {
+    const validationResponse = playlistRecipeValidationErrorResponse(error, correlationId);
+    if (validationResponse) return validationResponse;
     const status = error.name === "ZodError" || /recipe|BPM|energy|automation/i.test(error.message || "") ? 400 : 500;
     const message = error.issues?.[0]?.message || (status === 400 ? "Invalid playlist recipe" : "Failed to update playlist recipe");
-    if (status === 500) console.error("Update playlist recipe error:", error);
-    return NextResponse.json({ error: message }, { status });
+    if (status === 500) console.error("[Playlist Recipe] Update failed", { correlationId, exceptionClass: error instanceof Error ? error.name : "Unknown" });
+    return NextResponse.json({ error: { code: status === 400 ? "RECIPE_DRAFT_INVALID" : "RECIPE_SAVE_FAILED", message, correlationId } }, { status, headers: { "x-correlation-id": correlationId } });
   }
 }

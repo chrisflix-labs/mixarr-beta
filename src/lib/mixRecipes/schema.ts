@@ -4,6 +4,7 @@ import { DEFAULT_SMART_MIX_TUNING, normalizeSmartMixTuningConfig } from "../smar
 import { normalizeDiscoveryConfig } from "../smartMixEngine/v2/discovery";
 import { normalizeBpmFlowConfig } from "../smartMixEngine/v2/bpmFlow";
 import { RECIPE_PERMISSIONS } from "./governanceTypes";
+import { DEFAULT_SCORING_MODEL, scoringModelSchema } from "../scoringModelCatalog";
 export { RECIPE_PERMISSIONS } from "./governanceTypes";
 
 export const MIX_RECIPE_FORMAT = "mixarr-recipe" as const;
@@ -35,7 +36,7 @@ export const recipeScoringSchema = z.object({
   transitionQualityWeight: percent.default(50),
   personalizedScoringInfluence: percent.default(35),
   scoringMode: z.enum(["base", "personalized"]).default("base"),
-  scoringModel: z.string().trim().min(1).max(80).default("stable-v2"),
+  scoringModel: scoringModelSchema.default(DEFAULT_SCORING_MODEL),
 }).strict();
 
 export const recipeTargetsSchema = z.object({
@@ -252,7 +253,7 @@ export function recipeSectionsFromPlaylistConfig(value: unknown) {
       transitionQualityWeight: Math.round((tuning.bpmWeight + tuning.energyWeight + tuning.moodWeight) / 3),
       personalizedScoringInfluence: generation.personalizationInfluence ?? 35,
       scoringMode: generation.personalizationEnabled ? "personalized" : "base",
-      scoringModel: generation.scoringModel || "stable-v2",
+      scoringModel: generation.scoringModel || DEFAULT_SCORING_MODEL,
     }),
     targets: recipeTargetsSchema.parse({
       selectedMoods: generation.allowedMoods, primaryMood: generation.selectedMoodPath[0] || null,
@@ -293,7 +294,8 @@ export function defaultMixRecipeDocument(metadata: MixRecipeMetadataInput, gener
     metadata: { ...metadata, slug: metadata.slug || slugifyRecipeName(metadata.name) },
     permissions: [], dependencies: [], compatibility: {}, signature: null,
     ...sections,
-    playlistIdentity: {}, refreshPolicy: {}, automationPolicy: {}, generation,
+    playlistIdentity: {}, refreshPolicy: {}, automationPolicy: {},
+    generation: { ...generation, scoringModel: sections.scoring.scoringModel },
   });
 }
 

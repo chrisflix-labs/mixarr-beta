@@ -36,6 +36,13 @@ export async function register() {
     }
 
     try {
+      const { diagnoseAndMigrateRecipeScoringModels } = await import("./lib/scoringModelMigration");
+      await diagnoseAndMigrateRecipeScoringModels();
+    } catch (error) {
+      console.error("[Playlist Recipe] Scoring-model migration diagnostic failed", sanitizeErrorText(error));
+    }
+
+    try {
       const { initializeBackgroundScheduler } = await import("./lib/backgroundScheduler");
       await initializeBackgroundScheduler();
     } catch (error) {

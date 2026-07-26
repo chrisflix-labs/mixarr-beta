@@ -195,6 +195,6 @@ describe("v2.4.18 Recipe Copilot component and persistence contracts", () => {
     assert.doesNotMatch(applyService, /playlistRecipe\.update|updatePlaylistRecipeData|enabled:\s*false/);
     assert.match(applyService, /persisted:\s*false/);
     assert.match(applyService, /findRecipeProposalConflictDetails/);
-    assert.match(applyService, /playlistRecipeSchema\.safeParse/);
+    assert.match(applyService, /validatePlaylistRecipeDraft/);
   });
 });

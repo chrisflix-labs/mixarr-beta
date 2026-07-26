@@ -11,6 +11,7 @@ import { createRecentlyAddedNotification } from "./notifications";
 import { getRecentlyAddedSettings } from "./settings";
 import { getBetaStatus, getFeatureState, recordBetaUsage } from "../featureFlagService";
 import { createAutomationProposal, evaluatePlaylistAutomation, getAutomationPolicy, quietHoursState, recordAutomationActivity } from "../automation";
+import { DEFAULT_SCORING_MODEL } from "../scoringModelCatalog";
 
 export const RECENTLY_ADDED_JOB_KEY = "recently-added:automation";
 
@@ -21,7 +22,7 @@ function snapshotSettings(settings: any) {
 
 async function startRun(userId: string, triggerType: string, batchId: string | null, settings: any, lockKey?: string, beta?: { requiredFeatureFlags: string[]; requestedScoringModel: string; requestedAccessLevel: string }) {
   return prisma.recentlyAddedAutomationRun.create({
-    data: { userId, batchId, triggerType, status: "scanning", phase: "scanning", settingsSnapshot: snapshotSettings(settings), lockKey: lockKey || null, requiredFeatureFlags: beta?.requiredFeatureFlags || [], requestedScoringModel: beta?.requestedScoringModel || "stable-v2", requestedAccessLevel: beta?.requestedAccessLevel || "STABLE" },
+    data: { userId, batchId, triggerType, status: "scanning", phase: "scanning", settingsSnapshot: snapshotSettings(settings), lockKey: lockKey || null, requiredFeatureFlags: beta?.requiredFeatureFlags || [], requestedScoringModel: beta?.requestedScoringModel || DEFAULT_SCORING_MODEL, requestedAccessLevel: beta?.requestedAccessLevel || "STABLE" },
   });
 }
 
@@ -198,7 +199,7 @@ export async function runRecentlyAddedAutomation({
   let run: any = null;
   let batchId: string | null = null;
   try {
-    run = await startRun(userId, triggerType, null, settings, lock.job.lockKey, { requiredFeatureFlags: requestedFeatureFlags, requestedScoringModel: "stable-v2", requestedAccessLevel: betaStatus.accessLevel });
+    run = await startRun(userId, triggerType, null, settings, lock.job.lockKey, { requiredFeatureFlags: requestedFeatureFlags, requestedScoringModel: DEFAULT_SCORING_MODEL, requestedAccessLevel: betaStatus.accessLevel });
     let discovered = 0;
     if (scan) {
       setJobPhase(lock.job, "Scanning recently added tracks");

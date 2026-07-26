@@ -22,6 +22,7 @@ import { inspectAiResponse } from "../security/responseSecurity";
 import { quarantineAiResponse, storeAiResponse } from "../quarantine/service";
 import { resolveAiRequestTimeout } from "../config/timeout";
 import { executeEligibleFallback } from "../utilities/fallback";
+import { SCORING_MODELS } from "@/lib/scoringModelCatalog";
 
 const supportedCapability = new Set<AiCapabilityConfidence>(["CONFIRMED", "REPORTED", "ASSUMED", "MANUALLY_ENABLED"]);
 
@@ -290,7 +291,20 @@ export class AiRequestCoordinator {
             const repairAttempt = auditId ? await prisma.aiProviderAttempt.create({ data: { requestAuditId: auditId, attemptNumber: response.retryCount + 2, providerConfigId: finalCandidate.config.id, model: finalCandidate.model, status: "STARTED", estimatedCost: governed.preview.cost.maximumEstimatedCost } }).catch(() => null) : null;
             const repairStarted = Date.now();
             let repairResponse: AiResponse<T>;
-            const issuePaths = Array.isArray(validationDetails?.issues) ? validationDetails.issues.map((issue: any) => String(issue.path || "")).filter(Boolean).slice(0, 25) : [];
+            const validationIssues = Array.isArray(validationDetails?.issues) ? validationDetails.issues : [];
+            const issuePaths = validationIssues.map((issue: any) => String(issue.path || "")).filter(Boolean).slice(0, 25);
+            const scoringIssue = validationIssues.find((issue: any) => String(issue.path || "").endsWith("scoring.scoringModel"));
+            if (request.featureKey === "recipe_copilot" && scoringIssue) {
+              console.warn("[Recipe Copilot] Unsupported proposal enum", {
+                proposalId: null,
+                correlationId: requestId,
+                path: "scoring.scoringModel",
+                receivedValue: scoringIssue.receivedValue,
+                supportedValues: SCORING_MODELS,
+                normalizationAttempted: false,
+                repairAttempted: true,
+              });
+            }
             const exactSchema = request.responseFormat?.jsonSchema ? JSON.stringify(request.responseFormat.jsonSchema) : "Use the response schema supplied through the native structured-output request.";
             try { repairResponse = await finalCandidate.adapter.complete({ ...request, systemInstructions: `This is one schema repair attempt. Return only one corrected JSON object matching this canonical schema: ${exactSchema}`, messages: [{ role: "user", content: `Validation issue paths: ${JSON.stringify(issuePaths)}\nInvalid generated JSON:\n${malformedContent.slice(0, 100_000)}\nReturn only corrected JSON.` }], stream: false, thinkingMode: finalCandidate.config.providerType === "deepseek" ? "disabled" : request.thinkingMode, reasoningEffort: undefined, temperature: undefined, metadata: { ...(request.metadata || {}), schema_repair: true, retryAttempt: 1 } }, finalCandidate.config, { requestId, providerId: finalCandidate.config.id, model: finalCandidate.model, signal: timed.signal, maxResponseBytes: maxBytes, modelCapabilities: request.resolvedModelCapabilities }); }
             catch (repairError) { if (repairAttempt) await prisma.aiProviderAttempt.update({ where: { id: repairAttempt.id }, data: { status: "FAILED", completedAt: new Date(), providerAcknowledged: (repairError as AiError)?.details?.billing_possible !== false, errorCategory: repairError instanceof AiError ? repairError.category : "AI_PROVIDER_INVALID_RESPONSE" } }).catch(() => null); throw repairError; }
@@ -313,7 +327,15 @@ export class AiRequestCoordinator {
           await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, reasons: [structured.details?.failure_stage === "SCHEMA_VALIDATION" ? "schema_validation_failed" : "json_parse_failed"], requestPreview: { feature: request.featureKey }, responsePreview: { contentType: "private_provider_output", characterCount: response.content?.length || 0, jsonParsed: structured.details?.json_parsed === true, propertyPaths: Array.isArray(structured.details?.issues) ? structured.details.issues.map((issue: any) => String(issue.path || "")).slice(0, 25) : [] }, validationFailures: structured.details });
           console.warn("[Recipe Copilot] Structured output validation failed", { correlationId: requestId, provider: finalCandidate.config.displayName, model: finalCandidate.model, jsonParsed: structured.details?.json_parsed === true, normalized: structured.details?.normalized === true, issueCount: structured.details?.issue_count || 0, issues: structured.details?.issues || [], codeFenceRemoved: structured.details?.codeFenceRemoved === true, wrapperUnwrapped: structured.details?.wrapperUnwrapped === true, repairAttempted: structured.details?.repair_attempted === true });
           if (request.featureKey !== "recipe_copilot") { structured.details = { ...structured.details, ...usageDetails }; throw structured; }
-          const category = structured.details?.repair_failed === true ? "AI_FEATURE_STRUCTURED_REPAIR_FAILED" : structured.details?.failure_stage === "JSON_PARSE" ? "AI_FEATURE_INVALID_JSON_OUTPUT" : "AI_FEATURE_INVALID_STRUCTURED_OUTPUT";
+          const scoringEnumIssue = Array.isArray(structured.details?.issues)
+            && structured.details.issues.some((issue: any) => String(issue.path || "").endsWith("scoring.scoringModel"));
+          const category = scoringEnumIssue
+            ? "AI_RECIPE_PROPOSAL_UNSUPPORTED_ENUM"
+            : structured.details?.repair_failed === true
+              ? "AI_FEATURE_STRUCTURED_REPAIR_FAILED"
+              : structured.details?.failure_stage === "JSON_PARSE"
+                ? "AI_FEATURE_INVALID_JSON_OUTPUT"
+                : "AI_FEATURE_INVALID_STRUCTURED_OUTPUT";
           throw new AiError(category, undefined, 422, undefined, { ...structured.details, ...usageDetails, request_id: requestId, provider: finalCandidate.config.displayName, model: finalCandidate.model, stage: structured.details?.failure_stage || "STRUCTURED_RESPONSE", elapsed_ms: Date.now() - started });
         }
       }

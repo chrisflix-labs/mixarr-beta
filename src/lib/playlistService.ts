@@ -15,6 +15,7 @@ import { recipeExecutionsBlockedTotal } from "./metrics";
 import { filterManualTrackExclusions, getManualTrackExclusionIds } from "./trackExclusions";
 import { scorePlaylist, type PlaylistScoreSummary } from "./playlistScoring";
 import { resolveScoringModel, STABLE_SCORING_MODEL_ID } from "./scoringModels";
+import { scoringModelSchema } from "./scoringModelCatalog";
 import { getBetaStatus, getFeatureState, recordBetaUsage } from "./featureFlagService";
 import { loadExplicitFeedbackScoringContext, loadPersonalizationScoringContext, recordTrackInteractionInBackground } from "./personalization";
 import { ensurePlaylistIdentity, loadPlaylistIdentityScoringContext, recordPlaylistIdentityEvent, rememberPlaylistRejection, trainPlaylistIdentity, updatePlaylistTrackMemory } from "./playlistIdentity";
@@ -71,7 +72,8 @@ export const playlistRuleOperators = ["eq", "contains", "not_contains", "gt", "l
 const fields = playlistRuleFields;
 const operators = playlistRuleOperators;
 const combinators = ["AND", "OR"] as const;
-const duplicateStrategies = ["allow", "song_artist", "avoid_recordings", "allow_alternate_copies", "prefer_highest_quality", "prefer_existing_playlist_copy"] as const;
+export const playlistDuplicateStrategies = ["allow", "song_artist", "avoid_recordings", "allow_alternate_copies", "prefer_highest_quality", "prefer_existing_playlist_copy"] as const;
+const duplicateStrategies = playlistDuplicateStrategies;
 const smartMixEngineVersions = [SMART_MIX_ENGINE_V1, SMART_MIX_ENGINE_V2] as const;
 const moodBlendModes = ["off", "smooth_transition", "strict_matching", "mixed_mood"] as const;
 const v2SoftMetadataFilterFields = new Set<string>(["popularity", "energy", "valence", "tempo"]);
@@ -181,7 +183,7 @@ export const playlistConfigSchema = z.object({
     smoothTransitions: z.boolean().default(true),
   }).strict().optional().nullable(),
   engineVersion: z.enum(smartMixEngineVersions).default(SMART_MIX_ENGINE_V1),
-  scoringModel: z.string().trim().min(1).max(80).optional(),
+  scoringModel: scoringModelSchema.optional(),
   allowStableFallback: z.boolean().optional(),
   personalizationEnabled: z.boolean().optional(),
   personalizationInfluence: z.coerce.number().min(0).max(100).optional(),

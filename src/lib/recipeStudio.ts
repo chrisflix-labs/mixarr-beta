@@ -1,3 +1,5 @@
+import { DEFAULT_SCORING_MODEL } from "./scoringModelCatalog";
+
 export type RecipeStudioMode = "guided" | "beginner" | "advanced";
 
 export type GuidedRecipeAnswers = {
@@ -53,7 +55,7 @@ export function defaultRecipeStudioDraft() {
     category: "Custom",
     enabled: false,
     filters: { rules: [], limit: 100, libraryId: null, serverId: null, pinnedTrackIds: [], excludedTrackIds: [], duplicateStrategy: "song_artist", preferNonLive: true, excludeRemasters: false, negativeFilters: {}, safetyRules: {}, personalizationMode: "INDIVIDUAL" },
-    scoring: { moodMatchWeight: 50, energyMatchWeight: 50, bpmCompatibilityWeight: 50, popularityWeight: 50, discoveryWeight: 50, playlistIdentityWeight: 50, historicalAcceptanceWeight: 50, historicalRejectionPenalty: 50, artistPreferenceWeight: 50, recencyPenalty: 50, repeatPenalty: 50, metadataConfidenceWeight: 50, transitionQualityWeight: 50, personalizedScoringInfluence: 35, scoringMode: "base", scoringModel: "stable-v2" },
+    scoring: { moodMatchWeight: 50, energyMatchWeight: 50, bpmCompatibilityWeight: 50, popularityWeight: 50, discoveryWeight: 50, playlistIdentityWeight: 50, historicalAcceptanceWeight: 50, historicalRejectionPenalty: 50, artistPreferenceWeight: 50, recencyPenalty: 50, repeatPenalty: 50, metadataConfidenceWeight: 50, transitionQualityWeight: 50, personalizedScoringInfluence: 35, scoringMode: "base", scoringModel: DEFAULT_SCORING_MODEL },
     targets: { selectedMoods: [], primaryMood: null, secondaryMoods: [], moodBlendMode: "off", strictMoodMatching: false, moodTransition: "none", moodCurve: [], minimumEnergy: null, maximumEnergy: null, targetEnergy: null, energyProgression: "mixed", missingMoodFallback: "allow", missingEnergyFallback: "allow" },
     bpmFlow: { minimumBpm: null, maximumBpm: null, targetBpm: null, mode: "DISABLED", sections: [], maximumBpmGap: 8, allowBpmJumps: false, halfTimeMatching: true, doubleTimeMatching: true, transitionDifficultyTolerance: 70, missingBpmFallback: "allow", minimumBpmConfidence: 0 },
     discovery: { level: "medium", deepCutPercentage: 35, familiarityBalance: 50, avoidOverplayedTracks: true, favorUnderplayedPlexTracks: true, favorTracksNotRecentlyUsed: true, hiddenGemPreference: 50, maximumHighPopularityPercentage: 45, recentlyAddedPreference: 0, newTrackQuarantineDays: 0, lowConfidenceBehavior: "neutral" },
@@ -241,7 +243,7 @@ export function compareRecipeDocuments(before: unknown, after: unknown): RecipeD
 }
 
 export function hasAdvancedRecipeSettings(recipe: Record<string, any>) {
-  return Boolean(recipe.filters?.ruleTree || (recipe.filters?.rules || []).length > 3 || (recipe.bpmFlow?.sections || []).length > 0 || recipe.inheritanceEnabled || (recipe.localOverrides || []).length > 0 || !["stable-v2", undefined].includes(recipe.scoring?.scoringModel));
+  return Boolean(recipe.filters?.ruleTree || (recipe.filters?.rules || []).length > 3 || (recipe.bpmFlow?.sections || []).length > 0 || recipe.inheritanceEnabled || (recipe.localOverrides || []).length > 0 || ![DEFAULT_SCORING_MODEL, undefined].includes(recipe.scoring?.scoringModel));
 }
 
 export function analyzeRecipeStudio(recipe: Record<string, any>, profile: LibraryAnalysisProfile) {

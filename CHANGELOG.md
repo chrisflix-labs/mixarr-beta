@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.20 - Canonical Recipe Copilot Scoring Models
+
+- Established `stable-v2` and `experimental-balanced` as the single engine-backed scoring-model enum shared by recipe drafts, Recipe Copilot structured output and prompts, Recipe Studio controls, API validation, persistence, import/export, and execution.
+- Classified `popularity_heavy` as an AI-invented unsupported value: it has no engine implementation, legacy migration, product preset, or equivalent semantics, so it is rejected without fuzzy matching or silent replacement.
+- Made proposal construction and Apply selected use the complete canonical draft plus save-semantic validator; failed candidates apply nothing, preserve selection and dirty state, and return the exact field, proposed value, and supported choices.
+- Added field-specific `422` save errors with sanitized correlation IDs and the `RECIPE_SCORING_MODEL_UNSUPPORTED` code instead of exposing a generic error or stack trace.
+- Added an idempotent startup diagnostic that normalizes only documented aliases, preserves unknown stored values, disables/quarantines affected recipes for review, and logs counts without recipe content.
+- Generated Recipe Studio options and Copilot prompt descriptions from the canonical catalog, synchronized the derived execution copy before persistence, and added contract, apply-flow, API, migration, prompt, import, and execution coverage.
+
 ## v2.4.19 - Canonical Recipe Copilot Conflict Detection
 
 - Fixed the false `name` conflict that blocked Recipe Copilot’s Apply selected workflow even when the active Recipe Studio name had not changed.

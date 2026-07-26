@@ -18,6 +18,7 @@ import type {
 } from "@/lib/recipeCopilot/proposalApply";
 import styles from "./RecipeStudio.module.css";
 import RecipeCopilot from "./RecipeCopilot";
+import { SCORING_MODEL_OPTIONS, SCORING_MODELS } from "@/lib/scoringModelCatalog";
 
 type Analysis = Record<string, any>;
 type LibraryOption = { id: string; name: string; serverName: string; tracks: number };
@@ -78,6 +79,13 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
       setLibraries(options);
       if (recipe) {
         setDraft(recipe); setBaseline(JSON.stringify(recipe)); setAnswers((current) => ({ ...current, libraryId: recipe.filters?.libraryId || options[0]?.id || null, trackCount: recipe.filters?.limit || 100 }));
+        if (recipe.scoringModelMigration?.status === "requires_review") {
+          setNotice(`This recipe contains an unsupported legacy scoring model (${String(recipe.scoringModelMigration.receivedValue)}). Choose a supported scoring model before saving or executing it.`);
+          setActive("scoring");
+          setMode("advanced");
+        } else if (recipe.scoringModelMigration?.status === "normalized") {
+          setNotice(`A legacy scoring model was normalized to ${String(recipe.scoringModelMigration.canonicalValue)}. Review the migration before saving.`);
+        }
         const progression = recipe.targets?.energyProgression;
         setEnergyPoints(energyCurvePreset(progression === "rising" || progression === "falling" ? progression : progression === "wave" ? "peak" : "flat"));
       } else {
@@ -91,6 +99,10 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
   const dirty = useMemo(() => Boolean(baseline) ? JSON.stringify(draft) !== baseline : draft.name !== "Untitled Mix Recipe" || draft.description || mode !== "guided", [baseline, draft, mode]);
   const advanced = useMemo(() => hasAdvancedRecipeSettings(draft), [draft]);
   const curveFindings = useMemo(() => validateCurve(energyPoints), [energyPoints]);
+  const scoringModelSupported = useMemo(
+    () => (SCORING_MODELS as readonly string[]).includes(String(draft.scoring?.scoringModel || "")),
+    [draft.scoring?.scoringModel],
+  );
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } };
@@ -160,9 +172,16 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
 
   async function save() {
     if (curveFindings.some((finding) => finding.severity === "error")) { setError("Fix the energy curve before saving."); setActive("energy"); return; }
+    if (!scoringModelSupported) { setError("Choose a supported scoring model before saving."); setActive("scoring"); return; }
     setSaving(true); setError(""); setNotice("");
     try {
       const payload = { name: draft.name, description: draft.description, category: draft.category, artworkUrl: draft.artworkUrl || null, enabled: draft.enabled, filters: draft.filters, scoring: draft.scoring, targets: draft.targets, bpmFlow: draft.bpmFlow, discovery: draft.discovery, variety: draft.variety, playlistIdentity: draft.playlistIdentity, refreshPolicy: draft.refreshPolicy, automationPolicy: draft.automationPolicy, expectedUpdatedAt: draft.updatedAt, aiProposalId: draft.aiProposalId };
+      const validationResponse = await fetch("/api/playlist-recipes/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const validationBody = await validationResponse.json();
+      if (!validationResponse.ok) {
+        if (validationBody.error?.field === "scoring.scoringModel") setActive("scoring");
+        throw new Error(validationBody.error?.message || "The recipe draft cannot be saved.");
+      }
       const response = await fetch(naturalLanguageRequestId ? `/api/natural-language-requests/${encodeURIComponent(naturalLanguageRequestId)}` : recipeId ? `/api/playlist-recipes/${encodeURIComponent(recipeId)}` : "/api/playlist-recipes", { method: recipeId || naturalLanguageRequestId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(naturalLanguageRequestId ? { draft: payload } : payload) });
       const body = await response.json();
       if (!response.ok) {
@@ -201,8 +220,14 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
           conflictCount: Number(result.conflictCount || 0),
           appliedPaths: Array.isArray(result.appliedPaths) ? result.appliedPaths : [],
           conflicts: Array.isArray(result.conflicts) ? result.conflicts : undefined,
+          validationIssues: Array.isArray(result.validationIssues) ? result.validationIssues : undefined,
           errorCode: result.errorCode || "AI_RECIPE_PROPOSAL_APPLY_FAILED",
           errorMessage: result.errorMessage || "Recipe Copilot could not update the draft.",
+          proposalSchemaValid: result.proposalSchemaValid,
+          patchValid: result.patchValid,
+          draftSchemaValid: result.draftSchemaValid,
+          saveSemanticValidationValid: result.saveSemanticValidationValid,
+          executionCompatibilityValid: result.executionCompatibilityValid,
         };
       }
       if (!result.draft || !Array.isArray(result.appliedPaths) || !Number.isInteger(result.appliedCount)) {
@@ -243,6 +268,11 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
         alreadyAppliedCount: Number(result.alreadyAppliedCount || 0),
         conflictCount: 0,
         appliedPaths: paths,
+        proposalSchemaValid: result.proposalSchemaValid,
+        patchValid: result.patchValid,
+        draftSchemaValid: result.draftSchemaValid,
+        saveSemanticValidationValid: result.saveSemanticValidationValid,
+        executionCompatibilityValid: result.executionCompatibilityValid,
       };
     } catch (caught) {
       return {
@@ -263,7 +293,7 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
   return <main className={styles.page}>
     <header className={styles.header}>
       <div><Link href={naturalLanguageRequestId ? `/ask-mixarr/${naturalLanguageRequestId}` : recipeId ? `/recipes/${recipeId}` : "/recipes"} className={styles.back}><ArrowLeft size={15} /> {naturalLanguageRequestId ? "Request review" : "Recipe Library"}</Link><span className={styles.kicker}><Wand2 size={14} /> Recipe Studio</span><h1>{recipeId || naturalLanguageRequestId ? draft.name : "Create a Mix Recipe"}</h1><p>{naturalLanguageRequestId ? "Edit the canonical draft. Saving creates a new request revision and invalidates approval." : "Guided and advanced tools edit one portable, governed recipe document."}</p></div>
-      <div className={styles.headerActions}><button type="button" onClick={() => setCopilotOpen(true)} disabled={!initialized}><Sparkles size={15} /> AI Copilot</button><button type="button" onClick={() => void validate()} disabled={validating}>{validating ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Validate</button><button type="button" className={styles.primary} onClick={() => void save()} disabled={saving || !dirty}>{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} {saving ? "Saving…" : dirty ? "Save draft" : "Saved"}</button></div>
+      <div className={styles.headerActions}><button type="button" onClick={() => setCopilotOpen(true)} disabled={!initialized}><Sparkles size={15} /> AI Copilot</button><button type="button" onClick={() => void validate()} disabled={validating}>{validating ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Validate</button><button type="button" className={styles.primary} onClick={() => void save()} disabled={saving || !dirty || !scoringModelSupported}>{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} {saving ? "Saving…" : dirty ? "Save draft" : "Saved"}</button></div>
     </header>
 
     <div className={styles.statusBar} role="status" aria-live="polite"><span data-dirty={dirty}>{dirty ? "Unsaved changes" : "All changes saved"}</span><span>Analysis: {analysisState}</span>{draft.updatedAt && <span>Revision updated {new Date(draft.updatedAt).toLocaleString()}</span>}</div>
@@ -312,6 +342,13 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
           <div className={styles.two}><NumberField label="Artist spacing" value={draft.variety?.minimumArtistSpacing} onChange={(value) => update("variety", "minimumArtistSpacing", value)} /><NumberField label="Album spacing" value={draft.variety?.minimumAlbumSpacing} onChange={(value) => update("variety", "minimumAlbumSpacing", value)} /></div>
         </Panel>}
         {active === "scoring" && <Panel title="Scoring impact" description="Weights affect relative candidate ranking after required filters. The preview is explanatory, not a guarantee.">
+          <Field label="Scoring model" hint={SCORING_MODEL_OPTIONS.find((option) => option.value === draft.scoring?.scoringModel)?.description || "Choose an engine-supported scoring model."}>
+            <select data-recipe-path="scoring.scoringModel" data-copilot-changed={changedPaths.has("scoring.scoringModel")} value={draft.scoring?.scoringModel || ""} onChange={(event) => update("scoring", "scoringModel", event.target.value)}>
+              {!scoringModelSupported && <option value={draft.scoring?.scoringModel || ""} disabled>Unsupported: {String(draft.scoring?.scoringModel || "missing")}</option>}
+              {SCORING_MODEL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </Field>
+          {!scoringModelSupported && <div className={styles.recommendation}><AlertTriangle size={17} /><div><strong>Scoring model review required</strong><p>The stored value is unsupported. Select a supported choice before saving or executing this recipe.</p></div></div>}
           {Object.entries({ moodMatchWeight: "Mood match", energyMatchWeight: "Energy match", bpmCompatibilityWeight: "BPM compatibility", popularityWeight: "Popularity", discoveryWeight: "Discovery", playlistIdentityWeight: "Playlist identity", transitionQualityWeight: "Transition quality", repeatPenalty: "Repeat penalty" }).map(([key,label]) => <Range key={key} label={label} value={draft.scoring?.[key] || 0} onChange={(value) => update("scoring", key, value)} />)}
           {analysis?.scoringImpact?.conflicts?.map((finding: any) => <div className={styles.recommendation} key={finding.code}><AlertTriangle size={17} /><div><strong>{finding.title}</strong><p>{finding.message}</p><small>{finding.remediation}</small></div></div>)}
         </Panel>}
@@ -330,7 +367,7 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
       <Diagnostics analysis={analysis} state={analysisState} onSection={setActive} />
     </div>}
     <RecipeCopilot open={copilotOpen} recipeId={recipeId} draft={draft} dirty={dirty} formReady={initialized} getDraftSnapshot={getDraftSnapshot} onClose={() => setCopilotOpen(false)} onDraft={(next, persisted) => { setDraft(next); if (persisted) setBaseline(JSON.stringify(next)); }} onApplyChanges={applyCopilotChanges} onNotice={setNotice} />
-    <div className={styles.mobileSave}><button onClick={() => setCopilotOpen(true)} disabled={!initialized}><Sparkles size={15} /> Copilot</button><button onClick={() => void validate()} disabled={validating}>Validate</button><button className={styles.primary} onClick={() => void save()} disabled={saving || !dirty}><Save size={16} /> Save</button></div>
+    <div className={styles.mobileSave}><button onClick={() => setCopilotOpen(true)} disabled={!initialized}><Sparkles size={15} /> Copilot</button><button onClick={() => void validate()} disabled={validating}>Validate</button><button className={styles.primary} onClick={() => void save()} disabled={saving || !dirty || !scoringModelSupported}><Save size={16} /> Save</button></div>
   </main>;
 }
 

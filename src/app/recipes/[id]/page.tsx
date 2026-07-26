@@ -8,6 +8,7 @@ import axios from "axios";
 import { AlertCircle, ArrowDown, ArrowLeft, CheckCircle2, Copy, Download, Edit3, Flag, GitBranch, GitCompareArrows, Layers3, Loader2, LockKeyhole, Play, RefreshCw, RotateCcw, Save, Share2, ShieldAlert, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import styles from "./recipe-detail.module.css";
 import TroubleshootLink from "@/components/TroubleshootLink";
+import { SCORING_MODEL_OPTIONS, SCORING_MODELS } from "@/lib/scoringModelCatalog";
 
 const categories = ["Driving", "Workout", "Party", "Focus", "Chill", "Relaxation", "Sleep", "Discovery", "Deep Cuts", "Recently Added", "Forgotten Favorites", "Decade Mixes", "Seasonal Mixes", "Genre Journeys", "Artist Radio", "Album Exploration", "Mood Progressions", "Mood", "Decade", "Genre", "Artist", "Seasonal", "Custom"];
 const sections = ["Recipe Foundation", "Overview", "Mood and Energy", "BPM Flow", "Discovery", "Scoring", "Artist and Album Variety", "Playlist Identity", "Refresh and Automation", "Effective Configuration", "Import Mapping", "Governance", "Validation", "Generated Playlists"];
@@ -104,7 +105,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
       });
       setRecipe(response.data.recipe); setDraft(structuredClone(response.data.recipe)); setNotice(`Saved recipe v${response.data.recipe.recipeVersion}.`);
       setResolution((await axios.get(`/api/playlist-recipes/${draft.id}/effective-configuration`)).data);
-    } catch (caught: any) { setError(caught.response?.data?.error || "Unable to save this recipe."); }
+    } catch (caught: any) { setError(caught.response?.data?.error?.message || caught.response?.data?.error || "Unable to save this recipe."); }
     finally { setSaving(false); }
   }
 
@@ -317,7 +318,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
         </Section>}
         {activeSection === "Scoring" && <Section title="Scoring" hint="Recipes describe weights; the Smart Mix engine performs scoring.">
           {[['moodMatchWeight','Mood match'],['energyMatchWeight','Energy match'],['bpmCompatibilityWeight','BPM compatibility'],['popularityWeight','Popularity'],['discoveryWeight','Discovery'],['playlistIdentityWeight','Playlist identity'],['transitionQualityWeight','Transition quality'],['personalizedScoringInfluence','Personalization influence']].map(([key,label]) => <Slider key={key} label={label} value={draft.scoring[key]} onChange={(value) => update("scoring", key, value)} />)}
-          <div className={styles.two}><Field label="Scoring mode"><select value={draft.scoring.scoringMode} onChange={(event) => update("scoring", "scoringMode", event.target.value)}><option value="base">Base</option><option value="personalized">Personalized</option></select></Field><Field label="Scoring model"><select value={draft.scoring.scoringModel} onChange={(event) => update("scoring", "scoringModel", event.target.value)}><option value="stable-v2">Stable v2</option><option value="experimental-balanced">Experimental balanced</option></select></Field></div>
+          <div className={styles.two}><Field label="Scoring mode"><select value={draft.scoring.scoringMode} onChange={(event) => update("scoring", "scoringMode", event.target.value)}><option value="base">Base</option><option value="personalized">Personalized</option></select></Field><Field label="Scoring model"><select value={draft.scoring.scoringModel} onChange={(event) => update("scoring", "scoringModel", event.target.value)}>{!(SCORING_MODELS as readonly string[]).includes(String(draft.scoring.scoringModel)) && <option value={draft.scoring.scoringModel} disabled>Unsupported: {String(draft.scoring.scoringModel)}</option>}{SCORING_MODEL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div>
         </Section>}
         {activeSection === "Artist and Album Variety" && <Section title="Artist and Album Variety" hint="Limits use safe defaults when metadata is incomplete.">
           <div className={styles.two}><NumberField label="Maximum tracks per artist" value={draft.variety.maximumTracksPerArtist} onChange={(value) => update("variety", "maximumTracksPerArtist", value)} /><NumberField label="Minimum artist spacing" value={draft.variety.minimumArtistSpacing} onChange={(value) => update("variety", "minimumArtistSpacing", value)} /></div>

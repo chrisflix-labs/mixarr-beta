@@ -21,6 +21,11 @@ import {
 } from "./mixRecipes/schema";
 import { validateRecipe } from "./mixRecipes/validation";
 import { inferRecipePermissions } from "./mixRecipes/governance";
+import {
+  DEFAULT_SCORING_MODEL,
+  normalizeScoringModel,
+  scoringModelValidationIssue,
+} from "./scoringModelCatalog";
 
 type RuleNode = PlaylistRuleInput | {
   type: "group";
@@ -53,6 +58,122 @@ export const playlistRecipeSchema = z.object({
 });
 
 export type PlaylistRecipeInput = z.infer<typeof playlistRecipeSchema>;
+
+export type PlaylistRecipeDraftValidationIssue = {
+  path: string;
+  code: string;
+  message: string;
+  receivedValue?: unknown;
+  supportedValues?: readonly string[];
+};
+
+export class PlaylistRecipeDraftValidationError extends Error {
+  readonly code: string;
+  readonly status = 422;
+  readonly issues: PlaylistRecipeDraftValidationIssue[];
+
+  constructor(issues: PlaylistRecipeDraftValidationIssue[]) {
+    super(issues[0]?.message || "The recipe draft is invalid.");
+    this.name = "PlaylistRecipeDraftValidationError";
+    this.code = issues[0]?.code || "RECIPE_DRAFT_INVALID";
+    this.issues = issues;
+  }
+}
+
+function playlistInputDocument(input: PlaylistRecipeInput, recipeVersion = 1) {
+  const document = defaultMixRecipeDocument({
+    name: input.name,
+    description: input.description || null,
+    category: input.category,
+    artworkUrl: input.artworkUrl || null,
+    sourcePlaylistId: input.sourcePlaylistId || null,
+  }, input.filters);
+  return {
+    ...document,
+    recipeVersion,
+    scoring: input.scoring || document.scoring,
+    targets: input.targets || document.targets,
+    bpmFlow: input.bpmFlow || document.bpmFlow,
+    discovery: input.discovery || document.discovery,
+    variety: input.variety || document.variety,
+    playlistIdentity: input.playlistIdentity || document.playlistIdentity,
+    refreshPolicy: input.refreshPolicy || document.refreshPolicy,
+    automationPolicy: input.automationPolicy || document.automationPolicy,
+  };
+}
+
+function zodDraftIssues(error: z.ZodError, input: unknown): PlaylistRecipeDraftValidationIssue[] {
+  return error.issues.map((issue) => {
+    const path = issue.path.join(".");
+    if (path === "scoring.scoringModel" || path === "filters.scoringModel") {
+      const source = input && typeof input === "object" ? input as Record<string, any> : {};
+      const receivedValue = path === "filters.scoringModel"
+        ? source.filters?.scoringModel
+        : source.scoring?.scoringModel;
+      return { ...scoringModelValidationIssue(receivedValue), path: "scoring.scoringModel" };
+    }
+    return { path, code: issue.code, message: issue.message };
+  });
+}
+
+/**
+ * Canonical Recipe Studio/save validator. It performs the draft Zod parse and
+ * the same full recipe semantic validation used immediately before
+ * persistence and execution.
+ */
+export function validatePlaylistRecipeDraft(
+  input: unknown,
+  options: { recipeVersion?: number } = {},
+):
+  | { success: true; data: PlaylistRecipeInput; recipe: MixRecipeDocument; issues: [] }
+  | { success: false; data: null; recipe: null; issues: PlaylistRecipeDraftValidationIssue[] } {
+  const parsed = playlistRecipeSchema.safeParse(input);
+  if (!parsed.success) return { success: false, data: null, recipe: null, issues: zodDraftIssues(parsed.error, input) };
+  const validation = validateRecipe(playlistInputDocument(parsed.data, options.recipeVersion || 1));
+  if (!validation.normalizedRecipe) {
+    return {
+      success: false,
+      data: null,
+      recipe: null,
+      issues: validation.errors.map((issue) => ({
+        path: issue.path === "generation.scoringModel" ? "scoring.scoringModel" : issue.path,
+        code: issue.code,
+        message: issue.message,
+        ...(issue.receivedValue === undefined ? {} : { receivedValue: issue.receivedValue }),
+        ...(issue.supportedValues === undefined ? {} : { supportedValues: issue.supportedValues }),
+      })),
+    };
+  }
+  const recipe = validation.normalizedRecipe;
+  return {
+    success: true,
+    issues: [],
+    recipe,
+    data: {
+      ...parsed.data,
+      name: recipe.metadata.name,
+      description: recipe.metadata.description,
+      category: recipe.metadata.category,
+      artworkUrl: recipe.metadata.artworkUrl,
+      sourcePlaylistId: recipe.metadata.sourcePlaylistId,
+      filters: recipe.generation,
+      scoring: recipe.scoring,
+      targets: recipe.targets,
+      bpmFlow: recipe.bpmFlow,
+      discovery: recipe.discovery,
+      variety: recipe.variety,
+      playlistIdentity: recipe.playlistIdentity,
+      refreshPolicy: recipe.refreshPolicy,
+      automationPolicy: recipe.automationPolicy,
+    },
+  };
+}
+
+export function parseCanonicalPlaylistRecipeDraft(input: unknown, options: { recipeVersion?: number } = {}) {
+  const validation = validatePlaylistRecipeDraft(input, options);
+  if (!validation.success) throw new PlaylistRecipeDraftValidationError(validation.issues);
+  return validation;
+}
 
 function collectRules(node: RuleNode | undefined, fallbackRules: PlaylistRuleInput[]): PlaylistRuleInput[] {
   if (!node) return fallbackRules;
@@ -151,7 +272,22 @@ export function portableRecipeFromRecord(recipe: any): MixRecipeDocument {
 }
 
 export function parsePlaylistRecipe(recipe: any) {
-  const portable = portableRecipeFromRecord(recipe);
+  const storedScoring = recipe.scoringJson && typeof recipe.scoringJson === "object" && !Array.isArray(recipe.scoringJson)
+    ? recipe.scoringJson as Record<string, unknown>
+    : {};
+  const storedModel = storedScoring.scoringModel ?? DEFAULT_SCORING_MODEL;
+  const modelState = normalizeScoringModel(storedModel);
+  const reviewRequired = modelState.status === "unsupported";
+  const normalizedRecord = modelState.status === "canonical"
+    ? recipe
+    : {
+        ...recipe,
+        scoringJson: {
+          ...storedScoring,
+          scoringModel: modelState.status === "legacy_alias" ? modelState.value : DEFAULT_SCORING_MODEL,
+        },
+      };
+  const portable = portableRecipeFromRecord(normalizedRecord);
   const validation = validateRecipe(portable);
   const resolvedFilters = resolveRecipeGenerationConfig(portable);
   const { metadata: _communityMetadata, format: _communityFormat, schemaVersion: _communitySchemaVersion, recipeVersion: _communityRecipeVersion, ...communityPortableBehavior } = portable;
@@ -169,7 +305,9 @@ export function parsePlaylistRecipe(recipe: any) {
     recipeVersion: portable.recipeVersion,
     sourcePlaylistId: recipe.sourcePlaylistId || null,
     filters: resolvedFilters,
-    scoring: portable.scoring,
+    scoring: reviewRequired
+      ? { ...portable.scoring, scoringModel: storedModel }
+      : portable.scoring,
     targets: portable.targets,
     bpmFlow: portable.bpmFlow,
     discovery: portable.discovery,
@@ -178,7 +316,17 @@ export function parsePlaylistRecipe(recipe: any) {
     refreshPolicy: portable.refreshPolicy,
     automationPolicy: portable.automationPolicy,
     portableRecipe: portable,
-    validation: { valid: validation.valid, errors: validation.errors, warnings: validation.warnings },
+    validation: reviewRequired ? {
+      valid: false,
+      errors: [scoringModelValidationIssue(storedModel)],
+      warnings: validation.warnings,
+    } : { valid: validation.valid, errors: validation.errors, warnings: validation.warnings },
+    scoringModelMigration: modelState.status === "canonical" ? null : {
+      status: modelState.status === "legacy_alias" ? "normalized" : "requires_review",
+      field: "scoring.scoringModel",
+      receivedValue: storedModel,
+      ...(modelState.status === "legacy_alias" ? { canonicalValue: modelState.value } : {}),
+    },
     filterSummary: summarizePlaylistRecipeFilters(resolvedFilters),
     createdAt: recipe.createdAt,
     updatedAt: recipe.updatedAt,
@@ -268,27 +416,9 @@ export function parsePlaylistRecipe(recipe: any) {
 }
 
 export function createPlaylistRecipeData(userId: string, input: PlaylistRecipeInput): Prisma.PlaylistRecipeCreateInput {
-  const document = defaultMixRecipeDocument({
-    name: input.name,
-    description: input.description || null,
-    category: input.category,
-    artworkUrl: input.artworkUrl || null,
-    sourcePlaylistId: input.sourcePlaylistId || null,
-  }, input.filters);
-  const resolved = {
-    ...document,
-    scoring: input.scoring || document.scoring,
-    targets: input.targets || document.targets,
-    bpmFlow: input.bpmFlow || document.bpmFlow,
-    discovery: input.discovery || document.discovery,
-    variety: input.variety || document.variety,
-    playlistIdentity: input.playlistIdentity || document.playlistIdentity,
-    refreshPolicy: input.refreshPolicy || document.refreshPolicy,
-    automationPolicy: input.automationPolicy || document.automationPolicy,
-  };
-  const validation = validateRecipe(resolved);
-  if (!validation.normalizedRecipe) throw new Error(validation.errors[0]?.message || "Invalid recipe.");
-  const recipe = validation.normalizedRecipe;
+  const prepared = parseCanonicalPlaylistRecipeDraft(input);
+  input = prepared.data;
+  const recipe = prepared.recipe;
   const permissionPlan = inferRecipePermissions(recipe);
   return {
     user: { connect: { id: userId } },
@@ -341,24 +471,9 @@ export function createPlaylistRecipeData(userId: string, input: PlaylistRecipeIn
 
 export function updatePlaylistRecipeData(input: PlaylistRecipeInput, existing?: any): Prisma.PlaylistRecipeUpdateInput {
   const currentVersion = existing?.recipeVersion || 1;
-  const document = defaultMixRecipeDocument({
-    name: input.name, slug: existing?.slug || slugifyRecipeName(input.name), description: input.description,
-    category: input.category, artworkUrl: input.artworkUrl, sourcePlaylistId: input.sourcePlaylistId,
-  }, input.filters);
-  const recipe = validateRecipe({
-    ...document,
-    recipeVersion: currentVersion + 1,
-    scoring: input.scoring || document.scoring,
-    targets: input.targets || document.targets,
-    bpmFlow: input.bpmFlow || document.bpmFlow,
-    discovery: input.discovery || document.discovery,
-    variety: input.variety || document.variety,
-    playlistIdentity: input.playlistIdentity || document.playlistIdentity,
-    refreshPolicy: input.refreshPolicy || document.refreshPolicy,
-    automationPolicy: input.automationPolicy || document.automationPolicy,
-  });
-  if (!recipe.normalizedRecipe) throw new Error(recipe.errors[0]?.message || "Invalid recipe.");
-  const normalized = recipe.normalizedRecipe;
+  const prepared = parseCanonicalPlaylistRecipeDraft(input, { recipeVersion: currentVersion + 1 });
+  input = prepared.data;
+  const normalized = prepared.recipe;
   const behaviorChanged = !existing || [
     [existing.filtersJson, normalized.generation], [existing.scoringJson, normalized.scoring], [existing.targetsJson, normalized.targets],
     [existing.bpmFlowJson, normalized.bpmFlow], [existing.discoveryJson, normalized.discovery], [existing.varietyJson, normalized.variety],

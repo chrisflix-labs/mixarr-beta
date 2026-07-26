@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
-import { createPlaylistRecipeData, parsePlaylistRecipe, playlistRecipeSchema } from "@/lib/playlistRecipes";
+import { createPlaylistRecipeData, parsePlaylistRecipe, validatePlaylistRecipeDraft } from "@/lib/playlistRecipes";
 import { safeRecordJobHistory } from "@/lib/jobHistory";
 import { writeRecipeAudit } from "@/lib/mixRecipes/governanceService";
+import {
+  playlistRecipeCorrelationId,
+  playlistRecipeValidationErrorResponse,
+  playlistRecipeValidationResponse,
+} from "@/lib/playlistRecipeApiValidation";
 
 export async function GET(req: Request) {
   const userId = cookies().get("mixarr_session")?.value;
@@ -37,6 +42,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const correlationId = playlistRecipeCorrelationId(req);
   const userId = cookies().get("mixarr_session")?.value;
 
   if (!userId) {
@@ -45,7 +51,9 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const parsed = playlistRecipeSchema.parse(body);
+    const validation = validatePlaylistRecipeDraft(body);
+    if (!validation.success) return playlistRecipeValidationResponse(validation.issues, correlationId);
+    const parsed = validation.data;
     const aiProposal = body.aiProposalId ? await prisma.aiRecipeProposal.findFirst({ where: { id: String(body.aiProposalId), request: { ownerId: userId } }, include: { request: true } }) : null;
     if (body.aiProposalId && !aiProposal) return NextResponse.json({ error: "AI recipe proposal not found." }, { status: 404 });
     if (aiProposal && ["REJECTED", "SUPERSEDED"].includes(aiProposal.status)) return NextResponse.json({ error: "This AI recipe proposal can no longer be saved." }, { status: 409 });
@@ -85,9 +93,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ recipe: parsePlaylistRecipe(recipe) }, { status: 201 });
   } catch (error: any) {
+    const validationResponse = playlistRecipeValidationErrorResponse(error, correlationId);
+    if (validationResponse) return validationResponse;
     const status = error.name === "ZodError" || /recipe|BPM|energy|automation/i.test(error.message || "") ? 400 : 500;
     const message = error.issues?.[0]?.message || (status === 400 ? "Invalid playlist recipe" : "Failed to save playlist recipe");
-    if (status === 500) console.error("Save playlist recipe error:", error);
-    return NextResponse.json({ error: message }, { status });
+    if (status === 500) console.error("[Playlist Recipe] Save failed", { correlationId, exceptionClass: error instanceof Error ? error.name : "Unknown" });
+    return NextResponse.json({ error: { code: status === 400 ? "RECIPE_DRAFT_INVALID" : "RECIPE_SAVE_FAILED", message, correlationId } }, { status, headers: { "x-correlation-id": correlationId } });
   }
 }

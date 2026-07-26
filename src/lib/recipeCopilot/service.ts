@@ -5,7 +5,12 @@ import { isUserAdmin } from "../auth";
 import { requireAiPermission } from "../../ai/governance/permissions";
 import { analyzeRecipeDraft } from "../recipeStudioService";
 import { defaultRecipeStudioDraft } from "../recipeStudio";
-import { parsePlaylistRecipe, playlistRecipeSchema, updatePlaylistRecipeData } from "../playlistRecipes";
+import {
+  parsePlaylistRecipe,
+  playlistRecipeSchema,
+  updatePlaylistRecipeData,
+  validatePlaylistRecipeDraft,
+} from "../playlistRecipes";
 import { approveRecipe, writeRecipeAudit } from "../mixRecipes/governanceService";
 import { createExplanationFromRecipeProposal, recordRecommendationExplanationAudit } from "../recommendationExplanations/service";
 import { aiRequestCoordinator } from "@/ai/request-coordinator";
@@ -35,6 +40,7 @@ import {
   type RecipeProposalConflictResolution,
 } from "./proposalApply";
 import { canonicalRecipeDraftSnapshot } from "./canonicalDraft";
+import { SCORING_MODELS } from "../scoringModelCatalog";
 
 export const RECIPE_AI_PERMISSIONS = [
   "recipe.ai.use", "recipe.ai.create", "recipe.ai.refine", "recipe.ai.explain", "recipe.ai.diagnose",
@@ -231,7 +237,19 @@ export async function runRecipeCopilot(userId: string, recipeId: string | null, 
     if (output.action !== input.action) throw failure("AI_ACTION_MISMATCH", "The provider returned a different Recipe Copilot action.", 422);
     const readOnly = new Set(["explain", "diagnose", "compare_intent", "suggest_names", "onboarding"]);
     if (readOnly.has(input.action) && output.proposedPatch) throw failure("READ_ONLY_ACTION_MODIFIED_RECIPE", "A read-only Copilot action attempted to modify the recipe.", 422);
-    const proposed = output.proposedPatch ? mergeRecipeCopilotPatch(source, output.proposedPatch) : null;
+    const proposedCandidate = output.proposedPatch ? mergeRecipeCopilotPatch(source, output.proposedPatch) : null;
+    const proposedValidation = proposedCandidate ? validatePlaylistRecipeDraft(proposedCandidate) : null;
+    if (proposedValidation && !proposedValidation.success) {
+      const first = proposedValidation.issues[0];
+      const category = first?.code === "RECIPE_SCORING_MODEL_UNSUPPORTED"
+        ? "AI_RECIPE_PROPOSAL_UNSUPPORTED_ENUM"
+        : "AI_RECIPE_PROPOSAL_DRAFT_INVALID";
+      throw new AiError(category, undefined, 422, undefined, {
+        failure_stage: "RECIPE_DRAFT_VALIDATION",
+        issues: proposedValidation.issues,
+      });
+    }
+    const proposed = proposedValidation?.success ? proposedValidation.data : null;
     const proposedAnalysis = proposed ? await analyzeRecipeDraft(userId, proposed) : localAnalysis;
     const conflicts = detectRecipeIntentConflicts(input.instruction, proposed || source, proposedAnalysis.candidateEstimate);
     const combinedConflicts = [...output.intent.conflicts, ...conflicts.filter((local) => !output.intent.conflicts.some((remote) => remote.code === local.code))];
@@ -243,7 +261,19 @@ export async function runRecipeCopilot(userId: string, recipeId: string | null, 
     const unsafe = proposed ? proposed.enabled !== false || proposed.automationPolicy?.enabled === true : false;
     const status = statusForProposal({ errors: errors.length, warnings: warnings.length, conflicts: combinedConflicts.filter((item) => !item.resolved).length, assumptions: output.analysis.assumptions.length, unsupported: output.analysis.unsupportedRequests.length, confidence: output.analysis.confidence, unsafe });
     const changes = proposed ? logicalRecipeChanges(source, proposed, output) : [];
-    const validation = { schema: { valid: true, version: "1.0" }, recipe: { valid: errors.length === 0, errors }, safety: { valid: !unsafe, warnings: safety }, conflicts: combinedConflicts, finalStatus: status, validatedAt: new Date().toISOString() };
+    const validation = {
+      proposalSchemaValid: true,
+      patchValid: true,
+      draftSchemaValid: !proposedValidation || proposedValidation.success,
+      saveSemanticValidationValid: !proposedValidation || proposedValidation.success,
+      executionCompatibilityValid: !proposedValidation || proposedValidation.success,
+      schema: { valid: true, version: "1.0" },
+      recipe: { valid: errors.length === 0, errors },
+      safety: { valid: !unsafe, warnings: safety },
+      conflicts: combinedConflicts,
+      finalStatus: status,
+      validatedAt: new Date().toISOString(),
+    };
     const proposal = await prisma.aiRecipeProposal.create({ data: { requestId: requestRow.id, recipeId: stored?.id, status, schemaVersion: "1.0", originalProposalJson: json(output), proposedConfigurationJson: proposed ? json(proposed) : undefined, analysisJson: json({ ...output.analysis, warnings, explanation: output.explanation, diagnoses: output.diagnoses, behaviorComparison: output.behaviorComparison, nameSuggestions: output.nameSuggestions, onboarding: output.onboarding, presumedPurpose: deriveRecipePurpose(source) }), intentJson: json({ ...output.intent, conflicts: combinedConflicts }), recommendationsJson: json(recommendations), changesJson: json(changes), validationJson: json(validation), candidateEstimateJson: json(proposedAnalysis.candidateEstimate), compatibilityJson: json(proposedAnalysis.compatibility), safetyWarningsJson: json([...warnings, ...safety.map((item) => item.reason)]), unsupportedRequestsJson: json(output.analysis.unsupportedRequests), confidenceScore: output.analysis.confidence, previousConfigurationJson: json(source), previousRecipeVersion: stored?.recipeVersion } });
     await prisma.aiRecipeRequest.update({ where: { id: requestRow.id }, data: { status: "SUCCESS", providerConfigId: response.providerId, model: response.model, inputTokenCount: response.usage?.inputTokens, outputTokenCount: response.usage?.outputTokens, estimatedCost: response.estimatedCost, actualCost: response.actualCost, aiResponseIdentifier: response.usage?.providerRequestId, completedAt: new Date() } });
     await createExplanationFromRecipeProposal({ ownerId: userId, requestId: requestRow.id, proposalId: proposal.id, recipeId: stored?.id, recipeVersion: stored?.recipeVersion, originalRequest: input.instruction, intent: { ...output.intent, conflicts: combinedConflicts }, analysis: { ...output.analysis, warnings }, proposedConfiguration: proposed || source, previousConfiguration: source, changes, validation, compatibility: proposedAnalysis.compatibility, provider: availability.provider, model: response.model, privacyMode: availability.privacyMode, engineVersion: "v2", recipeSchemaVersion: String(stored?.schemaVersion || "current"), cost: response.actualCost ?? response.estimatedCost, createdAt: requestRow.createdAt });
@@ -335,8 +365,8 @@ export async function applyRecipeCopilotProposal(userId: string, proposalId: str
     try {
       current = canonicalRecipeDraftSnapshot(raw.currentRecipe);
     } catch (error) {
-      const issue = error instanceof ZodError ? error.issues[0] : null;
-      const path = issue?.path.join(".") || "recipe";
+      const issue = error instanceof ZodError ? error.issues[0] : (error as any)?.issues?.[0] || null;
+      const path = Array.isArray(issue?.path) ? issue.path.join(".") : String(issue?.path || "recipe");
       throw failure("AI_RECIPE_PROPOSAL_DRAFT_INVALID", `Recipe Studio has an invalid current value at ${path}. Correct it before applying the proposal.`, 422);
     }
 
@@ -404,13 +434,75 @@ export async function applyRecipeCopilotProposal(userId: string, proposalId: str
         };
     if (!patched.success) {
       const first = patched.failures[0];
-      throw failure(first.code, first.message, first.code === "AI_RECIPE_PROPOSAL_PATH_NOT_ALLOWED" ? 400 : 422);
+      if (first.code === "AI_RECIPE_PROPOSAL_UNSUPPORTED_ENUM") {
+        const change = selectedChanges.find((item) => item.path === first.path);
+        console.warn("[Recipe Copilot] Unsupported proposal enum", {
+          proposalId: proposal.id,
+          path: first.path,
+          receivedValue: change?.proposedValue,
+          supportedValues: SCORING_MODELS,
+          normalizationAttempted: false,
+          repairAttempted: false,
+        });
+      }
+      return {
+        success: false,
+        persisted: false,
+        appliedCount: 0,
+        alreadyAppliedCount: 0,
+        conflictCount: 0,
+        appliedPaths: [],
+        validationIssues: [{
+          path: first.path,
+          code: first.code,
+          message: first.message,
+          ...(first.code === "AI_RECIPE_PROPOSAL_UNSUPPORTED_ENUM" ? {
+            receivedValue: selectedChanges.find((item) => item.path === first.path)?.proposedValue,
+            supportedValues: SCORING_MODELS,
+          } : {}),
+        }],
+        errorCode: first.code,
+        errorMessage: first.message,
+        proposalSchemaValid: true,
+        patchValid: false,
+        draftSchemaValid: false,
+        saveSemanticValidationValid: false,
+        executionCompatibilityValid: false,
+      };
     }
-    const validation = playlistRecipeSchema.safeParse(patched.draft);
+    const validation = validatePlaylistRecipeDraft(patched.draft);
     if (!validation.success) {
-      const issue = validation.error.issues[0];
-      const path = issue.path.join(".") || selectedFieldPaths[0] || "recipe";
-      throw failure("AI_RECIPE_PROPOSAL_DRAFT_INVALID", `Could not apply ${path}: ${issue.message}`, 422);
+      const issue = validation.issues[0];
+      if (issue?.code === "RECIPE_SCORING_MODEL_UNSUPPORTED") {
+        console.warn("[Recipe Copilot] Unsupported proposal enum", {
+          proposalId: proposal.id,
+          path: issue.path,
+          receivedValue: issue.receivedValue,
+          supportedValues: issue.supportedValues,
+          normalizationAttempted: false,
+          repairAttempted: false,
+        });
+      }
+      return {
+        success: false,
+        persisted: false,
+        appliedCount: 0,
+        alreadyAppliedCount: 0,
+        conflictCount: 0,
+        appliedPaths: [],
+        validationIssues: validation.issues,
+        errorCode: issue?.code === "RECIPE_SCORING_MODEL_UNSUPPORTED"
+          ? "AI_RECIPE_PROPOSAL_UNSUPPORTED_ENUM"
+          : "AI_RECIPE_PROPOSAL_DRAFT_INVALID",
+        errorMessage: issue
+          ? `Could not apply ${issue.path || selectedFieldPaths[0] || "recipe"}: ${issue.message}`
+          : "The resulting recipe draft is invalid.",
+        proposalSchemaValid: true,
+        patchValid: true,
+        draftSchemaValid: false,
+        saveSemanticValidationValid: false,
+        executionCompatibilityValid: false,
+      };
     }
 
     const differs = selectedChanges.length !== storedChanges.length
@@ -477,7 +569,11 @@ export async function applyRecipeCopilotProposal(userId: string, proposalId: str
       conflictCount: 0,
       appliedPaths: patched.appliedPaths,
       dirtyAfterApply: patched.appliedCount > 0 || raw.dirty === true,
-      validationSucceeded: true,
+      proposalSchemaValid: true,
+      patchValid: true,
+      draftSchemaValid: true,
+      saveSemanticValidationValid: true,
+      executionCompatibilityValid: true,
       elapsedMs: Date.now() - startedAt,
     });
     return {
@@ -491,6 +587,11 @@ export async function applyRecipeCopilotProposal(userId: string, proposalId: str
       appliedPaths: patched.appliedPaths,
       alreadyAppliedPaths: patched.alreadyAppliedPaths,
       validationSucceeded: true,
+      proposalSchemaValid: true,
+      patchValid: true,
+      draftSchemaValid: true,
+      saveSemanticValidationValid: true,
+      executionCompatibilityValid: true,
     };
   } catch (error) {
     const original = error as any;
@@ -515,14 +616,25 @@ export async function validateRecipeCopilotProposal(userId: string, proposalId: 
   if (["REJECTED", "SUPERSEDED", "APPROVED"].includes(proposal.status)) throw failure("AI_RECIPE_PROPOSAL_FINAL", "This proposal can no longer be revalidated.", 409);
   const recipe = proposal.proposedConfigurationJson as Record<string, any> | null;
   if (!recipe) throw failure("AI_RECIPE_PROPOSAL_HAS_NO_RECIPE", "This advisory result does not contain a recipe proposal.", 409);
-  const parsed = playlistRecipeSchema.safeParse(recipe);
+  const parsed = validatePlaylistRecipeDraft(recipe);
   const analysis = parsed.success ? await analyzeRecipeDraft(userId, parsed.data) : null;
-  const errors = parsed.success ? (analysis?.compatibility?.findings || []).filter((item: any) => item.severity === "error") : parsed.error.issues;
+  const errors = parsed.success ? (analysis?.compatibility?.findings || []).filter((item: any) => item.severity === "error") : parsed.issues;
   const warnings = parsed.success ? (analysis?.compatibility?.findings || []).filter((item: any) => item.severity === "warning") : [];
   const conflicts = detectRecipeIntentConflicts(proposal.request.sourceRequest, recipe, analysis?.candidateEstimate);
   const next = statusForProposal({ errors: errors.length, warnings: warnings.length, conflicts: conflicts.length, assumptions: ((proposal.analysisJson as any)?.assumptions || []).length, unsupported: (proposal.unsupportedRequestsJson as any[]).length, confidence: proposal.confidenceScore, unsafe: recipe.enabled !== false || recipe.automationPolicy?.enabled === true });
   assertAiRecipeStatusTransition(proposal.status as AiRecipeStatus, next);
-  const validation = { schema: { valid: parsed.success }, recipe: { valid: errors.length === 0, errors }, conflicts, finalStatus: next, validatedAt: new Date().toISOString() };
+  const validation = {
+    proposalSchemaValid: true,
+    patchValid: true,
+    draftSchemaValid: parsed.success,
+    saveSemanticValidationValid: parsed.success,
+    executionCompatibilityValid: parsed.success,
+    schema: { valid: parsed.success },
+    recipe: { valid: errors.length === 0, errors },
+    conflicts,
+    finalStatus: next,
+    validatedAt: new Date().toISOString(),
+  };
   const updated = await prisma.aiRecipeProposal.update({ where: { id: proposal.id }, data: { status: next, validationJson: json(validation), candidateEstimateJson: analysis ? json(analysis.candidateEstimate) : undefined, compatibilityJson: analysis ? json(analysis.compatibility) : undefined, statusReason: next === "QUARANTINED" ? "Validation found a blocking issue." : null } });
   await auditAiRecipe({ requestId: proposal.requestId, proposalId: proposal.id, recipeId: proposal.recipeId, actorId: userId, eventType: "AI_RECIPE_VALIDATED", action: proposal.request.action, provider: proposal.request.providerDisplayName, model: proposal.request.model, privacyMode: proposal.request.privacyMode, remote: proposal.request.remote, statusBefore: proposal.status, statusAfter: next, metadata: validation });
   if (proposal.recipeId) await prisma.playlistRecipe.updateMany({ where: { id: proposal.recipeId, userId, lastAiProposalId: proposal.id }, data: { aiRecipeStatus: next, enabled: false, ...(next === "QUARANTINED" ? { quarantineState: "QUARANTINED", quarantineReason: "AI proposal validation found a blocking issue." } : {}) } });
