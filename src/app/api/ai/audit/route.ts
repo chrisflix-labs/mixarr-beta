@@ -30,10 +30,11 @@ export async function GET(request: Request) {
         providerConfigId: true, providerType: true, providerDisplayName: true, model: true, providerModelClassification: true,
         status: true, requestSource: true, background: true, locationClassification: true, privacyMode: true,
         includedMetadataFields: true, transformedMetadataFields: true, blockedMetadataFields: true,
-        startedAt: true, completedAt: true, latencyMs: true, timeToFirstTokenMs: true, retryCount: true,
+        startedAt: true, completedAt: true, latencyMs: true, providerDurationMs: true, timeToFirstTokenMs: true, retryCount: true,
         streamingUsed: true, cancellationStatus: true, inputTokenCount: true, outputTokenCount: true,
         totalTokenCount: true, cachedTokenCount: true, reasoningTokenCount: true, estimatedCost: true, actualCost: true,
         usageSource: true, pricingProfileId: true, responseByteCount: true, fallbackReason: true,
+        httpStatus: true, providerRequestId: true, costState: true, structuredOutputResult: true, schemaValidationResult: true,
         budgetControlResult: true, limitControlResult: true, blockReason: true, errorCategory: true,
         sanitizedErrorCode: true, createdAt: true, provider: { select: { deletedAt: true } }
       }

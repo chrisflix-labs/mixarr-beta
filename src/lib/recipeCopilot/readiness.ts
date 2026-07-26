@@ -34,8 +34,14 @@ const messages: Record<string, string> = {
   AI_PROVIDER_TEMPORARY_FAILURE: "The AI provider is temporarily unavailable.",
   AI_PROVIDER_TIMEOUT: "The AI provider did not respond before the configured timeout.",
   AI_PROVIDER_HTTP_ERROR: "The AI provider returned an HTTP error.",
-  AI_PROVIDER_EMPTY_RESPONSE: "The AI provider returned an empty response.",
+  AI_PROVIDER_EMPTY_RESPONSE: "The AI provider returned no usable assistant content.",
+  AI_PROVIDER_MALFORMED_JSON: "The AI provider returned malformed JSON.",
+  AI_PROVIDER_UNSUPPORTED_RESPONSE_SHAPE: "The AI provider returned an unsupported response shape.",
+  AI_PROVIDER_REFUSAL: "The AI provider refused the request.",
+  AI_PROVIDER_TOOL_CALL_ONLY: "The AI provider returned a tool call without a final answer.",
+  AI_PROVIDER_TRUNCATED_RESPONSE: "The AI provider stopped before returning a final answer.",
   AI_PROVIDER_INVALID_RESPONSE: "The AI provider returned a response that could not be converted into a valid recipe.",
+  AI_FEATURE_INVALID_STRUCTURED_OUTPUT: "The AI provider returned content that did not match the Recipe Copilot schema.",
   AI_RECIPE_SCHEMA_INVALID: "The AI provider returned a response that did not match the recipe schema.",
 };
 

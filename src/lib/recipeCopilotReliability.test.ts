@@ -6,10 +6,13 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { z } from "zod";
 import type { ResolvedAiProviderConfig } from "../ai/contracts";
+import { AiError } from "../ai/errors";
 import { aiFailureStatus } from "../ai/audit/status";
 import { configuredAiRequestTimeoutMs, resolveAiRequestTimeout } from "../ai/config/timeout";
 import { OpenAiCompatibleAdapter } from "../ai/providers/openAiCompatible";
 import { safeFetchJsonDetailed } from "../ai/providers/http";
+import { normalizeAIResponse } from "../ai/providers/normalizeResponse";
+import { executeEligibleFallback, isFallbackEligible } from "../ai/utilities/fallback";
 import { createAiRequestSignal } from "../ai/utilities/cancellation";
 import { parseStructuredResponse, parseStructuredResponseWithProviderRepair } from "../ai/validation";
 import { recipeCopilotResponseSchema } from "./recipeCopilot/contracts";
@@ -17,6 +20,7 @@ import { buildPrivacyAwareRecipeContext } from "./recipeCopilot/core";
 import { readRecipeCopilotResponse, RecipeCopilotHttpError } from "./recipeCopilot/http";
 
 let server: http.Server; let baseUrl = "";
+const fixture = (name: string) => readFileSync(join(process.cwd(), "src/lib/fixtures", name), "utf8");
 
 const validRecipeProposal = {
   schemaVersion: "1.0", action: "create", proposedPatch: { metadata: { name: "Popular music mix" }, automationPolicy: { enabled: false } },
@@ -34,6 +38,15 @@ before(async () => {
     const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
     response.setHeader("content-type", "application/json");
+    if (request.url === "/fixture-standard/chat/completions") return response.end(fixture("deepseek-standard-response.json"));
+    if (request.url === "/fixture-blocks/chat/completions") return response.end(fixture("deepseek-content-block-response.json"));
+    if (request.url === "/fixture-fenced/chat/completions") return response.end(fixture("deepseek-fenced-response.json"));
+    if (request.url === "/fixture-e2e/chat/completions") return response.end(fixture("deepseek-recipe-copilot-response.json"));
+    if (request.url === "/fixture-empty/chat/completions") return response.end(JSON.stringify({ id: "empty-id", model: body.model, choices: [{ message: { role: "assistant", content: "" }, finish_reason: "stop" }], usage: { prompt_tokens: 1707, completion_tokens: 1900, total_tokens: 3607, cost: 0.0018 } }));
+    if (request.url === "/fixture-tool/chat/completions") return response.end(JSON.stringify({ id: "tool-id", model: body.model, choices: [{ message: { role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "save_recipe", arguments: "{}" } }] }, finish_reason: "tool_calls" }] }));
+    if (request.url === "/fixture-reasoning/chat/completions") return response.end(fixture("deepseek-null-content-reasoning-response.json"));
+    if (request.url === "/fixture-malformed/chat/completions") return response.end("{broken-json");
+    if (request.url === "/fixture-unknown/chat/completions") return response.end(JSON.stringify({ metadata: 42 }));
     if (request.url === "/deepseek/chat/completions") return response.end(JSON.stringify({ id: "provider-request", model: body.model, choices: [{ message: { content: JSON.stringify(validRecipeProposal) }, finish_reason: "stop" }], usage: { prompt_tokens: 20, completion_tokens: 30, total_tokens: 50 } }));
     if (request.url === "/direct/chat/completions") return response.end(JSON.stringify(validRecipeProposal));
     if (request.url === "/responses/chat/completions") return response.end(JSON.stringify({ model: body.model, output: [{ content: [{ type: "output_text", text: JSON.stringify(validRecipeProposal) }] }], usage: { input_tokens: 2, output_tokens: 3, total_tokens: 5 } }));
@@ -50,13 +63,98 @@ function deepSeek(path = "/deepseek"): ResolvedAiProviderConfig {
 }
 
 const context = { requestId: "recipe-request-id", providerId: "deepseek-provider", model: "deepseek-v4-pro", signal: new AbortController().signal, maxResponseBytes: 512_000 };
-const format = { type: "json" as const, name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema };
+const format = { type: "json" as const, name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, allowEmbeddedJson: false };
 
 describe("v2.4.15 Recipe Copilot provider reliability", () => {
   it("accepts an immediate DeepSeek OpenAI-compatible completion and validates the recipe proposal", async () => {
     const response = await new OpenAiCompatibleAdapter("deepseek").complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "Create a popular mix" }], responseFormat: format }, deepSeek(), context);
     assert.equal(response.requestId, "recipe-request-id"); assert.equal(response.usage?.providerReported, true); assert.equal(response.usage?.totalTokens, 50);
     const parsed = parseStructuredResponse(response.content!, format, 512_000); assert.equal(parsed.schemaVersion, "1.0"); assert.equal(parsed.proposedPatch?.automationPolicy?.enabled, false);
+  });
+
+  it("extracts the supplied DeepSeek chat-completion fixture and preserves provider usage", async () => {
+    const small = { type: "json" as const, name: "fixture", schema: z.object({ name: z.string() }).strict(), allowEmbeddedJson: false };
+    const response = await new OpenAiCompatibleAdapter("deepseek").complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: small }, deepSeek("/fixture-standard"), context);
+    assert.equal(response.content, '{"name":"Test recipe"}');
+    assert.deepEqual(parseStructuredResponse(response.content!, small, 512_000), { name: "Test recipe" });
+    assert.deepEqual(response.usage && { input: response.usage.inputTokens, output: response.usage.outputTokens, total: response.usage.totalTokens }, { input: 1707, output: 1900, total: 3607 });
+  });
+
+  it("joins DeepSeek textual content blocks, including nested text.value", async () => {
+    const small = { type: "json" as const, name: "fixture", schema: z.object({ name: z.string() }).strict(), allowEmbeddedJson: false };
+    const response = await new OpenAiCompatibleAdapter("deepseek").complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: small }, deepSeek("/fixture-blocks"), context);
+    assert.equal(response.content, '{"name":"Test recipe"}');
+    assert.equal(response.usage, undefined);
+  });
+
+  it("normalizes every supported final-answer path without depending on finish reason, usage, or returned model alias", () => {
+    const options = { providerType: "openai_compatible" as const, provider: "Compatible", requestedModel: "requested-alias", requestId: "paths" };
+    const samples: Array<[unknown, string]> = [
+      [{ choices: [{ message: { content: "  message content  " }, finish_reason: "unexpected_vendor_reason" }], model: "returned-alias" }, "message content"],
+      [{ choices: [{ text: "choice text" }] }, "choice text"],
+      [{ message: { content: "direct message" } }, "direct message"],
+      [{ output_text: "shortcut" }, "shortcut"],
+      [{ output: [{ content: [{ type: "output_text", text: "first" }, { type: "ignored", text: "secret" }, { type: "text", text: "second" }] }] }, "firstsecond"],
+      [{ content: [{ type: "text", text: "anthropic" }] }, "anthropic"],
+    ];
+    for (const [payload, expected] of samples) assert.equal(normalizeAIResponse(payload, options).text, expected);
+    const sdkObject = { toJSON: () => ({ output_text: "sdk object" }) };
+    assert.equal(normalizeAIResponse(sdkObject, options).text, "sdk object");
+    assert.equal(normalizeAIResponse(samples[0][0], options).model, "returned-alias");
+  });
+
+  it("passes a realistic fenced DeepSeek response from HTTP parsing through Recipe Copilot schema validation", async () => {
+    const response = await new OpenAiCompatibleAdapter("deepseek").complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: format }, deepSeek("/fixture-e2e"), context);
+    const parsed = parseStructuredResponse(response.content!, format, 512_000);
+    assert.equal(parsed.schemaVersion, "1.0"); assert.equal(parsed.proposedPatch?.metadata?.name, "Test recipe");
+    assert.equal(response.usage?.outputTokens, 1900); assert.equal(response.actualCost, 0.0018);
+  });
+
+  it("accepts only an outer Markdown fence in strict Recipe Copilot JSON mode", async () => {
+    const small = { type: "json" as const, name: "fixture", schema: z.object({ name: z.string() }).strict(), allowEmbeddedJson: false };
+    const response = await new OpenAiCompatibleAdapter("deepseek").complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: small }, deepSeek("/fixture-fenced"), context);
+    assert.deepEqual(parseStructuredResponse(response.content!, small, 512_000), { name: "Test recipe" });
+    assert.throws(() => parseStructuredResponse('Explanation {"name":"Test recipe"}', small, 512_000), (error: any) => error.category === "STRUCTURED_RESPONSE_INVALID");
+  });
+
+  it("preserves usage and transport diagnostics when HTTP 200 extraction fails", async () => {
+    await assert.rejects(() => new OpenAiCompatibleAdapter("deepseek").complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: format }, deepSeek("/fixture-empty"), context), (error: any) => error.category === "AI_PROVIDER_EMPTY_RESPONSE" && error.details.http_status === 200 && error.details.response_body_length > 0 && error.details.response_streamed === false && error.details.stage === "CONTENT_EXTRACTION" && error.details.usage_output_tokens === 1900 && error.details.actual_cost === 0.0018);
+  });
+
+  it("distinguishes tool-only, unknown-shape, malformed JSON, and safe DeepSeek reasoning fallback", async () => {
+    const adapter = new OpenAiCompatibleAdapter("deepseek");
+    await assert.rejects(() => adapter.complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: format }, deepSeek("/fixture-tool"), context), (error: any) => error.category === "AI_PROVIDER_TOOL_CALL_ONLY");
+    await assert.rejects(() => adapter.complete({ featureKey: "connection_test", messages: [{ role: "user", content: "fixture" }] }, deepSeek("/fixture-unknown"), context), (error: any) => error.category === "AI_PROVIDER_UNSUPPORTED_RESPONSE_SHAPE");
+    await assert.rejects(() => adapter.complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: format }, deepSeek("/fixture-malformed"), context), (error: any) => error.category === "AI_PROVIDER_MALFORMED_JSON");
+    const savedFailure = JSON.parse(fixture("deepseek-null-content-reasoning-response.json"));
+    assert.equal(savedFailure.choices[0].message.content, null);
+    const compatible = await adapter.complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: format }, deepSeek("/fixture-reasoning"), context);
+    assert.equal(parseStructuredResponse(compatible.content!, format, 512_000).proposedPatch?.metadata?.name, "Compatibility answer");
+    assert.equal(compatible.usage?.outputTokens, 1900); assert.equal(compatible.actualCost, 0.0018);
+    assert.ok(compatible.warnings.some((warning) => /reasoning compatibility field/i.test(warning)));
+  });
+
+  it("does not expose free-form chain-of-thought from reasoning_content", () => {
+    assert.throws(() => normalizeAIResponse({ choices: [{ message: { content: null, reasoning_content: "I considered several private reasoning steps." }, finish_reason: "stop" }] }, { providerType: "deepseek", provider: "DeepSeek", requestedModel: "deepseek-v4-pro", requestId: "safe-reasoning", allowReasoningContentFallback: true }), (error: any) => error.category === "AI_PROVIDER_EMPTY_RESPONSE" && error.details.has_reasoning_content === true);
+  });
+
+  it("classifies refusal and truncation separately from empty content", () => {
+    const options = { providerType: "openai_compatible" as const, provider: "Compatible", requestedModel: "model", requestId: "classification" };
+    assert.throws(() => normalizeAIResponse({ choices: [{ message: { content: null, refusal: "Cannot comply" }, finish_reason: "stop" }] }, options), (error: any) => error.category === "AI_PROVIDER_REFUSAL");
+    assert.throws(() => normalizeAIResponse({ choices: [{ message: { content: "" }, finish_reason: "length" }] }, options), (error: any) => error.category === "AI_PROVIDER_TRUNCATED_RESPONSE");
+  });
+
+  it("keeps deterministic normalization failures off same-provider retries but eligible for an approved fallback", () => {
+    for (const category of ["AI_PROVIDER_EMPTY_RESPONSE", "AI_PROVIDER_UNSUPPORTED_RESPONSE_SHAPE", "AI_PROVIDER_MALFORMED_JSON"] as const) assert.equal(isFallbackEligible(new AiError(category)), true);
+    assert.equal(isFallbackEligible(new AiError("AI_PROVIDER_HTTP_ERROR", undefined, 502, undefined, { retryable: true })), true);
+    assert.equal(isFallbackEligible(new AiError("AI_PRIVACY_POLICY_BLOCKED")), false);
+  });
+
+  it("runs one approved fallback and retains the original normalization failure", async () => {
+    let primaryCalls = 0; let fallbackCalls = 0;
+    const result = await executeEligibleFallback(async () => { primaryCalls += 1; throw new AiError("AI_PROVIDER_EMPTY_RESPONSE", undefined, 422, undefined, { usage_output_tokens: 1900, actual_cost: 0.0018 }); }, async () => { fallbackCalls += 1; return { content: "fallback succeeded", usage: { outputTokens: 20 }, actualCost: 0.0002 }; });
+    assert.equal(primaryCalls, 1); assert.equal(fallbackCalls, 1); assert.equal(result.value.content, "fallback succeeded");
+    assert.equal(result.originalError?.category, "AI_PROVIDER_EMPTY_RESPONSE"); assert.equal(result.originalError?.details?.usage_output_tokens, 1900);
   });
 
   it("keeps the operation alive beyond the legacy 30-second boundary", async () => {
@@ -110,7 +208,7 @@ describe("v2.4.15 Recipe Copilot provider reliability", () => {
   it("reports syntactically valid schema violations without inventing recipe behavior", async () => {
     const small = { type: "json" as const, name: "small", schema: z.object({ required: z.string() }).strict() };
     await assert.rejects(() => parseStructuredResponseWithProviderRepair({ content: '{"different":true}', format: small, maxBytes: 1024, providerRepairAttempts: 1, repair: async () => { throw new Error("must not run"); } }), (error: any) => error.category === "STRUCTURED_RESPONSE_INVALID" && error.details.failure_stage === "SCHEMA_VALIDATION");
-    assert.equal(aiFailureStatus("AI_RECIPE_SCHEMA_INVALID"), "INVALID_RESPONSE");
+    assert.equal(aiFailureStatus("AI_FEATURE_INVALID_STRUCTURED_OUTPUT"), "INVALID_RESPONSE");
   });
 
   it("handles a non-JSON backend error in the frontend without throwing JSON.parse", async () => {
@@ -130,7 +228,7 @@ describe("v2.4.15 Recipe Copilot provider reliability", () => {
     const service = readFileSync(join(process.cwd(), "src/lib/recipeCopilot/service.ts"), "utf8");
     const component = readFileSync(join(process.cwd(), "src/components/RecipeCopilot.tsx"), "utf8");
     const api = readFileSync(join(process.cwd(), "src/lib/recipeCopilot/api.ts"), "utf8");
-    for (const marker of ["assertAiExecutionPolicy", "previewAiRequest", "externalConfirmation", "AI_RECIPE_SCHEMA_INVALID", "enabled: false"]) assert.match(service, new RegExp(marker));
+    for (const marker of ["assertAiExecutionPolicy", "previewAiRequest", "externalConfirmation", "AI_FEATURE_INVALID_STRUCTURED_OUTPUT", "enabled: false"]) assert.match(service, new RegExp(marker));
     assert.match(component, /review required/i); assert.match(component, /Nothing is approved or activated automatically/); assert.doesNotMatch(component.slice(component.indexOf("async function generate"), component.indexOf("function cancel")), /fetch\([^\n]*(?:approve|activate|save)/i);
     for (const field of ["requestId", "retryable", "provider", "model", "stage", "elapsedMs"]) assert.match(api, new RegExp(field));
   });

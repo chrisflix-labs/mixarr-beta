@@ -1,6 +1,6 @@
 import prisma from "@/lib/prisma";
 import type { AiCapability, AiCapabilityConfidence, AiProviderAdapter, AiRequest, AiResponse, AiStreamEvent, ResolvedAiProviderConfig } from "../contracts";
-import { AiError, normalizeProviderError, type AiErrorCategory } from "../errors";
+import { AiError, normalizeProviderError } from "../errors";
 import { aiFeatureByKey } from "../features/registry";
 import { aiProviderRegistry } from "../registry/providerRegistry";
 import { resolveAiProvider } from "../services/providerService";
@@ -21,9 +21,9 @@ import { redactAiContent } from "../security/redaction";
 import { inspectAiResponse } from "../security/responseSecurity";
 import { quarantineAiResponse, storeAiResponse } from "../quarantine/service";
 import { resolveAiRequestTimeout } from "../config/timeout";
+import { executeEligibleFallback } from "../utilities/fallback";
 
 const supportedCapability = new Set<AiCapabilityConfidence>(["CONFIRMED", "REPORTED", "ASSUMED", "MANUALLY_ENABLED"]);
-const fallbackCategories = new Set<AiErrorCategory>(["PROVIDER_UNAVAILABLE", "CONNECTION_FAILED", "RATE_LIMITED", "REQUEST_TIMEOUT", "TLS_ERROR", "PROVIDER_OVERLOADED"]);
 
 export function missingCapabilities(required: AiCapability[], resolved: Record<string, AiCapabilityConfidence | undefined>) {
   return required.filter((capability) => !supportedCapability.has(resolved[capability] || "UNKNOWN"));
@@ -58,10 +58,12 @@ async function selection<T>(request: AiRequest<T>, userId?: string) {
   const featureFallbackId = feature.fallbackBehavior === "EXPLICIT_PROVIDER" ? feature.fallbackProviderId : null;
   const fallbackId = request.allowFallback ? (featureFallbackId || config.fallbackProviderId) : null;
   if (fallbackId && fallbackId !== config.id) {
-    const fallbackConfig = await resolveAiProvider(fallbackId);
-    const safeConfiguration = (feature.safeConfigurationJson || {}) as Record<string, unknown>;
-    const remoteFallbackBlocked = config.locationClassification === "LOCAL" && fallbackConfig.locationClassification === "REMOTE" && safeConfiguration.allowRemoteFallback !== true;
-    if (!remoteFallbackBlocked) fallback = await prepareCandidate(fallbackConfig, fallbackConfig.defaultModel, required, request, request.allowStreamingFallback);
+    try {
+      const fallbackConfig = await resolveAiProvider(fallbackId);
+      const safeConfiguration = (feature.safeConfigurationJson || {}) as Record<string, unknown>;
+      const remoteFallbackBlocked = config.locationClassification === "LOCAL" && fallbackConfig.locationClassification === "REMOTE" && safeConfiguration.allowRemoteFallback !== true;
+      if (!remoteFallbackBlocked) fallback = await prepareCandidate(fallbackConfig, fallbackConfig.defaultModel, required, request, request.allowStreamingFallback);
+    } catch (error) { console.info("[AI Fallback] configured fallback is not eligible", { feature: request.featureKey, reason: error instanceof AiError ? error.category : "INELIGIBLE" }); }
   }
   return { global, feature, primary, fallback, required };
 }
@@ -154,8 +156,9 @@ async function executeWithRetries<T>(input: { request: AiRequest<T>; candidate: 
       let normalized = normalizeProviderError(error);
       if (input.timedOut()) normalized = new AiError("AI_PROVIDER_TIMEOUT", undefined, 504, undefined, { request_id: input.requestId, provider: input.candidate.config.displayName, model: input.candidate.model, stage: "PROVIDER_REQUEST", elapsed_ms: Date.now() - input.started, timeout_ms: input.timeoutMs, timeout_source: input.timeoutSource, retryable: true, usage_available: false });
       else if (input.signal.aborted && ["CONNECTION_FAILED", "REQUEST_CANCELLED"].includes(normalized.category)) normalized = new AiError("REQUEST_CANCELLED");
+      normalized.details = { estimated_cost: input.estimatedAttemptCost, ...normalized.details };
       const mayHaveBeenBilled = normalized.details?.billing_possible !== false && !["CONNECTION_FAILED", "TLS_ERROR"].includes(normalized.category);
-      if (attempt) await prisma.aiProviderAttempt.update({ where: { id: attempt.id }, data: { status: "FAILED", completedAt: new Date(), providerAcknowledged: mayHaveBeenBilled, errorCategory: normalized.category } }).catch((auditError) => logAuditFailure(auditError, { requestId: input.requestId, request: input.request, provider: input.candidate.config, model: input.candidate.model }));
+      if (attempt) await prisma.aiProviderAttempt.update({ where: { id: attempt.id }, data: { status: "FAILED", completedAt: new Date(), providerAcknowledged: mayHaveBeenBilled, errorCategory: normalized.category, estimatedCost: typeof normalized.details?.estimated_cost === "number" ? normalized.details.estimated_cost : undefined, actualCost: typeof normalized.details?.actual_cost === "number" ? normalized.details.actual_cost : undefined, inputTokens: typeof normalized.details?.usage_input_tokens === "number" ? normalized.details.usage_input_tokens : undefined, outputTokens: typeof normalized.details?.usage_output_tokens === "number" ? normalized.details.usage_output_tokens : undefined } }).catch((auditError) => logAuditFailure(auditError, { requestId: input.requestId, request: input.request, provider: input.candidate.config, model: input.candidate.model }));
       const retryLimit = Math.min(1, input.candidate.config.retryCount, input.maximumRetryAttempts);
       if (!isRetryEligible(normalized) || retries - input.startingRetries >= retryLimit || input.signal.aborted || (mayHaveBeenBilled && !input.retryAfterPossibleBilling)) {
         await recordAiExecutionHealth(input.candidate.config.id, false, Date.now() - attemptStarted, normalized);
@@ -219,23 +222,41 @@ export class AiRequestCoordinator {
     }
     const timed = createAiRequestSignal(request.signal, timeout.timeoutMs);
     console.info("[AI] request timeout armed", { requestId, provider: selected.primary.config.displayName, model: selected.primary.model, endpointHostname: selected.primary.config.baseUrl ? new URL(selected.primary.config.baseUrl).hostname : undefined, elapsedMs: Date.now() - started, timeoutMs: timeout.timeoutMs, timeoutSource: timeout.timeoutSource, streamed: false, stage: "PROVIDER_REQUEST" });
+    let reservationAttemptCost: number | undefined;
     try {
       let response: AiResponse<T>;
       let finalCandidate = selected.primary;
-      try {
-        response = await executeWithRetries({ request, candidate: selected.primary, requestId, auditId, signal: timed.signal, maxBytes, started, startingRetries: 0, timedOut: timed.timedOut, timeoutMs: timeout.timeoutMs, timeoutSource: timeout.timeoutSource, maximumRetryAttempts: governed.preview.retryPolicy.maximumRetryAttempts, retryAfterPossibleBilling: governed.preview.retryPolicy.retryAfterPossibleBilling, estimatedAttemptCost: governed.preview.cost.maximumEstimatedCost, beforeRetry: (retryNumber, possiblePriorBilling) => prepareAiRetry({ request, provider: selected.primary.config, model: selected.primary.model, userId, requestId, reservationId, retryNumber, possiblePriorBilling, initialAttemptCost: governed.preview.cost.maximumEstimatedCost }) });
-      } catch (error) {
-        const normalized = normalizeProviderError(error); retries = Number((error as any)?.retryCount || 0);
-        if (!selected.fallback || !fallbackCategories.has(normalized.category) || timed.signal.aborted) throw error;
-        const fallbackPreview = await previewAiRequest({ request, provider: selected.fallback.config, model: selected.fallback.model, userId });
+      let fallbackOrigin: AiError | undefined;
+      const explicitFallback = selected.fallback;
+      const fallbackExecution = await executeEligibleFallback(
+        () => executeWithRetries({ request, candidate: selected.primary, requestId, auditId, signal: timed.signal, maxBytes, started, startingRetries: 0, timedOut: timed.timedOut, timeoutMs: timeout.timeoutMs, timeoutSource: timeout.timeoutSource, maximumRetryAttempts: governed.preview.retryPolicy.maximumRetryAttempts, retryAfterPossibleBilling: governed.preview.retryPolicy.retryAfterPossibleBilling, estimatedAttemptCost: governed.preview.cost.maximumEstimatedCost, beforeRetry: (retryNumber, possiblePriorBilling) => prepareAiRetry({ request, provider: selected.primary.config, model: selected.primary.model, userId, requestId, reservationId, retryNumber, possiblePriorBilling, initialAttemptCost: governed.preview.cost.maximumEstimatedCost }) }),
+        explicitFallback ? async (normalized) => {
+        retries = Number((normalized as any)?.retryCount || 0);
+        if (timed.signal.aborted) throw normalized;
+        if (auditId) await prisma.aiRequestAudit.update({ where: { id: auditId }, data: { originalProviderConfigId: selected.primary.config.id, originalModel: selected.primary.model, fallbackReason: normalized.category, status: "RETRIED" } }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model }));
+        const fallbackPreview = await previewAiRequest({ request, provider: explicitFallback.config, model: explicitFallback.model, userId });
         const primaryPaid = governed.preview.cost.maximumEstimatedCost > 0; const fallbackPaid = fallbackPreview.cost.maximumEstimatedCost > 0;
         if ((!governed.preview.allowPaidProviderFallback && !primaryPaid && fallbackPaid) || governed.preview.privacyMode === "LOCAL_ONLY" && fallbackPreview.provider.location !== "LOCAL") throw new AiError("AI_PAID_FALLBACK_BLOCKED");
-        await reconcileAiBudgetReservation(reservationId, undefined, "RELEASED");
-        const fallbackReservation = await reserveAiBudget({ request, provider: selected.fallback.config, model: selected.fallback.model, userId, requestId, auditId }); reservationId = fallbackReservation.reservation.id; governed = fallbackReservation;
-        if (auditId) await prisma.aiRequestAudit.update({ where: { id: auditId }, data: { providerConfigId: selected.fallback.config.id, providerType: selected.fallback.config.providerType, providerDisplayName: selected.fallback.config.displayName, model: selected.fallback.model, status: "RETRIED" } }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.fallback!.config, model: selected.fallback!.model }));
-        finalCandidate = selected.fallback;
-        response = await executeWithRetries({ request, candidate: selected.fallback, requestId, auditId, signal: timed.signal, maxBytes, started, startingRetries: retries + 1, timedOut: timed.timedOut, timeoutMs: timeout.timeoutMs, timeoutSource: timeout.timeoutSource, maximumRetryAttempts: governed.preview.retryPolicy.maximumRetryAttempts, retryAfterPossibleBilling: governed.preview.retryPolicy.retryAfterPossibleBilling, estimatedAttemptCost: governed.preview.cost.maximumEstimatedCost, beforeRetry: (retryNumber, possiblePriorBilling) => prepareAiRetry({ request, provider: selected.fallback!.config, model: selected.fallback!.model, userId, requestId, reservationId, retryNumber, possiblePriorBilling, initialAttemptCost: governed.preview.cost.maximumEstimatedCost }) });
-        response.warnings.push(`Explicit fallback used after ${selected.primary.config.displayName} was unavailable.`);
+        const primaryAttemptCost = typeof normalized.details?.actual_cost === "number" ? normalized.details.actual_cost : typeof normalized.details?.estimated_cost === "number" ? normalized.details.estimated_cost : undefined;
+        await reconcileAiBudgetReservation(reservationId, primaryAttemptCost, primaryAttemptCost == null ? "RELEASED" : "RECONCILED");
+        const fallbackReservation = await reserveAiBudget({ request, provider: explicitFallback.config, model: explicitFallback.model, userId, requestId, auditId }); reservationId = fallbackReservation.reservation.id; governed = fallbackReservation;
+        if (auditId) await prisma.aiRequestAudit.update({ where: { id: auditId }, data: { originalProviderConfigId: selected.primary.config.id, originalModel: selected.primary.model, fallbackReason: normalized.category, providerConfigId: explicitFallback.config.id, providerType: explicitFallback.config.providerType, providerDisplayName: explicitFallback.config.displayName, model: explicitFallback.model, status: "RETRIED" } }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: explicitFallback.config, model: explicitFallback.model }));
+        finalCandidate = explicitFallback;
+        const fallbackResponse = await executeWithRetries({ request, candidate: explicitFallback, requestId, auditId, signal: timed.signal, maxBytes, started, startingRetries: retries + 1, timedOut: timed.timedOut, timeoutMs: timeout.timeoutMs, timeoutSource: timeout.timeoutSource, maximumRetryAttempts: governed.preview.retryPolicy.maximumRetryAttempts, retryAfterPossibleBilling: governed.preview.retryPolicy.retryAfterPossibleBilling, estimatedAttemptCost: governed.preview.cost.maximumEstimatedCost, beforeRetry: (retryNumber, possiblePriorBilling) => prepareAiRetry({ request, provider: explicitFallback.config, model: explicitFallback.model, userId, requestId, reservationId, retryNumber, possiblePriorBilling, initialAttemptCost: governed.preview.cost.maximumEstimatedCost }) });
+        reservationAttemptCost = fallbackResponse.actualCost ?? fallbackResponse.estimatedCost ?? governed.preview.cost.expectedEstimatedCost;
+        fallbackResponse.warnings.push(`Explicit fallback used after ${selected.primary.config.displayName} was unavailable.`);
+        return fallbackResponse;
+      } : undefined);
+      response = fallbackExecution.value;
+      fallbackOrigin = fallbackExecution.originalError;
+      if (fallbackOrigin) {
+        const numberDetail = (key: string) => typeof fallbackOrigin?.details?.[key] === "number" ? fallbackOrigin.details[key] as number : undefined;
+        const primaryInput = numberDetail("usage_input_tokens"); const primaryOutput = numberDetail("usage_output_tokens"); const primaryTotal = numberDetail("usage_total_tokens");
+        const sum = (left: number | undefined, right: number | undefined) => left == null && right == null ? undefined : Number(left || 0) + Number(right || 0);
+        response.usage = { ...response.usage, inputTokens: sum(primaryInput, response.usage?.inputTokens), outputTokens: sum(primaryOutput, response.usage?.outputTokens), totalTokens: sum(primaryTotal, response.usage?.totalTokens), providerReported: fallbackOrigin.details?.usage_provider_reported === true && response.usage?.providerReported === true };
+        const primaryActual = numberDetail("actual_cost"); const primaryEstimated = numberDetail("estimated_cost"); const fallbackActual = response.actualCost; const fallbackEstimated = response.estimatedCost ?? governed.preview.cost.expectedEstimatedCost;
+        response.estimatedCost = Number(primaryActual ?? primaryEstimated ?? 0) + Number(fallbackActual ?? fallbackEstimated ?? 0);
+        response.actualCost = primaryActual != null && fallbackActual != null ? primaryActual + fallbackActual : undefined;
       }
       if (cheaperFallback) response.warnings.push(`A cheaper compatible model was selected, saving an estimated ${cheaperFallback.estimatedSavings.toFixed(6)} ${governed.preview.cost.currency}.`);
       retries = response.retryCount;
@@ -245,7 +266,7 @@ export class AiRequestCoordinator {
       if (!responseInspection.safe) { await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, severity: responseInspection.severity, reasons: responseInspection.reasons, requestPreview: { feature: request.featureKey }, responsePreview: response.content }); throw new AiError("AI_RESPONSE_QUARANTINED"); }
       if (request.responseFormat) {
         try {
-          const parsed = await parseStructuredResponseWithProviderRepair({ content: response.content || "", format: request.responseFormat, maxBytes, maximumStructuredItems: governed.preview.responseLimits.maximumStructuredItems, providerRepairAttempts: governed.preview.structuredOutputPolicy.jsonProviderRepairAttempts, repair: async (malformedContent) => {
+          const parsed = await parseStructuredResponseWithProviderRepair({ content: response.content || "", format: request.responseFormat, maxBytes, maximumStructuredItems: governed.preview.responseLimits.maximumStructuredItems, providerRepairAttempts: request.responseFormat.allowEmbeddedJson === false ? 0 : governed.preview.structuredOutputPolicy.jsonProviderRepairAttempts, repair: async (malformedContent) => {
             const repairAttempt = auditId ? await prisma.aiProviderAttempt.create({ data: { requestAuditId: auditId, attemptNumber: response.retryCount + 2, providerConfigId: finalCandidate.config.id, model: finalCandidate.model, status: "STARTED", estimatedCost: governed.preview.cost.maximumEstimatedCost } }).catch(() => null) : null;
             const repairStarted = Date.now();
             let repairResponse: AiResponse<T>;
@@ -266,10 +287,10 @@ export class AiRequestCoordinator {
           if (parsed.repaired || parsed.providerRepairUsed) await prisma.aiResponseRecord.update({ where: { id: stored.id }, data: { repairAttempts: 1, repairMethod: parsed.repairMethod, status: "SCHEMA_VALIDATED" } });
         } catch (error) {
           const structured = error instanceof AiError ? error : new AiError("AI_PROVIDER_INVALID_RESPONSE");
-          const usageDetails = { usage_input_tokens: response.usage?.inputTokens, usage_output_tokens: response.usage?.outputTokens, usage_total_tokens: response.usage?.totalTokens, usage_provider_reported: response.usage?.providerReported === true, estimated_cost: response.estimatedCost, actual_cost: response.actualCost };
+          const usageDetails = { usage_input_tokens: response.usage?.inputTokens, usage_output_tokens: response.usage?.outputTokens, usage_total_tokens: response.usage?.totalTokens, usage_provider_reported: response.usage?.providerReported === true, estimated_cost: response.estimatedCost ?? governed.preview.cost.expectedEstimatedCost, actual_cost: response.actualCost, billing_possible: response.transport?.httpStatus === 200, http_status: response.transport?.httpStatus, response_content_type: response.transport?.contentType, response_body_length: response.transport?.bodyLength, response_streamed: response.transport?.streamed };
           await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, reasons: [structured.details?.failure_stage === "SCHEMA_VALIDATION" ? "schema_validation_failed" : "json_parse_failed"], requestPreview: { feature: request.featureKey }, responsePreview: response.content, validationFailures: structured.details });
           if (structured.category === "AI_PROVIDER_INVALID_RESPONSE") { structured.details = { ...structured.details, ...usageDetails }; throw structured; }
-          throw new AiError(request.featureKey === "recipe_copilot" && structured.details?.failure_stage === "SCHEMA_VALIDATION" ? "AI_RECIPE_SCHEMA_INVALID" : "AI_PROVIDER_INVALID_RESPONSE", undefined, 422, undefined, { ...structured.details, ...usageDetails, request_id: requestId, provider: finalCandidate.config.displayName, model: finalCandidate.model, stage: structured.details?.failure_stage || "STRUCTURED_RESPONSE", elapsed_ms: Date.now() - started });
+          throw new AiError(request.featureKey === "recipe_copilot" ? "AI_FEATURE_INVALID_STRUCTURED_OUTPUT" : "AI_PROVIDER_INVALID_RESPONSE", undefined, 422, undefined, { ...structured.details, ...usageDetails, request_id: requestId, provider: finalCandidate.config.displayName, model: finalCandidate.model, stage: structured.details?.failure_stage || "STRUCTURED_RESPONSE", elapsed_ms: Date.now() - started });
         }
       }
       const bytes = Buffer.byteLength(response.content || "", "utf8"); if (bytes > maxBytes) throw new AiError("RESPONSE_TOO_LARGE");
@@ -280,13 +301,14 @@ export class AiRequestCoordinator {
         response.estimatedCost = possiblePriorBillingCost + Number(response.actualCost ?? response.estimatedCost ?? governed.preview.cost.expectedEstimatedCost);
         response.actualCost = undefined;
       } else if (response.estimatedCost == null) response.estimatedCost = governed.preview.cost.expectedEstimatedCost;
-      try { await completeAiAudit(requestId, response, bytes); } catch (error) { await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, reasons: ["audit_persistence_failed"], requestPreview: { feature: request.featureKey }, responsePreview: response.content }).catch(() => null); throw new AiError("INTERNAL_AI_ERROR"); } await reconcileAiBudgetReservation(reservationId, response.actualCost ?? response.estimatedCost, "RECONCILED"); await prisma.aiProviderModel.updateMany({ where: { providerConfigId: response.providerId, modelIdentifier: response.model }, data: { lastSuccessfulUseAt: new Date() } }); return response;
+      try { await completeAiAudit(requestId, response, bytes); } catch (error) { await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, reasons: ["audit_persistence_failed"], requestPreview: { feature: request.featureKey }, responsePreview: response.content }).catch(() => null); throw new AiError("INTERNAL_AI_ERROR"); } await reconcileAiBudgetReservation(reservationId, reservationAttemptCost ?? response.actualCost ?? response.estimatedCost, "RECONCILED"); await prisma.aiProviderModel.updateMany({ where: { providerConfigId: response.providerId, modelIdentifier: response.model }, data: { lastSuccessfulUseAt: new Date() } }); return response;
     } catch (error) {
       let normalized = normalizeProviderError(error); if (timed.timedOut()) normalized = new AiError("AI_PROVIDER_TIMEOUT", undefined, 504, undefined, { request_id: requestId, provider: selected.primary.config.displayName, model: selected.primary.model, stage: "PROVIDER_REQUEST", elapsed_ms: Date.now() - started, timeout_ms: timeout.timeoutMs, timeout_source: timeout.timeoutSource, retryable: true, usage_available: false }); retries = Number((error as any)?.retryCount || retries);
       if (normalized instanceof AiError) normalized.details = { request_id: requestId, provider: selected.primary.config.displayName, model: selected.primary.model, stage: normalized.details?.stage || normalized.details?.failure_stage || "AI_ORCHESTRATION", elapsed_ms: Date.now() - started, ...normalized.details };
       console.warn("[AI] request failed", { requestId, provider: selected.primary.config.displayName, model: selected.primary.model, endpointHostname: selected.primary.config.baseUrl ? new URL(selected.primary.config.baseUrl).hostname : undefined, elapsedMs: Date.now() - started, httpStatus: normalized.details?.http_status, contentType: normalized.details?.response_content_type, responseBodyLength: normalized.details?.response_body_length, streamed: normalized.details?.response_streamed === true, timeoutSource: normalized.details?.timeout_source, stage: normalized.details?.stage, code: normalized.category });
       if (auditId && normalized.category !== "AI_RESPONSE_QUARANTINED") await failAiAudit(requestId, { category: normalized.category, retryCount: retries, latencyMs: Date.now() - started, cancelled: normalized.category === "REQUEST_CANCELLED", timedOut: normalized.category === "AI_PROVIDER_TIMEOUT", details: normalized.details }).catch((auditError) => logAuditFailure(auditError, { requestId, request, userId, provider: selected.primary.config, model: selected.primary.model }));
-      await reconcileAiBudgetReservation(reservationId, undefined, "RELEASED");
+      const failureCost = reservationAttemptCost ?? (typeof normalized.details?.actual_cost === "number" ? normalized.details.actual_cost : typeof normalized.details?.estimated_cost === "number" ? normalized.details.estimated_cost : undefined);
+      await reconcileAiBudgetReservation(reservationId, failureCost, failureCost == null ? "RELEASED" : "RECONCILED");
       throw normalized;
     } finally { timed.close(); }
   }

@@ -31,6 +31,7 @@ export type AiResponseFormat<T = unknown> = {
   name: string;
   schema: ZodType<T>;
   unknownFields?: "reject" | "strip";
+  allowEmbeddedJson?: boolean;
 };
 
 export type AiRequest<T = unknown> = {

@@ -1,6 +1,7 @@
 import type { AiCapabilityResult, AiConnectionTestResult, AiModel, AiProviderAdapter, AiProviderExecutionContext, AiRequest, AiResponse, AiStreamEvent, ResolvedAiProviderConfig } from "../contracts";
 import { AiError, normalizeProviderError } from "../errors";
-import { configuredHeaders, joinUrl, parseTextLines, safeFetchJson } from "./http";
+import { configuredHeaders, joinUrl, parseTextLines, safeFetchJson, safeFetchJsonDetailed } from "./http";
+import { normalizeAIResponse } from "./normalizeResponse";
 
 export class OllamaAdapter implements AiProviderAdapter {
   readonly providerType = "ollama" as const;
@@ -24,11 +25,10 @@ export class OllamaAdapter implements AiProviderAdapter {
   async complete<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): Promise<AiResponse<T>> {
     const started = Date.now();
     const messages = [...(request.systemInstructions ? [{ role: "system", content: request.systemInstructions }] : []), ...request.messages];
-    const payload = await safeFetchJson(joinUrl(this.base(config), "/api/chat"), { method: "POST", headers: configuredHeaders(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages, stream: false, format: request.responseFormat ? "json" : undefined, options: { temperature: request.temperature, num_predict: request.maxOutputTokens, num_ctx: config.maximumContextTokens } }) }, context.maxResponseBytes);
-    const content = payload?.message?.content;
-    if (typeof content !== "string") throw new AiError("INVALID_RESPONSE");
-    const inputTokens = Number(payload.prompt_eval_count) || undefined, outputTokens = Number(payload.eval_count) || undefined;
-    return { requestId: context.requestId, providerId: config.id, providerType: "ollama", model: String(payload.model || context.model), content, usage: { inputTokens, outputTokens, totalTokens: inputTokens != null && outputTokens != null ? inputTokens + outputTokens : undefined }, latencyMs: Date.now() - started, retryCount: 0, streaming: false, finishReason: payload.done_reason, warnings: ["Local provider — API cost not tracked"] };
+    const result = await safeFetchJsonDetailed(joinUrl(this.base(config), "/api/chat"), { method: "POST", headers: configuredHeaders(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages, stream: false, format: request.responseFormat ? "json" : undefined, options: { temperature: request.temperature, num_predict: request.maxOutputTokens, num_ctx: config.maximumContextTokens } }) }, context.maxResponseBytes, { requestId: context.requestId, provider: config.displayName, model: context.model, stage: "CHAT_COMPLETION" });
+    const payload = { ...result.payload, usage: { input_tokens: result.payload?.prompt_eval_count, output_tokens: result.payload?.eval_count } };
+    const normalized = normalizeAIResponse(payload, { providerType: "ollama", provider: config.displayName, requestedModel: context.model, requestId: context.requestId, transport: result.transport, allowDirectStructuredObject: !!request.responseFormat });
+    return { requestId: context.requestId, providerId: config.id, providerType: "ollama", model: normalized.model || context.model, content: normalized.text, usage: normalized.usage, latencyMs: Date.now() - started, retryCount: 0, streaming: false, finishReason: normalized.finishReason, warnings: ["Local provider - API cost not tracked"], transport: result.transport };
   }
   async *stream<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): AsyncIterable<AiStreamEvent> {
     const messages = [...(request.systemInstructions ? [{ role: "system", content: request.systemInstructions }] : []), ...request.messages];

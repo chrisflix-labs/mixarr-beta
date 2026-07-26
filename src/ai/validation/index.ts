@@ -48,15 +48,17 @@ export function parseStructuredResponseDetailed<T>(content: string, format: AiRe
   try { parsed = JSON.parse(source); } catch {
     const fenced = source.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
     if (fenced) { source = fenced[1].trim(); repaired = true; repairMethod = "REMOVED_JSON_CODE_FENCE"; }
-    else {
+    else if (format.allowEmbeddedJson !== false) {
       const extracted = !source.includes("```") ? extractSingleJsonObject(source) : null;
       if (extracted) { source = extracted; repaired = true; repairMethod = "EXTRACTED_UNAMBIGUOUS_OBJECT"; }
     }
-    const withoutTrailingCommas = source.replace(/,\s*([}\]])/g, "$1");
-    if (withoutTrailingCommas !== source) { source = withoutTrailingCommas; repaired = true; repairMethod = repairMethod ? `${repairMethod}_AND_TRAILING_COMMA` : "REMOVED_TRAILING_COMMA"; }
+    if (format.allowEmbeddedJson !== false) {
+      const withoutTrailingCommas = source.replace(/,\s*([}\]])/g, "$1");
+      if (withoutTrailingCommas !== source) { source = withoutTrailingCommas; repaired = true; repairMethod = repairMethod ? `${repairMethod}_AND_TRAILING_COMMA` : "REMOVED_TRAILING_COMMA"; }
+    }
     try { parsed = JSON.parse(source); } catch { throw new AiError("STRUCTURED_RESPONSE_INVALID", undefined, 422, undefined, { failure_stage: "JSON_PARSE", repair_attempted: repaired, repair_method: repairMethod }); }
   }
-  if (typeof parsed === "string") {
+  if (typeof parsed === "string" && format.allowEmbeddedJson !== false) {
     try { parsed = JSON.parse(parsed); repaired = true; repairMethod = "PARSED_JSON_STRING"; }
     catch { throw new AiError("STRUCTURED_RESPONSE_INVALID", undefined, 422, undefined, { failure_stage: "JSON_PARSE", repair_attempted: true, repair_method: "PARSED_JSON_STRING" }); }
   }

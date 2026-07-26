@@ -154,7 +154,7 @@ export async function getRecipeCopilotAvailability(userId: string, raw: unknown 
   try {
     const provider = await resolveAiProvider(providerId);
     const context = buildPrivacyAwareRecipeContext(input.recipe as Record<string, any> | undefined, privacyMode);
-    const request = { featureKey: RECIPE_COPILOT_FEATURE_KEY, systemInstructions: RECIPE_COPILOT_SYSTEM_PROMPT, messages: [{ role: "user" as const, content: recipeCopilotUserPrompt({ action: input.action || "create", instruction: input.instruction || "", purpose: input.purpose, context: context.recipe }) }], responseFormat: { type: "json" as const, name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, unknownFields: "reject" as const }, privacyMode: privacyMode as any, maxOutputTokens: 4000, requestSource: "FOREGROUND" as const, allowFallback: false, requiredCapabilities: ["structured_json" as const], externalConfirmation: true };
+    const request = { featureKey: RECIPE_COPILOT_FEATURE_KEY, systemInstructions: RECIPE_COPILOT_SYSTEM_PROMPT, messages: [{ role: "user" as const, content: recipeCopilotUserPrompt({ action: input.action || "create", instruction: input.instruction || "", purpose: input.purpose, context: context.recipe }) }], responseFormat: { type: "json" as const, name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, unknownFields: "reject" as const, allowEmbeddedJson: false }, privacyMode: privacyMode as any, maxOutputTokens: 4000, requestSource: "FOREGROUND" as const, allowFallback: true, requiredCapabilities: ["structured_json" as const], externalConfirmation: true };
     await assertAiExecutionPolicy({ request, provider, model, requiredCapabilities: ["chat_messages", "structured_json"] });
     const preview = await previewAiRequest({ request, provider, model, userId });
     const dailyRequests = preview.remainingBudgets?.dailyRequests;
@@ -207,16 +207,16 @@ export async function runRecipeCopilot(userId: string, recipeId: string | null, 
       featureKey: RECIPE_COPILOT_FEATURE_KEY, providerId: availability.providerId, model: availability.model,
       systemInstructions: RECIPE_COPILOT_SYSTEM_PROMPT,
       messages: [{ role: "user", content: recipeCopilotUserPrompt({ action: input.action, instruction: input.instruction, purpose: input.purpose, context: privacy.recipe, localAnalysis: { candidateEstimate: localAnalysis.candidateEstimate, compatibility: localAnalysis.compatibility, playlistExample: playlistContext } }) }],
-      responseFormat: { type: "json", name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, unknownFields: "reject" },
+      responseFormat: { type: "json", name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, unknownFields: "reject", allowEmbeddedJson: false },
       privacyMode: availability.privacyMode as any, maxOutputTokens: 4000, maxResponseBytes: 512_000,
-      temperature: 0.1, requestSource: "FOREGROUND", allowFallback: false, requiredCapabilities: ["structured_json"],
+      temperature: 0.1, requestSource: "FOREGROUND", allowFallback: true, requiredCapabilities: ["structured_json"],
       contextTrimmingStrategy: "REMOVE_LOWEST_PRIORITY", signal, correlationId: requestRow.id,
       externalConfirmation: input.externalConfirmation, idempotencyKey: input.idempotencyKey,
       promptTemplateVersion: RECIPE_COPILOT_PROMPT_VERSION,
       metadata: { workflow: "recipe_copilot", action: input.action, advisory_only: true, automatic_activation: false },
     }, userId);
     const checkedOutput = recipeCopilotResponseSchema.safeParse(response.data);
-    if (!checkedOutput.success) throw new AiError("AI_RECIPE_SCHEMA_INVALID", undefined, 422, undefined, { request_id: requestRow.id, provider: availability.provider, model: availability.model, stage: "RECIPE_SCHEMA_VALIDATION", elapsed_ms: Date.now() - operationStarted, issues: checkedOutput.error.issues.slice(0, 25).map((issue) => ({ path: issue.path.join("."), code: issue.code })) });
+    if (!checkedOutput.success) throw new AiError("AI_FEATURE_INVALID_STRUCTURED_OUTPUT", undefined, 422, undefined, { request_id: requestRow.id, provider: availability.provider, model: availability.model, stage: "RECIPE_SCHEMA_VALIDATION", elapsed_ms: Date.now() - operationStarted, issues: checkedOutput.error.issues.slice(0, 25).map((issue) => ({ path: issue.path.join("."), code: issue.code })) });
     const output = checkedOutput.data;
     if (output.action !== input.action) throw failure("AI_ACTION_MISMATCH", "The provider returned a different Recipe Copilot action.", 422);
     const readOnly = new Set(["explain", "diagnose", "compare_intent", "suggest_names", "onboarding"]);
@@ -242,7 +242,7 @@ export async function runRecipeCopilot(userId: string, recipeId: string | null, 
     if (stored) await writeRecipeAudit({ recipeId: stored.id, recipeVersion: stored.recipeVersion, eventType: "AI_RECIPE_PROPOSAL_CREATED", actorId: userId, correlationId: requestRow.id, description: `Recipe Copilot ${input.action} proposal is ready for review.`, validation, newState: { aiRecipeStatus: status, proposalId: proposal.id }, metadata: { changes: changes.length, automaticActivation: false } }).catch(() => null);
     return publicProposal(await prisma.aiRecipeProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { request: true } }));
   } catch (error) {
-    const normalized = error instanceof AiError ? error : error instanceof ZodError ? new AiError("AI_RECIPE_SCHEMA_INVALID") : Object.assign(new AiError("AI_RECIPE_REQUEST_FAILED"), { cause: error });
+    const normalized = error instanceof AiError ? error : error instanceof ZodError ? new AiError("AI_FEATURE_INVALID_STRUCTURED_OUTPUT") : Object.assign(new AiError("AI_RECIPE_REQUEST_FAILED"), { cause: error });
     normalized.details = { request_id: requestRow.id, provider: availability.provider, model: availability.model, stage: normalized.details?.stage || normalized.details?.failure_stage || "RECIPE_GENERATION", elapsed_ms: Date.now() - operationStarted, ...normalized.details };
     const cancelled = normalized.category === "REQUEST_CANCELLED";
     const requestStatus = aiFailureStatus(normalized.category);

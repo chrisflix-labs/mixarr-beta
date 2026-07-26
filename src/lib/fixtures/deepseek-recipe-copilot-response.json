@@ -1,0 +1,15 @@
+{
+  "id": "recipe-copilot-e2e-id",
+  "object": "chat.completion",
+  "created": 1785020000,
+  "model": "deepseek-v4-pro",
+  "choices": [{
+    "index": 0,
+    "message": {
+      "role": "assistant",
+      "content": "```json\n{\"schemaVersion\":\"1.0\",\"action\":\"create\",\"proposedPatch\":{\"metadata\":{\"name\":\"Test recipe\"},\"automationPolicy\":{\"enabled\":false}},\"intent\":{\"summary\":\"A test recipe\",\"primaryGoals\":[],\"secondaryGoals\":[],\"conflicts\":[]},\"analysis\":{\"confidence\":0.9,\"assumptions\":[],\"warnings\":[],\"unsupportedRequests\":[],\"expectedBehavioralChanges\":[],\"compatibilityNotes\":[]},\"recommendations\":{\"parentRecipes\":[],\"inheritance\":[],\"missingRules\":[],\"saferSettings\":[]},\"changeRationales\":[],\"explanation\":null,\"diagnoses\":[],\"behaviorComparison\":null,\"nameSuggestions\":[],\"onboarding\":[]}\n```"
+    },
+    "finish_reason": "stop"
+  }],
+  "usage": { "prompt_tokens": 1707, "completion_tokens": 1900, "total_tokens": 3607, "cost": 0.0018 }
+}

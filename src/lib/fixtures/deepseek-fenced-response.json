@@ -1,0 +1,9 @@
+{
+  "id": "test-fenced-id",
+  "model": "deepseek-v4-pro",
+  "choices": [{
+    "index": 0,
+    "message": { "role": "assistant", "content": "```json\n{\"name\":\"Test recipe\"}\n```" },
+    "finish_reason": "stop"
+  }]
+}

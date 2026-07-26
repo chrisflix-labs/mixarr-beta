@@ -95,7 +95,7 @@ export async function safeFetchJsonDetailed(url: string, init: RequestInit, maxB
   }
   if (bytes.byteLength === 0 || !text.trim()) throw new AiError("AI_PROVIDER_EMPTY_RESPONSE", undefined, 502, undefined, providerHttpDetails(transport, diagnostics, { failure_stage: "EMPTY_BODY" }));
   if (streamed) throw new AiError("AI_PROVIDER_INVALID_RESPONSE", undefined, 502, undefined, providerHttpDetails(transport, diagnostics, { failure_stage: "UNEXPECTED_STREAM" }));
-  if (parsed === undefined) throw new AiError("AI_PROVIDER_INVALID_RESPONSE", undefined, 502, undefined, providerHttpDetails(transport, diagnostics, { failure_stage: contentType.includes("html") ? "HTML_RESPONSE" : "JSON_PARSE" }));
+  if (parsed === undefined) throw new AiError("AI_PROVIDER_MALFORMED_JSON", undefined, 502, undefined, providerHttpDetails(transport, diagnostics, { failure_stage: contentType.includes("html") ? "HTML_RESPONSE" : "JSON_PARSE" }));
   if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.error) throw new AiError("AI_PROVIDER_HTTP_ERROR", undefined, 502, undefined, providerHttpDetails(transport, diagnostics, { failure_stage: "PROVIDER_ERROR_OBJECT", provider_error_code: safeProviderErrorCode(parsed), retryable: false, billing_possible: false }));
   return { payload: parsed, transport };
 }

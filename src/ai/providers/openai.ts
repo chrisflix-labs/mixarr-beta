@@ -2,6 +2,7 @@ import { sanitizeErrorText } from "../../lib/supportRedaction";
 import type { AiCapabilityResult, AiConnectionTestResult, AiModel, AiModelCompatibility, AiProviderAdapter, AiProviderExecutionContext, AiRequest, AiResponse, ResolvedAiProviderConfig } from "../contracts";
 import { AiError } from "../errors";
 import { configuredHeaders } from "./http";
+import { normalizeAIResponse } from "./normalizeResponse";
 
 const DEFAULT_OPENAI_API_ROOT = "https://api.openai.com/v1";
 const ADMIN_TEST_PROMPT = "Reply with exactly: MIXARR_OK";
@@ -131,10 +132,8 @@ async function openAiFetchJson(url: string, init: RequestInit, maxBytes: number)
 }
 
 export function extractOpenAiResponseText(payload: any) {
-  if (typeof payload?.output_text === "string" && payload.output_text.trim()) return payload.output_text;
-  const parts: string[] = [];
-  for (const item of Array.isArray(payload?.output) ? payload.output : []) for (const content of Array.isArray(item?.content) ? item.content : []) if (content?.type === "output_text" && typeof content.text === "string") parts.push(content.text);
-  return parts.length ? parts.join("\n") : undefined;
+  try { return normalizeAIResponse(payload, { providerType: "openai", provider: "OpenAI", requestedModel: String(payload?.model || "unknown"), requestId: "response-extraction" }).text; }
+  catch { return undefined; }
 }
 
 function usage(payload: any, providerRequestId?: string) {

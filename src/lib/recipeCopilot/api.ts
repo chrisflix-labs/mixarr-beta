@@ -39,9 +39,14 @@ export function recipeCopilotApiError(error: unknown) {
       : mappedCode === "AI_MONTHLY_BUDGET_EXCEEDED" ? "The configured AI monthly budget has been reached."
       : mappedCode === "AI_RETRY_COST_LIMIT_EXCEEDED" ? "The first attempt failed temporarily, but another attempt would exceed the AI retry cost limit."
       : mappedCode === "AI_PROVIDER_TIMEOUT" ? `${provider || "The AI provider"} did not respond before the ${timeoutSeconds || 120}-second timeout.`
-      : mappedCode === "AI_PROVIDER_EMPTY_RESPONSE" ? `${provider || "The AI provider"} returned an empty response.`
+      : mappedCode === "AI_PROVIDER_EMPTY_RESPONSE" ? `${provider || "The AI provider"} returned no usable assistant content.`
+      : mappedCode === "AI_PROVIDER_UNSUPPORTED_RESPONSE_SHAPE" ? `${provider || "The AI provider"} returned an unsupported response shape.`
+      : mappedCode === "AI_PROVIDER_MALFORMED_JSON" ? `${provider || "The AI provider"} returned malformed JSON.`
+      : mappedCode === "AI_PROVIDER_REFUSAL" ? `${provider || "The AI provider"} refused the request.`
+      : mappedCode === "AI_PROVIDER_TOOL_CALL_ONLY" ? `${provider || "The AI provider"} returned a tool call without a final answer.`
+      : mappedCode === "AI_PROVIDER_TRUNCATED_RESPONSE" ? `${provider || "The AI provider"} stopped before returning a final answer.`
       : mappedCode === "AI_PROVIDER_HTTP_ERROR" ? `${provider || "The AI provider"} returned an HTTP error${typeof details.http_status === "number" ? ` (${details.http_status})` : ""}.`
-      : ["AI_PROVIDER_INVALID_RESPONSE", "AI_RECIPE_SCHEMA_INVALID"].includes(mappedCode) ? `${provider || "The AI provider"} returned a response that could not be converted into a valid recipe.`
+      : ["AI_PROVIDER_INVALID_RESPONSE", "AI_FEATURE_INVALID_STRUCTURED_OUTPUT", "AI_RECIPE_SCHEMA_INVALID"].includes(mappedCode) ? `${provider || "The AI provider"} returned content that did not match the Recipe Copilot schema.`
       : ["AI_DAILY_LIMIT_EXCEEDED", "AI_MONTHLY_REQUEST_LIMIT_EXCEEDED"].includes(mappedCode) ? describeRequestLimitFromDetails(error.details) || error.toSafePayload().error.message
       : mappedCode === "AI_REQUEST_COST_LIMIT_EXCEEDED" ? describeCostLimitFromDetails(error.details) || error.toSafePayload().error.message
       : error.toSafePayload().error.message;

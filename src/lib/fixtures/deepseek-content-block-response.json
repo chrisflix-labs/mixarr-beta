@@ -1,0 +1,12 @@
+{
+  "id": "test-block-id",
+  "model": "deepseek-v4-pro",
+  "choices": [{
+    "index": 0,
+    "message": {
+      "role": "assistant",
+      "content": [{ "type": "text", "text": { "value": "{\"name\":\"Test recipe\"}" } }]
+    },
+    "finish_reason": "stop"
+  }]
+}
