@@ -1,6 +1,6 @@
 # Mixarr
 
-Current release: **v2.4.15 — Storage Safety and Large-Library Scalability**. Mixarr now keeps runtime files under mounted `/config` and `/data` roots, bounds cache and history retention, rotates Docker logs, reports storage by category, and scans 150,000-track libraries without continuously rewriting unchanged rows. See [the v2.4.15 storage guide](docs/STORAGE_SAFETY_V2415.md).
+Current release: **v2.4.16 — DeepSeek V4 Thinking and Truncated Response Fix**. Provider tests now disable DeepSeek thinking explicitly, use a dedicated structured test profile, distinguish transport success from completion success, and never expose provider reasoning. See [the v2.4.16 DeepSeek guide](docs/DEEPSEEK_V4_THINKING_V2416.md).
 
 Previous release: **v2.4.14 — Per-Request AI Cost Limit Configuration**. See [the v2.4.14 guide](docs/AI_PER_REQUEST_COST_LIMIT_V2414.md).
 

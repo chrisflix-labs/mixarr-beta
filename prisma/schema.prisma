@@ -5932,6 +5932,13 @@ model AiRequestAudit {
   configuredOutputTokenLimit  Int?
   finalContentStatus          String?
   truncationRecoveryAttempted Boolean               @default(false)
+  requestedOutputTokenLimit   Int?
+  effectiveOutputTokenLimit   Int?
+  outputTokenLimitingSource   String?
+  thinkingModeRequested       String?
+  reasoningContentDetected    Boolean?
+  reasoningCharacterCount     Int?
+  finalContentCharacterCount  Int?
   actualCost                  Decimal?              @db.Decimal(18, 6)
   pricingProfileId            String?
   usageSource                 String                @default("ESTIMATED")

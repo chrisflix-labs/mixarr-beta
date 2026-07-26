@@ -25,6 +25,7 @@ export const PROVIDER_FIELD_STEPS: Record<string, number> = {
   retryBackoffMultiplier: 3,
   healthCheckIntervalMinutes: 3,
   monthlyBudget: 3,
+  thinkingMode: 3,
   administratorConfirmedLocal: 4,
   trustedNetwork: 4,
   notes: 4,
@@ -89,6 +90,7 @@ export function validateProviderWizard(form: ProviderWizardForm): ProviderWizard
     const error = numberError(form.monthlyBudget, 0, 1000000, false, "Monthly budget");
     if (error) add("monthlyBudget", error);
   }
+  if (form.providerType === "deepseek" && !["disabled", "enabled", "provider_default"].includes(String(form.thinkingMode || ""))) add("thinkingMode", "Choose Off, On, or Provider default.");
 
   if (form.locationClassification === "LOCAL") {
     if (form.administratorConfirmedLocal !== true) add("administratorConfirmedLocal", "Confirm that you inspected this local endpoint.");
@@ -132,6 +134,7 @@ export function buildProviderPayload(form: ProviderWizardForm, editing = false) 
     healthCheckIntervalMinutes: Number(form.healthCheckIntervalMinutes),
     monthlyBudget: form.monthlyBudget === "" || form.monthlyBudget == null ? null : Number(form.monthlyBudget),
     notes: String(form.notes || "").trim() || null,
+    ...(form.providerType === "deepseek" ? { customConfiguration: { ...(form.customConfiguration || {}), thinkingMode: form.thinkingMode || (editing ? "provider_default" : "disabled") } } : {}),
   };
 
   if (form.removeApiKey) payload.apiKeyAction = "remove";

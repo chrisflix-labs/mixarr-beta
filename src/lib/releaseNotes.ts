@@ -80,6 +80,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.16",
+    title: "DeepSeek V4 Thinking and Truncated Response Fix",
+    releaseDate: "July 26, 2026",
+    badges: ["AI", "Reliability", "Privacy", "Bug Fix", "Settings"],
+    changes: [
+      "Made DeepSeek V4 provider tests deterministic JSON checks with thinking disabled, no tools, non-streaming output, and a dedicated 128-token allowance.",
+      "Added one budget-governed provider-test-only retry at up to 256 output tokens after a length-limited result; normal feature truncation is never retried automatically.",
+      "Separated final content from reasoning metadata and added precise truncation and invalid-structured-response diagnostics.",
+      "Added Off, On, and Provider default thinking modes for deepseek-v4-pro and deepseek-v4-flash, with structured requests defaulting to Off.",
+      "Recorded only sanitized reasoning presence, counts, and character lengths; raw reasoning_content is never returned, logged, audited, or shown in the UI.",
+    ],
+  },
+  {
     version: "2.4.15",
     title: "Storage Safety and Large-Library Scalability",
     releaseDate: "July 25, 2026",

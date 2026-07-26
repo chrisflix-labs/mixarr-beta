@@ -1,7 +1,15 @@
 # Changelog
 
-- Fixed Recipe Copilot truncation on reasoning-capable DeepSeek models with centralized model capabilities, reasoning-aware 5,500-token initial budgets, a 4,000-token safe minimum, and up to 7,000 tokens for one governed restart retry. Existing lower administrator limits now block before dispatch with `AI_REQUIRED_OUTPUT_BUDGET_EXCEEDS_LIMIT` rather than charging for an almost-certain truncation.
-- Preserved per-attempt completion and reasoning usage, added output-limit recovery history, prevented `reasoning_content` from becoming user-visible output, applied JSON mode only when model capabilities permit it, and require complete local Recipe Copilot schema validation even when the provider reports `finish_reason: length`.
+## v2.4.16 - DeepSeek V4 Thinking and Truncated Response Fix
+
+- Fixed DeepSeek V4 provider tests exhausting a tiny eight-token completion allowance in provider-default thinking mode before `message.content` was produced. The raw HTTP request succeeded, but `finish_reason: length` correctly means model completion failure rather than authentication or transport failure.
+- Added a dedicated provider-test request profile: deterministic JSON-only system/user prompts, `response_format: {"type":"json_object"}` where supported, `stream: false`, no tools or sampling controls, explicit `thinking: {"type":"disabled"}` for supported DeepSeek V4 models, and a normalized 128-token allowance.
+- Added one provider-test-only, governance- and budget-checked retry at up to 256 tokens. Normal feature requests no longer retry or fall back automatically after truncation.
+- Added explicit Off, On, and Provider default thinking modes for `deepseek-v4-pro` and `deepseek-v4-flash`. Structured requests default to Off; advisory free-form requests may honor the provider setting; enabled thinking omits unsupported sampling parameters.
+- Separated final `message.content` from `reasoning_content`, removed reasoning from final-output extraction diagnostics, and added `AI_PROVIDER_TRUNCATED_BEFORE_FINAL`, `AI_PROVIDER_TRUNCATED_FINAL_RESPONSE`, `AI_PROVIDER_INVALID_STRUCTURED_RESPONSE`, and `AI_PROVIDER_TEST_TOKEN_LIMIT_TOO_LOW` while retaining the old truncation parent category in sanitized details.
+- Centralized zero/unlimited output-token normalization, excluded unrelated feature limits from provider tests, and added requested/effective/limiting-source diagnostics. `max_tokens: 0` is never sent.
+- Added sanitized response logging/audit fields and an actionable failure panel. Mixarr records reasoning presence, provider-reported token counts, and character counts only; raw chain-of-thought is never returned, logged, audited, or displayed.
+- Added migration `20260805010000_deepseek_v4_thinking_v2416`, mocked provider/regression coverage, and [DeepSeek V4 documentation](docs/DEEPSEEK_V4_THINKING_V2416.md).
 
 ## v2.4.15 - Storage Safety and Large-Library Scalability
 

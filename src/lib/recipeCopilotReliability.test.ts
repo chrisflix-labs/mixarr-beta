@@ -65,7 +65,7 @@ function deepSeek(path = "/deepseek"): ResolvedAiProviderConfig {
 const context = { requestId: "recipe-request-id", providerId: "deepseek-provider", model: "deepseek-v4-pro", signal: new AbortController().signal, maxResponseBytes: 512_000 };
 const format = { type: "json" as const, name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, allowEmbeddedJson: false };
 
-describe("v2.4.15 Recipe Copilot provider reliability", () => {
+describe("v2.4.16 Recipe Copilot provider reliability", () => {
   it("accepts an immediate DeepSeek OpenAI-compatible completion and validates the recipe proposal", async () => {
     const response = await new OpenAiCompatibleAdapter("deepseek").complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "Create a popular mix" }], responseFormat: format }, deepSeek(), context);
     assert.equal(response.requestId, "recipe-request-id"); assert.equal(response.usage?.providerReported, true); assert.equal(response.usage?.totalTokens, 50);
@@ -139,6 +139,7 @@ describe("v2.4.15 Recipe Copilot provider reliability", () => {
     const options = { providerType: "openai_compatible" as const, provider: "Compatible", requestedModel: "model", requestId: "classification" };
     assert.throws(() => normalizeAIResponse({ choices: [{ message: { content: null, refusal: "Cannot comply" }, finish_reason: "stop" }] }, options), (error: any) => error.category === "AI_PROVIDER_REFUSAL");
     assert.throws(() => normalizeAIResponse({ choices: [{ message: { content: "" }, finish_reason: "length" }] }, options), (error: any) => error.category === "AI_PROVIDER_TRUNCATED_RESPONSE");
+    assert.throws(() => normalizeAIResponse({ choices: [{ message: { content: '{"ok":' }, finish_reason: "length" }] }, options), (error: any) => error.category === "AI_PROVIDER_TRUNCATED_FINAL_RESPONSE");
   });
 
   it("keeps deterministic normalization failures off same-provider retries but eligible for an approved fallback", () => {

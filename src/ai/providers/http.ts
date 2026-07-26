@@ -14,6 +14,7 @@ type ProviderTransport = {
   bodyLength: number;
   endpointHostname: string;
   streamed: boolean;
+  providerRequestId?: string;
 };
 
 export function joinUrl(base: string | undefined, path: string) {
@@ -61,6 +62,7 @@ function providerHttpDetails(transport: ProviderTransport, diagnostics: Provider
     response_content_type: transport.contentType,
     response_body_length: transport.bodyLength,
     response_streamed: transport.streamed,
+    provider_request_id: transport.providerRequestId,
     ...extra,
   };
 }
@@ -77,7 +79,7 @@ export async function safeFetchJsonDetailed(url: string, init: RequestInit, maxB
     console.warn("[AI Provider] response read failed", { requestId: diagnostics.requestId, provider: diagnostics.provider, model: diagnostics.model, endpointHostname: new URL(url).hostname, elapsedMs: Date.now() - started, httpStatus: response.status, contentType, streamed, stage: "RESPONSE_READ" });
     throw error;
   }
-  const transport: ProviderTransport = { httpStatus: response.status, contentType, bodyLength: bytes.byteLength, endpointHostname: new URL(url).hostname, streamed };
+  const transport: ProviderTransport = { httpStatus: response.status, contentType, bodyLength: bytes.byteLength, endpointHostname: new URL(url).hostname, streamed, providerRequestId: response.headers.get("x-request-id") || response.headers.get("openai-request-id") || undefined };
   console.info("[AI Provider] response received", { requestId: diagnostics.requestId, provider: diagnostics.provider, model: diagnostics.model, endpointHostname: transport.endpointHostname, elapsedMs: Date.now() - started, httpStatus: transport.httpStatus, contentType: transport.contentType, responseBodyLength: transport.bodyLength, streamed: transport.streamed, stage: diagnostics.stage || "PROVIDER_RESPONSE" });
   const retryAfter = response.headers.get("retry-after");
   const retryAfterMs = retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000 : undefined;

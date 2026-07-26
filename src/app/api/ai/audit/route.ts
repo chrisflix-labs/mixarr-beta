@@ -33,6 +33,8 @@ export async function GET(request: Request) {
         startedAt: true, completedAt: true, latencyMs: true, providerDurationMs: true, timeToFirstTokenMs: true, retryCount: true,
         streamingUsed: true, cancellationStatus: true, inputTokenCount: true, outputTokenCount: true,
         totalTokenCount: true, cachedTokenCount: true, reasoningTokenCount: true, finishReason: true, configuredOutputTokenLimit: true,
+        requestedOutputTokenLimit: true, effectiveOutputTokenLimit: true, outputTokenLimitingSource: true, thinkingModeRequested: true,
+        reasoningContentDetected: true, reasoningCharacterCount: true, finalContentCharacterCount: true,
         finalContentStatus: true, truncationRecoveryAttempted: true, estimatedCost: true, actualCost: true,
         usageSource: true, pricingProfileId: true, responseByteCount: true, fallbackReason: true,
         httpStatus: true, providerRequestId: true, costState: true, structuredOutputResult: true, schemaValidationResult: true,

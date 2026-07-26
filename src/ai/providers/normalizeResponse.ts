@@ -7,6 +7,9 @@ export type NormalizedAIResponse = {
   usage?: AiUsage;
   model?: string;
   providerMetadata?: Record<string, unknown>;
+  hasReasoningContent: boolean;
+  reasoningCharacterCount: number;
+  finalContentCharacterCount: number;
 };
 
 type TransportMetadata = {
@@ -15,6 +18,7 @@ type TransportMetadata = {
   bodyLength?: number;
   endpointHostname?: string;
   streamed?: boolean;
+  providerRequestId?: string;
 };
 
 export type AIResponseNormalizationOptions = {
@@ -134,19 +138,30 @@ export function normalizeAIResponse(response: unknown, options: AIResponseNormal
   const finishReasonValue = choice?.finish_reason ?? choice?.finishReason ?? payload?.stop_reason ?? payload?.done_reason ?? payload?.status;
   const finishReason = typeof finishReasonValue === "string" ? finishReasonValue : undefined;
   const usage = normalizeAIUsage(payload);
+  const reasoning = textualBlocks(message?.reasoning_content).text;
+  const hasReasoningContent = typeof reasoning === "string" && !!reasoning.trim();
+  const reasoningCharacterCount = typeof reasoning === "string" ? reasoning.length : 0;
+  const normalizedFinishReason = String(finishReason || "").trim().toLowerCase();
+  const truncated = ["length", "max_tokens", "max_output_tokens", "incomplete"].includes(normalizedFinishReason);
   const attempts: string[] = [];
   let contentBlockCount: number | undefined;
   let knownFinalPath = false;
+  let finalText: string | undefined;
+  let extractorPath: string | undefined;
+  const recognizedChatShape = Array.isArray(payload?.choices) && !!choice && owns(choice, "message");
 
-  const candidates: Array<{ path: string; present: boolean; extract: () => { text?: string; blockCount?: number } }> = [
+  const chatCandidates: Array<{ path: string; present: boolean; extract: () => { text?: string; blockCount?: number } }> = [
     { path: "choices[0].message.content", present: owns(message, "content"), extract: () => textualBlocks(messageContent, true) },
     { path: "choices[0].text", present: owns(choice, "text"), extract: () => textualBlocks(choice?.text) },
+  ];
+  const otherCandidates: typeof chatCandidates = [
     { path: "message.content", present: owns(directMessage, "content"), extract: () => textualBlocks(directMessage?.content, true) },
     { path: "output_text", present: owns(payload, "output_text"), extract: () => textualBlocks(payload?.output_text) },
     { path: "output[].content[]", present: Array.isArray(payload?.output), extract: () => outputText(payload?.output) },
     { path: "content", present: owns(payload, "content"), extract: () => textualBlocks(payload?.content, true) },
     { path: "$", present: typeof response === "string", extract: () => ({ text: response as string }) },
   ];
+  const candidates = recognizedChatShape ? chatCandidates : [...chatCandidates, ...otherCandidates];
 
   for (const candidate of candidates) {
     attempts.push(candidate.path);
@@ -155,21 +170,18 @@ export function normalizeAIResponse(response: unknown, options: AIResponseNormal
     const extracted = candidate.extract();
     if (extracted.blockCount != null) contentBlockCount = extracted.blockCount;
     if (typeof extracted.text === "string" && extracted.text.trim()) {
-      return {
-        text: extracted.text.trim(), finishReason, usage,
-        model: typeof payload?.model === "string" ? payload.model : undefined,
-        providerMetadata: { responseId: typeof payload?.id === "string" ? payload.id : undefined, extractorPath: candidate.path },
-      };
+      finalText = extracted.text.trim();
+      extractorPath = candidate.path;
+      break;
     }
   }
 
-  const reasoning = textualBlocks(message?.reasoning_content).text;
-  attempts.push("choices[0].message.reasoning_content");
   const envelopeKeys = new Set(["id", "object", "created", "model", "choices", "message", "output_text", "output", "content", "usage", "done", "done_reason", "status"]);
   const hasKnownEnvelope = typeof response === "string" || safeKeys(payload).some((key) => envelopeKeys.has(key));
-  if (options.allowDirectStructuredObject && payload && !hasKnownEnvelope) {
+  if (!finalText && options.allowDirectStructuredObject && payload && !hasKnownEnvelope) {
     attempts.push("$ (direct structured object)");
-    return { text: JSON.stringify(payload), finishReason, usage, model: typeof payload.model === "string" ? payload.model : undefined, providerMetadata: { extractorPath: "$" } };
+    finalText = JSON.stringify(payload);
+    extractorPath = "$";
   }
 
   const contentBlocks = Array.isArray(messageContent) ? messageContent : Array.isArray(payload?.content) ? payload.content : [];
@@ -179,9 +191,10 @@ export function normalizeAIResponse(response: unknown, options: AIResponseNormal
     || !!message?.function_call
     || contentBlocks.some((block: any) => ["function_call", "tool_call", "tool_use"].includes(String(block?.type || "")))
     || (Array.isArray(payload?.output) && payload.output.some((item: any) => ["function_call", "tool_call", "tool_use"].includes(String(item?.type || ""))));
-  const truncated = ["length", "max_tokens", "max_output_tokens", "incomplete"].includes(String(finishReason || "").toLowerCase());
   const category: AiErrorCategory = hasRefusal ? "AI_PROVIDER_REFUSAL"
     : hasToolCalls ? "AI_PROVIDER_TOOL_CALL_ONLY"
+    : truncated && finalText ? "AI_PROVIDER_TRUNCATED_FINAL_RESPONSE"
+    : truncated && hasReasoningContent ? "AI_PROVIDER_TRUNCATED_BEFORE_FINAL"
     : truncated ? "AI_PROVIDER_TRUNCATED_RESPONSE"
     : knownFinalPath ? "AI_PROVIDER_EMPTY_RESPONSE"
     : "AI_PROVIDER_UNSUPPORTED_RESPONSE_SHAPE";
@@ -202,9 +215,12 @@ export function normalizeAIResponse(response: unknown, options: AIResponseNormal
     message_keys: safeKeys(message),
     content_value_type: valueType(messageContent),
     content_block_count: contentBlockCount,
-    content_length: typeof messageContent === "string" ? messageContent.length : undefined,
+    content_length: typeof finalText === "string" ? finalText.length : typeof messageContent === "string" ? messageContent.length : undefined,
     finish_reason: finishReason,
-    has_reasoning_content: typeof reasoning === "string" && !!reasoning.trim(),
+    has_reasoning_content: hasReasoningContent,
+    reasoning_character_count: reasoningCharacterCount,
+    final_content_character_count: finalText?.length || 0,
+    parent_category: truncated ? "AI_PROVIDER_TRUNCATED_RESPONSE" : undefined,
     has_tool_calls: hasToolCalls,
     has_usage: !!usage,
     extractor_path_attempts: attempts,
@@ -216,17 +232,29 @@ export function normalizeAIResponse(response: unknown, options: AIResponseNormal
     usage_accepted_prediction_tokens: usage?.acceptedPredictionTokens,
     usage_rejected_prediction_tokens: usage?.rejectedPredictionTokens,
     usage_provider_reported: usage?.providerReported === true,
-    provider_request_id: usage?.providerRequestId,
+    provider_request_id: options.transport?.providerRequestId || usage?.providerRequestId,
     actual_cost: finiteToken(payload?.usage?.cost ?? payload?.cost),
     billing_possible: options.transport?.httpStatus === 200,
   };
+  if (finalText && !truncated && !hasRefusal && !hasToolCalls) {
+    return {
+      text: finalText,
+      finishReason,
+      usage,
+      model: typeof payload?.model === "string" ? payload.model : undefined,
+      providerMetadata: { responseId: typeof payload?.id === "string" ? payload.id : undefined, extractorPath },
+      hasReasoningContent,
+      reasoningCharacterCount,
+      finalContentCharacterCount: finalText.length,
+    };
+  }
   console.warn("[AI Content Extraction] no final text found", {
     provider: options.provider, model: options.requestedModel, requestId: options.requestId,
     topLevelKeys: details.top_level_keys, choiceCount: details.choice_count,
     firstChoiceKeys: details.first_choice_keys, messageKeys: details.message_keys,
     contentType: options.transport?.contentType, contentValueType: details.content_value_type,
     contentBlockCount: details.content_block_count, finishReason,
-    hasReasoningContent: details.has_reasoning_content, hasToolCalls, hasUsage: !!usage,
+    hasReasoningContent: details.has_reasoning_content, reasoningCharacterCount, finalContentCharacterCount: finalText?.length || 0, hasToolCalls, hasUsage: !!usage,
     responseBodyLength: options.transport?.bodyLength, extractorPathAttempts: attempts,
   });
   throw new AiError(category, undefined, undefined, undefined, details);

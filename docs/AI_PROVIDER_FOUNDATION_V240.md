@@ -15,7 +15,7 @@ Before rollback, retain the migration and tables if audit history or encrypted p
 | Ollama | Native `/api/tags` and `/api/chat` | Local or remote; no key by default; JSON and streaming where the model/server supports them. |
 | LiteLLM | OpenAI-compatible | Configurable proxy URL, key, headers, models, streaming, and capability overrides. |
 | LM Studio | OpenAI-compatible | Local or remote, optional key, model discovery, and streaming. |
-| DeepSeek | OpenAI-compatible | API-key authentication, standard/reasoning model classification, usage capture, and streaming. |
+| DeepSeek | OpenAI-compatible | API-key authentication, DeepSeek V4 thinking-mode control, reasoning-safe final-answer extraction, usage capture, structured provider tests, and streaming. |
 | OpenAI API | OpenAI-compatible chat | Requires separate API access and an API key. A ChatGPT subscription is not API access. |
 | OpenAI-compatible | Configurable | Custom base/model/chat endpoints, authentication, headers, context, and capability overrides. Do not assume every compatible server implements every feature. |
 | OpenRouter | OpenAI-compatible | Provider-prefixed models, attribution headers, streaming, usage/cost where returned, and model assignments. |

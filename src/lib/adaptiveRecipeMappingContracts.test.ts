@@ -52,7 +52,7 @@ test("mapping UI exposes responsive controls, warnings, reset, and cancellable d
 });
 
 test("release metadata retains v2.3.2 after the v2.4.4 release", () => {
-  assert.equal(JSON.parse(read("package.json")).version, "2.4.15");
+  assert.equal(JSON.parse(read("package.json")).version, "2.4.16");
   assert.match(read("src/lib/releaseNotes.ts"), /version: "2\.3\.2"/);
   assert.match(read("src/lib/roadmap.ts"), /version: "2\.3\.2"[\s\S]*status: "completed"/);
   assert.match(read("CHANGELOG.md"), /v2\.3\.2 - Adaptive Recipe Mapping/);

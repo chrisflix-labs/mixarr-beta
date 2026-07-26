@@ -45,9 +45,9 @@ RUN npm prune --omit=dev
 FROM base AS runner
 WORKDIR /app
 ARG TARGETARCH
-ARG NEXT_PUBLIC_APP_VERSION=2.4.15
+ARG NEXT_PUBLIC_APP_VERSION=2.4.16
 LABEL org.opencontainers.image.title="Mixarr" \
-      org.opencontainers.image.version="2.4.15" \
+      org.opencontainers.image.version="2.4.16" \
       org.opencontainers.image.description="Mixarr storage-safe large-library playlist engine"
 
 RUN apt-get update && apt-get install -y openssl ffmpeg aubio-tools python3 python3-venv && rm -rf /var/lib/apt/lists/*

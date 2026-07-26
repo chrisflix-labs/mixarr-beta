@@ -3,7 +3,7 @@ import type { ZodType } from "zod";
 export const AI_PROVIDER_TYPES = ["ollama", "litellm", "lm_studio", "deepseek", "openai", "chatgpt_subscription", "openai_compatible", "openrouter", "anthropic"] as const;
 export type AiProviderType = typeof AI_PROVIDER_TYPES[number];
 
-export const AI_CAPABILITIES = ["text_generation", "chat_messages", "system_instructions", "structured_json", "json_schema", "streaming", "request_cancellation", "model_discovery", "token_usage", "cost_reporting", "reasoning_models", "large_context", "custom_headers", "local_operation", "remote_operation", "health_testing"] as const;
+export const AI_CAPABILITIES = ["text_generation", "chat_messages", "system_instructions", "structured_json", "json_schema", "streaming", "request_cancellation", "model_discovery", "token_usage", "cost_reporting", "reasoning_models", "thinking_mode", "large_context", "custom_headers", "local_operation", "remote_operation", "health_testing"] as const;
 export type AiCapability = typeof AI_CAPABILITIES[number];
 export type AiCapabilityConfidence = "CONFIRMED" | "REPORTED" | "ASSUMED" | "MANUALLY_ENABLED" | "UNSUPPORTED" | "UNKNOWN";
 export type AiCapabilityResult = Partial<Record<AiCapability, AiCapabilityConfidence>>;
@@ -11,6 +11,19 @@ export type AiCapabilityResult = Partial<Record<AiCapability, AiCapabilityConfid
 export type AiMessage = { role: "user" | "assistant"; content: string };
 export type AiUsage = { inputTokens?: number; outputTokens?: number; finalAnswerTokens?: number; totalTokens?: number; cachedTokens?: number; reasoningTokens?: number; acceptedPredictionTokens?: number; rejectedPredictionTokens?: number; providerReported?: boolean; providerRequestId?: string; rawUsage?: Record<string, unknown> };
 export type AiOutputTokenParameter = "max_tokens" | "max_completion_tokens";
+export type AiThinkingMode = "disabled" | "enabled" | "provider_default";
+export type AiReasoningEffort = "low" | "medium" | "high";
+export type NormalizedOutputTokenLimit = {
+  requestedOutputTokens: number | null;
+  configuredGlobalLimit: number | null;
+  configuredProviderLimit: number | null;
+  configuredFeatureLimit: number | null;
+  configuredUserLimit: number | null;
+  modelOutputLimit: number | null;
+  effectiveOutputTokens: number;
+  limitingSource: string;
+  unlimited: boolean;
+};
 export type AiModelCapabilities = {
   supportsStreaming: boolean;
   supportsJsonMode: boolean;
@@ -18,6 +31,7 @@ export type AiModelCapabilities = {
   supportsReasoning: boolean;
   reasoningConsumesCompletionBudget: boolean;
   supportsReasoningEffort: boolean;
+  supportsThinkingMode: boolean;
   outputTokenParameter: AiOutputTokenParameter;
   defaultOutputTokens?: number;
   maximumOutputTokens?: number;
@@ -65,7 +79,10 @@ export type AiRequest<T = unknown> = {
   responseFormat?: AiResponseFormat<T>;
   stream?: boolean;
   temperature?: number;
+  thinkingMode?: AiThinkingMode;
+  reasoningEffort?: AiReasoningEffort;
   maxOutputTokens?: number;
+  outputTokenLimit?: NormalizedOutputTokenLimit;
   outputBudget?: AiOutputBudgetPolicy;
   resolvedModelCapabilities?: AiModelCapabilities;
   truncationRetryMaxOutputTokens?: number;
@@ -104,7 +121,11 @@ export type AiResponse<T = unknown> = {
   retryCount: number;
   streaming: boolean;
   warnings: string[];
-  transport?: { httpStatus?: number; contentType?: string; bodyLength?: number; endpointHostname?: string; streamed?: boolean };
+  thinkingModeRequested?: AiThinkingMode;
+  hasReasoningContent?: boolean;
+  reasoningCharacterCount?: number;
+  finalContentCharacterCount?: number;
+  transport?: { httpStatus?: number; contentType?: string; bodyLength?: number; endpointHostname?: string; streamed?: boolean; providerRequestId?: string };
 };
 
 export type AiStreamEvent =
@@ -117,7 +138,8 @@ export type AiStreamEvent =
   | { type: "cancelled" }
   | { type: "failed"; code: string; message: string };
 
-export type AiConnectionTestResult = { connected: boolean; message: string; latencyMs: number; detectedApiType: string; capabilities: AiCapabilityResult; availableModelCount: number; defaultModelAvailable: boolean | null; testedAt: string; model?: string; modelReturned?: string; endpointMode?: string; authenticationResult?: string; discoveryResult?: string; inferenceResult?: string; responseId?: string; providerRequestId?: string; usage?: AiUsage };
+export type AiProviderTestProfile = { maxOutputTokens: number; requestedMaxTokens: number; effectiveMaxTokens: number; outputTokenLimitingSource: string; retryAttempt: number; thinkingMode: "disabled" };
+export type AiConnectionTestResult = { connected: boolean; message: string; latencyMs: number; detectedApiType: string; capabilities: AiCapabilityResult; availableModelCount: number; defaultModelAvailable: boolean | null; testedAt: string; model?: string; modelReturned?: string; endpointMode?: string; authenticationResult?: string; discoveryResult?: string; inferenceResult?: string; responseId?: string; providerRequestId?: string; usage?: AiUsage; retryAttempted?: boolean; requestedMaxTokens?: number; effectiveMaxTokens?: number; outputTokenLimitingSource?: string; thinkingModeRequested?: AiThinkingMode; hasReasoningContent?: boolean; reasoningCharacterCount?: number; finalContentCharacterCount?: number };
 
 export type ResolvedAiProviderConfig = {
   id: string;
@@ -158,7 +180,7 @@ export type AiProviderExecutionContext = { requestId: string; providerId: string
 export interface AiProviderAdapter {
   readonly providerType: AiProviderType;
   readonly available: boolean;
-  testConnection(config: ResolvedAiProviderConfig, signal?: AbortSignal, model?: string): Promise<AiConnectionTestResult>;
+  testConnection(config: ResolvedAiProviderConfig, signal?: AbortSignal, model?: string, profile?: AiProviderTestProfile): Promise<AiConnectionTestResult>;
   discoverModels(config: ResolvedAiProviderConfig, signal?: AbortSignal): Promise<AiModel[]>;
   detectCapabilities(config: ResolvedAiProviderConfig, model?: string, signal?: AbortSignal): Promise<AiCapabilityResult>;
   complete<T = unknown>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): Promise<AiResponse<T>>;

@@ -90,6 +90,6 @@ describe("v2.4.5 local mood, activity, and intent intelligence", () => {
     const migration = read("prisma/migrations/20260723010000_mood_activity_intent_intelligence_v245/migration.sql"), ui = read("src/components/NaturalLanguageRequests.tsx"), docs = read("docs/MOOD_ACTIVITY_INTENT_INTELLIGENCE_V245.md");
     assert.match(migration, /IntentDictionaryEntry/); assert.match(migration, /IntentInterpretationSetting/); assert.doesNotMatch(migration, /DROP TABLE|DROP COLUMN/);
     for (const marker of [/Recognized intent/, /Playlist phases/, /Energy curve/, /Custom terminology resolved locally/, /Save intent preset/]) assert.match(ui, marker);
-    assert.match(docs, /private phrases.*resolved locally/i); assert.equal(JSON.parse(read("package.json")).version, "2.4.15");
+    assert.match(docs, /private phrases.*resolved locally/i); assert.equal(JSON.parse(read("package.json")).version, "2.4.16");
   });
 });

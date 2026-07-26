@@ -15,6 +15,7 @@ const normal = (overrides: Partial<AiModelCapabilities> = {}): AiModelCapabiliti
   supportsReasoning: false,
   reasoningConsumesCompletionBudget: false,
   supportsReasoningEffort: false,
+  supportsThinkingMode: false,
   outputTokenParameter: "max_tokens",
   defaultOutputTokens: 2_500,
   source: "CATALOG",
@@ -26,11 +27,14 @@ const deepSeekReasoning = normal({
   supportsStructuredOutput: false,
   supportsReasoning: true,
   reasoningConsumesCompletionBudget: true,
+  supportsReasoningEffort: true,
+  supportsThinkingMode: true,
   defaultOutputTokens: 5_500,
 });
 
 const aliases: Array<{ provider: AiProviderType; matches: RegExp; capabilities: AiModelCapabilities }> = [
-  { provider: "deepseek", matches: /^(deepseek-v4-pro|deepseek-reasoner|deepseek-r1(?:[-:].*)?)$/i, capabilities: deepSeekReasoning },
+  { provider: "deepseek", matches: /^(deepseek-v4-pro|deepseek-v4-flash)$/i, capabilities: deepSeekReasoning },
+  { provider: "deepseek", matches: /^(deepseek-reasoner|deepseek-r1(?:[-:].*)?)$/i, capabilities: deepSeekReasoning },
   { provider: "deepseek", matches: /^(deepseek-chat|deepseek-v3(?:[-:].*)?)$/i, capabilities: normal({ supportsJsonMode: true }) },
   { provider: "openai", matches: /^(o1|o3|o4)(?:[-:].*)?$/i, capabilities: normal({ supportsJsonMode: true, supportsStructuredOutput: true, supportsReasoning: true, reasoningConsumesCompletionBudget: true, supportsReasoningEffort: true, outputTokenParameter: "max_completion_tokens", defaultOutputTokens: 5_500 }) },
 ];
@@ -63,6 +67,7 @@ export function resolveModelCapabilities(provider: AiProviderType, model: string
     supportsReasoning: declaredReasoning || catalog.supportsReasoning,
     reasoningConsumesCompletionBudget: typeof raw.reasoningConsumesCompletionBudget === "boolean" ? raw.reasoningConsumesCompletionBudget : declaredReasoning || catalog.reasoningConsumesCompletionBudget,
     supportsReasoningEffort: typeof raw.supportsReasoningEffort === "boolean" ? raw.supportsReasoningEffort : catalog.supportsReasoningEffort,
+    supportsThinkingMode: typeof raw.supportsThinkingMode === "boolean" ? raw.supportsThinkingMode : catalog.supportsThinkingMode,
     outputTokenParameter: raw.outputTokenParameter === "max_completion_tokens" ? "max_completion_tokens" : raw.outputTokenParameter === "max_tokens" ? "max_tokens" : catalog.outputTokenParameter,
     defaultOutputTokens: typeof raw.defaultOutputTokens === "number" ? raw.defaultOutputTokens : catalog.defaultOutputTokens,
     maximumOutputTokens: metadata.maximumOutputTokens ?? (typeof raw.maximumOutputTokens === "number" ? raw.maximumOutputTokens : catalog.maximumOutputTokens),

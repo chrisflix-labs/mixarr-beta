@@ -44,7 +44,10 @@ export function recipeCopilotApiError(error: unknown) {
       : mappedCode === "AI_PROVIDER_MALFORMED_JSON" ? `${provider || "The AI provider"} returned malformed JSON.`
       : mappedCode === "AI_PROVIDER_REFUSAL" ? `${provider || "The AI provider"} refused the request.`
       : mappedCode === "AI_PROVIDER_TOOL_CALL_ONLY" ? `${provider || "The AI provider"} returned a tool call without a final answer.`
-      : mappedCode === "AI_PROVIDER_TRUNCATED_RESPONSE" ? `${provider || "The AI provider"} stopped before returning a final answer.`
+      : mappedCode === "AI_PROVIDER_TRUNCATED_BEFORE_FINAL" ? `${provider || "The AI provider"} used the output allowance before producing a final answer.`
+      : mappedCode === "AI_PROVIDER_TRUNCATED_FINAL_RESPONSE" ? `${provider || "The AI provider"} reached the output allowance while producing the final answer.`
+      : mappedCode === "AI_PROVIDER_TRUNCATED_RESPONSE" ? `${provider || "The AI provider"} stopped before returning a complete final answer.`
+      : mappedCode === "AI_PROVIDER_INVALID_STRUCTURED_RESPONSE" ? `${provider || "The AI provider"} completed normally, but returned invalid structured output.`
       : mappedCode === "AI_REQUIRED_OUTPUT_BUDGET_EXCEEDS_LIMIT" ? `The configured output-token limit is too low for ${provider || "the selected provider"}. Raise it to the recommended minimum before retrying.`
       : mappedCode === "AI_PROVIDER_HTTP_ERROR" ? `${provider || "The AI provider"} returned an HTTP error${typeof details.http_status === "number" ? ` (${details.http_status})` : ""}.`
       : ["AI_PROVIDER_INVALID_RESPONSE", "AI_FEATURE_INVALID_STRUCTURED_OUTPUT", "AI_RECIPE_SCHEMA_INVALID"].includes(mappedCode) ? `${provider || "The AI provider"} returned content that did not match the Recipe Copilot schema.`

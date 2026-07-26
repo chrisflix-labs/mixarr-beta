@@ -35,7 +35,7 @@ describe("Recipe Copilot reasoning output budgets", () => {
 
   it("classifies length with empty final content and never exposes reasoning text", () => {
     const privateReasoning = "Redacted reasoning placeholder";
-    assert.throws(() => normalizeAIResponse({ choices: [{ message: { role: "assistant", content: "", reasoning_content: privateReasoning }, finish_reason: "length" }], usage: { prompt_tokens: 1707, completion_tokens: 2000, total_tokens: 3707 } }, { providerType: "deepseek", provider: "DeepSeek", requestedModel: "deepseek-v4-pro", requestId: "truncated" }), (error: any) => error.category === "AI_PROVIDER_TRUNCATED_RESPONSE" && error.details.usage_output_tokens === 2000 && error.details.has_reasoning_content === true && !JSON.stringify(error.details).includes(privateReasoning));
+    assert.throws(() => normalizeAIResponse({ choices: [{ message: { role: "assistant", content: "", reasoning_content: privateReasoning }, finish_reason: "length" }], usage: { prompt_tokens: 1707, completion_tokens: 2000, total_tokens: 3707 } }, { providerType: "deepseek", provider: "DeepSeek", requestedModel: "deepseek-v4-pro", requestId: "truncated" }), (error: any) => error.category === "AI_PROVIDER_TRUNCATED_BEFORE_FINAL" && error.details.parent_category === "AI_PROVIDER_TRUNCATED_RESPONSE" && error.details.usage_output_tokens === 2000 && error.details.has_reasoning_content === true && !JSON.stringify(error.details).includes(privateReasoning));
   });
 
   it("centralizes provider parameters and keeps unknown compatible models conservative", () => {
@@ -50,7 +50,7 @@ describe("Recipe Copilot reasoning output budgets", () => {
   });
 
   it("makes repeated truncation fallback-eligible without making policy failures eligible", () => {
-    assert.equal(isFallbackEligible(new AiError("AI_PROVIDER_TRUNCATED_RESPONSE")), true);
+    assert.equal(isFallbackEligible(new AiError("AI_PROVIDER_TRUNCATED_RESPONSE")), false);
     assert.equal(isFallbackEligible(new AiError("AI_REQUIRED_OUTPUT_BUDGET_EXCEEDS_LIMIT")), false);
   });
 });
