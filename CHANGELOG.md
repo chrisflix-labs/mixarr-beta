@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.4.21 - Lossless Library Intelligence Backup & Restore
+
+- Fixed the exact 2,772-track round-trip loss: 1,529 shared-Plex-GUID records were silently de-duplicated during schema-v1 parsing and the 1,243 surviving group representatives were then rejected as ambiguous.
+- Added schema-v2 artifacts with actual read/serialized/written counts, per-category states, safe source/library fingerprints, serialized-file checksums, explicit completeness, and versioned identity/path strategies.
+- Added explicit v2.4.11-v2.4.20 migration adapters, including v2.4.15 fixtures, with legacy-derived expected counts and honest unavailable-field warnings.
+- Added GUID-aware composite matching with scoped source/rating/media-part identities, multiple media parts, portable privacy-safe path hashes, metadata fingerprints, and explicit duplicate/ambiguity detection.
+- Added persisted pre-write restore plans, explicit partial confirmation, deterministic atomic/resumable batches, idempotent applied state, and post-write aggregate reconciliation.
+- Updated the backup/restore UI to separate current, selected, and written contents and to report matched, restored, current, unmatched, ambiguous, invalid, failed, rolled-back, checksum, schema, completeness, and reason diagnostics without raw paths.
+- Added exact round-trip-format, 40,000-track, 999/1,000/1,001, 4,999/5,000/5,001, 34,039, 36,816, nullable-state, shared-GUID, multiple-part, path normalization, corrupt-archive, legacy, and idempotent parsing coverage.
+- See [Lossless Library Intelligence Backup & Restore](docs/LIBRARY_INTELLIGENCE_BACKUP_V2421.md).
+
 ## v2.4.20 - Canonical Recipe Copilot Scoring Models
 
 - Established `stable-v2` and `experimental-balanced` as the single engine-backed scoring-model enum shared by recipe drafts, Recipe Copilot structured output and prompts, Recipe Studio controls, API validation, persistence, import/export, and execution.

@@ -90,6 +90,15 @@ export function validateArchive(buffer: Buffer, currentSchema: number, currentDa
   }
 
   const { manifest } = parseAndValidateManifest(manifestBuf.toString("utf8"));
+  if (manifest.schema_version >= 2) {
+    const trackFile = manifest.files[ARCHIVE_ENTRY.tracks];
+    if (!trackFile || trackFile.sha256 !== sha256Hex(tracksBuf) || trackFile.bytes !== tracksBuf.length) {
+      throw new BackupValidationError("Backup manifest track-file metadata does not match the archive.");
+    }
+    if (manifest.diagnostics.records_written !== manifest.total_intelligence_records_exported) {
+      throw new BackupValidationError("Backup manifest contains inconsistent written-record totals.");
+    }
+  }
   const compatibility = classifyCompatibility(manifest, currentSchema, currentDataVersion);
   if (compatibility === "unsupported") {
     throw new BackupValidationError("This backup was created by a newer Mixarr and cannot be restored by this build.");
@@ -100,18 +109,21 @@ export function validateArchive(buffer: Buffer, currentSchema: number, currentDa
 
 export type ParsedRecords = {
   records: BackupTrackRecord[];
+  parsedLineCount: number;
   invalidCount: number;
   duplicateCount: number;
   warnings: string[];
+  reasonCounts: Record<string, number>;
 };
 
 /**
  * Parse and sanitize all track records. Enforces max record count, max line
  * size, drops structurally invalid records, and de-duplicates by identity.
  */
-export function parseTrackRecords(tracksBuffer: Buffer): ParsedRecords {
+export function parseTrackRecords(tracksBuffer: Buffer, schemaVersion = 1): ParsedRecords {
   const records: BackupTrackRecord[] = [];
   const warnings = new Set<string>();
+  const reasonCounts: Record<string, number> = {};
   let invalidCount = 0;
   let duplicateCount = 0;
   const seen = new Set<string>();
@@ -129,6 +141,7 @@ export function parseTrackRecords(tracksBuffer: Buffer): ParsedRecords {
     if (Buffer.byteLength(line, "utf8") > LIMITS.maxRecordBytes) {
       invalidCount += 1;
       warnings.add("oversized_record_skipped");
+      reasonCounts.oversized_record = (reasonCounts.oversized_record ?? 0) + 1;
       continue;
     }
     count += 1;
@@ -142,25 +155,78 @@ export function parseTrackRecords(tracksBuffer: Buffer): ParsedRecords {
     } catch {
       invalidCount += 1;
       warnings.add("malformed_record_skipped");
+      reasonCounts.malformed_json = (reasonCounts.malformed_json ?? 0) + 1;
       continue;
     }
-    const sanitized = sanitizeBackupTrackRecord(parsed);
+    const migrated = schemaVersion === 1 ? migrateLegacyV1Record(parsed) : parsed;
+    const sanitized = sanitizeBackupTrackRecord(migrated);
     if (!sanitized) {
       invalidCount += 1;
       warnings.add("record_without_identity_skipped");
+      reasonCounts.missing_identity = (reasonCounts.missing_identity ?? 0) + 1;
       continue;
     }
     for (const w of sanitized.warnings) warnings.add(w);
 
-    const dedupeKey = sanitized.record.plex_guid || sanitized.record.rating_key || sanitized.record.plex_id
-      || sanitized.record.fingerprint || sanitized.record.id;
+    // A Plex GUID identifies a recording, not a unique library track. v2.4.15
+    // incorrectly deduplicated on GUID and lost every additional copy/edition.
+    // The archive record id is unique within the source DB and is safe to use
+    // only for detecting a literally repeated archive record. Some early or
+    // hand-built legacy archives omitted it; hash that complete serialized
+    // line instead of falling back to a shared Plex GUID.
+    const explicitRecordId =
+      migrated && typeof migrated === "object" && typeof (migrated as Record<string, unknown>).id === "string"
+        ? String((migrated as Record<string, unknown>).id).trim()
+        : "";
+    const dedupeKey = explicitRecordId
+      ? [
+          sanitized.record.plex_server_id ?? "",
+          sanitized.record.plex_library_id ?? sanitized.record.library_id ?? "",
+          explicitRecordId,
+        ].join("\u0000")
+      : `legacy-line:${sha256Hex(line)}`;
     if (seen.has(dedupeKey)) {
       duplicateCount += 1;
+      reasonCounts.repeated_archive_record = (reasonCounts.repeated_archive_record ?? 0) + 1;
       continue;
     }
     seen.add(dedupeKey);
     records.push(sanitized.record);
   }
 
-  return { records, invalidCount, duplicateCount, warnings: Array.from(warnings) };
+  if (schemaVersion === 1) warnings.add("legacy_schema_v1_migrated");
+  return { records, parsedLineCount: count, invalidCount, duplicateCount, warnings: Array.from(warnings), reasonCounts };
+}
+
+/** Explicit adapter for v2.4.11-v2.4.20/schema-v1 artifacts, including field aliases. */
+export function migrateLegacyV1Record(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const src = raw as Record<string, unknown>;
+  const value = (snake: string, ...aliases: string[]) => {
+    if (snake in src) return src[snake];
+    for (const alias of aliases) if (alias in src) return src[alias];
+    return undefined;
+  };
+  return {
+    ...src,
+    id: value("id", "track_id", "trackId"),
+    plex_guid: value("plex_guid", "plexGuid", "guid"),
+    plex_guids: value("plex_guids", "plexGuids", "guids"),
+    rating_key: value("rating_key", "ratingKey"),
+    plex_id: value("plex_id", "plexId"),
+    plex_library_id: value("plex_library_id", "plexLibraryId"),
+    library_id: value("library_id", "libraryId"),
+    plex_server_id: value("plex_server_id", "plexServerId"),
+    track_number: value("track_number", "trackIndex", "trackNumber"),
+    disc_number: value("disc_number", "discNumber"),
+    duration_ms: value("duration_ms", "durationMs", "duration"),
+    file_size: value("file_size", "fileSize"),
+    path_hash: value("path_hash", "pathHash"),
+    fingerprint: value("fingerprint", "metadataFingerprint"),
+    audio_feature: value("audio_feature", "audioFeature", "audio_features"),
+    bpm: value("bpm", "tempo"),
+    popularity: value("popularity", "popularityData"),
+    genres: value("genres", "genreData"),
+    identity_strategy_version: 1,
+  };
 }

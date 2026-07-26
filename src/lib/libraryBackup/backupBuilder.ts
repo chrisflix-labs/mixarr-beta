@@ -7,6 +7,7 @@
 import prisma from "../prisma";
 import { mapTrackRowToRecord, trackExportSelect, writeArchiveFromRecords, type TrackExportRow } from "./archiveWriter";
 import type { BackupTrackRecord } from "./archiveFormat";
+import { sha256Hex } from "./archiveFormat";
 
 export { mapTrackRowToRecord, trackExportSelect, writeArchiveFromRecords };
 export type { BuiltArchive } from "./archiveWriter";
@@ -39,4 +40,29 @@ export async function countBackupTracks(userId: string, libraryId?: string): Pro
   return prisma.track.count({
     where: { syncStatus: "active", library: { ...(libraryId ? { id: libraryId } : {}), server: { userId } } },
   });
+}
+
+export async function getBackupSourceContext(userId: string, libraryId?: string) {
+  const libraries = await prisma.library.findMany({
+    where: { ...(libraryId ? { id: libraryId } : {}), server: { userId } },
+    select: {
+      id: true,
+      plexId: true,
+      server: { select: { machineIdentifier: true } },
+      _count: { select: { tracks: { where: { syncStatus: "active" } } } },
+    },
+    orderBy: { id: "asc" },
+  });
+  const fingerprints = libraries.map((library) =>
+    sha256Hex(`mixarr-library-fingerprint-v1|${library.server.machineIdentifier}|${library.plexId}|${library._count.tracks}`),
+  );
+  return {
+    sourcePlexServerIdentifier: libraries.length === 1 ? libraries[0].server.machineIdentifier : null,
+    sourceLibraryIdentifier: libraries.length === 1 ? libraries[0].plexId : null,
+    libraryFingerprint: fingerprints.length === 1
+      ? fingerprints[0]
+      : fingerprints.length ? sha256Hex(fingerprints.sort().join("|")) : null,
+    libraryIdentifiers: libraries.map((library) => library.plexId),
+    libraryHashes: fingerprints,
+  };
 }

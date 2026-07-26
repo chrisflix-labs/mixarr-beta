@@ -9,10 +9,12 @@
 import { createHash } from "node:crypto";
 
 export const BACKUP_TYPE = "mixarr-library-intelligence" as const;
-export const BACKUP_SCHEMA_VERSION = 1;
+export const BACKUP_SCHEMA_VERSION = 2;
 /** Oldest backup schema this build can still read. */
 export const MIN_SUPPORTED_SCHEMA_VERSION = 1;
 export const BACKUP_FILE_EXTENSION = ".mixarr-library-backup";
+export const IDENTITY_STRATEGY_VERSION = 2;
+export const PATH_NORMALIZATION_VERSION = 2;
 
 /** Analysis data version. Bump when the intelligence field semantics change. */
 export const ANALYSIS_DATA_VERSION = 1;
@@ -64,6 +66,38 @@ export type BackupCounts = {
   source_local: number;
   source_api: number;
   source_estimated: number;
+  popularity_attempted: number;
+  genres_attempted: number;
+  bpm_attempted: number;
+  pending: number;
+  failed: number;
+};
+
+export type BackupCategoryCounts = {
+  expected: number;
+  exported: number;
+  attempted: number;
+  values: number;
+  completed: number;
+  incomplete: number;
+  pending: number;
+  failed: number;
+  known_no_data: number;
+};
+
+export type BackupDiagnostics = {
+  eligible_database_records: number;
+  records_read: number;
+  records_serialized: number;
+  records_written: number;
+  records_skipped: number;
+  skipped_reason_counts: Record<string, number>;
+};
+
+export type BackupFileManifest = {
+  sha256: string;
+  bytes: number;
+  records?: number;
 };
 
 export type BackupManifest = {
@@ -78,6 +112,23 @@ export type BackupManifest = {
   analysis_engine_versions: string[];
   library_identifiers: string[];
   library_hashes: string[];
+  source_plex_server_identifier: string | null;
+  source_library_identifier: string | null;
+  library_fingerprint: string | null;
+  total_plex_track_count: number;
+  total_intelligence_records_exported: number;
+  category_counts: {
+    audio_features: BackupCategoryCounts;
+    bpm: BackupCategoryCounts;
+    popularity: BackupCategoryCounts;
+    genres: BackupCategoryCounts;
+  };
+  diagnostics: BackupDiagnostics;
+  files: Record<string, BackupFileManifest>;
+  identity_strategy_version: number;
+  path_normalization_version: number;
+  complete: boolean;
+  legacy: boolean;
   archive_sha256?: string | null;
   notes?: string | null;
 };
@@ -93,6 +144,12 @@ export type GenreRecord = {
   synced_at: string | null;
   failure_reason: string | null;
   no_data: boolean;
+};
+
+export type BackupMediaPartIdentity = {
+  part_id: string | null;
+  path_hashes: string[];
+  file_size: number | null;
 };
 
 export type BackupTrackRecord = {
@@ -114,7 +171,9 @@ export type BackupTrackRecord = {
   year: number | null;
   file_size: number | null;
   path_hash: string | null;
+  media_parts: BackupMediaPartIdentity[];
   fingerprint: string | null;
+  identity_strategy_version: number;
   audio_feature: AudioFeatureRecord | null;
   bpm: BpmRecord | null;
   popularity: PopularityRecord | null;
@@ -223,7 +282,7 @@ function pickNumbers(raw: Record<string, unknown>, fields: readonly string[], ou
   for (const field of fields) {
     if (field in raw) {
       const v = sanitizeFiniteNumber(raw[field]);
-      if (v !== null) out[field] = v;
+      if (v !== null || raw[field] === null) out[field] = v;
     }
   }
 }
@@ -231,7 +290,7 @@ function pickStrings(raw: Record<string, unknown>, fields: readonly string[], ou
   for (const field of fields) {
     if (field in raw) {
       const v = sanitizeString(raw[field]);
-      if (v !== null) out[field] = v;
+      if (v !== null || raw[field] === null) out[field] = v;
     }
   }
 }
@@ -239,7 +298,7 @@ function pickTimestamps(raw: Record<string, unknown>, fields: readonly string[],
   for (const field of fields) {
     if (field in raw) {
       const v = sanitizeTimestamp(raw[field]);
-      if (v !== null) out[field] = v;
+      if (v !== null || raw[field] === null) out[field] = v;
     }
   }
 }
@@ -328,17 +387,37 @@ export function sanitizeBackupTrackRecord(raw: unknown): { record: BackupTrackRe
   const fingerprint = sanitizeString(src.fingerprint, 200);
   const pathHash = sanitizeString(src.path_hash, 128);
 
-  // Minimum identity: must have at least one deterministic key or fingerprint.
-  if (!plexGuid && !ratingKey && !plexId && !fingerprint && !pathHash) {
-    return null;
-  }
-
   const guids: string[] = [];
   if (Array.isArray(src.plex_guids)) {
     for (const g of src.plex_guids) {
       const s = sanitizeString(g, 300);
       if (s && guids.length < 32) guids.push(s);
     }
+  }
+
+  const mediaParts: BackupMediaPartIdentity[] = [];
+  if (Array.isArray(src.media_parts)) {
+    for (const part of src.media_parts) {
+      if (!part || typeof part !== "object" || mediaParts.length >= 64) continue;
+      const p = part as Record<string, unknown>;
+      const pathHashes = sanitizeStringArray(p.path_hashes, 16)
+        .filter((hash) => /^(?:full:|suffix\d+:)?[a-f0-9]{64}$/i.test(hash));
+      const partId = sanitizeString(p.part_id, 256);
+      const fileSize = sanitizeInt(p.file_size, { min: 0 });
+      if (partId || pathHashes.length || fileSize !== null) {
+        mediaParts.push({ part_id: partId, path_hashes: pathHashes, file_size: fileSize });
+      }
+    }
+  }
+  if (!mediaParts.length && pathHash) {
+    mediaParts.push({ part_id: null, path_hashes: [pathHash], file_size: sanitizeInt(src.file_size, { min: 0 }) });
+  }
+
+  // Minimum identity: accept any versioned deterministic identity, including a
+  // secondary GUID or one of multiple media parts.
+  if (!plexGuid && !guids.length && !ratingKey && !plexId && !fingerprint && !pathHash
+    && !mediaParts.some((part) => part.part_id || part.path_hashes.length)) {
+    return null;
   }
 
   const record: BackupTrackRecord = {
@@ -360,7 +439,9 @@ export function sanitizeBackupTrackRecord(raw: unknown): { record: BackupTrackRe
     year: sanitizeInt(src.year, { min: 1000, max: 3000 }),
     file_size: sanitizeInt(src.file_size, { min: 0 }),
     path_hash: pathHash,
+    media_parts: mediaParts,
     fingerprint,
+    identity_strategy_version: sanitizeInt(src.identity_strategy_version, { min: 1, max: 1000 }) ?? 1,
     audio_feature: sanitizeAudioFeatureRecord(src.audio_feature),
     bpm: sanitizeBpmRecord(src.bpm),
     popularity: sanitizePopularityRecord(src.popularity),
@@ -405,6 +486,10 @@ export function parseAndValidateManifest(text: string): { manifest: BackupManife
     throw new BackupValidationError(`This backup requires a newer Mixarr (schema ${minRestore}). Current build supports up to schema ${BACKUP_SCHEMA_VERSION}.`);
   }
   const counts = sanitizeCounts(m.counts);
+  const legacy = schemaVersion < 2;
+  const diagnostics = sanitizeDiagnostics(m.diagnostics, counts.tracks);
+  const categoryCounts = sanitizeCategoryCounts(m.category_counts, counts);
+  const files = sanitizeFiles(m.files);
   const manifest: BackupManifest = {
     backup_type: BACKUP_TYPE,
     schema_version: schemaVersion,
@@ -417,6 +502,18 @@ export function parseAndValidateManifest(text: string): { manifest: BackupManife
     analysis_engine_versions: sanitizeStringArray(m.analysis_engine_versions, 32),
     library_identifiers: sanitizeStringArray(m.library_identifiers, 64),
     library_hashes: sanitizeStringArray(m.library_hashes, 64),
+    source_plex_server_identifier: sanitizeString(m.source_plex_server_identifier, 256),
+    source_library_identifier: sanitizeString(m.source_library_identifier, 256),
+    library_fingerprint: sanitizeString(m.library_fingerprint, 128),
+    total_plex_track_count: sanitizeInt(m.total_plex_track_count, { min: 0 }) ?? counts.tracks,
+    total_intelligence_records_exported: sanitizeInt(m.total_intelligence_records_exported, { min: 0 }) ?? counts.tracks,
+    category_counts: categoryCounts,
+    diagnostics,
+    files,
+    identity_strategy_version: sanitizeInt(m.identity_strategy_version, { min: 1, max: 1000 }) ?? 1,
+    path_normalization_version: sanitizeInt(m.path_normalization_version, { min: 1, max: 1000 }) ?? 1,
+    complete: legacy ? false : m.complete === true,
+    legacy,
     archive_sha256: sanitizeString(m.archive_sha256, 128),
     notes: sanitizeString(m.notes, LIMITS.maxNotesLength),
   };
@@ -439,6 +536,8 @@ export function emptyCounts(): BackupCounts {
     completed: 0, incomplete: 0, no_data: 0,
     no_data_popularity: 0, no_data_genres: 0, no_data_bpm: 0,
     source_local: 0, source_api: 0, source_estimated: 0,
+    popularity_attempted: 0, genres_attempted: 0, bpm_attempted: 0,
+    pending: 0, failed: 0,
   };
 }
 
@@ -449,6 +548,82 @@ function sanitizeCounts(value: unknown): BackupCounts {
       const n = sanitizeInt((value as Record<string, unknown>)[key], { min: 0 });
       if (n !== null) out[key] = n;
     }
+  }
+  return out;
+}
+
+function emptyCategoryCounts(): BackupCategoryCounts {
+  return {
+    expected: 0, exported: 0, attempted: 0, values: 0, completed: 0,
+    incomplete: 0, pending: 0, failed: 0, known_no_data: 0,
+  };
+}
+
+function sanitizeCategoryCounts(value: unknown, counts: BackupCounts): BackupManifest["category_counts"] {
+  const legacyDefaults: BackupManifest["category_counts"] = {
+    audio_features: {
+      ...emptyCategoryCounts(), expected: counts.tracks, exported: counts.tracks,
+      values: counts.audio_features, completed: counts.completed, incomplete: counts.incomplete,
+    },
+    bpm: {
+      ...emptyCategoryCounts(), expected: counts.tracks, exported: counts.tracks,
+      attempted: counts.bpm_attempted || counts.bpm + counts.no_data_bpm,
+      values: counts.bpm, known_no_data: counts.no_data_bpm,
+    },
+    popularity: {
+      ...emptyCategoryCounts(), expected: counts.tracks, exported: counts.tracks,
+      attempted: counts.popularity_attempted || counts.popularity + counts.no_data_popularity,
+      values: counts.popularity, known_no_data: counts.no_data_popularity,
+    },
+    genres: {
+      ...emptyCategoryCounts(), expected: counts.tracks, exported: counts.tracks,
+      attempted: counts.genres_attempted || counts.genres + counts.no_data_genres,
+      values: counts.genres, known_no_data: counts.no_data_genres,
+    },
+  };
+  if (!value || typeof value !== "object") return legacyDefaults;
+  const src = value as Record<string, unknown>;
+  for (const category of Object.keys(legacyDefaults) as (keyof typeof legacyDefaults)[]) {
+    const raw = src[category];
+    if (!raw || typeof raw !== "object") continue;
+    for (const key of Object.keys(legacyDefaults[category]) as (keyof BackupCategoryCounts)[]) {
+      const n = sanitizeInt((raw as Record<string, unknown>)[key], { min: 0 });
+      if (n !== null) legacyDefaults[category][key] = n;
+    }
+  }
+  return legacyDefaults;
+}
+
+function sanitizeDiagnostics(value: unknown, fallbackRecords: number): BackupDiagnostics {
+  const src = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const reasons: Record<string, number> = {};
+  if (src.skipped_reason_counts && typeof src.skipped_reason_counts === "object") {
+    for (const [rawKey, rawValue] of Object.entries(src.skipped_reason_counts as Record<string, unknown>).slice(0, 128)) {
+      const key = sanitizeString(rawKey, 128);
+      const count = sanitizeInt(rawValue, { min: 0 });
+      if (key && count !== null) reasons[key] = count;
+    }
+  }
+  return {
+    eligible_database_records: sanitizeInt(src.eligible_database_records, { min: 0 }) ?? fallbackRecords,
+    records_read: sanitizeInt(src.records_read, { min: 0 }) ?? fallbackRecords,
+    records_serialized: sanitizeInt(src.records_serialized, { min: 0 }) ?? fallbackRecords,
+    records_written: sanitizeInt(src.records_written, { min: 0 }) ?? fallbackRecords,
+    records_skipped: sanitizeInt(src.records_skipped, { min: 0 }) ?? 0,
+    skipped_reason_counts: reasons,
+  };
+}
+
+function sanitizeFiles(value: unknown): Record<string, BackupFileManifest> {
+  const out: Record<string, BackupFileManifest> = {};
+  if (!value || typeof value !== "object") return out;
+  for (const [name, raw] of Object.entries(value as Record<string, unknown>).slice(0, LIMITS.maxArchiveEntries)) {
+    if (!raw || typeof raw !== "object") continue;
+    const entry = raw as Record<string, unknown>;
+    const sha256 = sanitizeString(entry.sha256, 128);
+    const bytes = sanitizeInt(entry.bytes, { min: 0 });
+    const records = sanitizeInt(entry.records, { min: 0 });
+    if (sha256 && bytes !== null) out[name] = { sha256, bytes, ...(records !== null ? { records } : {}) };
   }
   return out;
 }

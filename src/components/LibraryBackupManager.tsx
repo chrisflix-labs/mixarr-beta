@@ -30,15 +30,34 @@ type ArchiveSummary = {
   verificationStatus: string;
   createdAt: string;
   lastRestoredAt: string | null;
+  artifact: {
+    complete: boolean;
+    schemaVersion: number;
+    diagnostics: {
+      eligible_database_records: number;
+      records_read: number;
+      records_serialized: number;
+      records_written: number;
+      records_skipped: number;
+      skipped_reason_counts: Record<string, number>;
+    } | null;
+    files: Record<string, { sha256: string; bytes: number; records?: number }> | null;
+    identityStrategyVersion: number;
+    pathNormalizationVersion: number;
+  } | null;
 };
 
-type BackupJob = { id: string; status: string; phase: string; processed: number; totalEstimate: number; trackCount: number; archiveId: string | null; error: string | null };
+type BackupJob = { id: string; status: string; phase: string; processed: number; totalEstimate: number; trackCount: number; archiveId: string | null; error: string | null; counts?: Record<string, unknown> | null };
 
 type RestorePreview = {
   compatibility: string;
+  status: "ready" | "partial" | "incompatible";
+  backupRecordsFound: number;
+  invalidRecords: number;
+  schemaIncompatibilities: string[];
   tracksInBackup: number;
   tracksInLibrary: number;
-  matches: { exact: number; highConfidence: number; ambiguous: number; unmatched: number };
+  matches: { exact: number; fallback: number; highConfidence: number; ambiguous: number; unmatched: number };
   categories: Record<string, { existing: number; wouldAdd: number; wouldOverwrite: number; skipped: number; noDataRestored: number }>;
   warnings: string[];
 };
@@ -68,6 +87,8 @@ const PHASE_LABELS: Record<string, string> = {
   uploaded: "Uploaded", validating: "Validating", preview_ready: "Preview ready",
   waiting_for_library_sync: "Waiting for library sync", matching: "Matching tracks",
   restoring: "Restoring", canceled: "Canceled", interrupted: "Interrupted", completed_with_warnings: "Completed with warnings",
+  fully_restored: "Fully restored", restored_with_warnings: "Restored with warnings",
+  partial_restore: "Partial restore", incompatible_backup: "Incompatible backup", partial: "Partial backup",
 };
 
 function formatBytes(bytes: number): string {
@@ -106,13 +127,20 @@ export default function LibraryBackupManager({ initialCoverage }: { initialCover
 
   // Poll a running backup job.
   useEffect(() => {
-    if (!backupJob || ["completed", "failed"].includes(backupJob.status)) return;
+    if (!backupJob || ["completed", "partial", "failed"].includes(backupJob.status)) return;
     const timer = setInterval(async () => {
       const res = await fetch(`/api/library-backups/jobs/${backupJob.id}`, { cache: "no-store" });
       if (res.ok) {
         const { job } = await res.json();
         setBackupJob(job);
-        if (job.status === "completed") { setMessage({ tone: "success", text: "Backup created successfully." }); void loadArchives(); }
+        if (job.status === "completed") {
+          setMessage({ tone: "success", text: `Backup verified: ${job.trackCount.toLocaleString()} of ${job.totalEstimate.toLocaleString()} records were written.` });
+          void loadArchives();
+        }
+        if (job.status === "partial") {
+          setMessage({ tone: "error", text: `Partial backup: ${job.trackCount.toLocaleString()} of ${job.totalEstimate.toLocaleString()} records were written. The artifact is not a complete backup.` });
+          void loadArchives();
+        }
         if (job.status === "failed") setMessage({ tone: "error", text: job.error || "Backup failed." });
       }
     }, 1500);
@@ -121,15 +149,22 @@ export default function LibraryBackupManager({ initialCoverage }: { initialCover
 
   // Poll a running restore job.
   useEffect(() => {
-    if (!restore || !["matching", "restoring", "validating"].includes(restore.status)) return;
+    if (!restore || !["matching", "restoring", "validating", "verifying"].includes(restore.status)) return;
     const timer = setInterval(async () => {
       const res = await fetch(`/api/library-backups/restore/${restore.id}`, { cache: "no-store" });
       if (res.ok) {
         const { restore: job } = await res.json();
         setRestore(job);
-        if (["completed", "completed_with_warnings", "failed", "canceled"].includes(job.status)) {
+        if (["fully_restored", "restored_with_warnings", "partial_restore", "incompatible_backup", "failed", "canceled"].includes(job.status)) {
           void refreshCoverage();
-          setMessage({ tone: job.status === "failed" ? "error" : "success", text: `Restore ${job.status.replace(/_/g, " ")}.` });
+          const report = job.report as Record<string, unknown> | null;
+          if (job.status === "fully_restored") {
+            setMessage({ tone: "success", text: `Restore verified: ${Number(report?.matchedRecords ?? job.matchedCount).toLocaleString()} of ${Number(report?.backupRecords ?? job.archiveTrackCount).toLocaleString()} tracks matched and all Library Intelligence counts were reproduced.` });
+          } else if (job.status === "partial_restore") {
+            setMessage({ tone: "error", text: `Partial restore: ${job.matchedCount.toLocaleString()} of ${job.archiveTrackCount.toLocaleString()} tracks matched. ${job.unmatchedCount.toLocaleString()} unmatched and ${job.ambiguousCount.toLocaleString()} ambiguous records were preserved without overwrite.` });
+          } else {
+            setMessage({ tone: "error", text: `Restore ${job.status.replace(/_/g, " ")}. Review the reconciliation report.` });
+          }
         }
       }
     }, 1500);
@@ -166,10 +201,10 @@ export default function LibraryBackupManager({ initialCoverage }: { initialCover
       const data = await res.json();
       if (!res.ok) { setMessage({ tone: "error", text: data.error || "Upload failed." }); return; }
       setMessage({
-        tone: data.waitingForLibrarySync ? "info" : "success",
+        tone: "info",
         text: data.waitingForLibrarySync
           ? `Backup validated and staged (${data.archiveTrackCount} records). It will apply after a Plex library sync.`
-          : `Backup validated: ${data.archiveTrackCount} records, compatibility "${data.compatibility}".`,
+          : `${data.legacy ? "Legacy backup validated" : "Backup validated"}: ${data.archiveTrackCount} records, compatibility "${data.compatibility}". Run the dry run before applying.`,
       });
       const statusRes = await fetch(`/api/library-backups/restore/${data.restoreJobId}`, { cache: "no-store" });
       if (statusRes.ok) setRestore((await statusRes.json()).restore);
@@ -190,12 +225,15 @@ export default function LibraryBackupManager({ initialCoverage }: { initialCover
 
   const applyRestore = useCallback(async () => {
     if (!restore) return;
-    if (!window.confirm(policy === "prefer_backup"
+    const partial = (restore.preview?.matches.unmatched ?? 0) + (restore.preview?.matches.ambiguous ?? 0) + (restore.preview?.invalidRecords ?? 0) > 0;
+    if (!window.confirm(partial
+      ? `Apply a partial restore? ${restore.preview?.matches.unmatched ?? 0} unmatched, ${restore.preview?.matches.ambiguous ?? 0} ambiguous, and ${restore.preview?.invalidRecords ?? 0} invalid records will not be changed.`
+      : policy === "prefer_backup"
       ? "Prefer Backup will overwrite current library-intelligence values with the backup's. Continue?"
       : "Apply this restore now?")) return;
     setMessage(null);
     const res = await fetch(`/api/library-backups/restore/${restore.id}/apply`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conflictPolicy: policy }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conflictPolicy: policy, confirmPartial: partial }),
     });
     if (res.ok) { setRestore({ ...restore, status: "restoring", phase: "restoring" }); setMessage({ tone: "info", text: "Restore started in the background." }); }
     else setMessage({ tone: "error", text: (await res.json()).error || "Failed to start restore." });
@@ -207,7 +245,7 @@ export default function LibraryBackupManager({ initialCoverage }: { initialCover
     setMessage({ tone: "info", text: "Cancellation requested." });
   }, [restore]);
 
-  const backupRunning = backupJob && !["completed", "failed"].includes(backupJob.status);
+  const backupRunning = backupJob && !["completed", "partial", "failed"].includes(backupJob.status);
 
   return (
     <div className={styles.manager}>
@@ -222,7 +260,7 @@ export default function LibraryBackupManager({ initialCoverage }: { initialCover
       {coverage && (
         <section className={`glass-panel ${styles.section}`} aria-labelledby="coverage-h">
           <div className={styles.sectionHead}>
-            <h3 id="coverage-h">Current backup coverage</h3>
+            <h3 id="coverage-h">Current library coverage</h3>
             <button className={styles.iconBtn} onClick={() => void refreshCoverage()} aria-label="Refresh coverage"><RefreshCw size={16} /></button>
           </div>
           <div className={styles.cards}>
@@ -248,6 +286,15 @@ export default function LibraryBackupManager({ initialCoverage }: { initialCover
       {/* Create backup */}
       <section className={`glass-panel ${styles.section}`} aria-labelledby="create-h">
         <h3 id="create-h">Create backup</h3>
+        {backupJob && (
+          <div className={styles.cards}>
+            <CoverageCard title="Selected backup contents" rows={[["Records expected", backupJob.totalEstimate]]} />
+            <CoverageCard title="Written backup contents" rows={[
+              ["Records written", backupJob.trackCount || backupJob.processed],
+              ["Missing", Math.max(0, backupJob.totalEstimate - (backupJob.trackCount || backupJob.processed))],
+            ]} />
+          </div>
+        )}
         <p className={styles.warn}><AlertTriangle size={15} /> {coverage?.storage.warning}</p>
         <label className={styles.label} htmlFor="backup-notes">Optional notes</label>
         <input id="backup-notes" className={styles.input} value={notes} maxLength={2000} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Before rebuilding the database volume" />
@@ -269,16 +316,33 @@ export default function LibraryBackupManager({ initialCoverage }: { initialCover
         {archives.length === 0 ? <p className={styles.muted}>No backups yet.</p> : (
           <div className={styles.tableScroll}>
             <table className={styles.table}>
-              <thead><tr><th>Name</th><th>Created</th><th>Version</th><th>Tracks</th><th>Size</th><th>Verified</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Name</th><th>Created</th><th>Version</th><th>Expected / written</th><th>Size</th><th>Complete</th><th>Actions</th></tr></thead>
               <tbody>
                 {archives.map((a) => (
                   <tr key={a.id}>
-                    <td className={styles.wrapCell}>{a.fileName}</td>
+                    <td className={styles.wrapCell}>
+                      {a.fileName}
+                      <details>
+                        <summary>Artifact diagnostics</summary>
+                        <small>
+                          Schema {a.artifact?.schemaVersion ?? a.schemaVersion} · checksum {a.verificationStatus} ·
+                          identity v{a.artifact?.identityStrategyVersion ?? 1} · path normalization v{a.artifact?.pathNormalizationVersion ?? 1}
+                        </small>
+                        <dl>
+                          <div><dt>Records expected</dt><dd>{a.artifact?.diagnostics?.eligible_database_records ?? a.counts.tracks}</dd></div>
+                          <div><dt>Records written</dt><dd>{a.artifact?.diagnostics?.records_written ?? a.counts.tracks}</dd></div>
+                          <div><dt>Records skipped</dt><dd>{a.artifact?.diagnostics?.records_skipped ?? 0}</dd></div>
+                        </dl>
+                        {a.artifact?.diagnostics?.skipped_reason_counts && Object.keys(a.artifact.diagnostics.skipped_reason_counts).length > 0 && (
+                          <pre>{JSON.stringify(a.artifact.diagnostics.skipped_reason_counts, null, 2)}</pre>
+                        )}
+                      </details>
+                    </td>
                     <td>{new Date(a.createdAt).toLocaleString()}</td>
                     <td>v{a.mixarrVersion}</td>
-                    <td>{a.counts.tracks.toLocaleString()}</td>
+                    <td>{(a.artifact?.diagnostics?.eligible_database_records ?? a.counts.tracks).toLocaleString()} / {(a.artifact?.diagnostics?.records_written ?? a.counts.tracks).toLocaleString()}</td>
                     <td>{formatBytes(a.fileSizeBytes)}</td>
-                    <td>{a.verificationStatus === "verified" ? <CheckCircle2 size={15} color="var(--success, green)" aria-label="Verified" /> : a.verificationStatus}</td>
+                    <td>{a.verificationStatus === "verified" && a.artifact?.complete ? <CheckCircle2 size={15} color="var(--success, green)" aria-label="Complete and verified" /> : <span>{a.artifact?.complete ? a.verificationStatus : "Partial"}</span>}</td>
                     <td className={styles.rowActions}>
                       <a className={styles.iconBtn} href={`/api/library-backups/${a.id}/download`} aria-label={`Download ${a.fileName}`}><Download size={15} /></a>
                       <button className={styles.iconBtn} onClick={() => void deleteArchive(a.id)} aria-label={`Delete ${a.fileName}`}><Trash2 size={15} /></button>
@@ -323,7 +387,7 @@ export default function LibraryBackupManager({ initialCoverage }: { initialCover
 
             <div className={styles.restoreActions}>
               <button className={styles.secondaryBtn} onClick={() => void runPreview()} disabled={["restoring", "matching"].includes(restore.status)}>Preview changes</button>
-              <button className={styles.primaryBtn} onClick={() => void applyRestore()} disabled={!restore.preview || ["restoring", "matching"].includes(restore.status)}>Apply restore</button>
+              <button className={styles.primaryBtn} onClick={() => void applyRestore()} disabled={!restore.preview || restore.preview.status === "incompatible" || ["restoring", "matching"].includes(restore.status)}>{restore.preview?.status === "partial" ? "Apply partial restore" : "Apply restore"}</button>
               {["restoring", "matching"].includes(restore.status) && <button className={styles.secondaryBtn} onClick={() => void cancelRestore()}>Cancel</button>}
               {restore.status === "interrupted" && <button className={styles.secondaryBtn} onClick={() => void fetch(`/api/library-backups/restore/${restore.id}/retry`, { method: "POST" })}>Resume</button>}
             </div>
@@ -367,12 +431,14 @@ function RestorePreviewView({ preview }: { preview: RestorePreview }) {
   return (
     <div className={styles.previewGrid}>
       <div className={styles.matchSummary}>
-        <span><strong>{preview.tracksInBackup}</strong> in backup</span>
+        <span><strong>{preview.backupRecordsFound}</strong> records found</span>
+        <span><strong>{preview.tracksInBackup}</strong> valid in backup</span>
         <span><strong>{preview.tracksInLibrary}</strong> in library</span>
         <span><strong>{preview.matches.exact}</strong> exact</span>
-        <span><strong>{preview.matches.highConfidence}</strong> high-confidence</span>
+        <span><strong>{preview.matches.fallback}</strong> fallback</span>
         <span><strong>{preview.matches.ambiguous}</strong> ambiguous</span>
         <span><strong>{preview.matches.unmatched}</strong> unmatched</span>
+        <span><strong>{preview.invalidRecords}</strong> invalid</span>
       </div>
       {preview.warnings.map((w) => <p key={w} className={styles.warn}><AlertTriangle size={14} /> {w}</p>)}
       <div className={styles.tableScroll}>
@@ -386,22 +452,44 @@ function RestorePreviewView({ preview }: { preview: RestorePreview }) {
           </tbody>
         </table>
       </div>
+      <details>
+        <summary>Diagnostic report</summary>
+        <dl className={styles.reportGrid}>
+          <div><dt>Dry-run status</dt><dd>{preview.status.replace(/_/g, " ")}</dd></div>
+          <div><dt>Schema issues</dt><dd>{preview.schemaIncompatibilities.length}</dd></div>
+          <div><dt>Exact identity matches</dt><dd>{preview.matches.exact}</dd></div>
+          <div><dt>Fallback identity matches</dt><dd>{preview.matches.fallback}</dd></div>
+          <div><dt>Skipped before write</dt><dd>{preview.matches.unmatched + preview.matches.ambiguous + preview.invalidRecords}</dd></div>
+        </dl>
+      </details>
     </div>
   );
 }
 
 function RestoreReportView({ report }: { report: Record<string, unknown> }) {
   const fields: [string, string][] = [
-    ["Matched", "matched"], ["Unmatched", "unmatched"], ["Ambiguous", "ambiguous"],
+    ["Matched", "matchedRecords"], ["Restored", "recordsSuccessfullyRestored"], ["Already current", "recordsAlreadyIdentical"],
+    ["Unmatched", "unmatchedRecords"], ["Ambiguous", "ambiguousRecords"], ["Invalid", "invalidRecords"], ["Failed", "writeFailures"], ["Rolled back", "recordsRolledBack"],
     ["Audio features", "audioFeaturesRestored"], ["BPM", "bpmRestored"], ["Popularity", "popularityRestored"],
     ["Genres", "genresRestored"], ["No-data restored", "noDataRestored"],
     ["Preserved", "existingPreserved"], ["Overwritten", "existingOverwritten"],
   ];
   return (
-    <dl className={styles.reportGrid}>
-      {fields.map(([label, key]) => (
-        <div key={key}><dt>{label}</dt><dd>{String(report[key] ?? 0)}</dd></div>
-      ))}
-    </dl>
+    <>
+      <p className={styles.muted}>Final reconciliation: {String(report.status ?? "unknown").replace(/_/g, " ")}</p>
+      <dl className={styles.reportGrid}>
+        {fields.map(([label, key]) => (
+          <div key={key}><dt>{label}</dt><dd>{Number(report[key] ?? 0).toLocaleString()}</dd></div>
+        ))}
+      </dl>
+      <details>
+        <summary>Diagnostic report</summary>
+        <pre>{JSON.stringify({
+          reconciliation: report.reconciliation,
+          skippedReasonCounts: report.skippedReasonCounts,
+          warnings: report.warnings,
+        }, null, 2)}</pre>
+      </details>
+    </>
   );
 }

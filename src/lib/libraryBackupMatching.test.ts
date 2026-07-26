@@ -4,6 +4,7 @@ import {
   normalizeText,
   normalizeMediaPath,
   hashNormalizedPath,
+  hashNormalizedPathCandidates,
   computeFingerprint,
   bucketDuration,
   durationsCompatible,
@@ -46,6 +47,12 @@ describe("normalization", () => {
     assert.equal(h1, h2);
     assert.equal(h1!.length, 64);
     assert.notEqual(h1, "/music/a/b.flac");
+  });
+
+  it("matches changed mount prefixes, slash direction, case, and Unicode normalization", () => {
+    const source = hashNormalizedPathCandidates("D:\\MÃºsica\\Björk\\Debut\\01 Song.flac");
+    const target = hashNormalizedPathCandidates("/mnt/media/MÃºsica/BJÖRK/Debut/01 Song.flac");
+    assert.ok(source.some((hash) => target.includes(hash)), "portable suffix identity should survive a root-prefix change");
   });
 });
 
@@ -119,6 +126,48 @@ describe("resolveMatch priority", () => {
     assert.equal(m.trackId, null);
     assert.equal(m.candidates.length, 2);
     assert.equal(isAutoApplicableMatch(m.matchType), false);
+  });
+
+  it("uses scoped rating keys to disambiguate tracks sharing one Plex GUID", () => {
+    const idx = createEmptyIndexes();
+    indexTargetTrack(idx, {
+      id: "A", plexGuid: "plex://track/shared", ratingKey: "101",
+      plexServerId: "server-A", plexLibraryId: "7", durationMs: 200000,
+    });
+    indexTargetTrack(idx, {
+      id: "B", plexGuid: "plex://track/shared", ratingKey: "102",
+      plexServerId: "server-A", plexLibraryId: "7", durationMs: 200000,
+    });
+    const match = resolveMatch(rec({
+      plex_guid: "plex://track/shared", rating_key: "102",
+      plex_server_id: "server-A", plex_library_id: "7",
+    }), idx);
+    assert.equal(match.matchType, "exact_rating_key");
+    assert.equal(match.trackId, "B");
+  });
+
+  it("matches any one of multiple scoped media parts without selecting an ambiguity", () => {
+    const idx = createEmptyIndexes();
+    indexTargetTrack(idx, {
+      id: "multi", plexServerId: "server-A", plexLibraryId: "7",
+      mediaPartIds: ["part-1", "part-2"], durationMs: 200000,
+    });
+    const match = resolveMatch(rec({
+      plex_server_id: "server-A",
+      plex_library_id: "7",
+      media_parts: [{ part_id: "part-2", path_hashes: [], file_size: null }],
+    }), idx);
+    assert.equal(match.matchType, "exact_media_part");
+    assert.equal(match.trackId, "multi");
+  });
+
+  it("keeps duplicate path hashes ambiguous", () => {
+    const idx = createEmptyIndexes();
+    const pathHash = hashNormalizedPath("/music/shared.flac");
+    indexTargetTrack(idx, { id: "A", pathHash, durationMs: 200000 });
+    indexTargetTrack(idx, { id: "B", pathHash, durationMs: 200000 });
+    const match = resolveMatch(rec({ path_hash: pathHash, duration_ms: 200000, fingerprint: "absent" }), idx);
+    assert.equal(match.matchType, "ambiguous");
   });
 
   it("returns unmatched when nothing hits", () => {

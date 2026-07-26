@@ -1,6 +1,6 @@
 # Mixarr
 
-Current release: **v2.4.20 — Canonical Recipe Copilot Scoring Models**. Mixarr now derives Recipe Copilot output, Recipe Studio controls, save validation, persistence, imports, and execution from the engine’s canonical `stable-v2` and `experimental-balanced` scoring-model catalog. Unsupported AI-invented values are rejected before Apply selected, while existing unsupported stored values are disabled and marked for review. See [the v2.4.20 implementation guide](docs/RECIPE_COPILOT_SCORING_MODELS_V2420.md).
+Current release: **v2.4.21 — Lossless Library Intelligence Backup & Restore**. Backup artifacts now prove what was actually serialized and written, retain every track state, migrate v2.4.15/schema-v1 archives, disambiguate shared Plex GUIDs with scoped composite identities, plan before mutation, write in atomic resumable batches, and only report full success after exact reconciliation. See [the v2.4.21 implementation guide](docs/LIBRARY_INTELLIGENCE_BACKUP_V2421.md).
 
 Previous release: **v2.4.14 — Per-Request AI Cost Limit Configuration**. See [the v2.4.14 guide](docs/AI_PER_REQUEST_COST_LIMIT_V2414.md).
 
@@ -229,7 +229,7 @@ Prefer lowering job concurrency and avoiding overlapping syncs before raising th
 
 ## Library Intelligence Backup & Restore
 
-Mixarr v2.4.11 can back up the **expensive calculated library intelligence** — audio
+Mixarr v2.4.21 can losslessly back up the **expensive calculated library intelligence** — audio
 features, BPM/tempo, popularity scores, track genres, and their processing and known
 no-data states — plus the minimum Plex track identity needed to re-match tracks. This
 lets you restore into a recreated database without rerunning tens of thousands of
@@ -254,7 +254,11 @@ services:
 Set the directory with `MIXARR_BACKUP_DIR` (default `/app/backups`). Deleting both the
 database and backup locations deletes the backup too, so keep a downloaded copy. To
 restore after recreating the database: reconfigure Plex, run a lightweight library sync,
-then upload and apply the backup. See [the v2.4.11 guide](docs/LIBRARY_INTELLIGENCE_BACKUP_V2411.md).
+then upload, run the dry-run identity plan, and apply the backup. Only a 100% match
+with exact post-restore aggregate reconciliation is reported as fully restored.
+Schema-v1 backups from v2.4.11 through v2.4.20 remain supported. See the
+[v2.4.21 lossless backup guide](docs/LIBRARY_INTELLIGENCE_BACKUP_V2421.md) and the
+[original v2.4.11 scope guide](docs/LIBRARY_INTELLIGENCE_BACKUP_V2411.md).
 
 ## Media Ecosystem Integrations
 

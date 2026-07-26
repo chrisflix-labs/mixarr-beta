@@ -21,6 +21,7 @@ type ArchiveRow = {
   verifiedAt: Date | null;
   lastRestoredAt: Date | null;
   createdAt: Date;
+  manifestJson?: unknown;
 };
 
 export function serializeArchiveSummary(row: ArchiveRow) {
@@ -44,6 +45,15 @@ export function serializeArchiveSummary(row: ArchiveRow) {
     verifiedAt: row.verifiedAt?.toISOString() ?? null,
     lastRestoredAt: row.lastRestoredAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
+    artifact: row.manifestJson && typeof row.manifestJson === "object" ? {
+      complete: (row.manifestJson as Record<string, unknown>).complete === true,
+      schemaVersion: (row.manifestJson as Record<string, unknown>).schema_version ?? row.schemaVersion,
+      diagnostics: (row.manifestJson as Record<string, unknown>).diagnostics ?? null,
+      categoryCounts: (row.manifestJson as Record<string, unknown>).category_counts ?? null,
+      files: (row.manifestJson as Record<string, unknown>).files ?? null,
+      identityStrategyVersion: (row.manifestJson as Record<string, unknown>).identity_strategy_version ?? 1,
+      pathNormalizationVersion: (row.manifestJson as Record<string, unknown>).path_normalization_version ?? 1,
+    } : null,
   };
 }
 
@@ -66,6 +76,7 @@ type RestoreRow = {
   error: string | null;
   startedAt: Date;
   finishedAt: Date | null;
+  countsJson?: unknown;
 };
 
 export function serializeRestoreJob(row: RestoreRow) {
@@ -89,6 +100,7 @@ export function serializeRestoreJob(row: RestoreRow) {
     error: row.error ? "Restore failed. See restore status and warnings for details." : null,
     startedAt: row.startedAt.toISOString(),
     finishedAt: row.finishedAt?.toISOString() ?? null,
+    counts: row.countsJson ?? null,
   };
 }
 

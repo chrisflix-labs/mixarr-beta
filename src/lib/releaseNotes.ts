@@ -80,6 +80,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.21",
+    title: "Lossless Library Intelligence Backup & Restore",
+    releaseDate: "July 26, 2026",
+    badges: ["Backup", "Reliability", "Bug Fix", "Identity", "Diagnostics", "Database", "UI"],
+    changes: [
+      "Fixed the exact 2,772-track loss caused by GUID-only archive de-duplication followed by terminal ambiguous-GUID matching.",
+      "Added schema-v2 manifests with actual artifact counts, checksums, completeness, category states, and versioned identity/path strategies.",
+      "Added explicit v2.4.15/schema-v1 migration, scoped composite matching, multiple media parts, and privacy-safe portable path hashes.",
+      "Added persisted dry-run plans, explicit partial confirmation, atomic resumable writes, idempotency, and post-restore reconciliation.",
+      "Only reports Fully restored after every backup record matches and all Library Intelligence aggregate counts are reproduced.",
+    ],
+  },
+  {
     version: "2.4.20",
     title: "Canonical Recipe Copilot Scoring Models",
     releaseDate: "July 26, 2026",

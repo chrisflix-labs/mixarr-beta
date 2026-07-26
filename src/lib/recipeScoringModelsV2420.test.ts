@@ -288,10 +288,10 @@ describe("v2.4.20 API, Studio, persistence, and migration contracts", () => {
   });
 
   it("ships all v2.4.20 release surfaces", () => {
-    assert.equal(JSON.parse(readFileSync("package.json", "utf8")).version, "2.4.20");
-    assert.match(readFileSync("Dockerfile", "utf8"), /NEXT_PUBLIC_APP_VERSION=2\.4\.20/);
+    assert.equal(JSON.parse(readFileSync("package.json", "utf8")).version, "2.4.21");
+    assert.match(readFileSync("Dockerfile", "utf8"), /NEXT_PUBLIC_APP_VERSION=2\.4\.21/);
     assert.match(readFileSync("CHANGELOG.md", "utf8"), /v2\.4\.20 - Canonical Recipe Copilot Scoring Models/);
-    assert.match(readFileSync("README.md", "utf8"), /Current release: \*\*v2\.4\.20/);
+    assert.match(readFileSync("README.md", "utf8"), /Current release: \*\*v2\.4\.21/);
     assert.match(readFileSync("docs/RECIPE_COPILOT_SCORING_MODELS_V2420.md", "utf8"), /popularity_heavy/);
   });
 });

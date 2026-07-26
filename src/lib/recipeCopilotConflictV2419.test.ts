@@ -217,11 +217,11 @@ describe("v2.4.19 Recipe Studio and conflict workflow contracts", () => {
   });
 
   it("retains the v2.4.19 release history after later version bumps", () => {
-    assert.equal(JSON.parse(readFileSync("package.json", "utf8")).version, "2.4.20");
-    assert.match(readFileSync("Dockerfile", "utf8"), /NEXT_PUBLIC_APP_VERSION=2\.4\.20/);
-    assert.match(readFileSync("Dockerfile", "utf8"), /org\.opencontainers\.image\.version="2\.4\.20"/);
+    assert.equal(JSON.parse(readFileSync("package.json", "utf8")).version, "2.4.21");
+    assert.match(readFileSync("Dockerfile", "utf8"), /NEXT_PUBLIC_APP_VERSION=2\.4\.21/);
+    assert.match(readFileSync("Dockerfile", "utf8"), /org\.opencontainers\.image\.version="2\.4\.21"/);
     assert.match(readFileSync("CHANGELOG.md", "utf8"), /v2\.4\.19 - Canonical Recipe Copilot Conflict Detection/);
-    assert.match(readFileSync("README.md", "utf8"), /Current release: \*\*v2\.4\.20/);
+    assert.match(readFileSync("README.md", "utf8"), /Current release: \*\*v2\.4\.21/);
     assert.match(readFileSync("docs/RECIPE_COPILOT_CONFLICTS_V2419.md", "utf8"), /three-way equality/i);
   });
 });
