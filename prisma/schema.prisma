@@ -5614,7 +5614,7 @@ model AiGlobalSetting {
   auditRetentionDays           Int       @default(90)
   usageReportingEnabled        Boolean   @default(true)
   maximumServerResponseBytes   Int       @default(1048576)
-  defaultTimeoutMs             Int       @default(30000)
+  defaultTimeoutMs             Int       @default(120000)
   privacyWarningAcknowledgedAt DateTime?
   emergencyShutdown            Boolean   @default(false)
   emergencyShutdownReason      String?
@@ -5710,7 +5710,7 @@ model AiGovernanceSetting {
   maximumQueueSize                  Int      @default(100)
   jobLeaseSeconds                   Int      @default(120)
   jsonLocalRepairAttempts           Int      @default(1)
-  jsonProviderRepairAttempts        Int      @default(0)
+  jsonProviderRepairAttempts        Int      @default(1)
   settingVersion                    Int      @default(1)
   updatedBy                         String?
   createdAt                         DateTime @default(now())
@@ -5736,8 +5736,8 @@ model AiProviderConfig {
   reasoningModel              String?
   maximumContextTokens        Int?
   maximumOutputTokens         Int?
-  requestTimeoutMs            Int                   @default(30000)
-  retryCount                  Int                   @default(2)
+  requestTimeoutMs            Int                   @default(120000)
+  retryCount                  Int                   @default(1)
   initialRetryDelayMs         Int                   @default(500)
   maximumRetryDelayMs         Int                   @default(10000)
   retryBackoffMultiplier      Float                 @default(2)

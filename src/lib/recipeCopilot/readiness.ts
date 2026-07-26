@@ -32,6 +32,11 @@ const messages: Record<string, string> = {
   AI_PROVIDER_AUTH_FAILED: "The AI provider rejected its configured credentials.",
   AI_PROVIDER_RATE_LIMITED: "The AI provider temporarily rate-limited the request.",
   AI_PROVIDER_TEMPORARY_FAILURE: "The AI provider is temporarily unavailable.",
+  AI_PROVIDER_TIMEOUT: "The AI provider did not respond before the configured timeout.",
+  AI_PROVIDER_HTTP_ERROR: "The AI provider returned an HTTP error.",
+  AI_PROVIDER_EMPTY_RESPONSE: "The AI provider returned an empty response.",
+  AI_PROVIDER_INVALID_RESPONSE: "The AI provider returned a response that could not be converted into a valid recipe.",
+  AI_RECIPE_SCHEMA_INVALID: "The AI provider returned a response that did not match the recipe schema.",
 };
 
 export function recipeCopilotErrorMessage(code: string | null | undefined, fallback: string, requestAttempted: boolean) {

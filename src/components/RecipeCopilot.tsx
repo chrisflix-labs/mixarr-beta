@@ -5,6 +5,7 @@ import { AlertTriangle, Check, CheckCircle2, ChevronDown, Clock3, History, Loade
 import styles from "./RecipeCopilot.module.css";
 import RecommendationExplanationPanel from "./RecommendationExplanationPanel";
 import { isRecipeCopilotCostLimitError, isRecipeCopilotRequestLimitError, isRecipeCopilotSetupError, recipeCopilotCanRequest, recipeCopilotDailyRequestSummary, recipeCopilotErrorMessage, type RecipeCopilotReadiness } from "@/lib/recipeCopilot/readiness";
+import { readRecipeCopilotResponse, RecipeCopilotHttpError } from "@/lib/recipeCopilot/http";
 
 type Action = "create" | "refine" | "explain" | "diagnose" | "optimize" | "compare_intent" | "from_playlist" | "suggest_names" | "generate_description" | "onboarding";
 type Props = { open: boolean; recipeId?: string; draft: Record<string, any>; dirty: boolean; onClose: () => void; onDraft: (draft: Record<string, any>, persisted?: boolean) => void; onNotice: (message: string) => void };
@@ -23,7 +24,6 @@ const actions: Array<{ id: Action; label: string; hint: string }> = [
 const readOnly = new Set<Action>(["explain", "diagnose", "compare_intent", "suggest_names", "onboarding"]);
 const approvalConfirmation = "I reviewed this AI-generated recipe and understand that its behavior may differ from the original request.";
 
-function responseError(body: any, fallback: string) { return { code: body?.error?.code || body?.code || null, message: body?.error?.message || body?.message || (typeof body?.error === "string" ? body.error : fallback) }; }
 function display(value: unknown) { if (value === undefined) return "Not set"; if (typeof value === "string") return value; return JSON.stringify(value); }
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)); }
 function setPath(value: any, path: string, next: unknown) { const parts = path.split("."); let current = value; parts.slice(0, -1).forEach((part) => { if (!current[part] || typeof current[part] !== "object") current[part] = {}; current = current[part]; }); current[parts.at(-1)!] = next; }
@@ -40,6 +40,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
   const [stage, setStage] = useState("");
   const [error, setError] = useState("");
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [errorRequestId, setErrorRequestId] = useState<string | null>(null);
   const [proposal, setProposal] = useState<any>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editedRecipe, setEditedRecipe] = useState<Record<string, any> | null>(null);
@@ -52,7 +53,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
   const dialog = useRef<HTMLElement | null>(null);
   const opener = useRef<HTMLElement | null>(null);
 
-  useEffect(() => { if (!open) return; opener.current = document.activeElement as HTMLElement; closeButton.current?.focus(); setPurpose(inferredPurpose(draft)); setError(""); setErrorCode(null); setPreflightVersion((value) => value + 1); return () => opener.current?.focus(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!open) return; opener.current = document.activeElement as HTMLElement; closeButton.current?.focus(); setPurpose(inferredPurpose(draft)); setError(""); setErrorCode(null); setErrorRequestId(null); setPreflightVersion((value) => value + 1); return () => opener.current?.focus(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!open) return; const refresh = () => setPreflightVersion((value) => value + 1); window.addEventListener("focus", refresh); return () => window.removeEventListener("focus", refresh); }, [open]);
   useEffect(() => { if (!open) return; const keyboard = (event: KeyboardEvent) => { if (event.key === "Escape" && !running) { onClose(); return; } if (event.key !== "Tab") return; const focusable = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]),select:not([disabled]),textarea:not([disabled]),input:not([disabled]),a[href],summary') || []); if (!focusable.length) return; const first = focusable[0], last = focusable.at(-1)!; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } }; window.addEventListener("keydown", keyboard); return () => window.removeEventListener("keydown", keyboard); }, [open, running, onClose]);
   useEffect(() => { if (!open) return; fetch("/api/generated-playlists").then((response) => response.ok ? response.json() : { playlists: [] }).then((body) => setPlaylists((body.playlists || []).map((item: any) => ({ id: item.id, name: item.plexPlaylistTitle, tracks: item.trackCount || item._count?.tracks || 0 })))).catch(() => setPlaylists([])); }, [open]);
@@ -61,7 +62,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
     const timer = setTimeout(async () => {
       try {
         const response = await fetch("/api/recipes/ai/preflight", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, instruction, purpose, recipe: draft }) });
-        const body = await response.json(); if (!response.ok) { const failure = responseError(body, "Copilot preflight failed."); throw Object.assign(new Error(failure.message), { code: failure.code }); }
+        const body = await readRecipeCopilotResponse(response, "Copilot preflight failed.");
         if (!cancelled) { setAvailability(body); setPreflightState("ready"); if (body.available) { setError(""); setErrorCode(null); } }
       } catch (caught) { if (!cancelled) { const code = String((caught as any)?.code || "PREFLIGHT_FAILED"); const message = caught instanceof Error ? caught.message : "Copilot preflight failed."; setAvailability({ available: false, blockedReasonCode: code, blockedReasonMessage: message, code, reason: message }); setPreflightState("error"); } }
     }, 250);
@@ -79,15 +80,15 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
       ? window.confirm(`This request will send the privacy-filtered fields shown in the preview to ${availability?.provider || "an external AI provider"}. Continue?`)
       : false;
     if (availability?.previewRequired && !externalConfirmation) return;
-    setRunning(true); setError(""); setProposal(null); setStage("Preparing privacy-aware context");
+    setRunning(true); setError(""); setErrorRequestId(null); setProposal(null); setStage("Preparing privacy-aware context");
     const controller = new AbortController(); abort.current = controller;
     try {
       setStage("Waiting for provider");
       const endpoint = action === "from_playlist" ? "/api/recipes/ai/from-playlist" : recipeId && action !== "create" ? `/api/recipes/${encodeURIComponent(recipeId)}/ai/${action}` : action === "create" ? "/api/recipes/ai/create" : "/api/recipes/ai";
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal, body: JSON.stringify({ action, instruction, purpose: action === "optimize" ? purpose : undefined, recipe: draft, expectedUpdatedAt: draft.updatedAt, privacyMode: availability?.privacyMode, playlistId: action === "from_playlist" ? playlistId : undefined, externalConfirmation }) });
-      setStage("Validating proposal locally"); const body = await response.json(); if (!response.ok) { const failure = responseError(body, "Recipe Copilot failed."); throw Object.assign(new Error(failure.message), { code: failure.code }); }
+      setStage("Validating proposal locally"); const body = await readRecipeCopilotResponse(response, "Recipe Copilot failed.");
       const next = body.proposal; setProposal(next); setEditedRecipe(next.proposedRecipe ? clone(next.proposedRecipe) : null); setSelected(new Set((next.changes || []).map((item: any) => item.path))); setApprovedConfirm(false); setStage("Ready for review");
-    } catch (caught) { if ((caught as Error).name === "AbortError") { setErrorCode("REQUEST_CANCELLED"); setError("Request cancelled. The current Recipe Studio draft was preserved."); } else { const code = String((caught as any)?.code || "AI_RECIPE_REQUEST_FAILED"); setErrorCode(code); setError(recipeCopilotErrorMessage(code, caught instanceof Error ? caught.message : "Recipe Copilot failed.", true)); } setStage("Failed"); }
+    } catch (caught) { if ((caught as Error).name === "AbortError") { setErrorCode("REQUEST_CANCELLED"); setErrorRequestId(null); setError("Request cancelled. The current Recipe Studio draft was preserved."); } else { const code = String((caught as any)?.code || "AI_RECIPE_REQUEST_FAILED"); setErrorCode(code); setErrorRequestId(caught instanceof RecipeCopilotHttpError ? caught.requestId || null : null); setError(recipeCopilotErrorMessage(code, caught instanceof Error ? caught.message : "Recipe Copilot failed.", true)); } setStage("Failed"); }
     finally { setRunning(false); abort.current = null; }
   }
 
@@ -99,7 +100,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
     if (!proposal) return; setError(""); setStage(operation === "apply" ? "Applying reviewed changes" : `${operation[0].toUpperCase()}${operation.slice(1)} proposal`);
     try {
       const response = await fetch(`/api/recipes/ai/proposals/${encodeURIComponent(proposal.id)}/${operation}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(operation === "apply" ? { ...body, currentRecipe: draft } : body) });
-      const result = await response.json(); if (!response.ok) throw new Error(responseError(result, `Could not ${operation} proposal.`).message);
+      const result = await readRecipeCopilotResponse(response, `Could not ${operation} proposal.`);
       if (result.proposal) setProposal(result.proposal);
       if (operation === "apply") { const next = result.recipe || result.draft; if (next) onDraft(next, result.persisted === true); onNotice(result.persisted ? "Reviewed AI changes were saved as a new inactive recipe revision. Approval and activation remain separate." : "AI proposal loaded into the unsaved Recipe Studio draft. Review it, then explicitly save when ready."); }
       if (operation === "restore" && result.recipe) { onDraft(result.recipe, true); onNotice("The pre-AI recipe state was restored as a new inactive revision."); }
@@ -109,7 +110,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
   }
 
   async function loadHistory() {
-    try { const response = await fetch(recipeId ? `/api/recipes/${encodeURIComponent(recipeId)}/ai/history` : "/api/recipes/ai?view=history"); const body = await response.json(); if (!response.ok) throw new Error(responseError(body, "History unavailable.").message); setHistory(body.proposals || []); }
+    try { const response = await fetch(recipeId ? `/api/recipes/${encodeURIComponent(recipeId)}/ai/history` : "/api/recipes/ai?view=history"); const body = await readRecipeCopilotResponse(response, "History unavailable."); setHistory(body.proposals || []); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "History unavailable."); }
   }
 
@@ -127,7 +128,7 @@ export default function RecipeCopilot({ open, recipeId, draft, dirty, onClose, o
         <div className={styles.actions}><button className={styles.generate} disabled={!canRequest} onClick={() => void generate()}>{running ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />} {running ? stage : action === "explain" || action === "diagnose" ? "Analyze" : "Generate"}</button>{running && <button onClick={cancel}>Cancel</button>}<button onClick={() => setPreflightVersion((value) => value + 1)} disabled={running}><RotateCcw size={15} /> Refresh</button><button onClick={() => void loadHistory()}><History size={15} /> History</button></div>
         {!canRequest && availability?.available && !running && ["create", "refine", "optimize", "compare_intent"].includes(action) && !instruction.trim() && <p className={styles.disabledReason}>Enter an instruction to continue.</p>}
         {!canRequest && availability?.available && !running && action === "from_playlist" && !playlistId && <p className={styles.disabledReason}>Choose an example playlist to continue.</p>}
-        {error && <div className={styles.error} role="alert"><AlertTriangle size={17} /><span>{error}{errorCode && <code>{errorCode}</code>}</span></div>}
+        {error && <div className={styles.error} role="alert"><AlertTriangle size={17} /><span>{error}{errorCode && <code>{errorCode}</code>}{errorRequestId && <small>Request ID: {errorRequestId}</small>}</span></div>}
         {stage && <p className={styles.stage} role="status" aria-live="polite">{stage}</p>}
 
         {proposal && <div className={styles.results}>

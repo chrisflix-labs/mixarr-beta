@@ -1,7 +1,10 @@
 import { AiError } from "../errors";
 
 export function isRetryEligible(error: unknown) {
-  return error instanceof AiError && ["RATE_LIMITED", "REQUEST_TIMEOUT", "CONNECTION_FAILED", "PROVIDER_OVERLOADED", "STREAM_INTERRUPTED"].includes(error.category);
+  return error instanceof AiError && (
+    ["RATE_LIMITED", "REQUEST_TIMEOUT", "CONNECTION_FAILED", "PROVIDER_OVERLOADED", "STREAM_INTERRUPTED"].includes(error.category)
+    || error.category === "AI_PROVIDER_HTTP_ERROR" && error.details?.retryable === true
+  );
 }
 export function retryDelayMs(attempt: number, initial: number, maximum: number, multiplier: number, random = Math.random) {
   const base = Math.min(maximum, initial * Math.pow(multiplier, attempt));

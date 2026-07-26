@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { ZodError } from "zod";
 import prisma from "../prisma";
 import { isUserAdmin } from "../auth";
 import { requireAiPermission } from "../../ai/governance/permissions";
@@ -12,6 +13,7 @@ import { previewAiRequest } from "@/ai/governance/service";
 import { assertAiExecutionPolicy } from "@/ai/governance/executionPolicy";
 import { resolveAiProvider } from "@/ai/services/providerService";
 import { AiError } from "@/ai/errors";
+import { aiFailureStatus } from "@/ai/audit/status";
 import { describeRequestLimitFromDetails } from "@/ai/governance/requestLimits";
 import { describeCostLimitFromDetails } from "@/ai/governance/costLimits";
 import { recipeCopilotSettingsUrl } from "./readiness";
@@ -179,6 +181,7 @@ export async function getRecipeCopilotAvailability(userId: string, raw: unknown 
 }
 
 export async function runRecipeCopilot(userId: string, recipeId: string | null, raw: unknown, signal?: AbortSignal) {
+  const operationStarted = Date.now();
   const input = recipeCopilotRequestSchema.parse(raw);
   await requireRecipeAiPermission(userId, permissionForAction(input.action));
   if (["create", "refine", "optimize", "compare_intent"].includes(input.action) && !input.instruction.trim()) throw failure("INSTRUCTION_REQUIRED", "Describe the recipe behavior or change you want.");
@@ -207,12 +210,14 @@ export async function runRecipeCopilot(userId: string, recipeId: string | null, 
       responseFormat: { type: "json", name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, unknownFields: "reject" },
       privacyMode: availability.privacyMode as any, maxOutputTokens: 4000, maxResponseBytes: 512_000,
       temperature: 0.1, requestSource: "FOREGROUND", allowFallback: false, requiredCapabilities: ["structured_json"],
-      contextTrimmingStrategy: "REMOVE_LOWEST_PRIORITY", signal,
+      contextTrimmingStrategy: "REMOVE_LOWEST_PRIORITY", signal, correlationId: requestRow.id,
       externalConfirmation: input.externalConfirmation, idempotencyKey: input.idempotencyKey,
       promptTemplateVersion: RECIPE_COPILOT_PROMPT_VERSION,
       metadata: { workflow: "recipe_copilot", action: input.action, advisory_only: true, automatic_activation: false },
     }, userId);
-    const output = recipeCopilotResponseSchema.parse(response.data);
+    const checkedOutput = recipeCopilotResponseSchema.safeParse(response.data);
+    if (!checkedOutput.success) throw new AiError("AI_RECIPE_SCHEMA_INVALID", undefined, 422, undefined, { request_id: requestRow.id, provider: availability.provider, model: availability.model, stage: "RECIPE_SCHEMA_VALIDATION", elapsed_ms: Date.now() - operationStarted, issues: checkedOutput.error.issues.slice(0, 25).map((issue) => ({ path: issue.path.join("."), code: issue.code })) });
+    const output = checkedOutput.data;
     if (output.action !== input.action) throw failure("AI_ACTION_MISMATCH", "The provider returned a different Recipe Copilot action.", 422);
     const readOnly = new Set(["explain", "diagnose", "compare_intent", "suggest_names", "onboarding"]);
     if (readOnly.has(input.action) && output.proposedPatch) throw failure("READ_ONLY_ACTION_MODIFIED_RECIPE", "A read-only Copilot action attempted to modify the recipe.", 422);
@@ -230,18 +235,21 @@ export async function runRecipeCopilot(userId: string, recipeId: string | null, 
     const changes = proposed ? logicalRecipeChanges(source, proposed, output) : [];
     const validation = { schema: { valid: true, version: "1.0" }, recipe: { valid: errors.length === 0, errors }, safety: { valid: !unsafe, warnings: safety }, conflicts: combinedConflicts, finalStatus: status, validatedAt: new Date().toISOString() };
     const proposal = await prisma.aiRecipeProposal.create({ data: { requestId: requestRow.id, recipeId: stored?.id, status, schemaVersion: "1.0", originalProposalJson: json(output), proposedConfigurationJson: proposed ? json(proposed) : undefined, analysisJson: json({ ...output.analysis, warnings, explanation: output.explanation, diagnoses: output.diagnoses, behaviorComparison: output.behaviorComparison, nameSuggestions: output.nameSuggestions, onboarding: output.onboarding, presumedPurpose: deriveRecipePurpose(source) }), intentJson: json({ ...output.intent, conflicts: combinedConflicts }), recommendationsJson: json(recommendations), changesJson: json(changes), validationJson: json(validation), candidateEstimateJson: json(proposedAnalysis.candidateEstimate), compatibilityJson: json(proposedAnalysis.compatibility), safetyWarningsJson: json([...warnings, ...safety.map((item) => item.reason)]), unsupportedRequestsJson: json(output.analysis.unsupportedRequests), confidenceScore: output.analysis.confidence, previousConfigurationJson: json(source), previousRecipeVersion: stored?.recipeVersion } });
-    await prisma.aiRecipeRequest.update({ where: { id: requestRow.id }, data: { status: "READY_FOR_REVIEW", providerConfigId: response.providerId, model: response.model, inputTokenCount: response.usage?.inputTokens, outputTokenCount: response.usage?.outputTokens, estimatedCost: response.estimatedCost, actualCost: response.actualCost, aiResponseIdentifier: response.usage?.providerRequestId, completedAt: new Date() } });
+    await prisma.aiRecipeRequest.update({ where: { id: requestRow.id }, data: { status: "SUCCESS", providerConfigId: response.providerId, model: response.model, inputTokenCount: response.usage?.inputTokens, outputTokenCount: response.usage?.outputTokens, estimatedCost: response.estimatedCost, actualCost: response.actualCost, aiResponseIdentifier: response.usage?.providerRequestId, completedAt: new Date() } });
     await createExplanationFromRecipeProposal({ ownerId: userId, requestId: requestRow.id, proposalId: proposal.id, recipeId: stored?.id, recipeVersion: stored?.recipeVersion, originalRequest: input.instruction, intent: { ...output.intent, conflicts: combinedConflicts }, analysis: { ...output.analysis, warnings }, proposedConfiguration: proposed || source, previousConfiguration: source, changes, validation, compatibility: proposedAnalysis.compatibility, provider: availability.provider, model: response.model, privacyMode: availability.privacyMode, engineVersion: "v2", recipeSchemaVersion: String(stored?.schemaVersion || "current"), cost: response.actualCost ?? response.estimatedCost, createdAt: requestRow.createdAt });
     await auditAiRecipe({ requestId: requestRow.id, proposalId: proposal.id, recipeId: stored?.id, actorId: userId, eventType: "AI_REQUEST_COMPLETED", action: input.action, provider: availability.provider, model: response.model, privacyMode: availability.privacyMode, remote: !availability.local, statusAfter: status, estimatedCost: response.estimatedCost, actualCost: response.actualCost, inputTokens: response.usage?.inputTokens, outputTokens: response.usage?.outputTokens, metadata: { changes: changes.length, warnings: warnings.length, conflicts: combinedConflicts.length } }).catch(() => null);
     await auditAiRecipe({ requestId: requestRow.id, proposalId: proposal.id, recipeId: stored?.id, actorId: userId, eventType: "GENERATED_DRAFT_CREATED", action: input.action, provider: availability.provider, model: response.model, privacyMode: availability.privacyMode, remote: !availability.local, statusAfter: status }).catch(() => null);
     if (stored) await writeRecipeAudit({ recipeId: stored.id, recipeVersion: stored.recipeVersion, eventType: "AI_RECIPE_PROPOSAL_CREATED", actorId: userId, correlationId: requestRow.id, description: `Recipe Copilot ${input.action} proposal is ready for review.`, validation, newState: { aiRecipeStatus: status, proposalId: proposal.id }, metadata: { changes: changes.length, automaticActivation: false } }).catch(() => null);
     return publicProposal(await prisma.aiRecipeProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { request: true } }));
   } catch (error) {
-    const value = error as any;
-    await prisma.aiRecipeRequest.update({ where: { id: requestRow.id }, data: { status: value?.category === "REQUEST_CANCELLED" ? "CANCELLED" : "FAILED", errorCategory: String(value?.category || value?.code || "AI_RECIPE_REQUEST_FAILED"), errorMessage: (error instanceof Error ? error.message : "Recipe Copilot request failed.").slice(0, 1000), ...(value?.category === "REQUEST_CANCELLED" ? { cancelledAt: new Date() } : {}), completedAt: new Date() } }).catch(() => null);
-    await auditAiRecipe({ requestId: requestRow.id, recipeId: stored?.id, actorId: userId, eventType: value?.category === "REQUEST_CANCELLED" ? "AI_REQUEST_CANCELLED" : "AI_REQUEST_FAILED", action: input.action, provider: availability.provider, model: availability.model, privacyMode: availability.privacyMode, remote: !availability.local, statusAfter: value?.category === "REQUEST_CANCELLED" ? "CANCELLED" : "FAILED", reason: String(value?.category || value?.code || "FAILED") }).catch(() => null);
-    if (stored) await writeRecipeAudit({ recipeId: stored.id, recipeVersion: stored.recipeVersion, eventType: "AI_RECIPE_REQUEST_FAILED", actorId: userId, correlationId: requestRow.id, description: "Recipe Copilot request failed without changing the recipe.", result: "FAILED", metadata: { errorCategory: String(value?.category || value?.code || "FAILED") } }).catch(() => null);
-    throw error;
+    const normalized = error instanceof AiError ? error : error instanceof ZodError ? new AiError("AI_RECIPE_SCHEMA_INVALID") : Object.assign(new AiError("AI_RECIPE_REQUEST_FAILED"), { cause: error });
+    normalized.details = { request_id: requestRow.id, provider: availability.provider, model: availability.model, stage: normalized.details?.stage || normalized.details?.failure_stage || "RECIPE_GENERATION", elapsed_ms: Date.now() - operationStarted, ...normalized.details };
+    const cancelled = normalized.category === "REQUEST_CANCELLED";
+    const requestStatus = aiFailureStatus(normalized.category);
+    await prisma.aiRecipeRequest.update({ where: { id: requestRow.id }, data: { status: requestStatus, errorCategory: normalized.category, errorMessage: normalized.message.slice(0, 1000), inputTokenCount: typeof normalized.details.usage_input_tokens === "number" ? normalized.details.usage_input_tokens : undefined, outputTokenCount: typeof normalized.details.usage_output_tokens === "number" ? normalized.details.usage_output_tokens : undefined, estimatedCost: typeof normalized.details.estimated_cost === "number" ? normalized.details.estimated_cost : undefined, actualCost: typeof normalized.details.actual_cost === "number" ? normalized.details.actual_cost : undefined, ...(cancelled ? { cancelledAt: new Date() } : {}), completedAt: new Date() } }).catch(() => null);
+    await auditAiRecipe({ requestId: requestRow.id, recipeId: stored?.id, actorId: userId, eventType: cancelled ? "AI_REQUEST_CANCELLED" : "AI_REQUEST_FAILED", action: input.action, provider: availability.provider, model: availability.model, privacyMode: availability.privacyMode, remote: !availability.local, statusAfter: requestStatus, reason: normalized.category, metadata: { stage: normalized.details.stage, elapsedMs: normalized.details.elapsed_ms } }).catch(() => null);
+    if (stored) await writeRecipeAudit({ recipeId: stored.id, recipeVersion: stored.recipeVersion, eventType: "AI_RECIPE_REQUEST_FAILED", actorId: userId, correlationId: requestRow.id, description: "Recipe Copilot request failed without changing the recipe.", result: "FAILED", metadata: { errorCategory: normalized.category } }).catch(() => null);
+    throw normalized;
   }
 }
 

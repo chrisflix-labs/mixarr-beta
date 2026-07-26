@@ -1,6 +1,6 @@
 import type { AiCapabilityResult, AiConnectionTestResult, AiModel, AiProviderAdapter, AiProviderExecutionContext, AiProviderType, AiRequest, AiResponse, AiStreamEvent, ResolvedAiProviderConfig } from "../contracts";
 import { AiError, normalizeProviderError } from "../errors";
-import { configuredHeaders, joinUrl, openAiMessages, parseTextLines, safeFetchJson } from "./http";
+import { configuredHeaders, joinUrl, openAiMessages, parseTextLines, safeFetchJson, safeFetchJsonDetailed } from "./http";
 
 const defaults: Record<string, string> = {
   openai: "https://api.openai.com/v1", deepseek: "https://api.deepseek.com", openrouter: "https://openrouter.ai/api/v1", litellm: "http://localhost:4000/v1", lm_studio: "http://localhost:1234/v1"
@@ -54,15 +54,25 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
   async complete<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): Promise<AiResponse<T>> {
     const started = Date.now();
     const endpoint = typeof config.customConfiguration.chatCompletionEndpoint === "string" ? config.customConfiguration.chatCompletionEndpoint : "/chat/completions";
-    const payload = await safeFetchJson(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages: openAiMessages(request.messages, request.systemInstructions), temperature: request.temperature, max_tokens: request.maxOutputTokens, response_format: request.responseFormat ? { type: "json_object" } : undefined, stream: false }) }, context.maxResponseBytes);
+    const result = await safeFetchJsonDetailed(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages: openAiMessages(request.messages, request.systemInstructions), temperature: request.temperature, max_tokens: request.maxOutputTokens, response_format: request.responseFormat ? { type: "json_object" } : undefined, stream: false }) }, context.maxResponseBytes, { requestId: context.requestId, provider: config.displayName, model: context.model, stage: "CHAT_COMPLETION" });
+    const payload = result.payload;
     const choice = payload?.choices?.[0];
-    const content = typeof choice?.message?.content === "string" ? choice.message.content : typeof payload?.output_text === "string" ? payload.output_text : undefined;
-    if (content == null) throw new AiError("INVALID_RESPONSE");
+    const responseOutput = Array.isArray(payload?.output) ? payload.output.flatMap((item: any) => Array.isArray(item?.content) ? item.content : []).filter((item: any) => item?.type === "output_text" && typeof item.text === "string").map((item: any) => item.text).join("") : undefined;
+    const messageContent = choice?.message?.content;
+    const directStructuredObject = request.responseFormat && payload && typeof payload === "object" && !Array.isArray(payload) && !("choices" in payload) && !("output" in payload) && !("output_text" in payload) ? payload : undefined;
+    const content = typeof messageContent === "string" ? messageContent
+      : messageContent && typeof messageContent === "object" ? JSON.stringify(messageContent)
+      : typeof payload === "string" ? payload
+      : typeof payload?.output_text === "string" ? payload.output_text
+      : responseOutput ? responseOutput
+      : directStructuredObject ? JSON.stringify(directStructuredObject)
+      : undefined;
+    if (content == null || !content.trim()) throw new AiError("AI_PROVIDER_EMPTY_RESPONSE", undefined, 502, undefined, { request_id: context.requestId, provider: config.displayName, model: context.model, stage: "CONTENT_EXTRACTION", endpoint_hostname: result.transport.endpointHostname, http_status: result.transport.httpStatus, response_content_type: result.transport.contentType, response_body_length: result.transport.bodyLength, response_streamed: result.transport.streamed, failure_stage: "ASSISTANT_CONTENT_EMPTY" });
     const inputTokens = Number(payload?.usage?.prompt_tokens ?? payload?.usage?.input_tokens) || undefined;
     const outputTokens = Number(payload?.usage?.completion_tokens ?? payload?.usage?.output_tokens) || undefined;
     const totalTokens = Number(payload?.usage?.total_tokens) || (inputTokens != null && outputTokens != null ? inputTokens + outputTokens : undefined);
     const cost = Number(payload?.usage?.cost ?? payload?.cost);
-    return { requestId: context.requestId, providerId: config.id, providerType: this.providerType, model: String(payload?.model || context.model), content, usage: { inputTokens, outputTokens, totalTokens }, estimatedCost: Number.isFinite(cost) ? cost : undefined, finishReason: choice?.finish_reason, latencyMs: Date.now() - started, retryCount: 0, streaming: false, warnings: [] };
+    return { requestId: context.requestId, providerId: config.id, providerType: this.providerType, model: String(payload?.model || context.model), content, usage: { inputTokens, outputTokens, totalTokens, providerReported: !!payload?.usage, providerRequestId: typeof payload?.id === "string" ? payload.id : undefined, rawUsage: payload?.usage && typeof payload.usage === "object" ? payload.usage : undefined }, actualCost: Number.isFinite(cost) ? cost : undefined, finishReason: choice?.finish_reason, latencyMs: Date.now() - started, retryCount: 0, streaming: false, warnings: [], transport: result.transport };
   }
   async *stream<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): AsyncIterable<AiStreamEvent> {
     const endpoint = typeof config.customConfiguration.chatCompletionEndpoint === "string" ? config.customConfiguration.chatCompletionEndpoint : "/chat/completions";

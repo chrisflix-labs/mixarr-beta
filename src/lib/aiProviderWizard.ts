@@ -74,7 +74,7 @@ export function validateProviderWizard(form: ProviderWizardForm): ProviderWizard
   try { parseHeaderObject(form.secretHeadersText, true); } catch (error) { add("secretHeadersText", (error as Error).message); }
 
   for (const [field, minimum, maximum, integer, label] of [
-    ["requestTimeoutMs", 1000, 300000, true, "Timeout"],
+    ["requestTimeoutMs", 30000, 600000, true, "Timeout"],
     ["retryCount", 0, 10, true, "Retry count"],
     ["initialRetryDelayMs", 50, 60000, true, "Initial retry delay"],
     ["maximumRetryDelayMs", 50, 300000, true, "Maximum retry delay"],

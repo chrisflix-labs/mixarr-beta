@@ -77,6 +77,7 @@ export type AiResponse<T = unknown> = {
   retryCount: number;
   streaming: boolean;
   warnings: string[];
+  transport?: { httpStatus?: number; contentType?: string; bodyLength?: number; endpointHostname?: string; streamed?: boolean };
 };
 
 export type AiStreamEvent =

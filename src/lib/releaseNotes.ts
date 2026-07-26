@@ -83,7 +83,7 @@ export const releaseNotes: ReleaseNote[] = [
     version: "2.4.15",
     title: "Storage Safety and Large-Library Scalability",
     releaseDate: "July 25, 2026",
-    badges: ["Storage", "Database", "Library Sync", "Performance", "Diagnostics", "Bug Fix"],
+    badges: ["Storage", "Database", "Library Sync", "Performance", "Diagnostics", "AI", "Bug Fix"],
     changes: [
       "Fixed a confirmed 230 MiB Docker writable-layer write on every newly created container by bundling the Prisma CLI instead of downloading it into /tmp through npx during startup.",
       "Moved cache, temporary audio samples, artwork, backups, exports, jobs, scans, and optional logs into documented configurable /config and /data storage roots; unsafe backup fallback into /app/tmp and /tmp was removed.",
@@ -92,6 +92,8 @@ export const releaseNotes: ReleaseNote[] = [
       "Added administrator Storage Diagnostics, cleanup previews and confirmations, PostgreSQL database/WAL/history sizing, free-space thresholds, unexpected-path reporting, and Docker mount warnings.",
       "Added Docker /config and /data volumes, a read-only application root, a bounded tmpfs, and json-file log rotation (10 MiB times five files).",
       "Added the repeatable synthetic production-path scanner benchmark for 150,000 tracks and storage cleanup/report developer commands.",
+      "Fixed Recipe Copilot's legacy 30-second DeepSeek timeout with one coordinator-owned, configurable 120-second default and provider/global/governance policy overrides.",
+      "Added safe OpenAI-compatible HTTP and structured-response decoding, one bounded JSON repair attempt, structured timeout/HTTP/empty/invalid/schema errors, stable request IDs, and non-JSON frontend fallbacks without weakening privacy, cost, token, approval, or review-only controls.",
     ],
   },
   {
