@@ -45,6 +45,7 @@ export function recipeCopilotApiError(error: unknown) {
       : mappedCode === "AI_PROVIDER_REFUSAL" ? `${provider || "The AI provider"} refused the request.`
       : mappedCode === "AI_PROVIDER_TOOL_CALL_ONLY" ? `${provider || "The AI provider"} returned a tool call without a final answer.`
       : mappedCode === "AI_PROVIDER_TRUNCATED_RESPONSE" ? `${provider || "The AI provider"} stopped before returning a final answer.`
+      : mappedCode === "AI_REQUIRED_OUTPUT_BUDGET_EXCEEDS_LIMIT" ? `The configured output-token limit is too low for ${provider || "the selected provider"}. Raise it to the recommended minimum before retrying.`
       : mappedCode === "AI_PROVIDER_HTTP_ERROR" ? `${provider || "The AI provider"} returned an HTTP error${typeof details.http_status === "number" ? ` (${details.http_status})` : ""}.`
       : ["AI_PROVIDER_INVALID_RESPONSE", "AI_FEATURE_INVALID_STRUCTURED_OUTPUT", "AI_RECIPE_SCHEMA_INVALID"].includes(mappedCode) ? `${provider || "The AI provider"} returned content that did not match the Recipe Copilot schema.`
       : ["AI_DAILY_LIMIT_EXCEEDED", "AI_MONTHLY_REQUEST_LIMIT_EXCEEDED"].includes(mappedCode) ? describeRequestLimitFromDetails(error.details) || error.toSafePayload().error.message

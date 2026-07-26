@@ -9,7 +9,29 @@ export type AiCapabilityConfidence = "CONFIRMED" | "REPORTED" | "ASSUMED" | "MAN
 export type AiCapabilityResult = Partial<Record<AiCapability, AiCapabilityConfidence>>;
 
 export type AiMessage = { role: "user" | "assistant"; content: string };
-export type AiUsage = { inputTokens?: number; outputTokens?: number; totalTokens?: number; cachedTokens?: number; reasoningTokens?: number; providerReported?: boolean; providerRequestId?: string; rawUsage?: Record<string, unknown> };
+export type AiUsage = { inputTokens?: number; outputTokens?: number; finalAnswerTokens?: number; totalTokens?: number; cachedTokens?: number; reasoningTokens?: number; acceptedPredictionTokens?: number; rejectedPredictionTokens?: number; providerReported?: boolean; providerRequestId?: string; rawUsage?: Record<string, unknown> };
+export type AiOutputTokenParameter = "max_tokens" | "max_completion_tokens";
+export type AiModelCapabilities = {
+  supportsStreaming: boolean;
+  supportsJsonMode: boolean;
+  supportsStructuredOutput: boolean;
+  supportsReasoning: boolean;
+  reasoningConsumesCompletionBudget: boolean;
+  supportsReasoningEffort: boolean;
+  outputTokenParameter: AiOutputTokenParameter;
+  defaultOutputTokens?: number;
+  maximumOutputTokens?: number;
+  source: "CATALOG" | "MODEL_METADATA" | "CONSERVATIVE_DEFAULT";
+  diagnostics?: string[];
+};
+export type AiOutputBudgetPolicy = {
+  expectedFinalAnswerTokens: number;
+  minimumFinalAnswerTokens: number;
+  reasoningTokenReserve?: number;
+  minimumReasoningTokenReserve?: number;
+  truncationRetryIncrement?: number;
+  allowTruncationRetry?: boolean;
+};
 export type AiModelCategory = "GENERAL" | "FAST" | "REASONING" | "LARGE_CONTEXT" | "LOCAL" | "REMOTE" | "UNKNOWN";
 export type AiModelCompatibility = {
   ownedBy?: string;
@@ -44,6 +66,10 @@ export type AiRequest<T = unknown> = {
   stream?: boolean;
   temperature?: number;
   maxOutputTokens?: number;
+  outputBudget?: AiOutputBudgetPolicy;
+  resolvedModelCapabilities?: AiModelCapabilities;
+  truncationRetryMaxOutputTokens?: number;
+  truncationRetry?: boolean;
   maxResponseBytes?: number;
   timeoutMs?: number;
   signal?: AbortSignal;
@@ -127,7 +153,7 @@ export type ResolvedAiProviderConfig = {
   customConfiguration: Record<string, unknown>;
 };
 
-export type AiProviderExecutionContext = { requestId: string; providerId: string; model: string; signal: AbortSignal; maxResponseBytes: number };
+export type AiProviderExecutionContext = { requestId: string; providerId: string; model: string; signal: AbortSignal; maxResponseBytes: number; modelCapabilities?: AiModelCapabilities };
 
 export interface AiProviderAdapter {
   readonly providerType: AiProviderType;

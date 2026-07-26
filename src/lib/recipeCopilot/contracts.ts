@@ -46,13 +46,13 @@ export const recipeCopilotPatchSchema = z.object({
   automationPolicy: recipeAutomationPolicySchema.partial().strict().default({}),
 }).strict();
 
-const intentSchema = z.object({ summary: text(1200), primaryGoals: z.array(text(300)).max(20).default([]), secondaryGoals: z.array(text(300)).max(20).default([]), conflicts: z.array(z.object({ code: text(80), description: text(800), resolution: text(800), resolved: z.boolean() }).strict()).max(30).default([]) }).strict();
-const analysisSchema = z.object({ confidence, assumptions: z.array(text(800)).max(50).default([]), warnings: z.array(text(800)).max(50).default([]), unsupportedRequests: z.array(text(800)).max(50).default([]), expectedBehavioralChanges: z.array(text(800)).max(50).default([]), compatibilityNotes: z.array(text(800)).max(50).default([]) }).strict();
+const intentSchema = z.object({ summary: text(1200), primaryGoals: z.array(text(300)).max(20), secondaryGoals: z.array(text(300)).max(20), conflicts: z.array(z.object({ code: text(80), description: text(800), resolution: text(800), resolved: z.boolean() }).strict()).max(30) }).strict();
+const analysisSchema = z.object({ confidence, assumptions: z.array(text(800)).max(50), warnings: z.array(text(800)).max(50), unsupportedRequests: z.array(text(800)).max(50), expectedBehavioralChanges: z.array(text(800)).max(50), compatibilityNotes: z.array(text(800)).max(50) }).strict();
 const recommendationSchema = z.object({
-  parentRecipes: z.array(z.object({ id: text(160), name: text(160), reason: text(800), inheritedRules: z.array(text(200)).max(30), childRules: z.array(text(200)).max(30), conflicts: z.array(text(500)).max(20), compatibilityRequirements: z.array(text(300)).max(20), maintenanceBenefit: text(600) }).strict()).max(10).default([]),
-  inheritance: z.array(z.object({ path: text(240), reason: text(800) }).strict()).max(30).default([]),
-  missingRules: z.array(z.object({ path: text(240), reason: text(800), suggestedValue: z.unknown().optional() }).strict()).max(30).default([]),
-  saferSettings: z.array(z.object({ path: text(240), reason: text(800), suggestedValue: z.unknown().optional() }).strict()).max(30).default([]),
+  parentRecipes: z.array(z.object({ id: text(160), name: text(160), reason: text(800), inheritedRules: z.array(text(200)).max(30), childRules: z.array(text(200)).max(30), conflicts: z.array(text(500)).max(20), compatibilityRequirements: z.array(text(300)).max(20), maintenanceBenefit: text(600) }).strict()).max(10),
+  inheritance: z.array(z.object({ path: text(240), reason: text(800) }).strict()).max(30),
+  missingRules: z.array(z.object({ path: text(240), reason: text(800), suggestedValue: z.unknown().optional() }).strict()).max(30),
+  saferSettings: z.array(z.object({ path: text(240), reason: text(800), suggestedValue: z.unknown().optional() }).strict()).max(30),
 }).strict();
 const changeRationaleSchema = z.object({ path: text(240), reason: text(800), expectedBehaviorChange: text(800), potentialSideEffects: z.array(text(500)).max(20).default([]), confidence }).strict();
 const diagnosisSchema = z.object({ category: text(120), likelyCause: text(1000), affectedRules: z.array(text(240)).max(30), evidence: z.array(text(800)).max(30), confidence, suggestedCorrections: z.array(z.object({ path: text(240), suggestion: text(800), changesPurpose: z.boolean(), locallyValidatable: z.boolean() }).strict()).max(30) }).strict();
@@ -60,16 +60,16 @@ const diagnosisSchema = z.object({ category: text(120), likelyCause: text(1000),
 export const recipeCopilotResponseSchema = z.object({
   schemaVersion: z.literal(RECIPE_COPILOT_SCHEMA_VERSION),
   action: z.enum(RECIPE_COPILOT_ACTIONS),
-  proposedPatch: recipeCopilotPatchSchema.nullable().default(null),
+  proposedPatch: recipeCopilotPatchSchema.nullable(),
   intent: intentSchema,
   analysis: analysisSchema,
   recommendations: recommendationSchema,
-  changeRationales: z.array(changeRationaleSchema).max(100).default([]),
-  explanation: z.object({ summary: text(3000), detailed: z.array(z.object({ section: text(120), rules: z.array(text(240)).max(30), explanation: text(1800), surprises: z.array(text(500)).max(20) }).strict()).max(30) }).strict().nullable().default(null),
-  diagnoses: z.array(diagnosisSchema).max(30).default([]),
-  behaviorComparison: z.object({ matches: z.array(text(800)).max(30), partialMatches: z.array(text(800)).max(30), contradictions: z.array(text(800)).max(30), nonContributingRules: z.array(text(240)).max(30), missingRules: z.array(text(800)).max(30), misunderstoodEffects: z.array(text(800)).max(30), suggestedCorrections: z.array(text(800)).max(30), confidence }).strict().nullable().default(null),
-  nameSuggestions: z.array(z.object({ name: text(120).min(1), rationale: text(500), style: text(80) }).strict()).max(10).default([]),
-  onboarding: z.array(z.object({ title: text(160), guidance: text(1200) }).strict()).max(20).default([]),
+  changeRationales: z.array(changeRationaleSchema).max(100),
+  explanation: z.object({ summary: text(3000), detailed: z.array(z.object({ section: text(120), rules: z.array(text(240)).max(30), explanation: text(1800), surprises: z.array(text(500)).max(20) }).strict()).max(30) }).strict().nullable(),
+  diagnoses: z.array(diagnosisSchema).max(30),
+  behaviorComparison: z.object({ matches: z.array(text(800)).max(30), partialMatches: z.array(text(800)).max(30), contradictions: z.array(text(800)).max(30), nonContributingRules: z.array(text(240)).max(30), missingRules: z.array(text(800)).max(30), misunderstoodEffects: z.array(text(800)).max(30), suggestedCorrections: z.array(text(800)).max(30), confidence }).strict().nullable(),
+  nameSuggestions: z.array(z.object({ name: text(120).min(1), rationale: text(500), style: text(80) }).strict()).max(10),
+  onboarding: z.array(z.object({ title: text(160), guidance: text(1200) }).strict()).max(20),
 }).strict();
 
 export const recipeCopilotRequestSchema = z.object({

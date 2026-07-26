@@ -1,5 +1,8 @@
 # Changelog
 
+- Fixed Recipe Copilot truncation on reasoning-capable DeepSeek models with centralized model capabilities, reasoning-aware 5,500-token initial budgets, a 4,000-token safe minimum, and up to 7,000 tokens for one governed restart retry. Existing lower administrator limits now block before dispatch with `AI_REQUIRED_OUTPUT_BUDGET_EXCEEDS_LIMIT` rather than charging for an almost-certain truncation.
+- Preserved per-attempt completion and reasoning usage, added output-limit recovery history, prevented `reasoning_content` from becoming user-visible output, applied JSON mode only when model capabilities permit it, and require complete local Recipe Copilot schema validation even when the provider reports `finish_reason: length`.
+
 ## v2.4.15 - Storage Safety and Large-Library Scalability
 
 - Fixed Recipe Copilot requests against slower DeepSeek/OpenAI-compatible models aborting at the legacy 30-second provider/global defaults. The coordinator is now the single total-request timer owner, defaults remote generation to 120 seconds, validates `AI_REQUEST_TIMEOUT_SECONDS` from 30 through 600 seconds, and retains stricter administrator provider/global/governance overrides.

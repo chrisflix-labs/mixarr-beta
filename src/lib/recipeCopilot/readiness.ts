@@ -40,6 +40,7 @@ const messages: Record<string, string> = {
   AI_PROVIDER_REFUSAL: "The AI provider refused the request.",
   AI_PROVIDER_TOOL_CALL_ONLY: "The AI provider returned a tool call without a final answer.",
   AI_PROVIDER_TRUNCATED_RESPONSE: "The AI provider stopped before returning a final answer.",
+  AI_REQUIRED_OUTPUT_BUDGET_EXCEEDS_LIMIT: "The configured output-token limit is below the safe minimum for Recipe Copilot.",
   AI_PROVIDER_INVALID_RESPONSE: "The AI provider returned a response that could not be converted into a valid recipe.",
   AI_FEATURE_INVALID_STRUCTURED_OUTPUT: "The AI provider returned content that did not match the Recipe Copilot schema.",
   AI_RECIPE_SCHEMA_INVALID: "The AI provider returned a response that did not match the recipe schema.",

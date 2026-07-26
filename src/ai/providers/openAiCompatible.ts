@@ -1,7 +1,8 @@
 import type { AiCapabilityResult, AiConnectionTestResult, AiModel, AiProviderAdapter, AiProviderExecutionContext, AiProviderType, AiRequest, AiResponse, AiStreamEvent, ResolvedAiProviderConfig } from "../contracts";
 import { AiError, normalizeProviderError } from "../errors";
 import { configuredHeaders, joinUrl, openAiMessages, parseTextLines, safeFetchJson, safeFetchJsonDetailed } from "./http";
-import { normalizeAIResponse } from "./normalizeResponse";
+import { normalizeAIResponse, normalizeAIUsage } from "./normalizeResponse";
+import { resolveModelCapabilities } from "../registry/modelCapabilities";
 
 const defaults: Record<string, string> = {
   openai: "https://api.openai.com/v1", deepseek: "https://api.deepseek.com", openrouter: "https://openrouter.ai/api/v1", litellm: "http://localhost:4000/v1", lm_studio: "http://localhost:1234/v1"
@@ -55,7 +56,9 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
   async complete<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): Promise<AiResponse<T>> {
     const started = Date.now();
     const endpoint = typeof config.customConfiguration.chatCompletionEndpoint === "string" ? config.customConfiguration.chatCompletionEndpoint : "/chat/completions";
-    const result = await safeFetchJsonDetailed(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages: openAiMessages(request.messages, request.systemInstructions), temperature: request.temperature, max_tokens: request.maxOutputTokens, response_format: request.responseFormat ? { type: "json_object" } : undefined, stream: false }) }, context.maxResponseBytes, { requestId: context.requestId, provider: config.displayName, model: context.model, stage: "CHAT_COMPLETION" });
+    const modelCapabilities = context.modelCapabilities || request.resolvedModelCapabilities || resolveModelCapabilities(this.providerType, context.model);
+    const outputLimit = request.maxOutputTokens;
+    const result = await safeFetchJsonDetailed(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages: openAiMessages(request.messages, request.systemInstructions), temperature: request.temperature, ...(modelCapabilities.outputTokenParameter === "max_completion_tokens" ? { max_completion_tokens: outputLimit } : { max_tokens: outputLimit }), response_format: request.responseFormat && modelCapabilities.supportsJsonMode ? { type: "json_object" } : undefined, stream: false }) }, context.maxResponseBytes, { requestId: context.requestId, provider: config.displayName, model: context.model, stage: "CHAT_COMPLETION" });
     const payload = result.payload;
     const normalized = normalizeAIResponse(payload, {
       providerType: this.providerType,
@@ -64,15 +67,15 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
       requestId: context.requestId,
       transport: result.transport,
       allowDirectStructuredObject: !!request.responseFormat,
-      allowReasoningContentFallback: this.providerType === "deepseek" && !!request.responseFormat,
     });
     const cost = Number(payload?.usage?.cost ?? payload?.cost);
-    return { requestId: context.requestId, providerId: config.id, providerType: this.providerType, model: normalized.model || context.model, content: normalized.text, usage: normalized.usage, actualCost: Number.isFinite(cost) && cost >= 0 ? cost : undefined, finishReason: normalized.finishReason, latencyMs: Date.now() - started, retryCount: 0, streaming: false, warnings: normalized.providerMetadata?.compatibilityFallback ? ["DeepSeek returned structured final output through its reasoning compatibility field."] : [], transport: result.transport };
+    return { requestId: context.requestId, providerId: config.id, providerType: this.providerType, model: normalized.model || context.model, content: normalized.text, usage: normalized.usage, actualCost: Number.isFinite(cost) && cost >= 0 ? cost : undefined, finishReason: normalized.finishReason, latencyMs: Date.now() - started, retryCount: 0, streaming: false, warnings: [], transport: result.transport };
   }
   async *stream<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): AsyncIterable<AiStreamEvent> {
     const endpoint = typeof config.customConfiguration.chatCompletionEndpoint === "string" ? config.customConfiguration.chatCompletionEndpoint : "/chat/completions";
     let response: Response;
-    try { response = await fetch(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages: openAiMessages(request.messages, request.systemInstructions), temperature: request.temperature, max_tokens: request.maxOutputTokens, response_format: request.responseFormat ? { type: "json_object" } : undefined, stream: true, stream_options: { include_usage: true } }) }); }
+    const modelCapabilities = context.modelCapabilities || request.resolvedModelCapabilities || resolveModelCapabilities(this.providerType, context.model);
+    try { response = await fetch(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages: openAiMessages(request.messages, request.systemInstructions), temperature: request.temperature, ...(modelCapabilities.outputTokenParameter === "max_completion_tokens" ? { max_completion_tokens: request.maxOutputTokens } : { max_tokens: request.maxOutputTokens }), response_format: request.responseFormat && modelCapabilities.supportsJsonMode ? { type: "json_object" } : undefined, stream: true, stream_options: { include_usage: true } }) }); }
     catch (error) { throw normalizeProviderError(error); }
     if (!response.ok) throw normalizeProviderError(new Error(`Provider returned HTTP ${response.status}.`), response.status);
     yield { type: "started", requestId: context.requestId };
@@ -83,7 +86,7 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
       let event: any; try { event = JSON.parse(raw); } catch { throw new AiError("INVALID_RESPONSE"); }
       const delta = event?.choices?.[0]?.delta?.content;
       if (typeof delta === "string" && delta) yield request.responseFormat ? { type: "structured_delta", delta } : { type: "text_delta", delta };
-      if (event?.usage) yield { type: "usage", usage: { inputTokens: event.usage.prompt_tokens, outputTokens: event.usage.completion_tokens, totalTokens: event.usage.total_tokens } };
+      if (event?.usage) yield { type: "usage", usage: normalizeAIUsage(event) || {} };
       const finish = event?.choices?.[0]?.finish_reason;
       if (finish) yield { type: "completed", finishReason: finish };
     }

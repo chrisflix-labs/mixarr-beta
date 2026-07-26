@@ -121,21 +121,18 @@ describe("v2.4.15 Recipe Copilot provider reliability", () => {
     await assert.rejects(() => new OpenAiCompatibleAdapter("deepseek").complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: format }, deepSeek("/fixture-empty"), context), (error: any) => error.category === "AI_PROVIDER_EMPTY_RESPONSE" && error.details.http_status === 200 && error.details.response_body_length > 0 && error.details.response_streamed === false && error.details.stage === "CONTENT_EXTRACTION" && error.details.usage_output_tokens === 1900 && error.details.actual_cost === 0.0018);
   });
 
-  it("distinguishes tool-only, unknown-shape, malformed JSON, and safe DeepSeek reasoning fallback", async () => {
+  it("distinguishes tool-only, unknown-shape, malformed JSON, and never uses DeepSeek reasoning as final content", async () => {
     const adapter = new OpenAiCompatibleAdapter("deepseek");
     await assert.rejects(() => adapter.complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: format }, deepSeek("/fixture-tool"), context), (error: any) => error.category === "AI_PROVIDER_TOOL_CALL_ONLY");
     await assert.rejects(() => adapter.complete({ featureKey: "connection_test", messages: [{ role: "user", content: "fixture" }] }, deepSeek("/fixture-unknown"), context), (error: any) => error.category === "AI_PROVIDER_UNSUPPORTED_RESPONSE_SHAPE");
     await assert.rejects(() => adapter.complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: format }, deepSeek("/fixture-malformed"), context), (error: any) => error.category === "AI_PROVIDER_MALFORMED_JSON");
     const savedFailure = JSON.parse(fixture("deepseek-null-content-reasoning-response.json"));
     assert.equal(savedFailure.choices[0].message.content, null);
-    const compatible = await adapter.complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: format }, deepSeek("/fixture-reasoning"), context);
-    assert.equal(parseStructuredResponse(compatible.content!, format, 512_000).proposedPatch?.metadata?.name, "Compatibility answer");
-    assert.equal(compatible.usage?.outputTokens, 1900); assert.equal(compatible.actualCost, 0.0018);
-    assert.ok(compatible.warnings.some((warning) => /reasoning compatibility field/i.test(warning)));
+    await assert.rejects(() => adapter.complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: format }, deepSeek("/fixture-reasoning"), context), (error: any) => error.category === "AI_PROVIDER_EMPTY_RESPONSE" && error.details.has_reasoning_content === true && !JSON.stringify(error.details).includes("Compatibility answer"));
   });
 
   it("does not expose free-form chain-of-thought from reasoning_content", () => {
-    assert.throws(() => normalizeAIResponse({ choices: [{ message: { content: null, reasoning_content: "I considered several private reasoning steps." }, finish_reason: "stop" }] }, { providerType: "deepseek", provider: "DeepSeek", requestedModel: "deepseek-v4-pro", requestId: "safe-reasoning", allowReasoningContentFallback: true }), (error: any) => error.category === "AI_PROVIDER_EMPTY_RESPONSE" && error.details.has_reasoning_content === true);
+    assert.throws(() => normalizeAIResponse({ choices: [{ message: { content: null, reasoning_content: "I considered several private reasoning steps." }, finish_reason: "stop" }] }, { providerType: "deepseek", provider: "DeepSeek", requestedModel: "deepseek-v4-pro", requestId: "safe-reasoning" }), (error: any) => error.category === "AI_PROVIDER_EMPTY_RESPONSE" && error.details.has_reasoning_content === true);
   });
 
   it("classifies refusal and truncation separately from empty content", () => {

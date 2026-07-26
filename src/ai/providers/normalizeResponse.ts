@@ -24,7 +24,6 @@ export type AIResponseNormalizationOptions = {
   requestId: string;
   transport?: TransportMetadata;
   allowDirectStructuredObject?: boolean;
-  allowReasoningContentFallback?: boolean;
 };
 
 function record(value: unknown): Record<string, any> | undefined {
@@ -54,12 +53,18 @@ export function normalizeAIUsage(response: unknown): AiUsage | undefined {
   const totalTokens = finiteToken(usage.total_tokens ?? usage.totalTokens) ?? (inputTokens != null && outputTokens != null ? inputTokens + outputTokens : undefined);
   const cachedTokens = finiteToken(usage.prompt_tokens_details?.cached_tokens ?? usage.input_tokens_details?.cached_tokens ?? usage.cache_read_input_tokens);
   const reasoningTokens = finiteToken(usage.completion_tokens_details?.reasoning_tokens ?? usage.output_tokens_details?.reasoning_tokens);
+  const acceptedPredictionTokens = finiteToken(usage.completion_tokens_details?.accepted_prediction_tokens ?? usage.output_tokens_details?.accepted_prediction_tokens);
+  const rejectedPredictionTokens = finiteToken(usage.completion_tokens_details?.rejected_prediction_tokens ?? usage.output_tokens_details?.rejected_prediction_tokens);
+  const finalAnswerTokens = outputTokens != null && reasoningTokens != null && reasoningTokens <= outputTokens ? outputTokens - reasoningTokens : undefined;
   return {
     inputTokens,
     outputTokens,
     totalTokens,
     cachedTokens,
     reasoningTokens,
+    finalAnswerTokens,
+    acceptedPredictionTokens,
+    rejectedPredictionTokens,
     providerReported: true,
     providerRequestId: typeof payload?.id === "string" ? payload.id : undefined,
     rawUsage: usage,
@@ -116,13 +121,6 @@ function owns(value: unknown, key: string) {
   return !!record(value) && Object.prototype.hasOwnProperty.call(value, key);
 }
 
-function structuredFinalAnswer(value: string) {
-  const trimmed = value.trim();
-  if (/^```(?:json)?\s*[\[{]/i.test(trimmed)) return true;
-  if (!/^[\[{]/.test(trimmed)) return false;
-  try { const parsed = JSON.parse(trimmed); return !!parsed && typeof parsed === "object"; } catch { return false; }
-}
-
 function safeKeys(value: unknown) {
   return Object.keys(record(value) || {}).filter((key) => !/authorization|cookie|secret|credential|api[_-]?key|access[_-]?token|session/i.test(key)).slice(0, 50).map((key) => key.slice(0, 100));
 }
@@ -167,14 +165,6 @@ export function normalizeAIResponse(response: unknown, options: AIResponseNormal
 
   const reasoning = textualBlocks(message?.reasoning_content).text;
   attempts.push("choices[0].message.reasoning_content");
-  if (options.providerType === "deepseek" && options.allowReasoningContentFallback && typeof reasoning === "string" && structuredFinalAnswer(reasoning)) {
-    return {
-      text: reasoning.trim(), finishReason, usage,
-      model: typeof payload?.model === "string" ? payload.model : undefined,
-      providerMetadata: { responseId: typeof payload?.id === "string" ? payload.id : undefined, extractorPath: "choices[0].message.reasoning_content", compatibilityFallback: true },
-    };
-  }
-
   const envelopeKeys = new Set(["id", "object", "created", "model", "choices", "message", "output_text", "output", "content", "usage", "done", "done_reason", "status"]);
   const hasKnownEnvelope = typeof response === "string" || safeKeys(payload).some((key) => envelopeKeys.has(key));
   if (options.allowDirectStructuredObject && payload && !hasKnownEnvelope) {
@@ -221,6 +211,10 @@ export function normalizeAIResponse(response: unknown, options: AIResponseNormal
     usage_input_tokens: usage?.inputTokens,
     usage_output_tokens: usage?.outputTokens,
     usage_total_tokens: usage?.totalTokens,
+    usage_reasoning_tokens: usage?.reasoningTokens,
+    usage_final_answer_tokens: usage?.finalAnswerTokens,
+    usage_accepted_prediction_tokens: usage?.acceptedPredictionTokens,
+    usage_rejected_prediction_tokens: usage?.rejectedPredictionTokens,
     usage_provider_reported: usage?.providerReported === true,
     provider_request_id: usage?.providerRequestId,
     actual_cost: finiteToken(payload?.usage?.cost ?? payload?.cost),

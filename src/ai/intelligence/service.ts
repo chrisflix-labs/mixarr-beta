@@ -163,7 +163,7 @@ const onboardingConfigurationSchema = z.object({
   dailyRequestLimit: z.number().int().positive().max(1_000_000).nullable().default(null),
   monthlyRequestLimit: z.number().int().positive().max(10_000_000).nullable().default(null),
   maximumInputTokens: z.number().int().min(128).max(2_000_000).default(16000),
-  maximumOutputTokens: z.number().int().min(64).max(2_000_000).default(2000),
+  maximumOutputTokens: z.number().int().min(64).max(2_000_000).default(7000),
   // Unlimited by default. A zero ceiling is still expressible, but only by
   // choosing Limited explicitly, so the default can never block priced requests.
   perRequestCostLimitMode: z.enum(["UNLIMITED", "LIMITED"]).default("UNLIMITED"),

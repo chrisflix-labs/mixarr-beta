@@ -1,0 +1,11 @@
+# Recipe Copilot reasoning output budgets
+
+Recipe Copilot now treats a reasoning model's completion limit as a shared budget for internal reasoning and the visible JSON answer. The model catalog identifies reasoning behavior, output-token parameter names, JSON-mode support, and model maxima in one place. Unknown DeepSeek models receive a conservative reasoning reserve; unknown generic OpenAI-compatible models do not receive unsupported JSON-mode parameters.
+
+The default feature policy targets 2,500 final-answer tokens. Models whose reasoning consumes the completion budget add a 3,000-token reserve, producing a 5,500-token initial provider limit and up to 7,000 tokens for one governed truncation retry. The safe minimum is 2,000 tokens for normal chat models and 4,000 tokens for reasoning models. Existing administrator limits are never overwritten; a lower cap returns `AI_REQUIRED_OUTPUT_BUDGET_EXCEEDS_LIMIT` before provider dispatch.
+
+Preflight cost enforcement prices the complete provider output allowance. A truncation retry restarts from the original inputs, adds a stronger concise-JSON instruction, and runs the existing retry, per-request, cumulative, daily, monthly, provider, user, privacy, approval, and fallback checks. One same-provider truncation retry is possible when the output limit can increase and policy permits retrying after possible billing. A second truncation is eligible for an approved fallback, whose output budget is recalculated for its own model.
+
+`reasoning_content` is never returned, stored, logged, or used as Recipe Copilot output. Only its presence and length-independent provider usage counts may be recorded. Provider usage preserves prompt, completion, total, cached, reasoning, accepted-prediction, and rejected-prediction counts when reported; missing categories remain undefined.
+
+Responses ending with `finish_reason: length` are accepted only when the entire final content parses as one JSON value and passes the complete local Recipe Copilot schema. Partial JSON is neither repaired nor continued. Request history distinguishes successful HTTP transport from incomplete model output and records the configured output limit, recovery, fallback, usage, and cost.
