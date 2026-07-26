@@ -58,7 +58,7 @@ The backend rejects Draft → Approved, Needs Review → Approved, and Quarantin
 
 ## Privacy, provider governance, and costs
 
-Recipe Copilot uses the central v2.4.x AI provider coordinator and respects provider enablement, model availability, per-user access, request and token limits, context trimming, timeouts, retry policy, hard shutdown, budgets, fallback policy, usage history, and audit logging.
+Recipe Copilot uses the central v2.4.x AI provider coordinator and respects provider enablement, model availability, per-user access, request-count and monetary limits, provider-native context validation, context trimming, timeouts, retry policy, hard shutdown, fallback policy, usage history, and audit logging. Mixarr-configured token caps were retired in v2.4.17; token estimates remain informational.
 
 - **Local Only** permits only administrator-confirmed local providers. Remote fallback is disabled.
 - **Metadata Limited** sends recipe structure, safe rule values, aggregate analysis, and the user’s request. Recipe identity, server/library IDs, selected track IDs, secrets, paths, and unrelated data are excluded.

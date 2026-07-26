@@ -110,11 +110,11 @@ describe("v2.4.16 Recipe Copilot provider reliability", () => {
     assert.equal(response.usage?.outputTokens, 1900); assert.equal(response.actualCost, 0.0018);
   });
 
-  it("accepts only an outer Markdown fence in strict Recipe Copilot JSON mode", async () => {
+  it("accepts an outer Markdown fence and harmless prose around one complete object", async () => {
     const small = { type: "json" as const, name: "fixture", schema: z.object({ name: z.string() }).strict(), allowEmbeddedJson: false };
     const response = await new OpenAiCompatibleAdapter("deepseek").complete({ featureKey: "recipe_copilot", messages: [{ role: "user", content: "fixture" }], responseFormat: small }, deepSeek("/fixture-fenced"), context);
     assert.deepEqual(parseStructuredResponse(response.content!, small, 512_000), { name: "Test recipe" });
-    assert.throws(() => parseStructuredResponse('Explanation {"name":"Test recipe"}', small, 512_000), (error: any) => error.category === "STRUCTURED_RESPONSE_INVALID");
+    assert.deepEqual(parseStructuredResponse('Explanation {"name":"Test recipe"}', small, 512_000), { name: "Test recipe" });
   });
 
   it("preserves usage and transport diagnostics when HTTP 200 extraction fails", async () => {
@@ -203,9 +203,11 @@ describe("v2.4.16 Recipe Copilot provider reliability", () => {
     assert.equal(repairs, 1);
   });
 
-  it("reports syntactically valid schema violations without inventing recipe behavior", async () => {
+  it("offers one controlled repair for syntactically valid schema violations", async () => {
     const small = { type: "json" as const, name: "small", schema: z.object({ required: z.string() }).strict() };
-    await assert.rejects(() => parseStructuredResponseWithProviderRepair({ content: '{"different":true}', format: small, maxBytes: 1024, providerRepairAttempts: 1, repair: async () => { throw new Error("must not run"); } }), (error: any) => error.category === "STRUCTURED_RESPONSE_INVALID" && error.details.failure_stage === "SCHEMA_VALIDATION");
+    let repairs = 0;
+    const repaired = await parseStructuredResponseWithProviderRepair({ content: '{"different":true}', format: small, maxBytes: 1024, providerRepairAttempts: 1, repair: async () => { repairs += 1; return '{"required":"fixed"}'; } });
+    assert.equal(repairs, 1); assert.equal(repaired.data.required, "fixed");
     assert.equal(aiFailureStatus("AI_FEATURE_INVALID_STRUCTURED_OUTPUT"), "INVALID_RESPONSE");
   });
 

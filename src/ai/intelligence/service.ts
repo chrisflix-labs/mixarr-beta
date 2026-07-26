@@ -162,8 +162,6 @@ const onboardingConfigurationSchema = z.object({
   dailyRequestLimitMode: z.enum(["UNLIMITED", "LIMITED"]).default("UNLIMITED"),
   dailyRequestLimit: z.number().int().positive().max(1_000_000).nullable().default(null),
   monthlyRequestLimit: z.number().int().positive().max(10_000_000).nullable().default(null),
-  maximumInputTokens: z.number().int().min(128).max(2_000_000).default(16000),
-  maximumOutputTokens: z.number().int().min(64).max(2_000_000).default(7000),
   // Unlimited by default. A zero ceiling is still expressible, but only by
   // choosing Limited explicitly, so the default can never block priced requests.
   perRequestCostLimitMode: z.enum(["UNLIMITED", "LIMITED"]).default("UNLIMITED"),
@@ -176,7 +174,7 @@ const onboardingConfigurationSchema = z.object({
   summaryReviewed: z.boolean().default(false),
   testCompleted: z.boolean().default(false),
   reviewedRecipeRequestId: z.string().uuid().nullable().optional(),
-}).strict();
+});
 
 const onboardingPatchSchema = z.object({
   currentStep: z.number().int().min(1).max(10),
@@ -243,9 +241,6 @@ export async function activateAiOnboarding(userId: string) {
     dailyRequestLimitMode: configuration.dailyRequestLimitMode,
     dailyRequestLimit: configuration.dailyRequestLimitMode === "LIMITED" ? configuration.dailyRequestLimit : null,
     monthlyRequestLimit: configuration.monthlyRequestLimit,
-    maximumInputTokens: configuration.maximumInputTokens,
-    maximumOutputTokens: configuration.maximumOutputTokens,
-    maximumCombinedTokens: configuration.maximumInputTokens + configuration.maximumOutputTokens,
     // The per-request ceiling has its own column; writing it into the cumulative
     // retry ceiling is what previously blocked every priced external request.
     // A local-only setup keeps its explicit zero-cost admission policy.

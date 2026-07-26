@@ -66,8 +66,10 @@ import { applyHouseholdGeneration, configureHouseholdPlaylist, householdPlaylist
 
 const numericFields = ["popularity", "energy", "valence", "tempo", "year", "duration", "rating", "playCount"] as const;
 const booleanFields = ["isLive", "isRemaster", "isExplicit", "hasPopularity"] as const;
-const fields = ["popularity", "energy", "valence", "tempo", "year", "duration", "rating", "playCount", "isLive", "isRemaster", "isExplicit", "hasPopularity", "genre", "title", "artist", "album"] as const;
-const operators = ["eq", "contains", "not_contains", "gt", "lt", "gte", "lte"] as const;
+export const playlistRuleFields = ["popularity", "energy", "valence", "tempo", "year", "duration", "rating", "playCount", "isLive", "isRemaster", "isExplicit", "hasPopularity", "genre", "title", "artist", "album"] as const;
+export const playlistRuleOperators = ["eq", "contains", "not_contains", "gt", "lt", "gte", "lte"] as const;
+const fields = playlistRuleFields;
+const operators = playlistRuleOperators;
 const combinators = ["AND", "OR"] as const;
 const duplicateStrategies = ["allow", "song_artist", "avoid_recordings", "allow_alternate_copies", "prefer_highest_quality", "prefer_existing_playlist_copy"] as const;
 const smartMixEngineVersions = [SMART_MIX_ENGINE_V1, SMART_MIX_ENGINE_V2] as const;

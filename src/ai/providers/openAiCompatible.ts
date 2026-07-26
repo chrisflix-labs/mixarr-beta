@@ -1,17 +1,18 @@
 import { z } from "zod";
-import type { AiCapabilityResult, AiConnectionTestResult, AiModel, AiProviderAdapter, AiProviderExecutionContext, AiProviderTestProfile, AiProviderType, AiRequest, AiResponse, AiStreamEvent, AiThinkingMode, ResolvedAiProviderConfig } from "../contracts";
+import type { AiCapabilityResult, AiConnectionTestResult, AiModel, AiModelCapabilities, AiProviderAdapter, AiProviderExecutionContext, AiProviderTestProfile, AiProviderType, AiRequest, AiResponse, AiStreamEvent, AiStructuredOutputMode, AiThinkingMode, ResolvedAiProviderConfig } from "../contracts";
 import { AiError, normalizeProviderError } from "../errors";
 import { configuredHeaders, joinUrl, openAiMessages, parseTextLines, safeFetchJson, safeFetchJsonDetailed } from "./http";
 import { normalizeAIResponse, normalizeAIUsage } from "./normalizeResponse";
 import { resolveModelCapabilities } from "../registry/modelCapabilities";
-import { normalizedPositiveTokenLimit } from "../governance/outputTokenLimits";
+import { zodToJsonSchema } from "../validation/jsonSchema";
 
 const defaults: Record<string, string> = {
   openai: "https://api.openai.com/v1", deepseek: "https://api.deepseek.com", openrouter: "https://openrouter.ai/api/v1", litellm: "http://localhost:4000/v1", lm_studio: "http://localhost:1234/v1"
 };
 const PROVIDER_TEST_SYSTEM_PROMPT = "You are performing an AI provider connectivity test. Return only valid JSON and no additional text.";
 const PROVIDER_TEST_USER_PROMPT = 'Return exactly this JSON object: {"ok":true}';
-const providerTestFormat = { type: "json" as const, name: "mixarr_provider_test", schema: z.object({ ok: z.literal(true) }).strict(), allowEmbeddedJson: false };
+const providerTestSchema = z.object({ ok: z.literal(true) }).strict();
+const providerTestFormat = { type: "json" as const, name: "mixarr_provider_test", schema: providerTestSchema, jsonSchema: zodToJsonSchema(providerTestSchema), allowEmbeddedJson: false };
 const successfulFinishReasons = new Set(["stop", "completed", "complete", "end_turn", "end"]);
 
 function configuredThinkingMode(config: ResolvedAiProviderConfig): AiThinkingMode {
@@ -20,13 +21,14 @@ function configuredThinkingMode(config: ResolvedAiProviderConfig): AiThinkingMod
 }
 
 function thinkingModeFor(request: AiRequest, config: ResolvedAiProviderConfig, supportsThinkingMode: boolean): AiThinkingMode {
-  if (config.providerType !== "deepseek" || !supportsThinkingMode) return "provider_default";
+  if (config.providerType !== "deepseek") return "provider_default";
   if (request.requestSource === "CONNECTION_TEST") return "disabled";
-  if (request.responseFormat) return request.thinkingMode === "enabled" ? "enabled" : "disabled";
+  if (!supportsThinkingMode) return "provider_default";
+  if (request.responseFormat) return "disabled";
   return request.thinkingMode || configuredThinkingMode(config);
 }
 
-function providerDiagnostics(input: { config: ResolvedAiProviderConfig; model: string; request: AiRequest; transport?: AiResponse["transport"]; finishReason?: string; thinkingMode: AiThinkingMode; hasReasoningContent?: boolean; reasoningCharacterCount?: number; finalContentCharacterCount?: number; usage?: AiResponse["usage"]; requestedMaxTokens: number; effectiveMaxTokens: number; limitingSource: string; retryAttempt: number; elapsedMs: number }) {
+function providerDiagnostics(input: { config: ResolvedAiProviderConfig; model: string; request: AiRequest; transport?: AiResponse["transport"]; finishReason?: string; thinkingMode: AiThinkingMode; structuredOutputMode?: AiStructuredOutputMode; hasReasoningContent?: boolean; finalContentCharacterCount?: number; usage?: AiResponse["usage"]; retryAttempt: number; elapsedMs: number }) {
   return {
     provider: input.config.displayName,
     model: input.model,
@@ -35,18 +37,31 @@ function providerDiagnostics(input: { config: ResolvedAiProviderConfig; model: s
     finishReason: input.finishReason,
     thinkingModeRequested: input.thinkingMode,
     hasReasoningContent: input.hasReasoningContent === true,
-    reasoningCharacterCount: input.reasoningCharacterCount || 0,
     finalContentCharacterCount: input.finalContentCharacterCount || 0,
     promptTokens: input.usage?.inputTokens,
     completionTokens: input.usage?.outputTokens,
     reasoningTokens: input.usage?.reasoningTokens,
-    requestedMaxTokens: input.requestedMaxTokens,
-    effectiveMaxTokens: input.effectiveMaxTokens,
-    outputTokenLimitingSource: input.limitingSource,
+    structuredOutputMode: input.structuredOutputMode,
     retryAttempt: input.retryAttempt,
     providerRequestId: input.transport?.providerRequestId || input.usage?.providerRequestId,
     elapsedMs: input.elapsedMs,
   };
+}
+
+function structuredOutputMode(request: AiRequest, capabilities: AiModelCapabilities): AiStructuredOutputMode | undefined {
+  return request.responseFormat ? capabilities.structuredOutputMode : undefined;
+}
+
+function nativeResponseFormat(request: AiRequest, mode?: AiStructuredOutputMode) {
+  if (!request.responseFormat || mode === "prompt_only_json") return undefined;
+  if (mode === "json_object") return { type: "json_object" };
+  return { type: "json_schema", json_schema: { name: request.responseFormat.name, strict: true, schema: request.responseFormat.jsonSchema || zodToJsonSchema(request.responseFormat.schema) } };
+}
+
+function structuredInstruction(request: AiRequest, mode?: AiStructuredOutputMode) {
+  if (!request.responseFormat || mode === "strict_json_schema") return undefined;
+  const schema = request.responseFormat.jsonSchema || zodToJsonSchema(request.responseFormat.schema);
+  return `Return one JSON object named ${request.responseFormat.name} matching this schema: ${JSON.stringify(schema)}. Do not return Markdown, code fences, commentary, analysis, or alternative versions.`;
 }
 
 function classify(id: string, config: ResolvedAiProviderConfig): AiModel["category"] {
@@ -95,26 +110,25 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
     const models = await this.discoverModels(config, signal);
     const selected = model || config.defaultModel;
     if (!selected) throw new AiError("MODEL_NOT_CONFIGURED");
-    const testProfile = profile || { maxOutputTokens: 128, requestedMaxTokens: 128, effectiveMaxTokens: 128, outputTokenLimitingSource: "request", retryAttempt: 0, thinkingMode: "disabled" };
-    const response = await this.complete({ featureKey: "administrative_connection_test", systemInstructions: PROVIDER_TEST_SYSTEM_PROMPT, messages: [{ role: "user", content: PROVIDER_TEST_USER_PROMPT }], responseFormat: providerTestFormat, maxOutputTokens: testProfile.maxOutputTokens, thinkingMode: "disabled", requestSource: "CONNECTION_TEST", outputTokenLimit: { requestedOutputTokens: testProfile.requestedMaxTokens, configuredGlobalLimit: null, configuredProviderLimit: null, configuredFeatureLimit: null, configuredUserLimit: null, modelOutputLimit: null, effectiveOutputTokens: testProfile.effectiveMaxTokens, limitingSource: testProfile.outputTokenLimitingSource, unlimited: false }, metadata: { retryAttempt: testProfile.retryAttempt } }, config, { requestId: crypto.randomUUID(), providerId: config.id, model: selected, signal: signal || new AbortController().signal, maxResponseBytes: 64_000 });
+    const testProfile = profile || { retryAttempt: 0, thinkingMode: "disabled" };
+    const response = await this.complete({ featureKey: "administrative_connection_test", systemInstructions: PROVIDER_TEST_SYSTEM_PROMPT, messages: [{ role: "user", content: PROVIDER_TEST_USER_PROMPT }], responseFormat: providerTestFormat, thinkingMode: "disabled", requestSource: "CONNECTION_TEST", metadata: { retryAttempt: testProfile.retryAttempt } }, config, { requestId: crypto.randomUUID(), providerId: config.id, model: selected, signal: signal || new AbortController().signal, maxResponseBytes: 64_000 });
     const finish = String(response.finishReason || "").toLowerCase();
-    if (!successfulFinishReasons.has(finish)) throw new AiError("AI_PROVIDER_INVALID_RESPONSE", undefined, 422, undefined, { http_status: response.transport?.httpStatus, finish_reason: response.finishReason, provider_request_id: response.transport?.providerRequestId || response.usage?.providerRequestId, failure_stage: "FINISH_REASON", requested_max_tokens: testProfile.requestedMaxTokens, effective_max_tokens: testProfile.effectiveMaxTokens, output_token_limiting_source: testProfile.outputTokenLimitingSource, retry_attempted: testProfile.retryAttempt > 0 });
+    if (!successfulFinishReasons.has(finish)) throw new AiError("AI_PROVIDER_INVALID_RESPONSE", undefined, 422, undefined, { http_status: response.transport?.httpStatus, finish_reason: response.finishReason, provider_request_id: response.transport?.providerRequestId || response.usage?.providerRequestId, failure_stage: "FINISH_REASON", retry_attempted: testProfile.retryAttempt > 0 });
     let parsed: unknown;
     try { parsed = JSON.parse(response.content || ""); }
-    catch { throw new AiError("AI_PROVIDER_INVALID_STRUCTURED_RESPONSE", undefined, 422, undefined, { http_status: response.transport?.httpStatus, finish_reason: response.finishReason, provider_request_id: response.transport?.providerRequestId || response.usage?.providerRequestId, failure_stage: "JSON_PARSE", requested_max_tokens: testProfile.requestedMaxTokens, effective_max_tokens: testProfile.effectiveMaxTokens, output_token_limiting_source: testProfile.outputTokenLimitingSource, retry_attempted: testProfile.retryAttempt > 0 }); }
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || (parsed as any).ok !== true || Object.keys(parsed as object).length !== 1) throw new AiError("AI_PROVIDER_INVALID_STRUCTURED_RESPONSE", undefined, 422, undefined, { http_status: response.transport?.httpStatus, finish_reason: response.finishReason, provider_request_id: response.transport?.providerRequestId || response.usage?.providerRequestId, failure_stage: "SCHEMA_VALIDATION", requested_max_tokens: testProfile.requestedMaxTokens, effective_max_tokens: testProfile.effectiveMaxTokens, output_token_limiting_source: testProfile.outputTokenLimitingSource, retry_attempted: testProfile.retryAttempt > 0 });
-    return { connected: true, message: "Connection and structured chat completion succeeded.", latencyMs: Date.now() - started, detectedApiType: "openai-compatible", capabilities: await this.detectCapabilities(config), availableModelCount: models.length, defaultModelAvailable: config.defaultModel ? models.some((item) => item.id === config.defaultModel) : null, testedAt: new Date().toISOString(), model: selected, modelReturned: response.model, endpointMode: "CHAT_COMPLETIONS", authenticationResult: "SUCCEEDED", discoveryResult: "SUCCEEDED", inferenceResult: "SUCCEEDED", providerRequestId: response.transport?.providerRequestId || response.usage?.providerRequestId, usage: response.usage, requestedMaxTokens: testProfile.requestedMaxTokens, effectiveMaxTokens: testProfile.effectiveMaxTokens, outputTokenLimitingSource: testProfile.outputTokenLimitingSource, thinkingModeRequested: response.thinkingModeRequested, hasReasoningContent: response.hasReasoningContent, reasoningCharacterCount: response.reasoningCharacterCount, finalContentCharacterCount: response.finalContentCharacterCount };
+    catch { throw new AiError("AI_PROVIDER_INVALID_STRUCTURED_RESPONSE", undefined, 422, undefined, { http_status: response.transport?.httpStatus, finish_reason: response.finishReason, provider_request_id: response.transport?.providerRequestId || response.usage?.providerRequestId, failure_stage: "JSON_PARSE", retry_attempted: testProfile.retryAttempt > 0 }); }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || (parsed as any).ok !== true || Object.keys(parsed as object).length !== 1) throw new AiError("AI_PROVIDER_INVALID_STRUCTURED_RESPONSE", undefined, 422, undefined, { http_status: response.transport?.httpStatus, finish_reason: response.finishReason, provider_request_id: response.transport?.providerRequestId || response.usage?.providerRequestId, failure_stage: "SCHEMA_VALIDATION", retry_attempted: testProfile.retryAttempt > 0 });
+    return { connected: true, message: "Connection and structured chat completion succeeded.", latencyMs: Date.now() - started, detectedApiType: "openai-compatible", capabilities: await this.detectCapabilities(config), availableModelCount: models.length, defaultModelAvailable: config.defaultModel ? models.some((item) => item.id === config.defaultModel) : null, testedAt: new Date().toISOString(), model: selected, modelReturned: response.model, endpointMode: "CHAT_COMPLETIONS", authenticationResult: "SUCCEEDED", discoveryResult: "SUCCEEDED", inferenceResult: "SUCCEEDED", providerRequestId: response.transport?.providerRequestId || response.usage?.providerRequestId, usage: response.usage, thinkingModeRequested: response.thinkingModeRequested, hasReasoningContent: response.hasReasoningContent, reasoningCharacterCount: response.reasoningCharacterCount, finalContentCharacterCount: response.finalContentCharacterCount, structuredOutputMode: response.structuredOutputMode };
   }
   async complete<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): Promise<AiResponse<T>> {
     const started = Date.now();
     const endpoint = typeof config.customConfiguration.chatCompletionEndpoint === "string" ? config.customConfiguration.chatCompletionEndpoint : "/chat/completions";
     const modelCapabilities = context.modelCapabilities || request.resolvedModelCapabilities || resolveModelCapabilities(this.providerType, context.model);
-    const outputLimit = normalizedPositiveTokenLimit(request.maxOutputTokens) ?? normalizedPositiveTokenLimit(modelCapabilities.defaultOutputTokens) ?? 256;
     const thinkingMode = thinkingModeFor(request, config, modelCapabilities.supportsThinkingMode);
-    const jsonInstruction = request.responseFormat && !/\bjson\b/i.test(request.systemInstructions || "") ? "Return only valid JSON with no markdown or additional text." : undefined;
-    const systemInstructions = [request.systemInstructions, jsonInstruction].filter(Boolean).join("\n");
+    const outputMode = structuredOutputMode(request, modelCapabilities);
+    const systemInstructions = [request.systemInstructions, structuredInstruction(request, outputMode)].filter(Boolean).join("\n");
     const retryAttempt = Number(request.metadata?.retryAttempt || 0);
-    const body = { model: context.model, messages: openAiMessages(request.messages, systemInstructions || undefined), ...(thinkingMode === "enabled" ? {} : { temperature: request.temperature }), ...(modelCapabilities.outputTokenParameter === "max_completion_tokens" ? { max_completion_tokens: outputLimit } : { max_tokens: outputLimit }), response_format: request.responseFormat && modelCapabilities.supportsJsonMode ? { type: "json_object" } : undefined, ...(config.providerType === "deepseek" && modelCapabilities.supportsThinkingMode && thinkingMode !== "provider_default" ? { thinking: { type: thinkingMode } } : {}), ...(thinkingMode === "enabled" && request.reasoningEffort && modelCapabilities.supportsReasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}), stream: false };
+    const body = { model: context.model, messages: openAiMessages(request.messages, systemInstructions || undefined), ...(config.providerType === "deepseek" && request.responseFormat ? {} : request.temperature == null ? {} : { temperature: request.temperature }), response_format: nativeResponseFormat(request, outputMode), ...(config.providerType === "deepseek" && (modelCapabilities.supportsThinkingMode || request.requestSource === "CONNECTION_TEST") && thinkingMode !== "provider_default" ? { thinking: { type: thinkingMode } } : {}), ...(!request.responseFormat && thinkingMode === "enabled" && request.reasoningEffort && modelCapabilities.supportsReasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}), stream: false };
     const result = await safeFetchJsonDetailed(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify(body) }, context.maxResponseBytes, { requestId: context.requestId, provider: config.displayName, model: context.model, stage: "CHAT_COMPLETION" });
     const payload = result.payload;
     let normalized;
@@ -128,23 +142,23 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
     }); }
     catch (error) {
       const normalizedError = error instanceof AiError ? error : new AiError("AI_PROVIDER_INVALID_RESPONSE");
-      normalizedError.details = { ...normalizedError.details, requested_max_tokens: request.outputTokenLimit?.requestedOutputTokens ?? outputLimit, effective_max_tokens: outputLimit, output_token_limiting_source: request.outputTokenLimit?.limitingSource || "request", thinking_mode_requested: thinkingMode, retry_attempt: retryAttempt, elapsed_ms: Date.now() - started, endpoint_mode: "CHAT_COMPLETIONS", provider_request_id: result.transport.providerRequestId || normalizedError.details?.provider_request_id };
-      console.warn("[AI Provider Response]", providerDiagnostics({ config, model: context.model, request, transport: result.transport, finishReason: String(normalizedError.details.finish_reason || "") || undefined, thinkingMode, hasReasoningContent: normalizedError.details.has_reasoning_content === true, reasoningCharacterCount: Number(normalizedError.details.reasoning_character_count || 0), finalContentCharacterCount: Number(normalizedError.details.final_content_character_count || 0), usage: { inputTokens: normalizedError.details.usage_input_tokens as number | undefined, outputTokens: normalizedError.details.usage_output_tokens as number | undefined, reasoningTokens: normalizedError.details.usage_reasoning_tokens as number | undefined, providerRequestId: result.transport.providerRequestId }, requestedMaxTokens: Number(request.outputTokenLimit?.requestedOutputTokens || outputLimit), effectiveMaxTokens: outputLimit, limitingSource: request.outputTokenLimit?.limitingSource || "request", retryAttempt, elapsedMs: Date.now() - started }));
+      normalizedError.details = { ...normalizedError.details, thinking_mode_requested: thinkingMode, structured_output_mode: outputMode, retry_attempt: retryAttempt, elapsed_ms: Date.now() - started, endpoint_mode: "CHAT_COMPLETIONS", provider_request_id: result.transport.providerRequestId || normalizedError.details?.provider_request_id };
+      console.warn("[AI Provider Response]", providerDiagnostics({ config, model: context.model, request, transport: result.transport, finishReason: String(normalizedError.details.finish_reason || "") || undefined, thinkingMode, structuredOutputMode: outputMode, hasReasoningContent: normalizedError.details.has_reasoning_content === true, finalContentCharacterCount: Number(normalizedError.details.final_content_character_count || 0), usage: { inputTokens: normalizedError.details.usage_input_tokens as number | undefined, outputTokens: normalizedError.details.usage_output_tokens as number | undefined, reasoningTokens: normalizedError.details.usage_reasoning_tokens as number | undefined, providerRequestId: result.transport.providerRequestId }, retryAttempt, elapsedMs: Date.now() - started }));
       throw normalizedError;
     }
     const cost = Number(payload?.usage?.cost ?? payload?.cost);
     if (normalized.usage && result.transport.providerRequestId) normalized.usage.providerRequestId = result.transport.providerRequestId;
-    console.info("[AI Provider Response]", providerDiagnostics({ config, model: context.model, request, transport: result.transport, finishReason: normalized.finishReason, thinkingMode, hasReasoningContent: normalized.hasReasoningContent, reasoningCharacterCount: normalized.reasoningCharacterCount, finalContentCharacterCount: normalized.finalContentCharacterCount, usage: normalized.usage, requestedMaxTokens: Number(request.outputTokenLimit?.requestedOutputTokens || outputLimit), effectiveMaxTokens: outputLimit, limitingSource: request.outputTokenLimit?.limitingSource || "request", retryAttempt, elapsedMs: Date.now() - started }));
-    return { requestId: context.requestId, providerId: config.id, providerType: this.providerType, model: normalized.model || context.model, content: normalized.text, usage: normalized.usage, actualCost: Number.isFinite(cost) && cost >= 0 ? cost : undefined, finishReason: normalized.finishReason, latencyMs: Date.now() - started, retryCount: 0, streaming: false, warnings: [], transport: result.transport, thinkingModeRequested: thinkingMode, hasReasoningContent: normalized.hasReasoningContent, reasoningCharacterCount: normalized.reasoningCharacterCount, finalContentCharacterCount: normalized.finalContentCharacterCount };
+    console.info("[AI Provider Response]", providerDiagnostics({ config, model: context.model, request, transport: result.transport, finishReason: normalized.finishReason, thinkingMode, structuredOutputMode: outputMode, hasReasoningContent: normalized.hasReasoningContent, finalContentCharacterCount: normalized.finalContentCharacterCount, usage: normalized.usage, retryAttempt, elapsedMs: Date.now() - started }));
+    return { requestId: context.requestId, providerId: config.id, providerType: this.providerType, model: normalized.model || context.model, content: normalized.text, usage: normalized.usage, actualCost: Number.isFinite(cost) && cost >= 0 ? cost : undefined, finishReason: normalized.finishReason, latencyMs: Date.now() - started, retryCount: 0, streaming: false, warnings: [], transport: result.transport, thinkingModeRequested: thinkingMode, hasReasoningContent: normalized.hasReasoningContent, reasoningCharacterCount: normalized.reasoningCharacterCount, finalContentCharacterCount: normalized.finalContentCharacterCount, structuredOutputMode: outputMode };
   }
   async *stream<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): AsyncIterable<AiStreamEvent> {
     const endpoint = typeof config.customConfiguration.chatCompletionEndpoint === "string" ? config.customConfiguration.chatCompletionEndpoint : "/chat/completions";
     let response: Response;
     const modelCapabilities = context.modelCapabilities || request.resolvedModelCapabilities || resolveModelCapabilities(this.providerType, context.model);
-    const outputLimit = normalizedPositiveTokenLimit(request.maxOutputTokens) ?? normalizedPositiveTokenLimit(modelCapabilities.defaultOutputTokens) ?? 256;
     const thinkingMode = thinkingModeFor(request, config, modelCapabilities.supportsThinkingMode);
-    const systemInstructions = [request.systemInstructions, request.responseFormat && !/\bjson\b/i.test(request.systemInstructions || "") ? "Return only valid JSON with no markdown or additional text." : undefined].filter(Boolean).join("\n");
-    try { response = await fetch(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages: openAiMessages(request.messages, systemInstructions || undefined), ...(thinkingMode === "enabled" ? {} : { temperature: request.temperature }), ...(modelCapabilities.outputTokenParameter === "max_completion_tokens" ? { max_completion_tokens: outputLimit } : { max_tokens: outputLimit }), response_format: request.responseFormat && modelCapabilities.supportsJsonMode ? { type: "json_object" } : undefined, ...(config.providerType === "deepseek" && modelCapabilities.supportsThinkingMode && thinkingMode !== "provider_default" ? { thinking: { type: thinkingMode } } : {}), ...(thinkingMode === "enabled" && request.reasoningEffort && modelCapabilities.supportsReasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}), stream: true, stream_options: { include_usage: true } }) }); }
+    const outputMode = structuredOutputMode(request, modelCapabilities);
+    const systemInstructions = [request.systemInstructions, structuredInstruction(request, outputMode)].filter(Boolean).join("\n");
+    try { response = await fetch(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages: openAiMessages(request.messages, systemInstructions || undefined), ...(config.providerType === "deepseek" && request.responseFormat ? {} : request.temperature == null ? {} : { temperature: request.temperature }), response_format: nativeResponseFormat(request, outputMode), ...(config.providerType === "deepseek" && modelCapabilities.supportsThinkingMode && thinkingMode !== "provider_default" ? { thinking: { type: thinkingMode } } : {}), ...(!request.responseFormat && thinkingMode === "enabled" && request.reasoningEffort && modelCapabilities.supportsReasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}), stream: true, stream_options: { include_usage: true } }) }); }
     catch (error) { throw normalizeProviderError(error); }
     if (!response.ok) throw normalizeProviderError(new Error(`Provider returned HTTP ${response.status}.`), response.status);
     yield { type: "started", requestId: context.requestId };

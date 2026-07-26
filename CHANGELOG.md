@@ -1,13 +1,23 @@
 # Changelog
 
+## v2.4.17 - Token-Limit Removal and Reliable Recipe Copilot JSON
+
+- Removed Mixarr-configured input, output, completion, prompt, reasoning, request, provider, feature, and user token caps from runtime governance, public APIs, onboarding, previews, provider tests, and settings. Deprecated database columns remain inert for a safe rollback window.
+- Omitted `max_tokens`, `max_completion_tokens`, and `max_output_tokens` from normal requests and provider connectivity tests. Token estimates remain informational for cost previews; monetary and request-count budgets remain enforced.
+- Retained provider/model native context-window safety under the explicit `AI_MODEL_CONTEXT_WINDOW_EXCEEDED` classification, separate from configurable governance limits.
+- Added canonical Recipe Copilot JSON Schema generation, normalized `strict_json_schema`, `json_object`, and `prompt_only_json` provider capabilities, and DeepSeek V4 structured requests with thinking explicitly disabled and unsupported sampling parameters omitted.
+- Added conservative fence/prose/string/wrapper normalization, path-specific sanitized schema diagnostics, and one privacy- and budget-governed provider repair attempt. Raw provider output and `reasoning_content` are never logged or exposed.
+- Fixed the reported HTTP-200 schema mismatch: the provider used an unsupported rule operator, supplied a non-string rule value, and included unknown scoring properties. Normal completion is no longer mislabeled as truncation or token limiting.
+- Added migration `20260726010000_remove_ai_token_limits_v2417`, migration notes, provider-payload tests, the 12KB regression fixture, and structured normalization/repair coverage.
+
 ## v2.4.16 - DeepSeek V4 Thinking and Truncated Response Fix
 
 - Fixed DeepSeek V4 provider tests exhausting a tiny eight-token completion allowance in provider-default thinking mode before `message.content` was produced. The raw HTTP request succeeded, but `finish_reason: length` correctly means model completion failure rather than authentication or transport failure.
-- Added a dedicated provider-test request profile: deterministic JSON-only system/user prompts, `response_format: {"type":"json_object"}` where supported, `stream: false`, no tools or sampling controls, explicit `thinking: {"type":"disabled"}` for supported DeepSeek V4 models, and a normalized 128-token allowance.
-- Added one provider-test-only, governance- and budget-checked retry at up to 256 tokens. Normal feature requests no longer retry or fall back automatically after truncation.
+- Added a dedicated provider-test request profile: deterministic JSON-only system/user prompts, `response_format: {"type":"json_object"}` where supported, `stream: false`, no tools or sampling controls, and explicit `thinking: {"type":"disabled"}` for supported DeepSeek V4 models.
+- Added one provider-test-only, governance- and budget-checked retry. Normal feature requests no longer retry or fall back automatically after truncation.
 - Added explicit Off, On, and Provider default thinking modes for `deepseek-v4-pro` and `deepseek-v4-flash`. Structured requests default to Off; advisory free-form requests may honor the provider setting; enabled thinking omits unsupported sampling parameters.
-- Separated final `message.content` from `reasoning_content`, removed reasoning from final-output extraction diagnostics, and added `AI_PROVIDER_TRUNCATED_BEFORE_FINAL`, `AI_PROVIDER_TRUNCATED_FINAL_RESPONSE`, `AI_PROVIDER_INVALID_STRUCTURED_RESPONSE`, and `AI_PROVIDER_TEST_TOKEN_LIMIT_TOO_LOW` while retaining the old truncation parent category in sanitized details.
-- Centralized zero/unlimited output-token normalization, excluded unrelated feature limits from provider tests, and added requested/effective/limiting-source diagnostics. `max_tokens: 0` is never sent.
+- Separated final `message.content` from `reasoning_content`, removed reasoning from final-output extraction diagnostics, and added explicit provider truncation and invalid-structured-response classifications while retaining the old truncation parent category in sanitized details.
+- Centralized provider-test request handling and excluded unrelated feature governance from connectivity tests.
 - Added sanitized response logging/audit fields and an actionable failure panel. Mixarr records reasoning presence, provider-reported token counts, and character counts only; raw chain-of-thought is never returned, logged, audited, or displayed.
 - Added migration `20260805010000_deepseek_v4_thinking_v2416`, mocked provider/regression coverage, and [DeepSeek V4 documentation](docs/DEEPSEEK_V4_THINKING_V2416.md).
 
@@ -185,13 +195,13 @@ The existing Ask Mixarr v2.4.2 workflow remains available:
 - Added additive migration `20260721180000_natural_language_playlist_requests`, request/revision/audit persistence, owner/admin permission enforcement, AI governance integration, responsive accessible UI, tests, API documentation, and upgrade notes.
 - Safety boundary: AI interprets intent. The existing deterministic engine selects and orders tracks, and no Plex mutation occurs before explicit approval and a separate create action.
 
-## v2.4.1 - AI Privacy, Cost and Token Controls
+## v2.4.1 - AI Privacy, Cost and Context Controls
 
 - Added one backend AI governance preflight for global/feature/user privacy, metadata transformation, prompt/token/response limits, configured model pricing, request limits, provider/user/global budgets, background policy, fallback eligibility, retry cost, and context trimming before provider dispatch.
 - Added Local Only, Metadata Limited, Anonymous Metadata, and version-acknowledged Full Metadata modes with an allowlist engine, deterministic abstractions, unknown-field blocking, field-name-only privacy reports, and outgoing payload preview.
 - Added decimal-safe model pricing history, real-time minimum/expected/maximum cost estimates, provider comparison, and serializable expiring budget reservations reconciled or released on every terminal request state.
-- Added provider and user budgets, request/token limits, background controls, conservative paid fallback and retry defaults, provider-attempt records, alert deduplication/cooldowns, governance-change auditing, filtered usage analytics, sanitized detail, and CSV/JSON exports.
-- Added an accessible responsive `/settings/ai` governance dashboard with setup review, privacy and cost previews, pricing, budgets, token limits, background, timeouts/retries, alerts, usage charts, audit table, loading/empty/error states, and provider local-endpoint confirmation.
+- Added provider and user budgets, request-count limits, context safety, background controls, conservative paid fallback and retry defaults, provider-attempt records, alert deduplication/cooldowns, governance-change auditing, filtered usage analytics, sanitized detail, and CSV/JSON exports.
+- Added an accessible responsive `/settings/ai` governance dashboard with setup review, privacy and cost previews, pricing, budgets, request-count controls, context safety, background, timeouts/retries, alerts, usage charts, audit table, loading/empty/error states, and provider local-endpoint confirmation.
 - Added additive migration `20260721120000_ai_governance_v241`, policy/unit coverage, API enforcement markers, governance documentation, upgrade notes, roadmap/version updates, and no paid-provider calls in tests.
 - Compatibility: existing v2.4.0 provider rows and encrypted credentials remain valid. Upgrade defaults are Metadata Limited with a restrictive allowlist, paid fallback off, external background AI off, prompt recording off, unknown external fields and unpriced external models blocked, and hard shutdown on when a budget exists.
 - Scope boundary: v2.4.1 adds no user-facing playlist generation, recommendation, discovery, tagging, or conversational AI feature.

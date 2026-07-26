@@ -28,7 +28,7 @@ export function recipeCopilotApiError(error: unknown) {
     const details = error.details || {};
     const provider = typeof details.provider === "string" ? details.provider : undefined;
     const model = typeof details.model === "string" ? details.model : undefined;
-    const requestId = typeof details.request_id === "string" ? details.request_id : undefined;
+    const requestId = typeof details.request_id === "string" ? details.request_id : typeof details.correlation_id === "string" ? details.correlation_id : undefined;
     const elapsedMs = typeof details.elapsed_ms === "number" ? details.elapsed_ms : undefined;
     const stage = typeof details.stage === "string" ? details.stage : typeof details.failure_stage === "string" ? details.failure_stage : undefined;
     const timeoutSeconds = typeof details.timeout_ms === "number" ? Math.round(details.timeout_ms / 1000) : undefined;
@@ -44,18 +44,28 @@ export function recipeCopilotApiError(error: unknown) {
       : mappedCode === "AI_PROVIDER_MALFORMED_JSON" ? `${provider || "The AI provider"} returned malformed JSON.`
       : mappedCode === "AI_PROVIDER_REFUSAL" ? `${provider || "The AI provider"} refused the request.`
       : mappedCode === "AI_PROVIDER_TOOL_CALL_ONLY" ? `${provider || "The AI provider"} returned a tool call without a final answer.`
-      : mappedCode === "AI_PROVIDER_TRUNCATED_BEFORE_FINAL" ? `${provider || "The AI provider"} used the output allowance before producing a final answer.`
-      : mappedCode === "AI_PROVIDER_TRUNCATED_FINAL_RESPONSE" ? `${provider || "The AI provider"} reached the output allowance while producing the final answer.`
+      : mappedCode === "AI_PROVIDER_TRUNCATED_BEFORE_FINAL" ? `${provider || "The AI provider"} stopped before producing a final answer.`
+      : mappedCode === "AI_PROVIDER_TRUNCATED_FINAL_RESPONSE" ? `${provider || "The AI provider"} stopped while producing the final answer.`
       : mappedCode === "AI_PROVIDER_TRUNCATED_RESPONSE" ? `${provider || "The AI provider"} stopped before returning a complete final answer.`
       : mappedCode === "AI_PROVIDER_INVALID_STRUCTURED_RESPONSE" ? `${provider || "The AI provider"} completed normally, but returned invalid structured output.`
-      : mappedCode === "AI_REQUIRED_OUTPUT_BUDGET_EXCEEDS_LIMIT" ? `The configured output-token limit is too low for ${provider || "the selected provider"}. Raise it to the recommended minimum before retrying.`
       : mappedCode === "AI_PROVIDER_HTTP_ERROR" ? `${provider || "The AI provider"} returned an HTTP error${typeof details.http_status === "number" ? ` (${details.http_status})` : ""}.`
-      : ["AI_PROVIDER_INVALID_RESPONSE", "AI_FEATURE_INVALID_STRUCTURED_OUTPUT", "AI_RECIPE_SCHEMA_INVALID"].includes(mappedCode) ? `${provider || "The AI provider"} returned content that did not match the Recipe Copilot schema.`
+      : mappedCode === "AI_FEATURE_INVALID_JSON_OUTPUT" ? "The AI provider returned text instead of JSON."
+      : mappedCode === "AI_FEATURE_INVALID_STRUCTURED_OUTPUT" ? "The AI provider responded successfully, but the draft did not match the Recipe Copilot format."
+      : mappedCode === "AI_FEATURE_TRUNCATED_STRUCTURED_OUTPUT" ? "The provider stopped before returning a complete Recipe Copilot draft."
+      : mappedCode === "AI_FEATURE_EMPTY_OUTPUT" ? "The provider returned no final Recipe Copilot content."
+      : mappedCode === "AI_FEATURE_STRUCTURED_REPAIR_FAILED" ? "The provider draft was incompatible and an automatic format repair did not succeed."
+      : ["AI_PROVIDER_INVALID_RESPONSE", "AI_RECIPE_SCHEMA_INVALID"].includes(mappedCode) ? `${provider || "The AI provider"} returned content that did not match the Recipe Copilot schema.`
       : ["AI_DAILY_LIMIT_EXCEEDED", "AI_MONTHLY_REQUEST_LIMIT_EXCEEDED"].includes(mappedCode) ? describeRequestLimitFromDetails(error.details) || error.toSafePayload().error.message
       : mappedCode === "AI_REQUEST_COST_LIMIT_EXCEEDED" ? describeCostLimitFromDetails(error.details) || error.toSafePayload().error.message
       : error.toSafePayload().error.message;
     const retryable = details.retryable === true || ["AI_PROVIDER_TIMEOUT", "AI_PROVIDER_TEMPORARY_FAILURE", "AI_PROVIDER_RATE_LIMITED"].includes(mappedCode);
-    const envelope = { code: mappedCode, message, requestId: requestId || null, retryable, provider: provider || null, model: model || null, stage: stage || "AI_ORCHESTRATION", elapsedMs: elapsedMs ?? 0 };
+    const sanitizedDiagnostics = {
+      jsonParsed: details.json_parsed === true,
+      normalized: details.normalized === true,
+      repairAttempted: details.repair_attempted === true,
+      issues: Array.isArray(details.issues) ? details.issues.slice(0, 10).map((issue: any) => ({ path: String(issue?.path || ""), code: String(issue?.code || "invalid"), expected: issue?.expected, receivedType: issue?.receivedType })) : [],
+    };
+    const envelope = { code: mappedCode, message, requestId: requestId || null, retryable, provider: provider || null, model: model || null, stage: stage || "AI_ORCHESTRATION", elapsedMs: elapsedMs ?? 0, diagnostics: sanitizedDiagnostics };
     return NextResponse.json({ error: { ...envelope, ...(mappedCode !== error.category ? { legacyCode: error.category } : {}), ...(error.details ? { details: error.details } : {}) }, ...envelope }, { status: error.status });
   }
   if (error instanceof ZodError) { const envelope = { code: "INVALID_REQUEST", message: error.issues[0]?.message || "Invalid Recipe Copilot request.", requestId: null, retryable: false, provider: null, model: null, stage: "REQUEST_VALIDATION", elapsedMs: 0 }; return NextResponse.json({ error: { ...envelope, fields: error.flatten() }, ...envelope }, { status: 400 }); }

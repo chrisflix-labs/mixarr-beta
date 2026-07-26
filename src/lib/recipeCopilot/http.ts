@@ -5,6 +5,7 @@ export class RecipeCopilotHttpError extends Error {
     public requestId?: string,
     public retryable = false,
     public status?: number,
+    public details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "RecipeCopilotHttpError";
@@ -25,7 +26,7 @@ export async function readRecipeCopilotResponse(response: Response, fallback: st
     const error = body?.error || body || {};
     const requestId = error.requestId || body?.requestId;
     const message = error.message || body?.message || (text.trim() && !contentType.includes("html") ? text.trim().slice(0, 300) : `${fallback} The server returned HTTP ${response.status} without a JSON error body.`);
-    throw new RecipeCopilotHttpError(message, error.code || body?.code || "AI_RECIPE_REQUEST_FAILED", requestId, error.retryable === true || body?.retryable === true, response.status);
+    throw new RecipeCopilotHttpError(message, error.code || body?.code || "AI_RECIPE_REQUEST_FAILED", requestId, error.retryable === true || body?.retryable === true, response.status, { provider: error.provider || body?.provider, model: error.model || body?.model, ...(error.diagnostics || body?.diagnostics || {}) });
   }
   if (!contentType.includes("json") || !text.trim() || body == null) throw new RecipeCopilotHttpError("Mixarr returned an empty or non-JSON Recipe Copilot response.", "AI_RECIPE_REQUEST_FAILED", undefined, false, response.status);
   return body;

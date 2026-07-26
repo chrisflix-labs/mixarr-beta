@@ -121,7 +121,7 @@ export async function interpretNaturalLanguage(input: { userId: string; requestT
     messages: [{ role: "user", content: `${providerSafeRequest(input.requestText, localIntent)}${revisionContext}` }],
     responseFormat: { type: "json", name: "mixarr_natural_language_interpretation", schema: naturalLanguageInterpretationSchema, unknownFields: "reject" },
     privacyMode,
-    maxOutputTokens: 2400,
+    estimatedOutputTokens: 2400,
     maxResponseBytes: 256_000,
     temperature: 0.1,
     requestSource: "FOREGROUND",

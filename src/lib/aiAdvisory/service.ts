@@ -94,7 +94,7 @@ export async function createPlaylistAnalysisSnapshot(userId: string, playlistId:
   return { snapshot, analysis, tracks, privacy };
 }
 
-async function aiSelection(featureKey: string, options: { providerId?: string; model?: string; privacyMode?: string }, userId: string, request: { systemInstructions: string; message: string; responseSchema: any; maxOutputTokens: number; metadataRecords?: Array<Record<string, unknown>> }) {
+async function aiSelection(featureKey: string, options: { providerId?: string; model?: string; privacyMode?: string }, userId: string, request: { systemInstructions: string; message: string; responseSchema: any; estimatedOutputTokens: number; metadataRecords?: Array<Record<string, unknown>> }) {
   const [global, feature, governance] = await Promise.all([
     prisma.aiGlobalSetting.findUnique({ where: { id: "global" } }), prisma.aiFeatureSetting.findUnique({ where: { featureKey } }), prisma.aiGovernanceSetting.findUnique({ where: { id: "global" } }),
   ]);
@@ -107,7 +107,7 @@ async function aiSelection(featureKey: string, options: { providerId?: string; m
   if (!model) throw fail("MODEL_NOT_CONFIGURED", "No AI model is configured for this feature.", 409);
   const privacyMode = options.privacyMode || governance?.privacyMode || "METADATA_LIMITED";
   const promptTemplateVersion = featureKey === PLAYLIST_SUMMARY_FEATURE_KEY ? PLAYLIST_SUMMARY_PROMPT_VERSION : METADATA_SUGGESTION_PROMPT_VERSION;
-  const aiRequest = { featureKey, providerId, model, systemInstructions: request.systemInstructions, messages: [{ role: "user" as const, content: request.message }], responseFormat: { type: "json" as const, name: featureKey, schema: request.responseSchema, unknownFields: "reject" as const }, privacyMode: privacyMode as any, maxOutputTokens: request.maxOutputTokens, maxResponseBytes: 512_000, temperature: 0.1, requestSource: "FOREGROUND" as const, allowFallback: false, requiredCapabilities: ["structured_json" as const], contextTrimmingStrategy: "REMOVE_LOWEST_PRIORITY" as const, metadataRecords: request.metadataRecords, promptTemplateVersion };
+  const aiRequest = { featureKey, providerId, model, systemInstructions: request.systemInstructions, messages: [{ role: "user" as const, content: request.message }], responseFormat: { type: "json" as const, name: featureKey, schema: request.responseSchema, unknownFields: "reject" as const }, privacyMode: privacyMode as any, estimatedOutputTokens: request.estimatedOutputTokens, maxResponseBytes: 512_000, temperature: 0.1, requestSource: "FOREGROUND" as const, allowFallback: false, requiredCapabilities: ["structured_json" as const], contextTrimmingStrategy: "REMOVE_LOWEST_PRIORITY" as const, metadataRecords: request.metadataRecords, promptTemplateVersion };
   const preview = await previewAiRequest({ request: aiRequest, provider, model, userId });
   return { provider, providerId, model, privacyMode, preview, aiRequest };
 }
@@ -120,7 +120,7 @@ export async function previewPlaylistSummaryRequest(userId: string, playlistId: 
   if (!settings.playlistSummariesEnabled) throw fail("PLAYLIST_SUMMARIES_DISABLED", "Playlist summaries are disabled in AI advisory settings.", 409);
   const privacyMode = input.privacyMode || "METADATA_LIMITED";
   const built = await createPlaylistAnalysisSnapshot(userId, playlistId, privacyMode, settings.allowFullTrackMetadata, input.notes);
-  const selection = await aiSelection(PLAYLIST_SUMMARY_FEATURE_KEY, input, userId, { systemInstructions: PLAYLIST_SUMMARY_SYSTEM_PROMPT, message: playlistSummaryPrompt({ types: input.summaryTypes, payload: built.privacy.payload, notes: input.notes, plexLimit: settings.plexDescriptionMaxLength }), responseSchema: summaryProviderResponseSchema, maxOutputTokens: 4000, metadataRecords: [{ playlist_analysis: built.privacy.payload }] });
+  const selection = await aiSelection(PLAYLIST_SUMMARY_FEATURE_KEY, input, userId, { systemInstructions: PLAYLIST_SUMMARY_SYSTEM_PROMPT, message: playlistSummaryPrompt({ types: input.summaryTypes, payload: built.privacy.payload, notes: input.notes, plexLimit: settings.plexDescriptionMaxLength }), responseSchema: summaryProviderResponseSchema, estimatedOutputTokens: 4000, metadataRecords: [{ playlist_analysis: built.privacy.payload }] });
   return { snapshotId: built.snapshot.id, privacyMode: selection.preview.privacyMode, provider: selection.preview.provider, limits: selection.preview.limits, cost: selection.preview.cost, includedFields: built.analysis.availableFacts, blockedFields: built.privacy.blockedFields, aggregateOnly: built.privacy.aggregateOnly, previewRequired: selection.preview.privacyMode === "FULL_METADATA" || selection.preview.provider.location !== "LOCAL" };
 }
 
@@ -133,7 +133,7 @@ export async function generatePlaylistSummaries(userId: string, playlistId: stri
   const privacyMode = input.privacyMode || "METADATA_LIMITED";
   const previousSummaryCount = await prisma.playlistAiSummary.count({ where: { playlistId, summaryType: { in: input.summaryTypes }, status: "COMPLETED" } });
   const built = await createPlaylistAnalysisSnapshot(userId, playlistId, privacyMode, settings.allowFullTrackMetadata, input.notes);
-  const selection = await aiSelection(PLAYLIST_SUMMARY_FEATURE_KEY, input, userId, { systemInstructions: PLAYLIST_SUMMARY_SYSTEM_PROMPT, message: playlistSummaryPrompt({ types: input.summaryTypes, payload: built.privacy.payload, notes: input.notes, plexLimit: settings.plexDescriptionMaxLength }), responseSchema: summaryProviderResponseSchema, maxOutputTokens: 4000, metadataRecords: [{ playlist_analysis: built.privacy.payload }] });
+  const selection = await aiSelection(PLAYLIST_SUMMARY_FEATURE_KEY, input, userId, { systemInstructions: PLAYLIST_SUMMARY_SYSTEM_PROMPT, message: playlistSummaryPrompt({ types: input.summaryTypes, payload: built.privacy.payload, notes: input.notes, plexLimit: settings.plexDescriptionMaxLength }), responseSchema: summaryProviderResponseSchema, estimatedOutputTokens: 4000, metadataRecords: [{ playlist_analysis: built.privacy.payload }] });
   if (selection.preview.privacyMode === "FULL_METADATA" && selection.preview.provider.location !== "LOCAL" && input.previewAcknowledged !== true) throw fail("AI_PREVIEW_ACKNOWLEDGMENT_REQUIRED", "Review and acknowledge the full-metadata request preview before generation.", 409);
   try {
     const response = await aiRequestCoordinator.complete({ ...selection.aiRequest, externalConfirmation: input.previewAcknowledged === true }, userId);
@@ -206,7 +206,7 @@ function aiCandidatePayload(candidate: MetadataCandidate, privacyMode: string) {
 
 async function enhanceCandidatesWithAi(userId: string, candidates: MetadataCandidate[], options: { providerId?: string; model?: string; privacyMode?: string }) {
   const payload = candidates.map((candidate) => aiCandidatePayload(candidate, options.privacyMode || "METADATA_LIMITED"));
-  const selection = await aiSelection(METADATA_SUGGESTION_FEATURE_KEY, options, userId, { systemInstructions: METADATA_SUGGESTION_SYSTEM_PROMPT, message: metadataSuggestionPrompt(payload), responseSchema: aiMetadataCandidateResponseSchema, maxOutputTokens: 5000, metadataRecords: payload as Array<Record<string, unknown>> });
+  const selection = await aiSelection(METADATA_SUGGESTION_FEATURE_KEY, options, userId, { systemInstructions: METADATA_SUGGESTION_SYSTEM_PROMPT, message: metadataSuggestionPrompt(payload), responseSchema: aiMetadataCandidateResponseSchema, estimatedOutputTokens: 5000, metadataRecords: payload as Array<Record<string, unknown>> });
   const response = await aiRequestCoordinator.complete({ ...selection.aiRequest, requestSource: "BACKGROUND", backgroundApproval: true }, userId);
   const output = aiMetadataCandidateResponseSchema.parse(response.data);
   if (!responseReferencesOnlySubmittedCandidates(candidates.map((candidate) => candidate.id), output.suggestions.map((suggestion) => suggestion.candidateId))) throw fail("INVALID_TRACK_REFERENCE", "The AI response referenced a candidate outside the submitted batch.", 422);

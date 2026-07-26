@@ -80,12 +80,25 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.17",
+    title: "Token-Limit Removal and Reliable Recipe Copilot JSON",
+    releaseDate: "July 26, 2026",
+    badges: ["AI", "Reliability", "Privacy", "Bug Fix", "Settings", "Database"],
+    changes: [
+      "Removed Mixarr-configured token caps and provider output-token parameters while retaining native context-window checks, monetary budgets, request-count controls, and informational cost estimates.",
+      "Made the runtime Recipe Copilot validator the canonical provider JSON Schema and normalized strict-schema, JSON-object, and prompt-only provider capabilities.",
+      "Added conservative local JSON normalization, path-specific sanitized diagnostics, and one budget-governed structured repair attempt.",
+      "Forced DeepSeek thinking off for structured requests and kept raw provider output and reasoning content private.",
+      "Deprecated persisted token-cap columns for rollback safety; existing saved values are inert after upgrade.",
+    ],
+  },
+  {
     version: "2.4.16",
     title: "DeepSeek V4 Thinking and Truncated Response Fix",
     releaseDate: "July 26, 2026",
     badges: ["AI", "Reliability", "Privacy", "Bug Fix", "Settings"],
     changes: [
-      "Made DeepSeek V4 provider tests deterministic JSON checks with thinking disabled, no tools, non-streaming output, and a dedicated 128-token allowance.",
+      "Made DeepSeek V4 provider tests deterministic JSON checks with thinking disabled, no tools, and non-streaming output.",
       "Added one budget-governed provider-test-only retry at up to 256 output tokens after a length-limited result; normal feature truncation is never retried automatically.",
       "Separated final content from reasoning metadata and added precise truncation and invalid-structured-response diagnostics.",
       "Added Off, On, and Provider default thinking modes for deepseek-v4-pro and deepseek-v4-flash, with structured requests defaulting to Off.",
@@ -120,7 +133,7 @@ export const releaseNotes: ReleaseNote[] = [
       "Added an explicit mode to both cost ceilings: Unlimited by default, or Limited with an amount. A zero-dollar limit is still available because it is a real policy — admit only free or local-provider requests — but it must now be chosen deliberately.",
       "The setup wizard asks for a cost mode instead of defaulting an amount to zero, and a local-only setup is still saved with an explicit $0.00 per-request policy that is stated on the step.",
       "Added an AI cost limits panel under Budgets with a warning and a confirmation before saving a zero ceiling, an accurate label and mode for the cumulative ceiling, and blocked requests that name the estimated cost, the limit, and where to change it.",
-      "Monthly budgets, provider and user cost limits, request-count limits, retry limits, token limits, privacy modes, provider and feature approval, and the cost estimate itself are unchanged and still enforced.",
+      "Monthly budgets, provider and user cost limits, request-count limits, retry limits, privacy modes, provider and feature approval, and the cost estimate itself are unchanged and still enforced.",
       "Upgrade: apply migration 20260802010000_ai_per_request_cost_limit_v2414. It preserves a positive ceiling exactly, keeps a zero ceiling on local-only installations, and releases a zero ceiling where external providers are permitted so blocked installations recover.",
     ],
   },
@@ -135,7 +148,7 @@ export const releaseNotes: ReleaseNote[] = [
       "Added the missing global control to AI Governance → Budgets → AI request limits, including today's counted requests, remaining requests, and the reset time. The setup wizard now defaults to Unlimited instead of writing 50 requests per day that the settings page could not change.",
       "Centralized limit precedence in one shared module: every scope is evaluated independently and the strictest wins, a user-level Unlimited cannot weaken the global limit, and a scope left in Limited without a usable number reports a configuration problem instead of blocking the feature.",
       "Blocked requests now name the responsible scope, the limit, the usage, the reset time, and where to change it, and link straight to the control. The monthly request limit no longer reports a daily error.",
-      "Provider approval, feature approval, per-request cost limits, monthly budgets, cost limits, retry limits, token limits, privacy modes, and provider availability checks are unchanged and still enforced.",
+      "Provider approval, feature approval, per-request cost limits, monthly budgets, cost limits, retry limits, privacy modes, and provider availability checks are unchanged and still enforced.",
       "Upgrade: apply migration 20260801010000_ai_daily_request_limit_configuration_v2413. It preserves every existing positive limit exactly, converts stored zero limits to Unlimited so blocked installations recover, deletes no data, and does not enable AI or external providers.",
     ],
   },
@@ -306,11 +319,11 @@ export const releaseNotes: ReleaseNote[] = [
   },
   {
     version: "2.4.1",
-    title: "AI Privacy, Cost and Token Controls",
+    title: "AI Privacy, Cost and Context Controls",
     releaseDate: "July 20, 2026",
     badges: ["AI", "Security", "Settings", "Database", "Dashboard", "Privacy", "Reliability", "Accessibility", "Export", "Retry"],
     changes: [
-      "Added a centralized server-side AI governance preflight for privacy policy, metadata allowlisting/anonymization, prompt and token limits, configured model pricing, request limits, provider/user/global budgets, background policy, fallback eligibility, and retry cost protection.",
+      "Added a centralized server-side AI governance preflight for privacy policy, metadata allowlisting/anonymization, model context safety, configured model pricing, request limits, provider/user/global budgets, background policy, fallback eligibility, and retry cost protection.",
       "Added decimal-safe pricing profiles and transactional expiring budget reservations that are created before provider execution, reconciled to actual or estimated usage, and released on failure, timeout, or cancellation.",
       "Added Local Only, Metadata Limited, Anonymous Metadata, and version-acknowledged Full Metadata modes; sensitive values, paths, credentials, infrastructure identifiers, unknown external fields, raw prompts, and raw responses remain prohibited by default.",
       "Added governance, pricing, budgets, reservations, preview, comparison, alerts, filtered usage, sanitized audit detail, CSV, and JSON administrator APIs plus an accessible responsive AI Governance dashboard.",

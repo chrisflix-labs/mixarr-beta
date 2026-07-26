@@ -54,7 +54,7 @@ describe("v2.4.3 native OpenAI adapter", () => {
   it("sends the exact minimal Responses API test payload and extracts Responses usage", async () => {
     const result = await new OpenAIProviderAdapter().testConnection(config(), undefined, "gpt-5.6-luna");
     assert.equal(lastRequest.url, "/v1/responses");
-    assert.deepEqual(lastRequest.body, { model: "gpt-5.6-luna", input: "Reply with exactly: MIXARR_OK", max_output_tokens: 16 });
+    assert.deepEqual(lastRequest.body, { model: "gpt-5.6-luna", input: "Reply with exactly: MIXARR_OK" });
     for (const unsupported of ["messages", "max_tokens", "temperature", "top_p", "response_format", "reasoning_effort", "tools", "stream"]) assert.equal(unsupported in lastRequest.body, false);
     assert.equal(result.connected, true); assert.equal(result.endpointMode, "RESPONSES_API"); assert.equal(result.responseId, "resp_test"); assert.equal(result.providerRequestId, "req_safe_test");
     assert.deepEqual({ input: result.usage?.inputTokens, output: result.usage?.outputTokens, total: result.usage?.totalTokens, cached: result.usage?.cachedTokens, reasoning: result.usage?.reasoningTokens }, { input: 7, output: 3, total: 10, cached: 1, reasoning: 2 });

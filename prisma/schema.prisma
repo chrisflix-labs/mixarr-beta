@@ -5648,8 +5648,11 @@ model AiGovernanceSetting {
   maximumBackgroundConcurrency      Int      @default(1)
   backgroundAllowedHoursJson        Json?
   requireExternalBackgroundApproval Boolean  @default(true)
+  /// Deprecated in v2.4.17. Retained only for rollback compatibility; runtime ignores it.
   maximumInputTokens                Int      @default(16000)
+  /// Deprecated in v2.4.17. Retained only for rollback compatibility; runtime ignores it.
   maximumOutputTokens               Int      @default(7000)
+  /// Deprecated in v2.4.17. Retained only for rollback compatibility; runtime ignores it.
   maximumCombinedTokens             Int      @default(18000)
   maximumPromptCharacters           Int      @default(80000)
   maximumPromptBytes                Int      @default(200000)
@@ -5735,6 +5738,7 @@ model AiProviderConfig {
   fastModel                   String?
   reasoningModel              String?
   maximumContextTokens        Int?
+  /// Deprecated Mixarr output cap. Provider-native limits are represented by model capability metadata.
   maximumOutputTokens         Int?
   requestTimeoutMs            Int                   @default(120000)
   retryCount                  Int                   @default(1)
@@ -5780,6 +5784,7 @@ model AiProviderConfig {
   allowUserNotes              Boolean               @default(false)
   allowExternalRequests       Boolean               @default(false)
   requestsPerMinute           Int?
+  /// Deprecated token-rate governance field. Retained only for rollback compatibility.
   tokensPerMinute             Int?
   maximumConcurrency          Int?
 
@@ -5812,6 +5817,7 @@ model AiProviderModel {
   deprecated            Boolean          @default(false)
   lastSuccessfulUseAt   DateTime?
   maximumConcurrency    Int?
+  /// Deprecated Mixarr token caps. Retained only for rollback compatibility.
   maximumInputTokens    Int?
   maximumOutputTokens   Int?
   maximumCombinedTokens Int?
@@ -6146,6 +6152,7 @@ model AiProviderBudget {
   dailyRequestLimitMode      String           @default("INHERIT")
   dailyRequestLimit          Int?
   monthlyRequestLimit        Int?
+  /// Deprecated Mixarr token caps. Retained only for rollback compatibility.
   maximumInputTokens         Int?
   maximumOutputTokens        Int?
   maximumCombinedTokens      Int?
@@ -6163,6 +6170,7 @@ model AiUserLimit {
   dailyRequestLimitMode     String   @default("INHERIT")
   dailyRequestLimit         Int?
   monthlyRequestLimit       Int?
+  /// Deprecated Mixarr token caps. Retained only for rollback compatibility.
   maximumInputTokens        Int?
   maximumOutputTokens       Int?
   maximumCombinedTokens     Int?

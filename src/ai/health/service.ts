@@ -4,7 +4,7 @@ import { aiProviderRegistry } from "../registry/providerRegistry";
 import { resolveAiProvider } from "../services/providerService";
 import { AiError, normalizeProviderError } from "../errors";
 import { createAiRequestSignal } from "../utilities/cancellation";
-import { beginAdministrativeAiOperation, finishAdministrativeAiOperation, prepareAiRetry } from "../governance/service";
+import { beginAdministrativeAiOperation, finishAdministrativeAiOperation } from "../governance/service";
 import { classifyOpenAiModel } from "../providers/openai";
 
 const activeProviderTests = new Set<string>();
@@ -83,31 +83,9 @@ export async function testAiProviderConnection(providerId: string, signal?: Abor
   activeProviderTests.add(providerId);
   const timed = createAiRequestSignal(signal, Math.min(config.requestTimeoutMs, 30_000));
   const started = Date.now();
-  const initialLimit = governanceOperation.providerTest?.outputTokenLimit;
-  const initialProfile = { maxOutputTokens: initialLimit?.effectiveOutputTokens || 128, requestedMaxTokens: initialLimit?.requestedOutputTokens || 128, effectiveMaxTokens: initialLimit?.effectiveOutputTokens || 128, outputTokenLimitingSource: initialLimit?.limitingSource || "request", retryAttempt: 0, thinkingMode: "disabled" as const };
+  const initialProfile = { retryAttempt: 0, thinkingMode: "disabled" as const };
   try {
-    let result;
-    let firstFailure: AiError | undefined;
-    try { result = await adapter.testConnection(config, timed.signal, selectedModel, initialProfile); }
-    catch (error) {
-      const normalized = error instanceof AiError ? error : normalizeProviderError(error);
-      const truncated = ["AI_PROVIDER_TRUNCATED_RESPONSE", "AI_PROVIDER_TRUNCATED_BEFORE_FINAL", "AI_PROVIDER_TRUNCATED_FINAL_RESPONSE"].includes(normalized.category);
-      if (!truncated) throw normalized;
-      firstFailure = normalized;
-      const retryRequest = { featureKey: "administrative_connection_test", systemInstructions: "You are performing an AI provider connectivity test. Return only valid JSON and no additional text.", messages: [{ role: "user" as const, content: 'Return exactly this JSON object: {"ok":true}' }], maxOutputTokens: 256, thinkingMode: "disabled" as const, requestSource: "CONNECTION_TEST" as const, signal: timed.signal, metadata: { retryAttempt: 1 } };
-      let retryAdmission;
-      try { retryAdmission = await prepareAiRetry({ request: retryRequest, provider: config, model: selectedModel || config.defaultModel || "__connection_test__", userId, requestId: governanceOperation.requestId, auditId: governanceOperation.auditId, reservationId: governanceOperation.reservationId, retryNumber: 1, possiblePriorBilling: true, initialAttemptCost: governanceOperation.providerTest?.maximumEstimatedCost || 0 }); }
-      catch (retryError) { normalized.details = { ...(normalized.details || {}), retry_attempted: false, retry_blocked_by: retryError instanceof AiError ? retryError.category : "INTERNAL_AI_ERROR" }; throw normalized; }
-      const retryLimit = retryAdmission.preview.outputTokenLimit;
-      if (governanceOperation.providerTest) governanceOperation.providerTest.maximumEstimatedCost = retryAdmission.possibleRequestCost;
-      if (retryLimit.effectiveOutputTokens <= initialProfile.effectiveMaxTokens) { normalized.details = { ...(normalized.details || {}), retry_attempted: false, retry_blocked_by: "NO_LARGER_ALLOWED_OUTPUT_ALLOWANCE" }; throw normalized; }
-      await prisma.aiRequestAudit.update({ where: { id: governanceOperation.auditId }, data: { truncationRecoveryAttempted: true, retryCount: 1, finishReason: "length", finalContentStatus: "INCOMPLETE", configuredOutputTokenLimit: retryLimit.effectiveOutputTokens } }).catch(() => null);
-      const retryProfile = { maxOutputTokens: retryLimit.effectiveOutputTokens, requestedMaxTokens: 256, effectiveMaxTokens: retryLimit.effectiveOutputTokens, outputTokenLimitingSource: retryLimit.limitingSource, retryAttempt: 1, thinkingMode: "disabled" as const };
-      try { result = await adapter.testConnection(config, timed.signal, selectedModel, retryProfile); result.retryAttempted = true; }
-      catch (retryError) { const retried = retryError instanceof AiError ? retryError : normalizeProviderError(retryError); retried.details = { ...(retried.details || {}), retry_attempted: true, initial_finish_reason: firstFailure.details?.finish_reason }; throw retried; }
-      const add = (left?: number, right?: number) => left == null && right == null ? undefined : Number(left || 0) + Number(right || 0);
-      result.usage = { ...result.usage, inputTokens: add(firstFailure.details?.usage_input_tokens as number | undefined, result.usage?.inputTokens), outputTokens: add(firstFailure.details?.usage_output_tokens as number | undefined, result.usage?.outputTokens), reasoningTokens: add(firstFailure.details?.usage_reasoning_tokens as number | undefined, result.usage?.reasoningTokens), totalTokens: add(firstFailure.details?.usage_total_tokens as number | undefined, result.usage?.totalTokens), providerReported: firstFailure.details?.usage_provider_reported === true && result.usage?.providerReported === true, providerRequestId: result.providerRequestId };
-    }
+    const result = await adapter.testConnection(config, timed.signal, selectedModel, initialProfile);
     if (eligibleCount) result.availableModelCount = eligibleCount;
     const current = await prisma.aiProviderHealth.findUnique({ where: { providerConfigId: providerId } });
     const now = new Date();
@@ -115,9 +93,9 @@ export async function testAiProviderConnection(providerId: string, signal?: Abor
       prisma.aiProviderConfig.update({ where: { id: providerId }, data: { lastConnectionTestAt: now, lastSuccessfulConnectionAt: now } }),
       prisma.aiProviderHealth.upsert({ where: { providerConfigId: providerId }, create: { providerConfigId: providerId, healthState: "HEALTHY", authenticationState: "HEALTHY", discoveryState: current?.discoveryState || "NOT_TESTED", inferenceState: "HEALTHY", lastCheckAt: now, lastSuccessfulCheckAt: now, lastAuthenticationAt: now, lastSuccessfulInferenceAt: now, latencyMs: result.latencyMs, discoveredModelCount: current?.discoveredModelCount || 0, endpointMode: result.endpointMode, providerRequestId: result.providerRequestId }, update: { healthState: "HEALTHY", authenticationState: "HEALTHY", inferenceState: "HEALTHY", lastCheckAt: now, lastSuccessfulCheckAt: now, lastAuthenticationAt: now, lastSuccessfulInferenceAt: now, latencyMs: result.latencyMs, consecutiveFailureCount: 0, errorCategory: null, sanitizedMessage: result.message, endpointMode: result.endpointMode, lastHttpStatus: 200, providerRequestId: result.providerRequestId, nextEligibleCheckAt: null } }),
     ]);
-    await finishAdministrativeAiOperation(governanceOperation, { success: true, estimatedCost: governanceOperation.providerTest?.maximumEstimatedCost, modelReturned: result.modelReturned, endpointMode: result.endpointMode, providerRequestId: result.providerRequestId, usage: result.usage, retryAttempted: result.retryAttempted, requestedMaxTokens: result.requestedMaxTokens, effectiveMaxTokens: result.effectiveMaxTokens, outputTokenLimitingSource: result.outputTokenLimitingSource, thinkingModeRequested: result.thinkingModeRequested, hasReasoningContent: result.hasReasoningContent, reasoningCharacterCount: result.reasoningCharacterCount, finalContentCharacterCount: result.finalContentCharacterCount });
+    await finishAdministrativeAiOperation(governanceOperation, { success: true, estimatedCost: governanceOperation.providerTest?.maximumEstimatedCost, modelReturned: result.modelReturned, endpointMode: result.endpointMode, providerRequestId: result.providerRequestId, usage: result.usage, retryAttempted: false, thinkingModeRequested: result.thinkingModeRequested, hasReasoningContent: result.hasReasoningContent, reasoningCharacterCount: result.reasoningCharacterCount, finalContentCharacterCount: result.finalContentCharacterCount });
     console.info("[AI Provider Test] Completed", { correlationId: governanceOperation.requestId, providerId, providerType: config.providerType, apiOrigin: safeOrigin(config.baseUrl), selectedModel, adapterName: adapter.constructor.name, endpointMode: result.endpointMode, governanceResult: "ALLOWED", httpStatus: 200, providerRequestId: result.providerRequestId, failureStage: null });
-    return { ...result, success: true, provider: config.displayName, model: selectedModel || result.model || null, classification: governanceOperation.classification.classification, classificationReason: governanceOperation.classification.reason, effectivePolicy: governanceOperation.resolvedPolicy, latency_ms: result.latencyMs, correlation_id: governanceOperation.requestId, requested_max_tokens: result.requestedMaxTokens, effective_max_tokens: result.effectiveMaxTokens, output_token_limiting_source: result.outputTokenLimitingSource, thinking_mode_requested: result.thinkingModeRequested, has_reasoning_content: result.hasReasoningContent, reasoning_character_count: result.reasoningCharacterCount, final_content_character_count: result.finalContentCharacterCount, retry_attempted: result.retryAttempted === true };
+    return { ...result, success: true, provider: config.displayName, model: selectedModel || result.model || null, classification: governanceOperation.classification.classification, classificationReason: governanceOperation.classification.reason, effectivePolicy: governanceOperation.resolvedPolicy, latency_ms: result.latencyMs, correlation_id: governanceOperation.requestId, thinking_mode_requested: result.thinkingModeRequested, has_reasoning_content: result.hasReasoningContent, reasoning_character_count: result.reasoningCharacterCount, final_content_character_count: result.finalContentCharacterCount, retry_attempted: false };
   } catch (error) {
     const normalized = normalizeAdministrativeError(error, timed, governanceOperation.requestId);
     await finishAdministrativeAiOperation(governanceOperation, { success: false, error: normalized, estimatedCost: details(normalized).http_status ? governanceOperation.providerTest?.maximumEstimatedCost : undefined });

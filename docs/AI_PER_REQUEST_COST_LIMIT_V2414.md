@@ -109,7 +109,7 @@ evaluated exclusively in `prepareAiRetry`, after a transient provider failure.
 Provider approval, per-feature approval, model approval and availability, the
 monthly budget and hard shutdown, provider daily and monthly cost limits, user daily
 and monthly cost limits, daily and monthly request-count limits, `maximumRetryCost`,
-token and prompt limits, privacy modes and the metadata allowlist, unpriced-model
+provider-native context and prompt-size limits, privacy modes and the metadata allowlist, unpriced-model
 blocking, paid-provider permission, background-request policy, emergency shutdown,
 and budget reservations are all evaluated separately and are untouched. The
 estimated-cost calculation itself (`estimateRequestCost`) is unchanged.

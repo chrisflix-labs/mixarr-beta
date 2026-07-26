@@ -16,7 +16,7 @@ The versioned upgrade migration and Docker `db push` preflight both convert a po
 `maximumCumulativeRequestCost` into an enabled global per-request limit.
 Legacy zero and null values become disabled/unlimited and zero is cleared from
 the retry cumulative field. Provider and user limits start disabled. Existing
-daily and monthly budgets, request counts, token limits, provider budgets, user
+daily and monthly budgets, request counts, provider-native context validation, provider budgets, user
 limits, retry limits, and approval/privacy controls are not changed.
 
 Policy settings are read directly from Prisma for each preview and again during

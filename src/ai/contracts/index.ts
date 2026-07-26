@@ -10,20 +10,9 @@ export type AiCapabilityResult = Partial<Record<AiCapability, AiCapabilityConfid
 
 export type AiMessage = { role: "user" | "assistant"; content: string };
 export type AiUsage = { inputTokens?: number; outputTokens?: number; finalAnswerTokens?: number; totalTokens?: number; cachedTokens?: number; reasoningTokens?: number; acceptedPredictionTokens?: number; rejectedPredictionTokens?: number; providerReported?: boolean; providerRequestId?: string; rawUsage?: Record<string, unknown> };
-export type AiOutputTokenParameter = "max_tokens" | "max_completion_tokens";
 export type AiThinkingMode = "disabled" | "enabled" | "provider_default";
 export type AiReasoningEffort = "low" | "medium" | "high";
-export type NormalizedOutputTokenLimit = {
-  requestedOutputTokens: number | null;
-  configuredGlobalLimit: number | null;
-  configuredProviderLimit: number | null;
-  configuredFeatureLimit: number | null;
-  configuredUserLimit: number | null;
-  modelOutputLimit: number | null;
-  effectiveOutputTokens: number;
-  limitingSource: string;
-  unlimited: boolean;
-};
+export type AiStructuredOutputMode = "strict_json_schema" | "json_object" | "prompt_only_json";
 export type AiModelCapabilities = {
   supportsStreaming: boolean;
   supportsJsonMode: boolean;
@@ -32,19 +21,10 @@ export type AiModelCapabilities = {
   reasoningConsumesCompletionBudget: boolean;
   supportsReasoningEffort: boolean;
   supportsThinkingMode: boolean;
-  outputTokenParameter: AiOutputTokenParameter;
-  defaultOutputTokens?: number;
-  maximumOutputTokens?: number;
+  structuredOutputMode: AiStructuredOutputMode;
+  providerNativeMaximumOutputTokens?: number;
   source: "CATALOG" | "MODEL_METADATA" | "CONSERVATIVE_DEFAULT";
   diagnostics?: string[];
-};
-export type AiOutputBudgetPolicy = {
-  expectedFinalAnswerTokens: number;
-  minimumFinalAnswerTokens: number;
-  reasoningTokenReserve?: number;
-  minimumReasoningTokenReserve?: number;
-  truncationRetryIncrement?: number;
-  allowTruncationRetry?: boolean;
 };
 export type AiModelCategory = "GENERAL" | "FAST" | "REASONING" | "LARGE_CONTEXT" | "LOCAL" | "REMOTE" | "UNKNOWN";
 export type AiModelCompatibility = {
@@ -66,8 +46,10 @@ export type AiResponseFormat<T = unknown> = {
   type: "json";
   name: string;
   schema: ZodType<T>;
+  jsonSchema?: Record<string, unknown>;
   unknownFields?: "reject" | "strip";
   allowEmbeddedJson?: boolean;
+  knownRootWrappers?: string[];
 };
 
 export type AiRequest<T = unknown> = {
@@ -81,12 +63,9 @@ export type AiRequest<T = unknown> = {
   temperature?: number;
   thinkingMode?: AiThinkingMode;
   reasoningEffort?: AiReasoningEffort;
-  maxOutputTokens?: number;
-  outputTokenLimit?: NormalizedOutputTokenLimit;
-  outputBudget?: AiOutputBudgetPolicy;
+  /** Informational cost-estimation target only. It is never sent to a provider or enforced. */
+  estimatedOutputTokens?: number;
   resolvedModelCapabilities?: AiModelCapabilities;
-  truncationRetryMaxOutputTokens?: number;
-  truncationRetry?: boolean;
   maxResponseBytes?: number;
   timeoutMs?: number;
   signal?: AbortSignal;
@@ -125,6 +104,7 @@ export type AiResponse<T = unknown> = {
   hasReasoningContent?: boolean;
   reasoningCharacterCount?: number;
   finalContentCharacterCount?: number;
+  structuredOutputMode?: AiStructuredOutputMode;
   transport?: { httpStatus?: number; contentType?: string; bodyLength?: number; endpointHostname?: string; streamed?: boolean; providerRequestId?: string };
 };
 
@@ -138,8 +118,8 @@ export type AiStreamEvent =
   | { type: "cancelled" }
   | { type: "failed"; code: string; message: string };
 
-export type AiProviderTestProfile = { maxOutputTokens: number; requestedMaxTokens: number; effectiveMaxTokens: number; outputTokenLimitingSource: string; retryAttempt: number; thinkingMode: "disabled" };
-export type AiConnectionTestResult = { connected: boolean; message: string; latencyMs: number; detectedApiType: string; capabilities: AiCapabilityResult; availableModelCount: number; defaultModelAvailable: boolean | null; testedAt: string; model?: string; modelReturned?: string; endpointMode?: string; authenticationResult?: string; discoveryResult?: string; inferenceResult?: string; responseId?: string; providerRequestId?: string; usage?: AiUsage; retryAttempted?: boolean; requestedMaxTokens?: number; effectiveMaxTokens?: number; outputTokenLimitingSource?: string; thinkingModeRequested?: AiThinkingMode; hasReasoningContent?: boolean; reasoningCharacterCount?: number; finalContentCharacterCount?: number };
+export type AiProviderTestProfile = { retryAttempt: number; thinkingMode: "disabled" };
+export type AiConnectionTestResult = { connected: boolean; message: string; latencyMs: number; detectedApiType: string; capabilities: AiCapabilityResult; availableModelCount: number; defaultModelAvailable: boolean | null; testedAt: string; model?: string; modelReturned?: string; endpointMode?: string; authenticationResult?: string; discoveryResult?: string; inferenceResult?: string; responseId?: string; providerRequestId?: string; usage?: AiUsage; retryAttempted?: boolean; thinkingModeRequested?: AiThinkingMode; hasReasoningContent?: boolean; reasoningCharacterCount?: number; finalContentCharacterCount?: number; structuredOutputMode?: AiStructuredOutputMode };
 
 export type ResolvedAiProviderConfig = {
   id: string;
@@ -164,7 +144,6 @@ export type ResolvedAiProviderConfig = {
   reasoningModel?: string;
   fallbackProviderId?: string;
   maximumContextTokens?: number;
-  maximumOutputTokens?: number;
   requestTimeoutMs: number;
   retryCount: number;
   initialRetryDelayMs: number;

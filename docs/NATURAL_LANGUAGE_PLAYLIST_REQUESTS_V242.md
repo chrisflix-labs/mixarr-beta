@@ -18,7 +18,7 @@ Editing, revising, accepting/removing assumptions, or resolving ambiguities crea
 
 ## Provider, privacy, and cost behavior
 
-The administrator must enable global AI, configure an eligible structured-JSON provider/model, and enable `natural_language_playlist_requests`. The request form performs a governance preflight before provider submission and displays provider location, effective privacy mode, token estimate, maximum output, and cost range.
+The administrator must enable global AI, configure an eligible structured-JSON provider/model, and enable `natural_language_playlist_requests`. The request form performs a governance preflight before provider submission and displays provider location, effective privacy mode, informational token estimates, provider-managed output, and cost range.
 
 - **Local Only:** the AI coordinator rejects every provider not administrator-confirmed as local.
 - **Metadata Limited:** request text is sent because it is the user-authored task. Only allowlisted safe metadata may be included; v2.4.2 does not send track inventories.
@@ -27,7 +27,7 @@ The administrator must enable global AI, configure an eligible structured-JSON p
 
 Plex credentials, access tokens, server addresses, rating keys, file/network paths, database IDs, full library inventories, complete track lists, and unrelated user data are never sent. Provider prompts/responses are not stored by the request tables. When prompt retention is disabled, Mixarr stores only a SHA-256 digest plus the structured interpretation and recipe revision.
 
-All v2.4.1 global/provider/user budgets, pricing, request limits, token limits, prompt/response limits, timeouts, paid fallback policy, retry-cost protection, background controls, hard shutdown, and AI audits remain authoritative.
+Global/provider/user cost budgets, pricing, request-count limits, prompt/response-size limits, provider-native context validation, timeouts, paid fallback policy, retry-cost protection, background controls, hard shutdown, and AI audits remain authoritative. Mixarr-configured token caps were retired in v2.4.17.
 
 ## Permissions
 

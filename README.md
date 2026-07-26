@@ -1,6 +1,6 @@
 # Mixarr
 
-Current release: **v2.4.16 — DeepSeek V4 Thinking and Truncated Response Fix**. Provider tests now disable DeepSeek thinking explicitly, use a dedicated structured test profile, distinguish transport success from completion success, and never expose provider reasoning. See [the v2.4.16 DeepSeek guide](docs/DEEPSEEK_V4_THINKING_V2416.md).
+Current release: **v2.4.17 — Token-Limit Removal and Reliable Recipe Copilot JSON**. Mixarr no longer configures provider output-token caps, while native model context safety and monetary budgets remain. Recipe Copilot now uses canonical structured-output capabilities, conservative normalization, one controlled repair, and private DeepSeek reasoning. See [the v2.4.17 migration and reliability guide](docs/AI_STRUCTURED_OUTPUT_V2417.md).
 
 Previous release: **v2.4.14 — Per-Request AI Cost Limit Configuration**. See [the v2.4.14 guide](docs/AI_PER_REQUEST_COST_LIMIT_V2414.md).
 

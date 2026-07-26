@@ -18,10 +18,9 @@ import { describeRequestLimitFromDetails } from "@/ai/governance/requestLimits";
 import { describeCostLimitFromDetails } from "@/ai/governance/costLimits";
 import { recipeCopilotSettingsUrl } from "./readiness";
 import { RECIPE_COPILOT_SYSTEM_PROMPT, recipeCopilotUserPrompt } from "@/ai/recipeCopilot/prompts";
-import { RECIPE_COPILOT_OUTPUT_BUDGET } from "@/ai/governance/outputBudget";
 import {
   AI_RECIPE_STATUSES, RECIPE_COPILOT_FEATURE_KEY, RECIPE_COPILOT_PROMPT_VERSION,
-  recipeCopilotRequestSchema, recipeCopilotResponseSchema, type AiRecipeStatus,
+  recipeCopilotJsonSchema, recipeCopilotRequestSchema, recipeCopilotResponseSchema, type AiRecipeStatus,
 } from "./contracts";
 import {
   assertAiRecipeStatusTransition, buildPrivacyAwareRecipeContext, deriveRecipePurpose,
@@ -117,7 +116,7 @@ export async function getRecipeCopilotAvailability(userId: string, raw: unknown 
     prisma.aiGovernanceSetting.findUnique({ where: { id: "global" } }),
   ]);
   const privacyMode = input.privacyMode || governance?.privacyMode || "METADATA_LIMITED";
-  const disabled = (code: string, reason: string, target: { providerId?: string | null; providerName?: string | null; modelId?: string | null; modelName?: string | null; failedCheck?: string | null; configuredOutputTokenLimit?: unknown; recommendedMinimumOutputTokens?: unknown; reasoningReserveTokens?: unknown; estimatedMaximumCost?: unknown; currency?: unknown; requestLimit?: Record<string, unknown> | null } = {}) => ({
+  const disabled = (code: string, reason: string, target: { providerId?: string | null; providerName?: string | null; modelId?: string | null; modelName?: string | null; failedCheck?: string | null; requestLimit?: Record<string, unknown> | null } = {}) => ({
     available: false as const,
     providerId: target.providerId || null,
     providerName: target.providerName || null,
@@ -155,11 +154,11 @@ export async function getRecipeCopilotAvailability(userId: string, raw: unknown 
   try {
     const provider = await resolveAiProvider(providerId);
     const context = buildPrivacyAwareRecipeContext(input.recipe as Record<string, any> | undefined, privacyMode);
-    const request = { featureKey: RECIPE_COPILOT_FEATURE_KEY, systemInstructions: RECIPE_COPILOT_SYSTEM_PROMPT, messages: [{ role: "user" as const, content: recipeCopilotUserPrompt({ action: input.action || "create", instruction: input.instruction || "", purpose: input.purpose, context: context.recipe }) }], responseFormat: { type: "json" as const, name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, unknownFields: "reject" as const, allowEmbeddedJson: false }, privacyMode: privacyMode as any, outputBudget: RECIPE_COPILOT_OUTPUT_BUDGET, requestSource: "FOREGROUND" as const, allowFallback: true, requiredCapabilities: ["structured_json" as const], externalConfirmation: true };
+    const request = { featureKey: RECIPE_COPILOT_FEATURE_KEY, systemInstructions: RECIPE_COPILOT_SYSTEM_PROMPT, messages: [{ role: "user" as const, content: recipeCopilotUserPrompt({ action: input.action || "create", instruction: input.instruction || "", purpose: input.purpose, context: context.recipe }) }], responseFormat: { type: "json" as const, name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, jsonSchema: recipeCopilotJsonSchema, unknownFields: "reject" as const, allowEmbeddedJson: true, knownRootWrappers: ["recipe", "draft", "result", "recipeDraft"] }, privacyMode: privacyMode as any, estimatedOutputTokens: 2_500, thinkingMode: "disabled" as const, requestSource: "FOREGROUND" as const, allowFallback: true, requiredCapabilities: ["structured_json" as const], externalConfirmation: true };
     await assertAiExecutionPolicy({ request, provider, model, requiredCapabilities: ["chat_messages", "structured_json"] });
     const preview = await previewAiRequest({ request, provider, model, userId });
     const dailyRequests = preview.remainingBudgets?.dailyRequests;
-    return { available: true as const, providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow.displayName, privacyMode: preview.privacyMode, remoteOperationAllowed: preview.provider.location !== "LOCAL", blockedReasonCode: null, blockedReasonMessage: null, canConfigure: permission.admin, settingsUrl: permission.admin ? "/settings/ai" : null, dailyRequestLimit: { effectiveMode: dailyRequests?.effective?.effectiveMode || "UNLIMITED", scope: dailyRequests?.effective?.scope || null, limit: dailyRequests?.limit ?? null, usage: dailyRequests?.usage ?? null, remaining: dailyRequests?.remaining ?? null, resetAt: dailyRequests?.resetAt ?? null }, provider: providerRow.displayName, model, local: preview.provider.location === "LOCAL", estimatedInputTokens: preview.limits.estimatedInputTokens, maximumOutputTokens: preview.limits.maxOutputTokens, recommendedMinimumOutputTokens: preview.outputBudget?.recommendedMinimum, finalAnswerTargetTokens: preview.outputBudget?.requestedFinalAnswerTokens, reasoningReserveTokens: preview.outputBudget?.reasoningReserve, modelMaximumOutputTokens: preview.modelCapabilities.maximumOutputTokens, reasoningConsumesCompletionBudget: preview.modelCapabilities.reasoningConsumesCompletionBudget, estimatedCost: preview.cost.expectedEstimatedCost, maximumEstimatedCost: preview.cost.maximumEstimatedCost, currency: preview.cost.currency, costDecision: preview.costDecision, contextSummary: { blockedFields: context.blockedFields, recipeIncluded: !!input.recipe, trackLevelLibraryMetadata: false }, previewRequired: preview.privacyMode === "FULL_METADATA" || preview.provider.location !== "LOCAL", warnings: preview.outputBudget?.constrained ? ["The configured output-token limit is below the preferred Recipe Copilot budget."] : [] as string[] };
+    return { available: true as const, providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow.displayName, privacyMode: preview.privacyMode, remoteOperationAllowed: preview.provider.location !== "LOCAL", blockedReasonCode: null, blockedReasonMessage: null, canConfigure: permission.admin, settingsUrl: permission.admin ? "/settings/ai" : null, dailyRequestLimit: { effectiveMode: dailyRequests?.effective?.effectiveMode || "UNLIMITED", scope: dailyRequests?.effective?.scope || null, limit: dailyRequests?.limit ?? null, usage: dailyRequests?.usage ?? null, remaining: dailyRequests?.remaining ?? null, resetAt: dailyRequests?.resetAt ?? null }, provider: providerRow.displayName, model, local: preview.provider.location === "LOCAL", estimatedInputTokens: preview.limits.estimatedInputTokens, outputLengthManagedByProvider: true, structuredOutputMode: preview.modelCapabilities.structuredOutputMode, modelReasoning: preview.modelCapabilities.supportsReasoning, reasoningDisabledForStructuredOutput: true, estimatedCost: preview.cost.expectedEstimatedCost, maximumEstimatedCost: preview.cost.maximumEstimatedCost, currency: preview.cost.currency, costDecision: preview.costDecision, contextSummary: { blockedFields: context.blockedFields, recipeIncluded: !!input.recipe, trackLevelLibraryMetadata: false }, previewRequired: preview.privacyMode === "FULL_METADATA" || preview.provider.location !== "LOCAL", warnings: [] as string[] };
   } catch (error) {
     const value = error as any;
     const originalCode = String(value?.category || value?.code || "GOVERNANCE_BLOCKED");
@@ -174,11 +173,10 @@ export async function getRecipeCopilotAvailability(userId: string, raw: unknown 
     const details = error instanceof AiError ? error.details : undefined;
     const requestLimitReason = ["DAILY_REQUEST_LIMIT_REACHED", "MONTHLY_REQUEST_LIMIT_REACHED"].includes(originalCode) ? describeRequestLimitFromDetails(details) : null;
     const costLimitReason = mappedCode === "AI_REQUEST_COST_LIMIT_EXCEEDED" ? describeCostLimitFromDetails({ currency: governance?.currency, ...details }) : null;
-    const outputBudgetReason = mappedCode === "AI_REQUIRED_OUTPUT_BUDGET_EXCEEDS_LIMIT" ? `Configured output-token limit: ${Number(details?.configured_output_token_limit || 0).toLocaleString()}. Recommended minimum: ${Number(details?.recommended_minimum || 0).toLocaleString()}. Estimated maximum cost: ${details?.estimated_maximum_cost == null ? "unavailable" : `${details.currency || governance?.currency || "USD"} ${Number(details.estimated_maximum_cost).toFixed(4)}`}. Applicable governance limit: ${Number(details?.applicable_governance_limit || 0).toLocaleString()}.` : null;
-    const reason = requestLimitReason || costLimitReason || outputBudgetReason
+    const reason = requestLimitReason || costLimitReason
       || (error instanceof Error ? error.message : "AI governance blocked this request.");
     const failedCheck = typeof details?.failedCheck === "string" ? details.failedCheck : null;
-    return disabled(mappedCode, reason, { providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow.displayName, failedCheck, configuredOutputTokenLimit: details?.configured_output_token_limit, recommendedMinimumOutputTokens: details?.recommended_minimum, reasoningReserveTokens: details?.reasoning_reserve, estimatedMaximumCost: details?.estimated_maximum_cost, currency: details?.currency || governance?.currency, requestLimit: details?.limit == null ? null : { period: originalCode === "MONTHLY_REQUEST_LIMIT_REACHED" ? "MONTHLY" : "DAILY", scope: details.scope ?? null, limit: Number(details.limit), usage: Number(details.current_usage ?? 0), remaining: Number(details.remaining ?? 0), resetAt: details.reset_at ?? null } });
+    return disabled(mappedCode, reason, { providerId, providerName: providerRow.displayName, modelId: model, modelName: modelRow.displayName, failedCheck, requestLimit: details?.limit == null ? null : { period: originalCode === "MONTHLY_REQUEST_LIMIT_REACHED" ? "MONTHLY" : "DAILY", scope: details.scope ?? null, limit: Number(details.limit), usage: Number(details.current_usage ?? 0), remaining: Number(details.remaining ?? 0), resetAt: details.reset_at ?? null } });
   }
 }
 
@@ -209,18 +207,16 @@ export async function runRecipeCopilot(userId: string, recipeId: string | null, 
       featureKey: RECIPE_COPILOT_FEATURE_KEY, providerId: availability.providerId, model: availability.model,
       systemInstructions: RECIPE_COPILOT_SYSTEM_PROMPT,
       messages: [{ role: "user", content: recipeCopilotUserPrompt({ action: input.action, instruction: input.instruction, purpose: input.purpose, context: privacy.recipe, localAnalysis: { candidateEstimate: localAnalysis.candidateEstimate, compatibility: localAnalysis.compatibility, playlistExample: playlistContext } }) }],
-      responseFormat: { type: "json", name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, unknownFields: "reject", allowEmbeddedJson: false },
-      outputBudget: RECIPE_COPILOT_OUTPUT_BUDGET,
+      responseFormat: { type: "json", name: "mixarr_recipe_copilot", schema: recipeCopilotResponseSchema, jsonSchema: recipeCopilotJsonSchema, unknownFields: "reject", allowEmbeddedJson: true, knownRootWrappers: ["recipe", "draft", "result", "recipeDraft"] },
+      estimatedOutputTokens: 2_500,
       privacyMode: availability.privacyMode as any, maxResponseBytes: 512_000,
-      temperature: 0.1, requestSource: "FOREGROUND", allowFallback: true, requiredCapabilities: ["structured_json"],
+      thinkingMode: "disabled", requestSource: "FOREGROUND", allowFallback: true, requiredCapabilities: ["structured_json"],
       contextTrimmingStrategy: "REMOVE_LOWEST_PRIORITY", signal, correlationId: requestRow.id,
       externalConfirmation: input.externalConfirmation, idempotencyKey: input.idempotencyKey,
       promptTemplateVersion: RECIPE_COPILOT_PROMPT_VERSION,
       metadata: { workflow: "recipe_copilot", action: input.action, advisory_only: true, automatic_activation: false },
     }, userId);
-    const checkedOutput = recipeCopilotResponseSchema.safeParse(response.data);
-    if (!checkedOutput.success) throw new AiError("AI_FEATURE_INVALID_STRUCTURED_OUTPUT", undefined, 422, undefined, { request_id: requestRow.id, provider: availability.provider, model: availability.model, stage: "RECIPE_SCHEMA_VALIDATION", elapsed_ms: Date.now() - operationStarted, issues: checkedOutput.error.issues.slice(0, 25).map((issue) => ({ path: issue.path.join("."), code: issue.code })) });
-    const output = checkedOutput.data;
+    const output = recipeCopilotResponseSchema.parse(response.data);
     if (output.action !== input.action) throw failure("AI_ACTION_MISMATCH", "The provider returned a different Recipe Copilot action.", 422);
     const readOnly = new Set(["explain", "diagnose", "compare_intent", "suggest_names", "onboarding"]);
     if (readOnly.has(input.action) && output.proposedPatch) throw failure("READ_ONLY_ACTION_MODIFIED_RECIPE", "A read-only Copilot action attempted to modify the recipe.", 422);

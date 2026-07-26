@@ -1,6 +1,6 @@
 # Mixarr v2.4.6 — AI Playlist Summaries and Metadata Suggestions
 
-Mixarr v2.4.6 adds factual playlist descriptions and a review-first metadata cleanup workspace. Both capabilities reuse the v2.4.x provider coordinator, privacy modes, request previews, structured-response validation, budgets, token limits, user/provider limits, retry protection, timeouts, usage history, and sanitized audits.
+Mixarr v2.4.6 adds factual playlist descriptions and a review-first metadata cleanup workspace. Both capabilities reuse the provider coordinator, privacy modes, request previews, structured-response validation, monetary and request-count budgets, provider-native context validation, retry protection, timeouts, usage history, and sanitized audits. Mixarr-configured token caps were retired in v2.4.17.
 
 ## Safety boundary
 
@@ -108,10 +108,9 @@ Docker upgrades use the normal image-and-migration process; containers and volum
 
 - **Missing provider / feature disabled:** configure AI, select a model, review privacy/budgets, then explicitly enable the coordinator feature and user advisory setting.
 - **No scan results:** confirm Metadata Suggestions and deterministic checks are enabled; a clean or very small batch may produce no candidates.
-- **Budget or token limit:** use Metadata Limited, reduce batch size, choose fewer summary types, or adjust an authorized limit.
+- **Budget or native context limit:** use Metadata Limited, reduce batch size, choose fewer summary types, adjust a monetary/request-count budget, or select a model with a suitable native context window.
 - **Privacy conflict:** Local Only requires a locally classified provider. Full track context additionally requires its dedicated setting.
 - **Conflicting sources:** no value is chosen automatically; inspect queried and unavailable sources in detail.
 - **Invalid AI response:** Mixarr retains safe deterministic results, marks the batch warning, and rejects out-of-schema or out-of-scope output.
 - **Long scan:** watch durable progress and cancel safely; saved suggestions remain valid.
 - **Duplicate suggestion:** the fingerprint updates detection count and time rather than recreating the pending item or resetting review decisions.
-

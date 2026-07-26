@@ -16,7 +16,7 @@ export class OllamaAdapter implements AiProviderAdapter {
   async testConnection(config: ResolvedAiProviderConfig, signal?: AbortSignal): Promise<AiConnectionTestResult> {
     const started = Date.now();
     if (config.defaultModel) {
-      await this.complete({ featureKey: "connection_test", messages: [{ role: "user", content: "Reply only with OK." }], maxOutputTokens: 8 }, config, { requestId: crypto.randomUUID(), providerId: config.id, model: config.defaultModel, signal: signal || new AbortController().signal, maxResponseBytes: 16_384 });
+      await this.complete({ featureKey: "connection_test", messages: [{ role: "user", content: "Reply only with OK." }] }, config, { requestId: crypto.randomUUID(), providerId: config.id, model: config.defaultModel, signal: signal || new AbortController().signal, maxResponseBytes: 16_384 });
       return { connected: true, message: "Ollama connection and chat completion succeeded.", latencyMs: Date.now() - started, detectedApiType: "ollama", capabilities: this.capabilities(config), availableModelCount: 0, defaultModelAvailable: true, testedAt: new Date().toISOString() };
     }
     const models = await this.discoverModels(config, signal);
@@ -25,7 +25,7 @@ export class OllamaAdapter implements AiProviderAdapter {
   async complete<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): Promise<AiResponse<T>> {
     const started = Date.now();
     const messages = [...(request.systemInstructions ? [{ role: "system", content: request.systemInstructions }] : []), ...request.messages];
-    const result = await safeFetchJsonDetailed(joinUrl(this.base(config), "/api/chat"), { method: "POST", headers: configuredHeaders(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages, stream: false, format: request.responseFormat ? "json" : undefined, options: { temperature: request.temperature, num_predict: request.maxOutputTokens, num_ctx: config.maximumContextTokens } }) }, context.maxResponseBytes, { requestId: context.requestId, provider: config.displayName, model: context.model, stage: "CHAT_COMPLETION" });
+    const result = await safeFetchJsonDetailed(joinUrl(this.base(config), "/api/chat"), { method: "POST", headers: configuredHeaders(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages, stream: false, format: request.responseFormat ? "json" : undefined, options: request.temperature == null ? undefined : { temperature: request.temperature } }) }, context.maxResponseBytes, { requestId: context.requestId, provider: config.displayName, model: context.model, stage: "CHAT_COMPLETION" });
     const payload = { ...result.payload, usage: { input_tokens: result.payload?.prompt_eval_count, output_tokens: result.payload?.eval_count } };
     const normalized = normalizeAIResponse(payload, { providerType: "ollama", provider: config.displayName, requestedModel: context.model, requestId: context.requestId, transport: result.transport, allowDirectStructuredObject: !!request.responseFormat });
     return { requestId: context.requestId, providerId: config.id, providerType: "ollama", model: normalized.model || context.model, content: normalized.text, usage: normalized.usage, latencyMs: Date.now() - started, retryCount: 0, streaming: false, finishReason: normalized.finishReason, warnings: ["Local provider - API cost not tracked"], transport: result.transport };
@@ -33,7 +33,7 @@ export class OllamaAdapter implements AiProviderAdapter {
   async *stream<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): AsyncIterable<AiStreamEvent> {
     const messages = [...(request.systemInstructions ? [{ role: "system", content: request.systemInstructions }] : []), ...request.messages];
     let response: Response;
-    try { response = await fetch(joinUrl(this.base(config), "/api/chat"), { method: "POST", headers: configuredHeaders(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages, stream: true, format: request.responseFormat ? "json" : undefined, options: { temperature: request.temperature, num_predict: request.maxOutputTokens } }) }); }
+    try { response = await fetch(joinUrl(this.base(config), "/api/chat"), { method: "POST", headers: configuredHeaders(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages, stream: true, format: request.responseFormat ? "json" : undefined, options: request.temperature == null ? undefined : { temperature: request.temperature } }) }); }
     catch (error) { throw normalizeProviderError(error); }
     if (!response.ok) throw normalizeProviderError(new Error(`Provider returned HTTP ${response.status}.`), response.status);
     yield { type: "started", requestId: context.requestId };

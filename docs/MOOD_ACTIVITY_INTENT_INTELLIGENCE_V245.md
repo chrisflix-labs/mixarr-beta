@@ -16,7 +16,7 @@ Built-in phrase profiles recognize single words and multi-word expressions such 
 
 The deterministic parser is enabled by default and supports categories, phrase normalization, negation, hard-versus-soft classification, activity profiles, time-of-day profiles, phases, energy curves, BPM expressions, preferences, conflicts, and confidence without any AI provider.
 
-Provider enhancement is optional and disabled by default. When enabled it reuses Mixarr's existing provider configuration and obeys provider enablement, user policy, privacy mode, local-only mode, budgets, request/token limits, timeouts, health, strict structured-output validation, cost tracking, and fallback behavior. Invalid or unavailable provider output produces a non-blocking warning and falls back to local interpretation.
+Provider enhancement is optional and disabled by default. When enabled it reuses Mixarr's existing provider configuration and obeys provider enablement, user policy, privacy mode, local-only mode, monetary and request-count budgets, provider-native context validation, timeouts, health, strict structured-output validation, cost tracking, and fallback behavior. Token estimates are informational. Invalid or unavailable provider output produces a non-blocking warning and falls back to local interpretation.
 
 ## Personal and household terminology privacy
 

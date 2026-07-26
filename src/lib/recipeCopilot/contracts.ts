@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { playlistRuleSchema } from "../playlistService";
+import { zodToJsonSchema } from "../../ai/validation/jsonSchema";
 import {
   recipeAutomationPolicySchema, recipeBpmFlowSchema, recipeDiscoverySchema,
   recipeIdentityDefaultsSchema, recipeRefreshPolicySchema, recipeScoringSchema,
@@ -71,6 +72,9 @@ export const recipeCopilotResponseSchema = z.object({
   nameSuggestions: z.array(z.object({ name: text(120).min(1), rationale: text(500), style: text(80) }).strict()).max(10),
   onboarding: z.array(z.object({ title: text(160), guidance: text(1200) }).strict()).max(20),
 }).strict();
+
+/** Canonical provider-facing schema derived from the same runtime validator. */
+export const recipeCopilotJsonSchema = zodToJsonSchema(recipeCopilotResponseSchema);
 
 export const recipeCopilotRequestSchema = z.object({
   action: z.enum(RECIPE_COPILOT_ACTIONS), instruction: text(6000).default(""), recipe: z.record(z.unknown()).optional(),

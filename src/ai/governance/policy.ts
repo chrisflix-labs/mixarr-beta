@@ -88,23 +88,12 @@ export function estimateTokens(value: string) {
   return Math.max(1, Math.ceil(Math.max(bytes / 4, words * 1.25)));
 }
 
-export type TokenLimits = { maximumInputTokens?: number | null; maximumOutputTokens?: number | null; maximumCombinedTokens?: number | null };
-const strictPositive = (values: Array<number | null | undefined>, fallback: number) => Math.min(...values.filter((value): value is number => value != null && value > 0).concat(fallback));
-export function resolveEffectiveTokenLimits(scopes: TokenLimits[], requestOutputTokens?: number) {
-  const maximumInputTokens = strictPositive(scopes.map((scope) => scope.maximumInputTokens), Number.MAX_SAFE_INTEGER);
-  const maximumOutputTokens = strictPositive([...scopes.map((scope) => scope.maximumOutputTokens), requestOutputTokens], Number.MAX_SAFE_INTEGER);
-  const maximumCombinedTokens = strictPositive(scopes.map((scope) => scope.maximumCombinedTokens), Number.MAX_SAFE_INTEGER);
-  return { maximumInputTokens, maximumOutputTokens, maximumCombinedTokens };
-}
-
-export function validatePromptLimits(input: { text: string; messageCount: number; metadataRecordCount: number; estimatedInputTokens?: number; limits: { maximumPromptCharacters: number; maximumPromptBytes: number; maximumContextMessages: number; maximumMetadataRecords: number } & TokenLimits; requestedOutputTokens?: number; tokenScopes?: TokenLimits[] }) {
+export function validatePromptLimits(input: { text: string; messageCount: number; metadataRecordCount: number; estimatedInputTokens?: number; estimatedOutputTokens?: number; nativeContextTokens?: number | null; limits: { maximumPromptCharacters: number; maximumPromptBytes: number; maximumContextMessages: number; maximumMetadataRecords: number } }) {
   const characters = input.text.length; const bytes = Buffer.byteLength(input.text, "utf8"); const estimatedInputTokens = input.estimatedInputTokens ?? estimateTokens(input.text);
   if (characters > input.limits.maximumPromptCharacters || bytes > input.limits.maximumPromptBytes || input.messageCount > input.limits.maximumContextMessages || input.metadataRecordCount > input.limits.maximumMetadataRecords) throw new AiError("AI_PROMPT_TOO_LARGE", undefined, 409, undefined, { characters, bytes, message_count: input.messageCount, metadata_records: input.metadataRecordCount });
-  const effective = resolveEffectiveTokenLimits([input.limits, ...(input.tokenScopes || [])], input.requestedOutputTokens);
-  if (estimatedInputTokens > effective.maximumInputTokens || estimatedInputTokens >= effective.maximumCombinedTokens) throw new AiError("AI_TOKEN_LIMIT_EXCEEDED", undefined, 409, undefined, { estimated_input_tokens: estimatedInputTokens, effective_limits: effective });
-  const maxOutputTokens = Math.max(0, Math.min(effective.maximumOutputTokens, effective.maximumCombinedTokens - estimatedInputTokens));
-  if (maxOutputTokens < 1) throw new AiError("AI_RESPONSE_LIMIT_INVALID");
-  return { characters, bytes, estimatedInputTokens, maxOutputTokens, effectiveLimits: effective, clamped: input.requestedOutputTokens != null && maxOutputTokens < input.requestedOutputTokens };
+  const nativeContextTokens = Number(input.nativeContextTokens || 0);
+  if (nativeContextTokens > 0 && estimatedInputTokens >= nativeContextTokens) throw new AiError("AI_MODEL_CONTEXT_WINDOW_EXCEEDED", undefined, 409, undefined, { estimated_input_tokens: estimatedInputTokens, model_context_tokens: nativeContextTokens });
+  return { characters, bytes, estimatedInputTokens, estimatedOutputTokens: Math.max(1, Math.floor(input.estimatedOutputTokens || 2_500)), nativeContextTokens: nativeContextTokens || null };
 }
 
 export const AI_CURRENCY_MICROS = 1_000_000;
@@ -166,14 +155,14 @@ export function evaluateRetryCost(input: { incrementalCost: string | number; ret
 }
 
 export type PricingInput = { inputPricePerMillion?: string | number | null; outputPricePerMillion?: string | number | null; cachedInputPricePerMillion?: string | number | null; reasoningPricePerMillion?: string | number | null; fixedRequestCost?: string | number | null; currency?: string; pricingSource?: string | null; lastVerifiedAt?: Date | string | null; estimated?: boolean };
-export function estimateRequestCost(input: { inputTokens: number; maximumOutputTokens: number; expectedOutputTokens?: number; cachedInputTokens?: number; reasoningTokens?: number; retryAllowance?: number; pricing: PricingInput }) {
+export function estimateRequestCost(input: { inputTokens: number; estimatedOutputTokens: number; expectedOutputTokens?: number; cachedInputTokens?: number; reasoningTokens?: number; retryAllowance?: number; pricing: PricingInput }) {
   const price = input.pricing; const fixed = currencyMicros(price.fixedRequestCost) || 0;
   const baseInput = pricedTokens(Math.max(0, input.inputTokens - (input.cachedInputTokens || 0)), currencyMicros(price.inputPricePerMillion));
   const cached = pricedTokens(input.cachedInputTokens || 0, currencyMicros(price.cachedInputPricePerMillion) ?? currencyMicros(price.inputPricePerMillion));
   const reasoning = pricedTokens(input.reasoningTokens || 0, currencyMicros(price.reasoningPricePerMillion) ?? currencyMicros(price.outputPricePerMillion));
   const outputPrice = currencyMicros(price.outputPricePerMillion); const minimumMicros = fixed + baseInput + cached + reasoning;
-  const expectedMicros = minimumMicros + pricedTokens(input.expectedOutputTokens ?? Math.ceil(input.maximumOutputTokens / 2), outputPrice);
-  const oneMaximum = minimumMicros + pricedTokens(input.maximumOutputTokens, outputPrice); const maximumMicros = oneMaximum * (1 + Math.max(0, input.retryAllowance || 0));
+  const expectedMicros = minimumMicros + pricedTokens(input.expectedOutputTokens ?? input.estimatedOutputTokens, outputPrice);
+  const oneMaximum = minimumMicros + pricedTokens(input.estimatedOutputTokens, outputPrice); const maximumMicros = oneMaximum * (1 + Math.max(0, input.retryAllowance || 0));
   const ageDays = price.lastVerifiedAt ? Math.floor((Date.now() - new Date(price.lastVerifiedAt).getTime()) / 86_400_000) : null;
   return { minimumEstimatedCost: currencyFromMicros(minimumMicros), expectedEstimatedCost: currencyFromMicros(expectedMicros), maximumEstimatedCost: currencyFromMicros(maximumMicros), confidence: price.estimated ? "ESTIMATED" : "CONFIGURED", currency: price.currency || "USD", pricingSource: price.pricingSource || "Administrator configuration", pricingAgeDays: ageDays };
 }

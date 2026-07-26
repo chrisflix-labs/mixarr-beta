@@ -104,7 +104,7 @@ export async function previewNaturalLanguageRequest(userId: string, raw: unknown
   const input = createNaturalLanguageRequestSchema.parse(raw);
   const intentSettings = await prisma.intentInterpretationSetting.findUnique({ where: { userId } });
   if (input.privacyMode === "LOCAL_ONLY" || !intentSettings?.providerAssistanceEnabled) {
-    return { provider: { id: null, name: "Local deterministic interpreter", location: "LOCAL" }, model: "deterministic-local-v1", privacyMode: "LOCAL_ONLY", cost: { currency: "USD", maximumEstimatedCost: 0 }, limits: { estimatedInputTokens: 0, maxOutputTokens: 0 }, privacy: { localOnly: true }, metadataShared: {}, notShared: ["Request text", "personal dictionary definitions", "household terminology", "Plex credentials", "library inventory"], plexMutation: false, localFirst: true };
+    return { provider: { id: null, name: "Local deterministic interpreter", location: "LOCAL" }, model: "deterministic-local-v1", privacyMode: "LOCAL_ONLY", cost: { currency: "USD", maximumEstimatedCost: 0 }, limits: { estimatedInputTokens: 0, outputLengthManagedByProvider: true }, privacy: { localOnly: true }, metadataShared: {}, notShared: ["Request text", "personal dictionary definitions", "household terminology", "Plex credentials", "library inventory"], plexMutation: false, localFirst: true };
   }
   const [global, feature, governance] = await Promise.all([
     prisma.aiGlobalSetting.findUnique({ where: { id: "global" } }),
@@ -118,7 +118,7 @@ export async function previewNaturalLanguageRequest(userId: string, raw: unknown
   const provider = await resolveAiProvider(providerId), model = feature.preferredModel || provider.defaultModel;
   if (!model) throw requestError("MODEL_NOT_CONFIGURED", "No model is configured for this feature.", 409);
   const privacyMode = input.privacyMode || governance?.privacyMode || "METADATA_LIMITED";
-  const preview = await previewAiRequest({ request: { featureKey: "natural_language_playlist_requests", messages: [{ role: "user", content: input.request }], maxOutputTokens: 2400, privacyMode: privacyMode as any, requestSource: "FOREGROUND", metadata: { workflow: "interpret_only", deterministic_execution: false } }, provider, model, userId });
+  const preview = await previewAiRequest({ request: { featureKey: "natural_language_playlist_requests", messages: [{ role: "user", content: input.request }], estimatedOutputTokens: 2400, privacyMode: privacyMode as any, requestSource: "FOREGROUND", metadata: { workflow: "interpret_only", deterministic_execution: false } }, provider, model, userId });
   return { provider: { id: provider.id, name: provider.displayName, location: provider.locationClassification }, model, privacyMode, cost: preview.cost, limits: preview.limits, privacy: preview.privacyReport, metadataShared: preview.sanitizedMetadata, notShared: ["Plex credentials", "server addresses", "file paths", "complete library inventory", "track lists"], plexMutation: false };
 }
 

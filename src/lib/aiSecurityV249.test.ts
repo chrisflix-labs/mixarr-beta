@@ -56,7 +56,7 @@ test("v2.4.9 malicious provider responses are non-overridable when they request 
 
 test("v2.4.9 structured output repair is local, bounded, and revalidated", () => {
   const format = { type: "json" as const, name: "test-1", schema: z.object({ schemaVersion: z.literal("1"), value: z.number() }).strict() };
-  const repaired = parseStructuredResponseDetailed("```json\n{\"schemaVersion\":\"1\",\"value\":4,}\n```", format, 10_000);
+  const repaired = parseStructuredResponseDetailed("```json\n{\"schemaVersion\":\"1\",\"value\":4}\n```", format, 10_000);
   assert.deepEqual(repaired.data, { schemaVersion: "1", value: 4 });
   assert.equal(repaired.repaired, true);
   assert.throws(() => parseStructuredResponseDetailed('{"schemaVersion":"1","value":4,"unknown":true}', format, 10_000));

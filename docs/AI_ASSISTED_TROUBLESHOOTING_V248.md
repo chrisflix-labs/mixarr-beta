@@ -44,7 +44,7 @@ Simulations do not save recipes, update timestamps, write playlists, modify hist
 
 ## AI privacy and cost controls
 
-Troubleshooting uses the existing AI provider registry, feature settings, privacy modes, request coordinator, token limits, prompt and response limits, provider and user budgets, daily limits, timeouts, bounded retries, context trimming, audit history, and fallback policy. External AI troubleshooting is off after migration.
+Troubleshooting uses the existing AI provider registry, feature settings, privacy modes, request coordinator, prompt and response-size limits, provider-native context validation, provider and user cost budgets, request-count limits, timeouts, bounded retries, context trimming, audit history, and fallback policy. Token estimates remain informational. External AI troubleshooting is off after migration.
 
 Before submission, the UI shows provider, model, privacy mode, estimated input tokens, estimated cost, approved categories, and whether track-level data is present. Only the problem statement, deterministic findings, supporting metrics, limitations, and relevant approved summaries are submitted; Mixarr does not send the entire bundle.
 

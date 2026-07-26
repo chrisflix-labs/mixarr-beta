@@ -175,8 +175,8 @@ export class OpenAIProviderAdapter implements AiProviderAdapter {
     }).filter((model: AiModel) => !!model.id).sort((left: AiModel, right: AiModel) => left.id.localeCompare(right.id));
   }
 
-  private async response(config: ResolvedAiProviderConfig, model: string, input: string, maxOutputTokens: number, signal: AbortSignal, maxBytes: number) {
-    const body = { model, input, max_output_tokens: maxOutputTokens };
+  private async response(config: ResolvedAiProviderConfig, model: string, input: string, signal: AbortSignal, maxBytes: number) {
+    const body = { model, input };
     return openAiFetchJson(endpoint(config, "responses"), { method: "POST", headers: headers(config), signal, body: JSON.stringify(body) }, maxBytes);
   }
 
@@ -184,7 +184,7 @@ export class OpenAIProviderAdapter implements AiProviderAdapter {
     const selected = model || config.defaultModel;
     if (!selected) throw new AiError("MODEL_NOT_CONFIGURED");
     const started = Date.now();
-    const result = await this.response(config, selected, ADMIN_TEST_PROMPT, 16, signal || new AbortController().signal, 64_000);
+    const result = await this.response(config, selected, ADMIN_TEST_PROMPT, signal || new AbortController().signal, 64_000);
     const content = extractOpenAiResponseText(result.payload);
     if (!content) throw new AiError("PROVIDER_RESPONSE_INVALID", undefined, 502, undefined, { http_status: result.httpStatus, provider_request_id: result.providerRequestId, response_id: typeof result.payload?.id === "string" ? result.payload.id : undefined });
     if (!/mixarr[\s_-]*ok/i.test(content)) throw new AiError("PROVIDER_RESPONSE_INVALID", undefined, 502, undefined, { http_status: result.httpStatus, provider_request_id: result.providerRequestId, response_id: typeof result.payload?.id === "string" ? result.payload.id : undefined, reason: "test_marker_missing" });
@@ -194,7 +194,7 @@ export class OpenAIProviderAdapter implements AiProviderAdapter {
 
   async complete<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): Promise<AiResponse<T>> {
     const started = Date.now();
-    const result = await this.response(config, context.model, promptFor(request), request.maxOutputTokens || 256, context.signal, context.maxResponseBytes);
+    const result = await this.response(config, context.model, promptFor(request), context.signal, context.maxResponseBytes);
     const content = extractOpenAiResponseText(result.payload);
     if (!content) throw new AiError("PROVIDER_RESPONSE_INVALID", undefined, 502, undefined, { http_status: result.httpStatus, provider_request_id: result.providerRequestId });
     return { requestId: context.requestId, providerId: config.id, providerType: "openai", model: String(result.payload?.model || context.model), content, usage: usage(result.payload, result.providerRequestId), finishReason: String(result.payload?.status || "completed"), latencyMs: Date.now() - started, retryCount: 0, streaming: false, warnings: [] };

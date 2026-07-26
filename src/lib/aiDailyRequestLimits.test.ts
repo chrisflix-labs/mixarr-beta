@@ -216,7 +216,7 @@ describe("v2.4.13 governance admission and persistence contracts", () => {
 
   it("keeps the other protections evaluated independently of request counts", () => {
     const service = read("src/ai/governance/service.ts");
-    for (const marker of [/AI_REQUEST_COST_LIMIT_EXCEEDED/, /AI_PROVIDER_BUDGET_EXCEEDED/, /DAILY_COST_LIMIT_REACHED/, /MONTHLY_COST_LIMIT_REACHED/, /AI_GLOBAL_BUDGET_EXCEEDED/, /PAID_PROVIDER_NOT_PERMITTED/, /PRIVACY_MODE_INCOMPATIBLE/, /MODEL_UNPRICED/, /AI_TOKEN_LIMIT_EXCEEDED|validatePromptLimits/, /PROVIDER_DISABLED/]) assert.match(service, marker);
+    for (const marker of [/AI_REQUEST_COST_LIMIT_EXCEEDED/, /AI_PROVIDER_BUDGET_EXCEEDED/, /DAILY_COST_LIMIT_REACHED/, /MONTHLY_COST_LIMIT_REACHED/, /AI_GLOBAL_BUDGET_EXCEEDED/, /PAID_PROVIDER_NOT_PERMITTED/, /PRIVACY_MODE_INCOMPATIBLE/, /MODEL_UNPRICED/, /validatePromptLimits/, /PROVIDER_DISABLED/]) assert.match(service, marker);
   });
 
   it("exempts an administrator from the user-scope daily request limit explicitly", () => {
@@ -309,6 +309,6 @@ describe("v2.4.13 administrator and Recipe Copilot interface", () => {
     const docs = read("docs/AI_DAILY_REQUEST_LIMITS_V2413.md");
     for (const marker of [/precedence/i, /Unlimited/, /Limited/, /Inherit/, /zero/i, /AI_DAILY_LIMIT_EXCEEDED/, /20260801010000_ai_daily_request_limit_configuration_v2413/]) assert.match(docs, marker);
     assert.match(read("CHANGELOG.md"), /v2\.4\.13 - Daily AI Request Limit Configuration/);
-    assert.equal(JSON.parse(read("package.json")).version, "2.4.16");
+    assert.equal(JSON.parse(read("package.json")).version, "2.4.17");
   });
 });

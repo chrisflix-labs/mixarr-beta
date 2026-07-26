@@ -1,4 +1,4 @@
-# Mixarr v2.4.1 — AI Privacy, Cost and Token Controls
+# Mixarr v2.4.1 — AI Privacy, Cost and Context Controls
 
 Mixarr v2.4.1 adds the administrative governance boundary required before any user-facing AI workflow. It does not add playlist generation, recommendations, discovery, tagging, conversation, autonomous agents, or AI-driven mutation. Existing deterministic Mixarr behavior remains authoritative and does not require AI.
 
@@ -29,7 +29,7 @@ Every normal completion and stream passes through `AiRequestCoordinator` and the
 2. Resolve the strictest global, feature, request, and user privacy policy.
 3. Exclude an external provider in Local Only. A provider is local only when it is explicitly classified and administrator-confirmed; a private-looking hostname is insufficient.
 4. Transform typed metadata through the allowlist/anonymization engine. Secret, credential, path, infrastructure, raw-file, and identity fields are always prohibited.
-5. Validate prompt characters, UTF-8 bytes, message count, metadata-record count, estimated input tokens, output tokens, combined tokens, response bytes, and structured limits.
+5. Validate prompt characters, UTF-8 bytes, message count, metadata-record count, response bytes, structured limits, and the selected model's native context window. Token estimates are informational.
 6. Apply the configured visible context-trimming policy, preserving required system, safety, and structured-schema sections, then recalculate tokens and cost.
 7. Find the effective model-pricing profile and calculate minimum, expected, and maximum estimated cost for the initial attempt only.
 8. Check request counts plus provider, user, background, and global limits. Active reservations count as spent for admission control.
@@ -64,7 +64,7 @@ Pricing is stored per provider/model and effective date. Profiles support input,
 
 The cost estimator reports a minimum, expected, and maximum one-attempt estimate; confidence; price source and age; remaining user/provider/global budgets; and admission status. Estimates are never labeled as exact charges. Local providers default to zero monetary cost unless local cost counting and pricing are configured. Initial admission never adds the theoretical cost of all possible retries and never applies the retry-only cost limit.
 
-Global, provider, and user budgets support daily/monthly cost and request limits. User limits also control provider/privacy/model eligibility, paid providers, background use, and per-request tokens. Administrators are not exempt unless the explicit exemption setting is enabled.
+Global, provider, and user budgets support daily/monthly cost and request limits. User limits also control provider/privacy/model eligibility, paid providers, and background use. Administrators are not exempt unless the explicit exemption setting is enabled.
 
 Reservations expire after ten minutes if a worker disappears. Active and expired reservations are visible through administrator diagnostics. A completed request reconciles its reservation; failure, cancellation, timeout, or fallback releases it before another provider is reserved.
 
@@ -93,7 +93,7 @@ All routes follow the existing authenticated administrator convention and struct
 - `GET /api/ai/usage/export?format=csv|json` — safe administrator exports.
 - `GET /api/ai/audit` and `GET /api/ai/audit/:requestId` — searchable audit and sanitized linked attempts/reservations.
 
-Representative errors include `AI_EXTERNAL_PROVIDER_BLOCKED`, `AI_GLOBAL_BUDGET_EXCEEDED`, `AI_PROVIDER_BUDGET_EXCEEDED`, `AI_USER_BUDGET_EXCEEDED`, `AI_DAILY_REQUEST_LIMIT_EXCEEDED`, `AI_TOKEN_LIMIT_EXCEEDED`, `AI_PROMPT_TOO_LARGE`, `AI_MODEL_PRICING_MISSING`, `AI_BACKGROUND_REQUEST_BLOCKED`, `AI_RETRY_COST_LIMIT_EXCEEDED`, and `AI_NO_ELIGIBLE_PROVIDER`.
+Representative errors include `AI_EXTERNAL_PROVIDER_BLOCKED`, `AI_GLOBAL_BUDGET_EXCEEDED`, `AI_PROVIDER_BUDGET_EXCEEDED`, `AI_USER_BUDGET_EXCEEDED`, `AI_DAILY_REQUEST_LIMIT_EXCEEDED`, `AI_MODEL_CONTEXT_WINDOW_EXCEEDED`, `AI_PROMPT_TOO_LARGE`, `AI_MODEL_PRICING_MISSING`, `AI_BACKGROUND_REQUEST_BLOCKED`, `AI_RETRY_COST_LIMIT_EXCEEDED`, and `AI_NO_ELIGIBLE_PROVIDER`. Mixarr-configured token caps were retired in v2.4.17; token estimates remain informational while model-native context validation remains active.
 
 ## Permissions and auditing
 
