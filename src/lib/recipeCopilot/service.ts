@@ -28,6 +28,10 @@ import {
   logicalRecipeChanges, mergeRecipeCopilotPatch, recipeFingerprint, recommendBuiltInParents,
   statusForProposal,
 } from "./core";
+import {
+  applyRecipeProposalChanges, findRecipeProposalConflicts, getRecipeProposalPath,
+  stableRecipeProposalChangeId, type RecipeProposalChange,
+} from "./proposalApply";
 
 export const RECIPE_AI_PERMISSIONS = [
   "recipe.ai.use", "recipe.ai.create", "recipe.ai.refine", "recipe.ai.explain", "recipe.ai.diagnose",
@@ -65,6 +69,7 @@ function publicProposal(row: any) {
     candidateEstimate: row.candidateEstimateJson, compatibility: row.compatibilityJson,
     safetyWarnings: row.safetyWarningsJson, unsupportedRequests: row.unsupportedRequestsJson,
     confidence: row.confidenceScore, previousRecipeVersion: row.previousRecipeVersion,
+    baseRevision: row.previousConfigurationJson ? recipeFingerprint(row.previousConfigurationJson) : null,
     manuallyEdited: row.manuallyEdited, differsFromAiProposal: row.differsFromAiProposal,
     appliedAt: row.appliedAt, approvedAt: row.approvedAt, rejectedAt: row.rejectedAt,
     supersededAt: row.supersededAt, quarantinedAt: row.quarantinedAt, statusReason: row.statusReason,
@@ -252,49 +257,155 @@ export async function runRecipeCopilot(userId: string, recipeId: string | null, 
   }
 }
 
-function getPath(value: any, path: string) { return path.split(".").reduce((current, part) => current?.[part], value); }
-function setPath(value: any, path: string, next: unknown) { const parts = path.split("."); let current = value; parts.slice(0, -1).forEach((part) => { if (!current[part] || typeof current[part] !== "object") current[part] = {}; current = current[part]; }); current[parts.at(-1)!] = clone(next); }
-function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)); }
-
 export async function applyRecipeCopilotProposal(userId: string, proposalId: string, raw: any = {}) {
+  const startedAt = Date.now();
   const proposal = await ownedProposal(userId, proposalId);
-  if (["REJECTED", "SUPERSEDED", "QUARANTINED"].includes(proposal.status)) throw failure("AI_RECIPE_PROPOSAL_NOT_APPLICABLE", `A ${proposal.status.toLowerCase()} proposal cannot be applied.`, 409);
-  if (!proposal.proposedConfigurationJson) throw failure("AI_RECIPE_PROPOSAL_HAS_NO_CHANGES", "This Copilot result is advisory and has no recipe changes.", 409);
-  if (proposal.recipe && isStaleRecipeResult(proposal.request.sourceUpdatedAt, proposal.recipe.updatedAt)) throw failure("AI_RECIPE_RESULT_STALE", "The recipe changed while the AI request was running. Review the current recipe and generate a new proposal.", 409);
-  if (raw.currentRecipe) {
-    const current = playlistRecipeSchema.parse(raw.currentRecipe);
-    if (JSON.stringify(current) !== JSON.stringify(proposal.previousConfigurationJson)) throw failure("AI_RECIPE_RESULT_STALE", "The unsaved recipe changed after this AI request began. Compare the proposal with the current draft before applying it.", 409);
-  }
-  const original = clone(proposal.originalProposalJson as any);
-  let next = raw.recipe ? playlistRecipeSchema.parse(raw.recipe) : clone(proposal.proposedConfigurationJson as any);
-  if (Array.isArray(raw.selectedPaths)) {
-    const base = clone(proposal.previousConfigurationJson as any);
-    const allowed = new Set((proposal.changesJson as any[]).map((item) => item.path));
-    for (const path of raw.selectedPaths.filter((item: unknown) => typeof item === "string" && allowed.has(item as string))) setPath(base, path as string, getPath(next, path as string));
-    next = playlistRecipeSchema.parse(base);
-  }
-  next = playlistRecipeSchema.parse({ ...next, enabled: false, automationPolicy: { ...next.automationPolicy, enabled: false, requireExplicitConfirmation: true } });
-  const differs = JSON.stringify(next) !== JSON.stringify(proposal.proposedConfigurationJson);
-  if (!proposal.recipeId) {
-    const updated = await prisma.aiRecipeProposal.update({ where: { id: proposal.id }, data: { appliedById: userId, appliedAt: new Date(), manuallyEdited: differs, differsFromAiProposal: differs } });
-    await auditAiRecipe({ requestId: proposal.requestId, proposalId: proposal.id, actorId: userId, eventType: "AI_RECIPE_PROPOSAL_APPLIED_TO_DRAFT", action: proposal.request.action, provider: proposal.request.providerDisplayName, model: proposal.request.model, privacyMode: proposal.request.privacyMode, remote: proposal.request.remote, statusBefore: proposal.status, statusAfter: proposal.status, metadata: { selectedPaths: raw.selectedPaths || null, manuallyEdited: differs, persisted: false } });
-    await recordRecommendationExplanationAudit(userId, proposal.id, "RECIPE_DIFF_APPROVED", { selectedPaths: raw.selectedPaths || null, persisted: false, manuallyEdited: differs }).catch(() => null);
-    return { proposal: publicProposal({ ...updated, request: proposal.request }), draft: { ...next, aiProposalId: proposal.id, aiRecipeStatus: proposal.status, aiProvenance: { originalRequest: proposal.request.sourceRequest, originalProposal: original, provider: proposal.request.providerDisplayName, model: proposal.request.model, createdAt: proposal.createdAt, promptTemplateVersion: proposal.request.promptTemplateVersion } }, persisted: false };
-  }
-  const existing = await ownedRecipe(userId, proposal.recipeId);
-  const update = updatePlaylistRecipeData(next, existing) as any;
-  const changes = proposal.changesJson as any[];
-  const updated = await prisma.$transaction(async (tx) => {
-    const recipe = await tx.playlistRecipe.update({ where: { id: existing.id }, data: { ...update, enabled: false, approvalState: "PENDING_REVIEW", approvedById: null, approvedAt: null, aiGenerated: true, aiRecipeStatus: proposal.status, lastAiProposalId: proposal.id, manuallyEditedAfterAi: differs, aiProvenanceJson: json({ originalRequest: proposal.request.sourceRequest, originalProposal: original, action: proposal.request.action, provider: proposal.request.providerDisplayName, model: proposal.request.model, createdAt: proposal.createdAt, lastAiModificationAt: new Date(), confidence: proposal.confidenceScore, assumptions: (proposal.analysisJson as any)?.assumptions || [], warnings: proposal.safetyWarningsJson, unsupportedRequests: proposal.unsupportedRequestsJson, candidateEstimate: proposal.candidateEstimateJson, compatibility: proposal.compatibilityJson, promptTemplateVersion: proposal.request.promptTemplateVersion, aiResponseIdentifier: proposal.request.aiResponseIdentifier, initiatedBy: proposal.request.ownerId, manuallyEdited: differs, differsFromAiProposal: differs, previousRecipeVersion: existing.recipeVersion }) } });
-    await tx.playlistRecipeRevision.updateMany({ where: { recipeId: existing.id, recipeVersion: recipe.recipeVersion }, data: { aiRequestId: proposal.requestId, aiProposalId: proposal.id, structuredDiffJson: json(changes) } });
-    await tx.aiRecipeProposal.update({ where: { id: proposal.id }, data: { appliedById: userId, appliedAt: new Date(), manuallyEdited: differs, differsFromAiProposal: differs } });
-    await tx.aiRecipeProposal.updateMany({ where: { recipeId: existing.id, id: { not: proposal.id }, status: { in: ["DRAFT", "NEEDS_REVIEW", "VALIDATED", "APPROVED"] } }, data: { status: "SUPERSEDED", supersededAt: new Date(), statusReason: "Replaced by a newer applied AI proposal." } });
-    await auditAiRecipe({ requestId: proposal.requestId, proposalId: proposal.id, recipeId: existing.id, actorId: userId, eventType: "SUGGESTED_MODIFICATION_APPLIED", action: proposal.request.action, provider: proposal.request.providerDisplayName, model: proposal.request.model, privacyMode: proposal.request.privacyMode, remote: proposal.request.remote, statusBefore: proposal.status, statusAfter: proposal.status, metadata: { selectedPaths: raw.selectedPaths || null, manuallyEdited: differs, recipeVersion: recipe.recipeVersion } }, tx);
-    return recipe;
+  const storedChanges = Array.isArray(proposal.changesJson) ? proposal.changesJson as any[] : [];
+  const selectedPaths = new Set(Array.isArray(raw.selectedPaths) ? raw.selectedPaths.filter((item: unknown): item is string => typeof item === "string") : []);
+  const requestedChanges = Array.isArray(raw.changes) ? raw.changes : null;
+  const storedByPath = new Map(storedChanges.map((change) => [String(change.path), change]));
+  const selectedChanges: RecipeProposalChange[] = requestedChanges
+    ? requestedChanges.filter((change: any) => change?.selected === true).map((change: any) => ({
+        id: String(change.id || ""),
+        path: String(change.path || ""),
+        currentValue: change.currentValue,
+        proposedValue: change.proposedValue,
+        selected: true,
+        confidence: typeof change.confidence === "number" ? change.confidence : undefined,
+        explanation: typeof change.explanation === "string" ? change.explanation : undefined,
+      }))
+    : storedChanges.filter((change) => selectedPaths.has(String(change.path))).map((change) => ({
+        id: stableRecipeProposalChangeId(proposal.id, String(change.path)),
+        path: String(change.path),
+        currentValue: change.before,
+        proposedValue: raw.recipe ? getRecipeProposalPath(raw.recipe, String(change.path)) : change.after,
+        selected: true,
+        confidence: typeof change.confidence === "number" ? change.confidence : undefined,
+        explanation: typeof change.reason === "string" ? change.reason : undefined,
+      }));
+  const selectedFieldPaths = selectedChanges.map((change) => change.path);
+
+  console.info("[Recipe Copilot] Applying selected changes", {
+    proposalId: proposal.id,
+    recipeMode: proposal.recipeId ? "existing" : "new",
+    selectedCount: selectedChanges.length,
+    selectedPaths: selectedFieldPaths,
+    formAvailable: Boolean(raw.currentRecipe),
+    currentRecipeRevision: raw.currentRecipe?.updatedAt || null,
   });
-  await writeRecipeAudit({ recipeId: updated.id, recipeVersion: updated.recipeVersion, eventType: "AI_RECIPE_PROPOSAL_APPLIED", actorId: userId, correlationId: proposal.requestId, description: `Applied ${raw.selectedPaths?.length ?? changes.length} reviewed AI recipe change(s); the recipe remains disabled pending normal approval and activation.`, previousState: { recipeVersion: existing.recipeVersion }, newState: { recipeVersion: updated.recipeVersion, aiRecipeStatus: proposal.status, enabled: false }, metadata: { proposalId: proposal.id, selectedPaths: raw.selectedPaths || null, manuallyEdited: differs, automaticActivation: false } });
-  await recordRecommendationExplanationAudit(userId, proposal.id, "RECIPE_DIFF_APPROVED", { selectedPaths: raw.selectedPaths || null, persisted: true, recipeVersion: updated.recipeVersion, manuallyEdited: differs }).catch(() => null);
-  return { proposal: publicProposal(await prisma.aiRecipeProposal.findUniqueOrThrow({ where: { id: proposal.id }, include: { request: true } })), recipe: parsePlaylistRecipe(updated), persisted: true };
+
+  try {
+    if (["REJECTED", "SUPERSEDED", "QUARANTINED"].includes(proposal.status)) {
+      throw failure("AI_RECIPE_PROPOSAL_APPLY_FAILED", `A ${proposal.status.toLowerCase()} proposal cannot be applied.`, 409);
+    }
+    if (!proposal.proposedConfigurationJson || !proposal.previousConfigurationJson) {
+      throw failure("AI_RECIPE_PROPOSAL_NOT_FOUND", "This Recipe Copilot proposal is unavailable or has expired.", 404);
+    }
+    const storedBaseRevision = recipeFingerprint(proposal.previousConfigurationJson);
+    if (raw.baseRevision && raw.baseRevision !== storedBaseRevision) {
+      throw failure("AI_RECIPE_PROPOSAL_APPLY_FAILED", "The proposal revision no longer matches the draft it was generated from.", 409);
+    }
+    if (!raw.currentRecipe) throw failure("AI_RECIPE_PROPOSAL_FORM_UNAVAILABLE", "Recipe Studio is unavailable. Reopen the recipe and try again.", 409);
+    if (selectedChanges.length === 0) throw failure("AI_RECIPE_PROPOSAL_NO_CHANGES_SELECTED", "Select at least one Recipe Copilot change.", 400);
+    for (const change of selectedChanges) {
+      const stored = storedByPath.get(change.path);
+      if (!stored || change.id !== stableRecipeProposalChangeId(proposal.id, change.path)) {
+        throw failure("AI_RECIPE_PROPOSAL_PATH_NOT_ALLOWED", `Unknown recipe field: ${change.path || "(missing path)"}`, 400);
+      }
+    }
+    if (proposal.recipe && isStaleRecipeResult(proposal.request.sourceUpdatedAt, proposal.recipe.updatedAt)) {
+      throw failure("AI_RECIPE_PROPOSAL_APPLY_FAILED", "The saved recipe changed after this proposal was generated. Reload Recipe Studio before applying it.", 409);
+    }
+
+    const current = playlistRecipeSchema.parse(raw.currentRecipe) as Record<string, unknown>;
+    const base = playlistRecipeSchema.parse(proposal.previousConfigurationJson) as Record<string, unknown>;
+    const conflicts = findRecipeProposalConflicts(base, current, selectedChanges);
+    if (conflicts.length > 0) {
+      throw failure("AI_RECIPE_PROPOSAL_APPLY_FAILED", `The recipe changed after this proposal was generated. Review ${conflicts.length} conflicting field${conflicts.length === 1 ? "" : "s"} before applying: ${conflicts.join(", ")}`, 409);
+    }
+
+    const patched = applyRecipeProposalChanges(current, selectedChanges);
+    if (!patched.success) {
+      const first = patched.failures[0];
+      throw failure(first.code, first.message, first.code === "AI_RECIPE_PROPOSAL_PATH_NOT_ALLOWED" ? 400 : 422);
+    }
+    const validation = playlistRecipeSchema.safeParse(patched.draft);
+    if (!validation.success) {
+      const issue = validation.error.issues[0];
+      const path = issue.path.join(".") || selectedFieldPaths[0] || "recipe";
+      throw failure("AI_RECIPE_PROPOSAL_DRAFT_INVALID", `Could not apply ${path}: ${issue.message}`, 422);
+    }
+
+    const differs = selectedChanges.length !== storedChanges.length
+      || selectedChanges.some((change) => JSON.stringify(change.proposedValue) !== JSON.stringify(storedByPath.get(change.path)?.after));
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.aiRecipeProposal.update({
+        where: { id: proposal.id },
+        data: { appliedById: userId, appliedAt: new Date(), manuallyEdited: differs, differsFromAiProposal: differs },
+      });
+      await auditAiRecipe({
+        requestId: proposal.requestId,
+        proposalId: proposal.id,
+        recipeId: proposal.recipeId,
+        actorId: userId,
+        eventType: "AI_RECIPE_PROPOSAL_APPLIED_TO_DRAFT",
+        action: proposal.request.action,
+        provider: proposal.request.providerDisplayName,
+        model: proposal.request.model,
+        privacyMode: proposal.request.privacyMode,
+        remote: proposal.request.remote,
+        statusBefore: proposal.status,
+        statusAfter: proposal.status,
+        metadata: { selectedPaths: patched.appliedPaths, appliedCount: patched.appliedCount, manuallyEdited: differs, persisted: false },
+      }, tx);
+      return row;
+    });
+    try {
+      await recordRecommendationExplanationAudit(userId, proposal.id, "RECIPE_DIFF_APPROVED", {
+        selectedPaths: patched.appliedPaths, persisted: false, manuallyEdited: differs,
+      });
+    } catch (auditError) {
+      console.warn("[Recipe Copilot] Recommendation explanation audit failed", {
+        proposalId: proposal.id,
+        exceptionClass: auditError instanceof Error ? auditError.name : "Unknown",
+      });
+    }
+
+    const draft = {
+      ...raw.currentRecipe,
+      ...validation.data,
+      aiProposalId: proposal.id,
+      aiRecipeStatus: proposal.status,
+    };
+    console.info("[Recipe Copilot] Selected changes applied", {
+      proposalId: proposal.id,
+      appliedCount: patched.appliedCount,
+      appliedPaths: patched.appliedPaths,
+      dirtyAfterApply: true,
+      validationSucceeded: true,
+      elapsedMs: Date.now() - startedAt,
+    });
+    return {
+      proposal: publicProposal({ ...updated, request: proposal.request }),
+      draft,
+      persisted: false,
+      appliedCount: patched.appliedCount,
+      appliedPaths: patched.appliedPaths,
+      validationSucceeded: true,
+    };
+  } catch (error) {
+    const value = error as any;
+    console.error("[Recipe Copilot] Failed to apply selected changes", {
+      proposalId: proposal.id,
+      selectedCount: selectedChanges.length,
+      failedPaths: selectedFieldPaths,
+      errorCode: String(value?.code || "AI_RECIPE_PROPOSAL_APPLY_FAILED"),
+      exceptionClass: error instanceof Error ? error.name : "Unknown",
+      sanitizedMessage: error instanceof Error ? error.message.slice(0, 500) : "Recipe proposal apply failed.",
+      elapsedMs: Date.now() - startedAt,
+    });
+    throw error;
+  }
 }
 
 export async function validateRecipeCopilotProposal(userId: string, proposalId: string) {

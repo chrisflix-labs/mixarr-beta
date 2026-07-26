@@ -12,6 +12,10 @@ import {
   applyGuidedRecipeAnswers, defaultRecipeStudioDraft, energyCurvePreset, hasAdvancedRecipeSettings,
   validateCurve, type CurvePoint, type GuidedRecipeAnswers, type RecipeStudioMode,
 } from "@/lib/recipeStudio";
+import { readRecipeCopilotResponse } from "@/lib/recipeCopilot/http";
+import type {
+  ApplyRecipeProposalRequest, ApplyRecipeProposalResult,
+} from "@/lib/recipeCopilot/proposalApply";
 import styles from "./RecipeStudio.module.css";
 import RecipeCopilot from "./RecipeCopilot";
 
@@ -55,6 +59,8 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
   const [notice, setNotice] = useState("");
   const [raw, setRaw] = useState("");
   const [copilotOpen, setCopilotOpen] = useState(false);
+  const [changedPaths, setChangedPaths] = useState<Set<string>>(new Set());
+  const [pendingFocusPath, setPendingFocusPath] = useState("");
   const analysisAbort = useRef<AbortController | null>(null);
   const firstAnalysis = useRef(true);
 
@@ -88,6 +94,17 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
+
+  useEffect(() => {
+    if (copilotOpen || !pendingFocusPath) return;
+    const timer = window.setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(`[data-recipe-path="${pendingFocusPath}"]`);
+      target?.focus();
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setPendingFocusPath("");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [copilotOpen, pendingFocusPath, active, mode]);
 
   useEffect(() => {
     if (loading) return;
@@ -157,6 +174,64 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
   function loadRaw() { setRaw(JSON.stringify({ filters: draft.filters, scoring: draft.scoring, targets: draft.targets, bpmFlow: draft.bpmFlow, discovery: draft.discovery, variety: draft.variety, playlistIdentity: draft.playlistIdentity, refreshPolicy: draft.refreshPolicy, automationPolicy: draft.automationPolicy }, null, 2)); }
   function applyRaw() { try { const parsed = JSON.parse(raw); if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(); setDraft((current) => ({ ...current, ...parsed })); setNotice("Structured settings applied to the current draft. Nothing has been saved yet."); } catch { setError("Structured settings must be a valid JSON object."); } }
 
+  async function applyCopilotChanges(request: ApplyRecipeProposalRequest): Promise<ApplyRecipeProposalResult> {
+    try {
+      const response = await fetch(`/api/recipes/ai/proposals/${encodeURIComponent(request.proposalId)}/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentRecipe: draft,
+          currentRecipeRevision: draft.updatedAt || null,
+          baseRevision: request.baseRevision || null,
+          changes: request.changes,
+        }),
+      });
+      const result = await readRecipeCopilotResponse(response, "Could not apply the Recipe Copilot changes.");
+      if (!result.draft || !Array.isArray(result.appliedPaths) || !Number.isInteger(result.appliedCount)) {
+        return {
+          success: false,
+          appliedCount: 0,
+          appliedPaths: [],
+          errorCode: "AI_RECIPE_PROPOSAL_APPLY_FAILED",
+          errorMessage: "Recipe Studio did not receive an updated draft.",
+        };
+      }
+
+      setDraft(result.draft);
+      setError("");
+      setAnalysisState("stale");
+      const paths = result.appliedPaths as string[];
+      setChangedPaths(new Set(paths));
+      window.setTimeout(() => setChangedPaths(new Set()), 4000);
+      const firstPath = paths[0] || "";
+      const root = firstPath.split(".")[0];
+      const section = root === "name" || root === "description" || root === "category" ? "identity"
+        : root === "filters" ? "candidates"
+        : root === "targets" ? "energy"
+        : root === "bpmFlow" ? "bpm"
+        : root === "discovery" || root === "variety" ? "discovery"
+        : root === "scoring" ? "scoring"
+        : root === "refreshPolicy" || root === "automationPolicy" ? "automation"
+        : "advanced";
+      setMode((current) => current === "guided" ? "beginner" : current);
+      setActive(section);
+      setPendingFocusPath(firstPath);
+      return {
+        success: true,
+        appliedCount: result.appliedCount,
+        appliedPaths: paths,
+      };
+    } catch (caught) {
+      return {
+        success: false,
+        appliedCount: 0,
+        appliedPaths: [],
+        errorCode: (caught as any)?.code || "AI_RECIPE_PROPOSAL_APPLY_FAILED",
+        errorMessage: caught instanceof Error ? caught.message : "The updated draft did not pass Recipe Studio validation.",
+      };
+    }
+  }
+
   if (loading) return <main className={styles.state} aria-busy="true"><Loader2 className="animate-spin" /> Loading Recipe Studio…</main>;
   if (error && (recipeId || naturalLanguageRequestId) && !baseline) return <main className={styles.state}><AlertTriangle /> {error}</main>;
 
@@ -178,12 +253,16 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
       <section className={styles.editor} aria-label={`${sections.find(([id]) => id === active)?.[1]} editor`}>
         {mode === "beginner" && advanced && <div className={styles.advancedNotice}><CircleHelp size={18} /><div><strong>This recipe contains advanced settings.</strong><p>You can continue using Beginner Mode, but those values remain unchanged unless you open Advanced Mode.</p></div><button onClick={() => setMode("advanced")}>Open Advanced</button></div>}
         {active === "identity" && <Panel title="Identity and source" description="Give the strategy a recognizable identity and choose the library it analyzes.">
-          <Field label="Recipe name" hint="Required; up to 120 characters"><input value={draft.name} maxLength={120} onChange={(event) => updateRoot("name", event.target.value)} /></Field>
+          <Field label="Recipe name" hint="Required; up to 120 characters"><input data-recipe-path="name" data-copilot-changed={changedPaths.has("name")} value={draft.name} maxLength={120} onChange={(event) => updateRoot("name", event.target.value)} /></Field>
           <Field label="Description" hint="Explain when and why someone should use it"><textarea rows={4} value={draft.description || ""} maxLength={1000} onChange={(event) => updateRoot("description", event.target.value)} /></Field>
           <div className={styles.two}><Field label="Category"><select value={draft.category} onChange={(event) => updateRoot("category", event.target.value)}>{["Custom","Driving","Workout","Party","Focus","Chill","Sleep","Discovery","Mood","Genre","Seasonal"].map((value) => <option key={value}>{value}</option>)}</select></Field><Field label="Source library"><select value={draft.filters?.libraryId || ""} onChange={(event) => { update("filters", "libraryId", event.target.value || null); update("automationPolicy", "libraryId", event.target.value || null); }}><option value="">Choose a library</option>{libraries.map((library) => <option value={library.id} key={library.id}>{library.serverName} — {library.name} ({library.tracks.toLocaleString()})</option>)}</select></Field></div>
           <label className={styles.toggle}><input type="checkbox" checked={draft.enabled !== false} onChange={(event) => updateRoot("enabled", event.target.checked)} /> Enabled for manual use <small>Activation still requires validation and governance approval.</small></label>
         </Panel>}
         {active === "candidates" && <Panel title="Candidate requirements" description="Set a target size and safe fallback behavior without generating a playlist.">
+          <div className={styles.ruleEditor} data-recipe-path="filters.rules" data-copilot-changed={changedPaths.has("filters.rules")} tabIndex={-1}>
+            <strong>Filter rules</strong>
+            {(draft.filters?.rules || []).length > 0 ? (draft.filters.rules as Array<Record<string, unknown>>).map((rule, index) => <div key={`${String(rule.field)}-${String(rule.operator)}-${index}`}><span>{String(rule.field)}</span><code>{String(rule.operator)}</code><b>{String(rule.value)}</b></div>) : <small>No filter rules. The mix currently uses broad candidate matching.</small>}
+          </div>
           <div className={styles.two}><Field label="Playlist size" hint="Recommended: 50–150"><input type="number" min="1" max="5000" value={draft.filters?.limit || 100} onChange={(event) => update("filters", "limit", inputNumber(event.target.value, 100))} /></Field><Field label="When too few tracks match"><select value={draft.targets?.missingEnergyFallback || "allow"} onChange={(event) => { update("targets", "missingEnergyFallback", event.target.value); update("targets", "missingMoodFallback", event.target.value); update("bpmFlow", "missingBpmFallback", event.target.value); }}><option value="allow">Use safe fallbacks</option><option value="neutral">Reduce strictness</option><option value="exclude">Stop rather than relax</option></select></Field></div>
           <div className={styles.two}><Field label="Minimum rating"><input type="number" min="0" max="10" step=".5" value={draft.filters?.negativeFilters?.minRating ?? ""} onChange={(event) => update("filters", "negativeFilters", { ...(draft.filters?.negativeFilters || {}), minRating: inputNumber(event.target.value) })} /></Field><Field label="Avoid recently played for days"><input type="number" min="1" max="3650" value={draft.filters?.negativeFilters?.excludePlayedWithinDays ?? ""} onChange={(event) => update("filters", "negativeFilters", { ...(draft.filters?.negativeFilters || {}), excludePlayedWithinDays: inputNumber(event.target.value) })} /></Field></div>
           {[['excludeExplicit','Exclude explicit tracks'],['excludeLive','Exclude live recordings'],['excludeHoliday','Exclude holiday music'],['excludeRemasters','Exclude remasters']].map(([key,label]) => <label className={styles.toggle} key={key}><input type="checkbox" checked={Boolean(draft.filters?.negativeFilters?.[key])} onChange={(event) => update("filters", "negativeFilters", { ...(draft.filters?.negativeFilters || {}), [key]: event.target.checked })} /> {label}</label>)}
@@ -225,7 +304,7 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
       </section>
       <Diagnostics analysis={analysis} state={analysisState} onSection={setActive} />
     </div>}
-    <RecipeCopilot open={copilotOpen} recipeId={recipeId} draft={draft} dirty={dirty} onClose={() => setCopilotOpen(false)} onDraft={(next, persisted) => { setDraft(next); if (persisted) setBaseline(JSON.stringify(next)); }} onNotice={setNotice} />
+    <RecipeCopilot open={copilotOpen} recipeId={recipeId} draft={draft} dirty={dirty} onClose={() => setCopilotOpen(false)} onDraft={(next, persisted) => { setDraft(next); if (persisted) setBaseline(JSON.stringify(next)); }} onApplyChanges={applyCopilotChanges} onNotice={setNotice} />
     <div className={styles.mobileSave}><button onClick={() => setCopilotOpen(true)}><Sparkles size={15} /> Copilot</button><button onClick={() => void validate()} disabled={validating}>Validate</button><button className={styles.primary} onClick={() => void save()} disabled={saving || !dirty}><Save size={16} /> Save</button></div>
   </main>;
 }

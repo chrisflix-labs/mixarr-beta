@@ -309,6 +309,6 @@ describe("v2.4.13 administrator and Recipe Copilot interface", () => {
     const docs = read("docs/AI_DAILY_REQUEST_LIMITS_V2413.md");
     for (const marker of [/precedence/i, /Unlimited/, /Limited/, /Inherit/, /zero/i, /AI_DAILY_LIMIT_EXCEEDED/, /20260801010000_ai_daily_request_limit_configuration_v2413/]) assert.match(docs, marker);
     assert.match(read("CHANGELOG.md"), /v2\.4\.13 - Daily AI Request Limit Configuration/);
-    assert.equal(JSON.parse(read("package.json")).version, "2.4.17");
+    assert.equal(JSON.parse(read("package.json")).version, "2.4.18");
   });
 });

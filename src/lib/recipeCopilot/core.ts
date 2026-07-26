@@ -3,6 +3,7 @@ import { BUILT_IN_RECIPES } from "../builtInRecipes/catalog";
 import { compareRecipeDocuments, defaultRecipeStudioDraft } from "../recipeStudio";
 import { playlistRecipeSchema } from "../playlistRecipes";
 import type { AiRecipeStatus, RecipeCopilotPatch, RecipeCopilotResponse } from "./contracts";
+import { isRecipeProposalPathAllowed } from "./proposalApply";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const secretKey = /(token|secret|credential|password|authorization|cookie|accessToken|apiKey|filesystem|filePath|path)/i;
@@ -81,7 +82,7 @@ export function deriveRecipePurpose(recipe: Record<string, any>) {
 
 export function logicalRecipeChanges(before: Record<string, any>, after: Record<string, any>, output: RecipeCopilotResponse) {
   const rationale = new Map(output.changeRationales.map((item) => [item.path, item]));
-  return compareRecipeDocuments(before, after).map((difference) => {
+  return compareRecipeDocuments(before, after).filter((difference) => isRecipeProposalPathAllowed(difference.path)).map((difference) => {
     const reason = rationale.get(difference.path);
     return { ...difference, reason: reason?.reason || "Aligns this setting with the stated intent.", expectedBehaviorChange: reason?.expectedBehaviorChange || "The generated playlist behavior will reflect the proposed value.", potentialSideEffects: reason?.potentialSideEffects || [], confidence: reason?.confidence ?? output.analysis.confidence };
   });

@@ -45,7 +45,7 @@ test("recipe library UI covers filters, favorites, hidden management, installati
 });
 
 test("v2.3.4 documentation confirms offline operation and compatibility estimates", () => {
-  assert.equal(JSON.parse(read("package.json")).version, "2.4.17");
+  assert.equal(JSON.parse(read("package.json")).version, "2.4.18");
   const docs = read("docs/CURATED_RECIPE_LIBRARY_V234.md");
   assert.match(docs, /works offline/i);
   assert.match(docs, /Compatibility is an estimate, not a guarantee/i);

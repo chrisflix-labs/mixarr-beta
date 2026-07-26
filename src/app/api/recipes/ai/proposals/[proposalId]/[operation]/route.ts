@@ -4,7 +4,8 @@ import { recipeCopilotApiError, recipeCopilotUserId } from "@/lib/recipeCopilot/
 
 export async function POST(request: Request, { params }: { params: { proposalId: string; operation: string } }) {
   try {
-    const userId = recipeCopilotUserId(); const body = await request.json().catch(() => ({}));
+    const userId = recipeCopilotUserId();
+    const body = await request.json();
     if (params.operation === "apply") return NextResponse.json(await applyRecipeCopilotProposal(userId, params.proposalId, body));
     if (params.operation === "validate") return NextResponse.json({ proposal: await validateRecipeCopilotProposal(userId, params.proposalId) });
     if (params.operation === "restore") return NextResponse.json(await restoreRecipeBeforeAiProposal(userId, params.proposalId));
@@ -12,4 +13,3 @@ export async function POST(request: Request, { params }: { params: { proposalId:
     return NextResponse.json({ error: { code: "UNKNOWN_AI_RECIPE_OPERATION", message: "Unknown AI recipe proposal operation." } }, { status: 404 });
   } catch (error) { return recipeCopilotApiError(error); }
 }
-

@@ -80,6 +80,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.18",
+    title: "Reliable Recipe Copilot Draft Application",
+    releaseDate: "July 26, 2026",
+    badges: ["AI", "Reliability", "Bug Fix", "Recipes", "UI", "Privacy"],
+    changes: [
+      "Fixed Apply selected so reviewed Recipe Copilot changes atomically update the active Recipe Studio draft and visible controls.",
+      "Added stable change identifiers, allowlisted immutable nested patching, protected-path enforcement, and field-level stale-proposal conflict detection.",
+      "Added applying, success, and actionable failure states while preserving proposals and selections after errors.",
+      "Standardized applying as a local draft operation; Save/Create remains responsible for persistence and no activation or playlist execution occurs.",
+      "Added regression coverage for behavior flags, popularity rules, recipe names, dirty state, validation, and no-persistence semantics.",
+    ],
+  },
+  {
     version: "2.4.17",
     title: "Token-Limit Removal and Reliable Recipe Copilot JSON",
     releaseDate: "July 26, 2026",

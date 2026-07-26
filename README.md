@@ -1,6 +1,6 @@
 # Mixarr
 
-Current release: **v2.4.17 — Token-Limit Removal and Reliable Recipe Copilot JSON**. Mixarr no longer configures provider output-token caps, while native model context safety and monetary budgets remain. Recipe Copilot now uses canonical structured-output capabilities, conservative normalization, one controlled repair, and private DeepSeek reasoning. See [the v2.4.17 migration and reliability guide](docs/AI_STRUCTURED_OUTPUT_V2417.md).
+Current release: **v2.4.18 — Reliable Recipe Copilot Draft Application**. “Apply selected” now atomically validates and applies only the reviewed changes to the active Recipe Studio draft, marks the draft dirty, refreshes validation, and clearly reminds the user to save. Applying does not persist, activate, execute, or generate a playlist. See [the v2.4.18 implementation guide](docs/RECIPE_COPILOT_APPLY_V2418.md).
 
 Previous release: **v2.4.14 — Per-Request AI Cost Limit Configuration**. See [the v2.4.14 guide](docs/AI_PER_REQUEST_COST_LIMIT_V2414.md).
 

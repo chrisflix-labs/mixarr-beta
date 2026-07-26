@@ -239,7 +239,7 @@ describe("v2.4.12 wiring, migration, and version", () => {
   });
 
   it("10. reports version v2.4.12 in package metadata and release notes", () => {
-    assert.equal(JSON.parse(read("package.json")).version, "2.4.17");
+    assert.equal(JSON.parse(read("package.json")).version, "2.4.18");
     assert.match(read("src/lib/releaseNotes.ts"), /version: "2\.4\.12"/);
     assert.match(read("CHANGELOG.md"), /## v2\.4\.12 - AI Provider Feature Authorization Fix/);
   });

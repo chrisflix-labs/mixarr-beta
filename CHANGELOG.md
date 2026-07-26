@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.18 - Reliable Recipe Copilot Draft Application
+
+- Fixed Recipe Copilot’s “Apply selected” action so reviewed scalar, nested-object, boolean, and array changes are atomically applied to the active Recipe Studio draft and immediately reflected in visible controls.
+- Replaced path-label selection with stable proposal change IDs, added an allowlisted immutable patcher, rejected protected and prototype-pollution paths, and added field-level stale-proposal conflict detection.
+- Applying now validates through the canonical Recipe Studio schema, marks the custom form draft dirty, refreshes live analysis, focuses and briefly highlights the first changed field, closes only after success, and reports the exact applied count.
+- Apply failures keep the proposal and selection available, show a normalized local application error, and emit sanitized path-only diagnostics without classifying the failure as an AI provider error.
+- Standardized Apply selected as a local draft operation for new and existing recipes. The normal Save/Create action remains responsible for persistence; applying never activates, executes, publishes, or generates a playlist.
+- Added regression coverage for a boolean behavior flag, replacement of `filters.rules` with a popularity rule, the proposed recipe name, immutable atomic patching, protected paths, schema compatibility, conflict handling, button state, feedback, and no-persistence semantics.
+
 ## v2.4.17 - Token-Limit Removal and Reliable Recipe Copilot JSON
 
 - Removed Mixarr-configured input, output, completion, prompt, reasoning, request, provider, feature, and user token caps from runtime governance, public APIs, onboarding, previews, provider tests, and settings. Deprecated database columns remain inert for a safe rollback window.
