@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -53,6 +53,7 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
   const [analysisState, setAnalysisState] = useState<"loading" | "ready" | "stale" | "error" | "unavailable">("loading");
   const [libraries, setLibraries] = useState<LibraryOption[]>([]);
   const [loading, setLoading] = useState(Boolean(recipeId || naturalLanguageRequestId));
+  const [initialized, setInitialized] = useState(false);
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState("");
@@ -63,6 +64,8 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
   const [pendingFocusPath, setPendingFocusPath] = useState("");
   const analysisAbort = useRef<AbortController | null>(null);
   const firstAnalysis = useRef(true);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
 
   useEffect(() => {
     let cancelled = false;
@@ -81,7 +84,7 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
         setDraft((current) => ({ ...current, filters: { ...current.filters, libraryId: options[0]?.id || null } }));
         setAnswers((current) => ({ ...current, libraryId: options[0]?.id || null }));
       }
-    }).catch((caught) => setError(caught instanceof Error ? caught.message : "Recipe Studio could not load.")).finally(() => setLoading(false));
+    }).catch((caught) => setError(caught instanceof Error ? caught.message : "Recipe Studio could not load.")).finally(() => { setLoading(false); setInitialized(true); });
     return () => { cancelled = true; };
   }, [recipeId, naturalLanguageRequestId]);
 
@@ -126,6 +129,7 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
 
   function update(section: string, key: string, value: unknown) { setDraft((current) => ({ ...current, [section]: { ...(current[section] || {}), [key]: value } })); }
   function updateRoot(key: string, value: unknown) { setDraft((current) => ({ ...current, [key]: value })); }
+  const getDraftSnapshot = useCallback(() => JSON.parse(JSON.stringify(draftRef.current)) as Record<string, any>, []);
   function selectMode(next: RecipeStudioMode) { setMode(next); setNotice(next === "beginner" && advanced ? "This recipe contains advanced settings. They remain unchanged unless you open Advanced Mode." : ""); }
 
   function applyGuided() {
@@ -180,17 +184,33 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          currentRecipe: draft,
-          currentRecipeRevision: draft.updatedAt || null,
+          currentRecipe: getDraftSnapshot(),
+          currentRecipeRevision: draftRef.current.updatedAt || null,
+          dirty,
           baseRevision: request.baseRevision || null,
           changes: request.changes,
+          conflictResolutions: request.conflictResolutions,
         }),
       });
       const result = await readRecipeCopilotResponse(response, "Could not apply the Recipe Copilot changes.");
+      if (result.success === false) {
+        return {
+          success: false,
+          appliedCount: Number(result.appliedCount || 0),
+          alreadyAppliedCount: Number(result.alreadyAppliedCount || 0),
+          conflictCount: Number(result.conflictCount || 0),
+          appliedPaths: Array.isArray(result.appliedPaths) ? result.appliedPaths : [],
+          conflicts: Array.isArray(result.conflicts) ? result.conflicts : undefined,
+          errorCode: result.errorCode || "AI_RECIPE_PROPOSAL_APPLY_FAILED",
+          errorMessage: result.errorMessage || "Recipe Copilot could not update the draft.",
+        };
+      }
       if (!result.draft || !Array.isArray(result.appliedPaths) || !Number.isInteger(result.appliedCount)) {
         return {
           success: false,
           appliedCount: 0,
+          alreadyAppliedCount: 0,
+          conflictCount: 0,
           appliedPaths: [],
           errorCode: "AI_RECIPE_PROPOSAL_APPLY_FAILED",
           errorMessage: "Recipe Studio did not receive an updated draft.",
@@ -198,6 +218,7 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
       }
 
       setDraft(result.draft);
+      draftRef.current = result.draft;
       setError("");
       setAnalysisState("stale");
       const paths = result.appliedPaths as string[];
@@ -219,12 +240,16 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
       return {
         success: true,
         appliedCount: result.appliedCount,
+        alreadyAppliedCount: Number(result.alreadyAppliedCount || 0),
+        conflictCount: 0,
         appliedPaths: paths,
       };
     } catch (caught) {
       return {
         success: false,
         appliedCount: 0,
+        alreadyAppliedCount: 0,
+        conflictCount: 0,
         appliedPaths: [],
         errorCode: (caught as any)?.code || "AI_RECIPE_PROPOSAL_APPLY_FAILED",
         errorMessage: caught instanceof Error ? caught.message : "The updated draft did not pass Recipe Studio validation.",
@@ -238,7 +263,7 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
   return <main className={styles.page}>
     <header className={styles.header}>
       <div><Link href={naturalLanguageRequestId ? `/ask-mixarr/${naturalLanguageRequestId}` : recipeId ? `/recipes/${recipeId}` : "/recipes"} className={styles.back}><ArrowLeft size={15} /> {naturalLanguageRequestId ? "Request review" : "Recipe Library"}</Link><span className={styles.kicker}><Wand2 size={14} /> Recipe Studio</span><h1>{recipeId || naturalLanguageRequestId ? draft.name : "Create a Mix Recipe"}</h1><p>{naturalLanguageRequestId ? "Edit the canonical draft. Saving creates a new request revision and invalidates approval." : "Guided and advanced tools edit one portable, governed recipe document."}</p></div>
-      <div className={styles.headerActions}><button type="button" onClick={() => setCopilotOpen(true)}><Sparkles size={15} /> AI Copilot</button><button type="button" onClick={() => void validate()} disabled={validating}>{validating ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Validate</button><button type="button" className={styles.primary} onClick={() => void save()} disabled={saving || !dirty}>{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} {saving ? "Saving…" : dirty ? "Save draft" : "Saved"}</button></div>
+      <div className={styles.headerActions}><button type="button" onClick={() => setCopilotOpen(true)} disabled={!initialized}><Sparkles size={15} /> AI Copilot</button><button type="button" onClick={() => void validate()} disabled={validating}>{validating ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Validate</button><button type="button" className={styles.primary} onClick={() => void save()} disabled={saving || !dirty}>{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} {saving ? "Saving…" : dirty ? "Save draft" : "Saved"}</button></div>
     </header>
 
     <div className={styles.statusBar} role="status" aria-live="polite"><span data-dirty={dirty}>{dirty ? "Unsaved changes" : "All changes saved"}</span><span>Analysis: {analysisState}</span>{draft.updatedAt && <span>Revision updated {new Date(draft.updatedAt).toLocaleString()}</span>}</div>
@@ -304,8 +329,8 @@ export default function RecipeStudio({ recipeId, naturalLanguageRequestId }: { r
       </section>
       <Diagnostics analysis={analysis} state={analysisState} onSection={setActive} />
     </div>}
-    <RecipeCopilot open={copilotOpen} recipeId={recipeId} draft={draft} dirty={dirty} onClose={() => setCopilotOpen(false)} onDraft={(next, persisted) => { setDraft(next); if (persisted) setBaseline(JSON.stringify(next)); }} onApplyChanges={applyCopilotChanges} onNotice={setNotice} />
-    <div className={styles.mobileSave}><button onClick={() => setCopilotOpen(true)}><Sparkles size={15} /> Copilot</button><button onClick={() => void validate()} disabled={validating}>Validate</button><button className={styles.primary} onClick={() => void save()} disabled={saving || !dirty}><Save size={16} /> Save</button></div>
+    <RecipeCopilot open={copilotOpen} recipeId={recipeId} draft={draft} dirty={dirty} formReady={initialized} getDraftSnapshot={getDraftSnapshot} onClose={() => setCopilotOpen(false)} onDraft={(next, persisted) => { setDraft(next); if (persisted) setBaseline(JSON.stringify(next)); }} onApplyChanges={applyCopilotChanges} onNotice={setNotice} />
+    <div className={styles.mobileSave}><button onClick={() => setCopilotOpen(true)} disabled={!initialized}><Sparkles size={15} /> Copilot</button><button onClick={() => void validate()} disabled={validating}>Validate</button><button className={styles.primary} onClick={() => void save()} disabled={saving || !dirty}><Save size={16} /> Save</button></div>
   </main>;
 }
 

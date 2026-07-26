@@ -77,7 +77,8 @@ export const recipeCopilotResponseSchema = z.object({
 export const recipeCopilotJsonSchema = zodToJsonSchema(recipeCopilotResponseSchema);
 
 export const recipeCopilotRequestSchema = z.object({
-  action: z.enum(RECIPE_COPILOT_ACTIONS), instruction: text(6000).default(""), recipe: z.record(z.unknown()).optional(),
+  action: z.enum(RECIPE_COPILOT_ACTIONS), instruction: text(6000).default(""),
+  recipe: z.record(z.unknown()).optional(), baseDraft: z.record(z.unknown()).optional(),
   purpose: text(1600).optional(), providerId: z.string().uuid().optional(), model: text(200).optional(),
   privacyMode: z.enum(["LOCAL_ONLY", "METADATA_LIMITED", "ANONYMOUS_METADATA", "FULL_METADATA"]).optional(),
   expectedUpdatedAt: z.string().datetime().optional(), playlistId: z.string().uuid().optional(),

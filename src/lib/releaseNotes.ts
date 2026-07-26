@@ -80,6 +80,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.19",
+    title: "Canonical Recipe Copilot Conflict Detection",
+    releaseDate: "July 26, 2026",
+    badges: ["AI", "Reliability", "Bug Fix", "Recipes", "UI", "Privacy"],
+    changes: [
+      "Fixed false stale-proposal conflicts by comparing canonical base, current, and proposed values per selected recipe field.",
+      "Captured the initialized active Recipe Studio draft immediately before generation and made it authoritative for review and application.",
+      "Added safe one-layer legacy string decoding, stable object equality, schema defaults, ordered and unordered array semantics, and idempotent counts.",
+      "Added field-level resolution for genuine edits and distinct conflict and snapshot error codes while reserving generic apply failures for exceptions.",
+      "Kept applying local and unsaved while preserving dirty state, validation, protected paths, privacy, provider governance, and normal Save/Create behavior.",
+    ],
+  },
+  {
     version: "2.4.18",
     title: "Reliable Recipe Copilot Draft Application",
     releaseDate: "July 26, 2026",

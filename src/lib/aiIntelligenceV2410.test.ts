@@ -8,8 +8,8 @@ const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 
 test("v2.4.10 version references and inert migration are consistent", () => {
-  assert.equal(JSON.parse(read("package.json")).version, "2.4.18");
-  assert.match(read("Dockerfile"), /NEXT_PUBLIC_APP_VERSION=2\.4\.18/);
+  assert.equal(JSON.parse(read("package.json")).version, "2.4.19");
+  assert.match(read("Dockerfile"), /NEXT_PUBLIC_APP_VERSION=2\.4\.19/);
   const migration = read("prisma/migrations/20260728010000_ai_intelligence_polish_v2410/migration.sql");
   for (const table of ["AiOnboardingProgress", "AiRequestTemplate", "AiQualityFeedback"]) assert.match(migration, new RegExp(`CREATE TABLE "${table}"`));
   assert.doesNotMatch(migration, /UPDATE\s+"Ai(GlobalSetting|ProviderConfig|FeatureSetting)"/i);

@@ -45,10 +45,10 @@ RUN npm prune --omit=dev
 FROM base AS runner
 WORKDIR /app
 ARG TARGETARCH
-ARG NEXT_PUBLIC_APP_VERSION=2.4.18
+ARG NEXT_PUBLIC_APP_VERSION=2.4.19
 LABEL org.opencontainers.image.title="Mixarr" \
-      org.opencontainers.image.version="2.4.18" \
-      org.opencontainers.image.description="Mixarr storage-safe large-library playlist engine"
+      org.opencontainers.image.version="2.4.19" \
+      org.opencontainers.image.description="Mixarr with canonical Recipe Copilot conflict detection"
 
 RUN apt-get update && apt-get install -y openssl ffmpeg aubio-tools python3 python3-venv && rm -rf /var/lib/apt/lists/*
 RUN if [ "${TARGETARCH:-$(dpkg --print-architecture)}" = "amd64" ]; then \

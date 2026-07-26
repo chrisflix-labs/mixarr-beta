@@ -80,7 +80,7 @@ describe("Recipe Copilot local analysis and privacy", () => {
 describe("v2.4.4 full-stack contracts", () => {
   it("ships additive models, permissioned routes, strict provider dispatch, revisions, audit, and inactive approval", () => {
     const sql = read("prisma/migrations/20260722120000_ai_recipe_copilot_v244/migration.sql"); assert.doesNotMatch(sql, /^\s*(DROP|DELETE|TRUNCATE)\b/im); assert.match(sql, /AiRecipeRequest/); assert.match(sql, /AiRecipeProposal/);
-    const service = read("src/lib/recipeCopilot/service.ts"); for (const marker of ["requireRecipeAiPermission", "aiRequestCoordinator.complete", "recipeCopilotResponseSchema", "analyzeRecipeDraft", "findRecipeProposalConflicts", "AI_RECIPE_PROPOSAL_APPLIED_TO_DRAFT", "enabled: false", "assertAiRecipeStatusTransition", "writeRecipeAudit"]) assert.match(service, new RegExp(marker));
+    const service = read("src/lib/recipeCopilot/service.ts"); for (const marker of ["requireRecipeAiPermission", "aiRequestCoordinator.complete", "recipeCopilotResponseSchema", "analyzeRecipeDraft", "findRecipeProposalConflictDetails", "AI_RECIPE_PROPOSAL_APPLIED_TO_DRAFT", "enabled: false", "assertAiRecipeStatusTransition", "writeRecipeAudit"]) assert.match(service, new RegExp(marker));
     for (const route of ["src/app/api/recipes/ai/create/route.ts", "src/app/api/recipes/[id]/ai/[action]/route.ts", "src/app/api/recipes/ai/proposals/[proposalId]/[operation]/route.ts", "src/app/api/recipes/[id]/ai/history/route.ts"]) assert.doesNotThrow(() => read(route));
   });
 
@@ -106,6 +106,6 @@ describe("v2.4.4 full-stack contracts", () => {
   it("documents privacy, costs, statuses, troubleshooting, and the non-activation boundary", () => {
     const docs = read("docs/RECIPE_COPILOT_V244.md"), changelog = read("CHANGELOG.md");
     for (const marker of [/Local Only/, /Metadata Limited/, /Draft/, /Quarantined/, /candidate estimate/i, /never activated automatically/i, /troubleshooting/i, /Create/, /Refine/, /Explain/, /Diagnose/, /Optimize/]) assert.match(docs, marker);
-    assert.match(changelog, /v2\.4\.4 - AI-Assisted Recipe Creation/); assert.equal(JSON.parse(read("package.json")).version, "2.4.18");
+    assert.match(changelog, /v2\.4\.4 - AI-Assisted Recipe Creation/); assert.equal(JSON.parse(read("package.json")).version, "2.4.19");
   });
 });

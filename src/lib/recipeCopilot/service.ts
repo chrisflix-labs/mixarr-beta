@@ -24,14 +24,17 @@ import {
 } from "./contracts";
 import {
   assertAiRecipeStatusTransition, buildPrivacyAwareRecipeContext, deriveRecipePurpose,
-  detectRecipeIntentConflicts, isStaleRecipeResult, localSafetyRecommendations,
+  detectRecipeIntentConflicts, localSafetyRecommendations,
   logicalRecipeChanges, mergeRecipeCopilotPatch, recipeFingerprint, recommendBuiltInParents,
   statusForProposal,
 } from "./core";
 import {
-  applyRecipeProposalChanges, findRecipeProposalConflicts, getRecipeProposalPath,
-  stableRecipeProposalChangeId, type RecipeProposalChange,
+  applyRecipeProposalChanges, canonicalRecipeValue, canonicalRecipeValueEqual,
+  findRecipeProposalConflictDetails, getRecipeProposalPath, hasSurroundingJsonQuotes,
+  normalizeLegacyProposalValue, stableRecipeProposalChangeId, type RecipeProposalChange,
+  type RecipeProposalConflictResolution,
 } from "./proposalApply";
+import { canonicalRecipeDraftSnapshot } from "./canonicalDraft";
 
 export const RECIPE_AI_PERMISSIONS = [
   "recipe.ai.use", "recipe.ai.create", "recipe.ai.refine", "recipe.ai.explain", "recipe.ai.diagnose",
@@ -69,6 +72,7 @@ function publicProposal(row: any) {
     candidateEstimate: row.candidateEstimateJson, compatibility: row.compatibilityJson,
     safetyWarnings: row.safetyWarningsJson, unsupportedRequests: row.unsupportedRequestsJson,
     confidence: row.confidenceScore, previousRecipeVersion: row.previousRecipeVersion,
+    baseDraft: row.previousConfigurationJson,
     baseRevision: row.previousConfigurationJson ? recipeFingerprint(row.previousConfigurationJson) : null,
     manuallyEdited: row.manuallyEdited, differsFromAiProposal: row.differsFromAiProposal,
     appliedAt: row.appliedAt, approvedAt: row.approvedAt, rejectedAt: row.rejectedAt,
@@ -192,7 +196,9 @@ export async function runRecipeCopilot(userId: string, recipeId: string | null, 
   if (["create", "refine", "optimize", "compare_intent"].includes(input.action) && !input.instruction.trim()) throw failure("INSTRUCTION_REQUIRED", "Describe the recipe behavior or change you want.");
   const stored = recipeId ? await ownedRecipe(userId, recipeId) : null;
   const savedDraft = stored ? parsePlaylistRecipe(stored) : null;
-  const source = playlistRecipeSchema.parse(input.recipe || savedDraft || defaultRecipeStudioDraft());
+  // The active Recipe Studio snapshot is captured by the client immediately
+  // before generation and is authoritative. The AI response never supplies it.
+  const source = canonicalRecipeDraftSnapshot(input.baseDraft || input.recipe || savedDraft || defaultRecipeStudioDraft());
   const availability = await getRecipeCopilotAvailability(userId, { ...input, recipe: source });
   if (availability.available !== true) {
     const blocked = await prisma.aiRecipeRequest.create({ data: { ownerId: userId, recipeId: stored?.id, recipeVersion: stored?.recipeVersion, action: input.action.toUpperCase(), sourceRequest: input.instruction, privacyMode: availability.privacyMode, status: "BLOCKED", contextFingerprint: recipeFingerprint({ action: input.action, recipe: buildPrivacyAwareRecipeContext(source, availability.privacyMode).recipe }), sourceUpdatedAt: stored?.updatedAt, promptTemplateVersion: RECIPE_COPILOT_PROMPT_VERSION, errorCategory: availability.code, errorMessage: availability.reason, completedAt: new Date() } });
@@ -284,6 +290,9 @@ export async function applyRecipeCopilotProposal(userId: string, proposalId: str
         explanation: typeof change.reason === "string" ? change.reason : undefined,
       }));
   const selectedFieldPaths = selectedChanges.map((change) => change.path);
+  const conflictResolutions = raw.conflictResolutions && typeof raw.conflictResolutions === "object"
+    ? Object.fromEntries(Object.entries(raw.conflictResolutions).filter((entry): entry is [string, RecipeProposalConflictResolution] => entry[1] === "keep_current" || entry[1] === "use_proposed"))
+    : {};
 
   console.info("[Recipe Copilot] Applying selected changes", {
     proposalId: proposal.id,
@@ -296,14 +305,23 @@ export async function applyRecipeCopilotProposal(userId: string, proposalId: str
 
   try {
     if (["REJECTED", "SUPERSEDED", "QUARANTINED"].includes(proposal.status)) {
-      throw failure("AI_RECIPE_PROPOSAL_APPLY_FAILED", `A ${proposal.status.toLowerCase()} proposal cannot be applied.`, 409);
+      throw failure("AI_RECIPE_PROPOSAL_UNAVAILABLE", `A ${proposal.status.toLowerCase()} proposal cannot be applied.`, 409);
     }
-    if (!proposal.proposedConfigurationJson || !proposal.previousConfigurationJson) {
+    if (!proposal.proposedConfigurationJson) {
       throw failure("AI_RECIPE_PROPOSAL_NOT_FOUND", "This Recipe Copilot proposal is unavailable or has expired.", 404);
+    }
+    if (!proposal.previousConfigurationJson) {
+      throw failure("AI_RECIPE_PROPOSAL_BASE_SNAPSHOT_MISSING", "The proposal does not contain an authoritative Recipe Studio base snapshot. Regenerate it before applying.", 409);
+    }
+    let base: Record<string, unknown>;
+    try {
+      base = canonicalRecipeDraftSnapshot(proposal.previousConfigurationJson);
+    } catch {
+      throw failure("AI_RECIPE_PROPOSAL_BASE_SNAPSHOT_INVALID", "The proposal base snapshot is invalid. Regenerate it before applying.", 409);
     }
     const storedBaseRevision = recipeFingerprint(proposal.previousConfigurationJson);
     if (raw.baseRevision && raw.baseRevision !== storedBaseRevision) {
-      throw failure("AI_RECIPE_PROPOSAL_APPLY_FAILED", "The proposal revision no longer matches the draft it was generated from.", 409);
+      throw failure("AI_RECIPE_PROPOSAL_BASE_SNAPSHOT_INVALID", "The proposal revision does not match its authoritative base snapshot. Regenerate it before applying.", 409);
     }
     if (!raw.currentRecipe) throw failure("AI_RECIPE_PROPOSAL_FORM_UNAVAILABLE", "Recipe Studio is unavailable. Reopen the recipe and try again.", 409);
     if (selectedChanges.length === 0) throw failure("AI_RECIPE_PROPOSAL_NO_CHANGES_SELECTED", "Select at least one Recipe Copilot change.", 400);
@@ -313,18 +331,77 @@ export async function applyRecipeCopilotProposal(userId: string, proposalId: str
         throw failure("AI_RECIPE_PROPOSAL_PATH_NOT_ALLOWED", `Unknown recipe field: ${change.path || "(missing path)"}`, 400);
       }
     }
-    if (proposal.recipe && isStaleRecipeResult(proposal.request.sourceUpdatedAt, proposal.recipe.updatedAt)) {
-      throw failure("AI_RECIPE_PROPOSAL_APPLY_FAILED", "The saved recipe changed after this proposal was generated. Reload Recipe Studio before applying it.", 409);
+    let current: Record<string, unknown>;
+    try {
+      current = canonicalRecipeDraftSnapshot(raw.currentRecipe);
+    } catch (error) {
+      const issue = error instanceof ZodError ? error.issues[0] : null;
+      const path = issue?.path.join(".") || "recipe";
+      throw failure("AI_RECIPE_PROPOSAL_DRAFT_INVALID", `Recipe Studio has an invalid current value at ${path}. Correct it before applying the proposal.`, 422);
     }
 
-    const current = playlistRecipeSchema.parse(raw.currentRecipe) as Record<string, unknown>;
-    const base = playlistRecipeSchema.parse(proposal.previousConfigurationJson) as Record<string, unknown>;
-    const conflicts = findRecipeProposalConflicts(base, current, selectedChanges);
-    if (conflicts.length > 0) {
-      throw failure("AI_RECIPE_PROPOSAL_APPLY_FAILED", `The recipe changed after this proposal was generated. Review ${conflicts.length} conflicting field${conflicts.length === 1 ? "" : "s"} before applying: ${conflicts.join(", ")}`, 409);
+    const conflicts = findRecipeProposalConflictDetails(base, current, selectedChanges);
+    if (process.env.NODE_ENV !== "production") {
+      for (const change of selectedChanges) {
+        const baseValue = getRecipeProposalPath(base, change.path);
+        const currentValue = getRecipeProposalPath(current, change.path);
+        const proposedValue = normalizeLegacyProposalValue(change.path, change.proposedValue);
+        const baseCanonical = canonicalRecipeValue(change.path, baseValue);
+        const currentCanonical = canonicalRecipeValue(change.path, currentValue);
+        const proposedCanonical = canonicalRecipeValue(change.path, proposedValue);
+        const valueType = (value: unknown) => Array.isArray(value) ? "array" : value === null ? "null" : typeof value;
+        const stringDiagnostics = (value: unknown, original: unknown) => typeof value === "string" ? {
+          characterLength: value.length,
+          hasSurroundingJsonQuotes: hasSurroundingJsonQuotes(original),
+          normalizationApplied: original !== value,
+        } : undefined;
+        console.debug("[Recipe Copilot] Conflict comparison", {
+          proposalId: proposal.id,
+          path: change.path,
+          baseType: valueType(baseValue),
+          currentType: valueType(currentValue),
+          proposedType: valueType(change.proposedValue),
+          baseCanonicalHash: recipeFingerprint(baseCanonical),
+          currentCanonicalHash: recipeFingerprint(currentCanonical),
+          proposedCanonicalHash: recipeFingerprint(proposedCanonical),
+          baseEqualsCurrent: canonicalRecipeValueEqual(change.path, baseValue, currentValue),
+          currentEqualsProposed: canonicalRecipeValueEqual(change.path, currentValue, proposedValue),
+          conflict: conflicts.some((item) => item.path === change.path),
+          baseString: stringDiagnostics(baseCanonical, baseValue),
+          currentString: stringDiagnostics(currentCanonical, currentValue),
+          proposedString: stringDiagnostics(proposedCanonical, change.proposedValue),
+        });
+      }
+    }
+    const unresolvedConflicts = conflicts.filter((conflict) => !conflictResolutions[conflict.path]);
+    if (unresolvedConflicts.length > 0) {
+      return {
+        success: false,
+        persisted: false,
+        appliedCount: 0,
+        alreadyAppliedCount: 0,
+        conflictCount: unresolvedConflicts.length,
+        appliedPaths: [],
+        conflicts: unresolvedConflicts,
+        errorCode: "AI_RECIPE_PROPOSAL_CONFLICT",
+        errorMessage: "Some recipe fields changed after this proposal was created. Review the conflicting fields and choose whether to keep your edits or use the Recipe Copilot values.",
+      };
     }
 
-    const patched = applyRecipeProposalChanges(current, selectedChanges);
+    const applicableChanges = selectedChanges.filter((change) => {
+      const conflict = conflicts.some((item) => item.path === change.path);
+      return !conflict || conflictResolutions[change.path] === "use_proposed";
+    });
+    const patched = applicableChanges.length > 0
+      ? applyRecipeProposalChanges(current, applicableChanges)
+      : {
+          success: true as const,
+          draft: current,
+          appliedCount: 0,
+          alreadyAppliedCount: 0,
+          appliedPaths: [] as string[],
+          alreadyAppliedPaths: [] as string[],
+        };
     if (!patched.success) {
       const first = patched.failures[0];
       throw failure(first.code, first.message, first.code === "AI_RECIPE_PROPOSAL_PATH_NOT_ALLOWED" ? 400 : 422);
@@ -337,7 +414,8 @@ export async function applyRecipeCopilotProposal(userId: string, proposalId: str
     }
 
     const differs = selectedChanges.length !== storedChanges.length
-      || selectedChanges.some((change) => JSON.stringify(change.proposedValue) !== JSON.stringify(storedByPath.get(change.path)?.after));
+      || selectedChanges.some((change) => !canonicalRecipeValueEqual(change.path, change.proposedValue, storedByPath.get(change.path)?.after))
+      || conflicts.some((conflict) => conflictResolutions[conflict.path] === "keep_current");
     const updated = await prisma.$transaction(async (tx) => {
       const row = await tx.aiRecipeProposal.update({
         where: { id: proposal.id },
@@ -356,13 +434,27 @@ export async function applyRecipeCopilotProposal(userId: string, proposalId: str
         remote: proposal.request.remote,
         statusBefore: proposal.status,
         statusAfter: proposal.status,
-        metadata: { selectedPaths: patched.appliedPaths, appliedCount: patched.appliedCount, manuallyEdited: differs, persisted: false },
+        metadata: {
+          selectedPaths: selectedFieldPaths,
+          appliedPaths: patched.appliedPaths,
+          alreadyAppliedPaths: patched.alreadyAppliedPaths,
+          appliedCount: patched.appliedCount,
+          alreadyAppliedCount: patched.alreadyAppliedCount,
+          conflictResolutions,
+          manuallyEdited: differs,
+          persisted: false,
+        },
       }, tx);
       return row;
     });
     try {
       await recordRecommendationExplanationAudit(userId, proposal.id, "RECIPE_DIFF_APPROVED", {
-        selectedPaths: patched.appliedPaths, persisted: false, manuallyEdited: differs,
+        selectedPaths: selectedFieldPaths,
+        appliedPaths: patched.appliedPaths,
+        alreadyAppliedPaths: patched.alreadyAppliedPaths,
+        conflictResolutions,
+        persisted: false,
+        manuallyEdited: differs,
       });
     } catch (auditError) {
       console.warn("[Recipe Copilot] Recommendation explanation audit failed", {
@@ -379,9 +471,12 @@ export async function applyRecipeCopilotProposal(userId: string, proposalId: str
     };
     console.info("[Recipe Copilot] Selected changes applied", {
       proposalId: proposal.id,
+      selectedCount: selectedChanges.length,
       appliedCount: patched.appliedCount,
+      alreadyAppliedCount: patched.alreadyAppliedCount,
+      conflictCount: 0,
       appliedPaths: patched.appliedPaths,
-      dirtyAfterApply: true,
+      dirtyAfterApply: patched.appliedCount > 0 || raw.dirty === true,
       validationSucceeded: true,
       elapsedMs: Date.now() - startedAt,
     });
@@ -389,12 +484,19 @@ export async function applyRecipeCopilotProposal(userId: string, proposalId: str
       proposal: publicProposal({ ...updated, request: proposal.request }),
       draft,
       persisted: false,
+      success: true,
       appliedCount: patched.appliedCount,
+      alreadyAppliedCount: patched.alreadyAppliedCount,
+      conflictCount: 0,
       appliedPaths: patched.appliedPaths,
+      alreadyAppliedPaths: patched.alreadyAppliedPaths,
       validationSucceeded: true,
     };
   } catch (error) {
-    const value = error as any;
+    const original = error as any;
+    const value = original?.code
+      ? original
+      : failure("AI_RECIPE_PROPOSAL_APPLY_FAILED", "An unexpected error prevented Recipe Copilot from updating the draft. No recipe fields were changed.", 500);
     console.error("[Recipe Copilot] Failed to apply selected changes", {
       proposalId: proposal.id,
       selectedCount: selectedChanges.length,
@@ -404,7 +506,7 @@ export async function applyRecipeCopilotProposal(userId: string, proposalId: str
       sanitizedMessage: error instanceof Error ? error.message.slice(0, 500) : "Recipe proposal apply failed.",
       elapsedMs: Date.now() - startedAt,
     });
-    throw error;
+    throw value;
   }
 }
 

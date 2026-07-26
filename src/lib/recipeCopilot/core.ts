@@ -35,7 +35,25 @@ export function mergeRecipeCopilotPatch(source: Record<string, any> | undefined,
   return playlistRecipeSchema.parse(draft);
 }
 
-export function recipeFingerprint(recipe: unknown) { return createHash("sha256").update(JSON.stringify(recipe)).digest("hex"); }
+const volatileFingerprintFields = new Set([
+  "createdAt", "updatedAt", "appliedAt", "approvedAt", "rejectedAt", "supersededAt",
+  "quarantinedAt", "lastValidatedAt", "localUiState", "changedPaths",
+]);
+
+function stableFingerprintValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableFingerprintValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !volatileFingerprintFields.has(key))
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => [key, stableFingerprintValue(item)]),
+  );
+}
+
+export function recipeFingerprint(recipe: unknown) {
+  return createHash("sha256").update(JSON.stringify(stableFingerprintValue(recipe))).digest("hex");
+}
 
 function scrub(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(scrub);

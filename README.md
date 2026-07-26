@@ -1,6 +1,6 @@
 # Mixarr
 
-Current release: **v2.4.18 — Reliable Recipe Copilot Draft Application**. “Apply selected” now atomically validates and applies only the reviewed changes to the active Recipe Studio draft, marks the draft dirty, refreshes validation, and clearly reminds the user to save. Applying does not persist, activate, execute, or generate a playlist. See [the v2.4.18 implementation guide](docs/RECIPE_COPILOT_APPLY_V2418.md).
+Current release: **v2.4.19 — Canonical Recipe Copilot Conflict Detection**. Recipe Copilot now captures an authoritative initialized Recipe Studio snapshot before generation, compares each selected field with canonical three-way equality, safely normalizes legacy quoted strings, treats repeated application idempotently, and offers field-level resolution only for genuine edits. Applying remains an unsaved draft operation. See [the v2.4.19 implementation guide](docs/RECIPE_COPILOT_CONFLICTS_V2419.md).
 
 Previous release: **v2.4.14 — Per-Request AI Cost Limit Configuration**. See [the v2.4.14 guide](docs/AI_PER_REQUEST_COST_LIMIT_V2414.md).
 

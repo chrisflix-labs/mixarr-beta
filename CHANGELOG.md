@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.4.19 - Canonical Recipe Copilot Conflict Detection
+
+- Fixed the false `name` conflict that blocked Recipe Copilot’s Apply selected workflow even when the active Recipe Studio name had not changed.
+- Captured the authoritative initialized Recipe Studio draft immediately before generation, normalized and deep-cloned it as the proposal `baseDraft`, and derived a stable revision hash from canonical key ordering without volatile UI fields.
+- Replaced raw serialized equality with path-aware three-way comparison: a conflict exists only when the current value differs from both the proposal base and proposed value.
+- Added one-layer legacy JSON-string normalization for schema-defined string destinations, canonical schema defaults, ordered recipe arrays, unordered tag sets, stable object-key equality, and idempotent already-applied counts.
+- Classified genuine conflicts as `AI_RECIPE_PROPOSAL_CONFLICT`, added explicit missing/invalid snapshot failures, and reserved `AI_RECIPE_PROPOSAL_APPLY_FAILED` for unexpected application errors.
+- Added field-level conflict review with base, current, and proposed values; safe keep-current defaults; non-conflicting application; explicit Copilot override; and cancel-and-continue actions.
+- Disabled generation until Recipe Studio initialization completes, marked proposals stale after a recipe-type change, preserved dirty state and validation, and kept Save/Create as the only persistence action.
+- Added sanitized canonical hash/type/length diagnostics plus unit, component, integration, idempotency, protected-path, and browser regression coverage.
+
 ## v2.4.18 - Reliable Recipe Copilot Draft Application
 
 - Fixed Recipe Copilot’s “Apply selected” action so reviewed scalar, nested-object, boolean, and array changes are atomically applied to the active Recipe Studio draft and immediately reflected in visible controls.
