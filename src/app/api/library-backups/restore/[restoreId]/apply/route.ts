@@ -3,6 +3,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import prisma from "@/lib/prisma";
 import { applyRestore } from "@/lib/libraryBackup/restoreService";
+import { isRestoreDryRunPreview } from "@/lib/libraryBackup/apiSerialization";
 import { requireBackupAdmin, isAuthFailure } from "@/lib/libraryBackupAuth";
 import type { CategoryPolicies, ConflictPolicy } from "@/lib/libraryBackup/trackMatching";
 
@@ -30,6 +31,9 @@ export async function POST(request: Request, { params }: { params: { restoreId: 
   if (!job) return NextResponse.json({ error: "Restore job not found." }, { status: 404 });
   if (job.status === "restoring" || job.status === "matching") {
     return NextResponse.json({ error: "This restore is already running." }, { status: 409 });
+  }
+  if (!isRestoreDryRunPreview(job.previewJson)) {
+    return NextResponse.json({ error: "Run the restore dry run before applying this backup." }, { status: 409 });
   }
 
   const parsed = schema.safeParse(await request.json().catch(() => ({})));

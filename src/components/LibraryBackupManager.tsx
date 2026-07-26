@@ -57,9 +57,9 @@ type RestorePreview = {
   schemaIncompatibilities: string[];
   tracksInBackup: number;
   tracksInLibrary: number;
-  matches: { exact: number; fallback: number; highConfidence: number; ambiguous: number; unmatched: number };
-  categories: Record<string, { existing: number; wouldAdd: number; wouldOverwrite: number; skipped: number; noDataRestored: number }>;
-  warnings: string[];
+  matches?: { exact: number; fallback: number; highConfidence: number; ambiguous: number; unmatched: number };
+  categories?: Record<string, { existing: number; wouldAdd: number; wouldOverwrite: number; skipped: number; noDataRestored: number }>;
+  warnings?: string[];
 };
 
 type RestoreJob = {
@@ -225,9 +225,14 @@ export default function LibraryBackupManager({ initialCoverage }: { initialCover
 
   const applyRestore = useCallback(async () => {
     if (!restore) return;
-    const partial = (restore.preview?.matches.unmatched ?? 0) + (restore.preview?.matches.ambiguous ?? 0) + (restore.preview?.invalidRecords ?? 0) > 0;
+    const previewMatches = restore.preview?.matches;
+    if (!previewMatches) {
+      setMessage({ tone: "info", text: "Run the restore dry run before applying this backup." });
+      return;
+    }
+    const partial = previewMatches.unmatched + previewMatches.ambiguous + (restore.preview?.invalidRecords ?? 0) > 0;
     if (!window.confirm(partial
-      ? `Apply a partial restore? ${restore.preview?.matches.unmatched ?? 0} unmatched, ${restore.preview?.matches.ambiguous ?? 0} ambiguous, and ${restore.preview?.invalidRecords ?? 0} invalid records will not be changed.`
+      ? `Apply a partial restore? ${previewMatches.unmatched} unmatched, ${previewMatches.ambiguous} ambiguous, and ${restore.preview?.invalidRecords ?? 0} invalid records will not be changed.`
       : policy === "prefer_backup"
       ? "Prefer Backup will overwrite current library-intelligence values with the backup's. Continue?"
       : "Apply this restore now?")) return;
@@ -387,12 +392,12 @@ export default function LibraryBackupManager({ initialCoverage }: { initialCover
 
             <div className={styles.restoreActions}>
               <button className={styles.secondaryBtn} onClick={() => void runPreview()} disabled={["restoring", "matching"].includes(restore.status)}>Preview changes</button>
-              <button className={styles.primaryBtn} onClick={() => void applyRestore()} disabled={!restore.preview || restore.preview.status === "incompatible" || ["restoring", "matching"].includes(restore.status)}>{restore.preview?.status === "partial" ? "Apply partial restore" : "Apply restore"}</button>
+              <button className={styles.primaryBtn} onClick={() => void applyRestore()} disabled={!restore.preview?.matches || restore.preview.status === "incompatible" || ["restoring", "matching"].includes(restore.status)}>{restore.preview?.status === "partial" ? "Apply partial restore" : "Apply restore"}</button>
               {["restoring", "matching"].includes(restore.status) && <button className={styles.secondaryBtn} onClick={() => void cancelRestore()}>Cancel</button>}
               {restore.status === "interrupted" && <button className={styles.secondaryBtn} onClick={() => void fetch(`/api/library-backups/restore/${restore.id}/retry`, { method: "POST" })}>Resume</button>}
             </div>
 
-            {restore.preview && <RestorePreviewView preview={restore.preview} />}
+            {restore.preview?.matches && <RestorePreviewView preview={restore.preview} />}
 
             {["restoring", "matching"].includes(restore.status) && (
               <div className={styles.progress} role="status" aria-live="polite"><Loader2 size={16} className={styles.spin} /> {PHASE_LABELS[restore.phase]} — applied {restore.appliedCount}/{restore.archiveTrackCount}</div>
@@ -428,25 +433,28 @@ function CoverageCard({ title, rows }: { title: string; rows: [string, number][]
 function RestorePreviewView({ preview }: { preview: RestorePreview }) {
   const cats = ["audio_features", "bpm", "popularity", "genres"] as const;
   const label: Record<string, string> = { audio_features: "Audio features", bpm: "BPM", popularity: "Popularity", genres: "Genres" };
+  const matches = preview.matches ?? { exact: 0, fallback: 0, highConfidence: 0, ambiguous: 0, unmatched: 0 };
+  const categories = preview.categories ?? {};
+  const warnings = preview.warnings ?? [];
   return (
     <div className={styles.previewGrid}>
       <div className={styles.matchSummary}>
         <span><strong>{preview.backupRecordsFound}</strong> records found</span>
         <span><strong>{preview.tracksInBackup}</strong> valid in backup</span>
         <span><strong>{preview.tracksInLibrary}</strong> in library</span>
-        <span><strong>{preview.matches.exact}</strong> exact</span>
-        <span><strong>{preview.matches.fallback}</strong> fallback</span>
-        <span><strong>{preview.matches.ambiguous}</strong> ambiguous</span>
-        <span><strong>{preview.matches.unmatched}</strong> unmatched</span>
+        <span><strong>{matches.exact}</strong> exact</span>
+        <span><strong>{matches.fallback}</strong> fallback</span>
+        <span><strong>{matches.ambiguous}</strong> ambiguous</span>
+        <span><strong>{matches.unmatched}</strong> unmatched</span>
         <span><strong>{preview.invalidRecords}</strong> invalid</span>
       </div>
-      {preview.warnings.map((w) => <p key={w} className={styles.warn}><AlertTriangle size={14} /> {w}</p>)}
+      {warnings.map((w) => <p key={w} className={styles.warn}><AlertTriangle size={14} /> {w}</p>)}
       <div className={styles.tableScroll}>
         <table className={styles.table}>
           <thead><tr><th>Category</th><th>Existing</th><th>Would add</th><th>Overwrite</th><th>Skipped</th><th>No-data</th></tr></thead>
           <tbody>
             {cats.map((c) => {
-              const v = preview.categories[c] || { existing: 0, wouldAdd: 0, wouldOverwrite: 0, skipped: 0, noDataRestored: 0 };
+              const v = categories[c] || { existing: 0, wouldAdd: 0, wouldOverwrite: 0, skipped: 0, noDataRestored: 0 };
               return <tr key={c}><td>{label[c]}</td><td>{v.existing}</td><td>{v.wouldAdd}</td><td>{v.wouldOverwrite}</td><td>{v.skipped}</td><td>{v.noDataRestored}</td></tr>;
             })}
           </tbody>
@@ -457,9 +465,9 @@ function RestorePreviewView({ preview }: { preview: RestorePreview }) {
         <dl className={styles.reportGrid}>
           <div><dt>Dry-run status</dt><dd>{preview.status.replace(/_/g, " ")}</dd></div>
           <div><dt>Schema issues</dt><dd>{preview.schemaIncompatibilities.length}</dd></div>
-          <div><dt>Exact identity matches</dt><dd>{preview.matches.exact}</dd></div>
-          <div><dt>Fallback identity matches</dt><dd>{preview.matches.fallback}</dd></div>
-          <div><dt>Skipped before write</dt><dd>{preview.matches.unmatched + preview.matches.ambiguous + preview.invalidRecords}</dd></div>
+          <div><dt>Exact identity matches</dt><dd>{matches.exact}</dd></div>
+          <div><dt>Fallback identity matches</dt><dd>{matches.fallback}</dd></div>
+          <div><dt>Skipped before write</dt><dd>{matches.unmatched + matches.ambiguous + preview.invalidRecords}</dd></div>
         </dl>
       </details>
     </div>

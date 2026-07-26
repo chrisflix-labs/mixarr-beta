@@ -79,6 +79,55 @@ type RestoreRow = {
   countsJson?: unknown;
 };
 
+type RestorePreviewPayload = Record<string, unknown> & {
+  status: "ready" | "partial" | "incompatible";
+  matches: Record<string, unknown>;
+};
+
+/** Upload ingestion metadata is stored in previewJson before a dry run exists. */
+export function isRestoreDryRunPreview(value: unknown): value is RestorePreviewPayload {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const preview = value as Record<string, unknown>;
+  const matches = preview.matches;
+  return ["ready", "partial", "incompatible"].includes(String(preview.status))
+    && !!matches
+    && typeof matches === "object"
+    && !Array.isArray(matches);
+}
+
+function finiteCount(value: unknown): number {
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 ? count : 0;
+}
+
+export function serializeRestorePreview(value: unknown): Record<string, unknown> | null {
+  if (!isRestoreDryRunPreview(value)) return null;
+  const matches = value.matches;
+  return {
+    ...value,
+    backupRecordsFound: finiteCount(value.backupRecordsFound),
+    invalidRecords: finiteCount(value.invalidRecords),
+    tracksInBackup: finiteCount(value.tracksInBackup),
+    tracksInLibrary: finiteCount(value.tracksInLibrary),
+    schemaIncompatibilities: Array.isArray(value.schemaIncompatibilities)
+      ? value.schemaIncompatibilities.filter((item): item is string => typeof item === "string")
+      : [],
+    warnings: Array.isArray(value.warnings)
+      ? value.warnings.filter((item): item is string => typeof item === "string")
+      : [],
+    categories: value.categories && typeof value.categories === "object" && !Array.isArray(value.categories)
+      ? value.categories
+      : {},
+    matches: {
+      exact: finiteCount(matches.exact),
+      fallback: finiteCount(matches.fallback),
+      highConfidence: finiteCount(matches.highConfidence),
+      ambiguous: finiteCount(matches.ambiguous),
+      unmatched: finiteCount(matches.unmatched),
+    },
+  };
+}
+
 export function serializeRestoreJob(row: RestoreRow) {
   return {
     id: row.id,
@@ -94,7 +143,8 @@ export function serializeRestoreJob(row: RestoreRow) {
     unmatchedCount: row.unmatchedCount,
     ambiguousCount: row.ambiguousCount,
     appliedCount: row.appliedCount,
-    preview: row.previewJson ?? null,
+    // Ingestion-only payloads are internal staging state, not completed dry runs.
+    preview: serializeRestorePreview(row.previewJson),
     report: row.reportJson ?? null,
     // A generic message only — never a raw stack trace.
     error: row.error ? "Restore failed. See restore status and warnings for details." : null,

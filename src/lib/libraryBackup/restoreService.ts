@@ -33,6 +33,7 @@ import {
   type MatchResult,
 } from "./trackMatching";
 import { validateArchive, parseTrackRecords } from "./restoreReader";
+import { isRestoreDryRunPreview } from "./apiSerialization";
 import { writeUpload } from "./backupStorage";
 import { AUDIO_FEATURE_NUMBER_FIELDS, AUDIO_FEATURE_STRING_FIELDS, AUDIO_FEATURE_TIMESTAMP_FIELDS } from "./archiveFormat";
 import { extractMediaPartIdentities } from "./archiveWriter";
@@ -293,6 +294,7 @@ export type RestorePreview = {
   projectedCategoryCounts: unknown;
   sample: { title: string | null; artist: string | null; matchType: string }[];
   warnings: string[];
+  ingestion?: Record<string, unknown>;
 };
 
 function recordHasCategory(record: BackupTrackRecord, category: "audio_features" | "bpm" | "popularity" | "genres"): boolean {
@@ -394,6 +396,8 @@ export async function previewRestore(
       ...(matches.ambiguous ? [`${matches.ambiguous} backup records have ambiguous identities.`] : []),
       ...(invalidRecords ? [`${invalidRecords} backup records are invalid.`] : []),
     ],
+    // Retain validated ingestion counts across repeated dry runs.
+    ingestion,
   };
 
   // Persist the dry-run identity plan before any Library Intelligence mutation.
@@ -536,7 +540,7 @@ export async function applyRestore(
   const startedAt = Date.now();
   const job = await prisma.libraryRestoreJob.findUnique({ where: { id: restoreJobId } });
   if (!job) throw new BackupValidationError("Restore job not found.");
-  if (!job.previewJson || typeof job.previewJson !== "object") {
+  if (!isRestoreDryRunPreview(job.previewJson)) {
     throw new BackupValidationError("Run the restore dry run before applying this backup.");
   }
   const preview = job.previewJson as unknown as RestorePreview;
