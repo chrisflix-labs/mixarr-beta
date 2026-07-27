@@ -18,7 +18,12 @@ export const PROVIDER_FIELD_STEPS: Record<string, number> = {
   secretHeadersText: 2,
   defaultModel: 3,
   fallbackProviderId: 3,
-  requestTimeoutMs: 3,
+  timeoutOverrideEnabled: 3,
+  connectionTimeoutMs: 3,
+  firstTokenTimeoutMs: 3,
+  totalRequestTimeoutMs: 3,
+  streamingIdleTimeoutMs: 3,
+  cancellationGraceMs: 3,
   retryCount: 3,
   initialRetryDelayMs: 3,
   maximumRetryDelayMs: 3,
@@ -73,9 +78,13 @@ export function validateProviderWizard(form: ProviderWizardForm): ProviderWizard
   if (!authenticationTypes.has(String(form.authenticationType || ""))) add("authenticationType", "Choose a valid authentication type.");
   try { parseHeaderObject(form.nonSecretHeadersText); } catch (error) { add("nonSecretHeadersText", (error as Error).message); }
   try { parseHeaderObject(form.secretHeadersText, true); } catch (error) { add("secretHeadersText", (error as Error).message); }
+  // Validate the retired single-timeout field when an older client still sends it.
+  if (Object.prototype.hasOwnProperty.call(form, "requestTimeoutMs")) {
+    const legacyTimeoutError = numberError(form.requestTimeoutMs, 30_000, 600_000, true, "Timeout");
+    if (legacyTimeoutError) add("requestTimeoutMs", legacyTimeoutError);
+  }
 
   for (const [field, minimum, maximum, integer, label] of [
-    ["requestTimeoutMs", 30000, 600000, true, "Timeout"],
     ["retryCount", 0, 10, true, "Retry count"],
     ["initialRetryDelayMs", 50, 60000, true, "Initial retry delay"],
     ["maximumRetryDelayMs", 50, 300000, true, "Maximum retry delay"],
@@ -84,6 +93,21 @@ export function validateProviderWizard(form: ProviderWizardForm): ProviderWizard
   ] as const) {
     const error = numberError(form[field], minimum, maximum, integer, label);
     if (error) add(field, error);
+  }
+  if (form.timeoutOverrideEnabled) {
+    for (const [field, label] of [
+      ["connectionTimeoutMs", "Connection timeout"],
+      ["firstTokenTimeoutMs", "First-token timeout"],
+      ["totalRequestTimeoutMs", "Total request timeout"],
+      ["streamingIdleTimeoutMs", "Streaming idle timeout"],
+    ] as const) {
+      if (form[field] !== null) {
+        const error = numberError(form[field], 1, 2_147_483_647, true, label);
+        if (error) add(field, `${label} must be a positive whole number, or choose Unlimited.`);
+      }
+    }
+    const graceError = numberError(form.cancellationGraceMs, 100, 60_000, true, "Cancellation grace");
+    if (graceError) add("cancellationGraceMs", graceError);
   }
   if (Number(form.maximumRetryDelayMs) < Number(form.initialRetryDelayMs)) add("maximumRetryDelayMs", "Maximum retry delay cannot be less than the initial retry delay.");
   if (form.monthlyBudget !== "" && form.monthlyBudget != null) {
@@ -123,7 +147,14 @@ export function buildProviderPayload(form: ProviderWizardForm, editing = false) 
     fastModel: String(form.fastModel || "").trim() || null,
     reasoningModel: String(form.reasoningModel || "").trim() || null,
     fallbackProviderId: form.fallbackProviderId || null,
-    requestTimeoutMs: Number(form.requestTimeoutMs),
+    timeoutOverrideEnabled: form.timeoutOverrideEnabled === true,
+    ...(form.timeoutOverrideEnabled ? {
+      connectionTimeoutMs: form.connectionTimeoutMs,
+      firstTokenTimeoutMs: form.firstTokenTimeoutMs,
+      totalRequestTimeoutMs: form.totalRequestTimeoutMs,
+      streamingIdleTimeoutMs: form.streamingIdleTimeoutMs,
+      cancellationGraceMs: Number(form.cancellationGraceMs),
+    } : {}),
     retryCount: Number(form.retryCount),
     initialRetryDelayMs: Number(form.initialRetryDelayMs),
     maximumRetryDelayMs: Number(form.maximumRetryDelayMs),

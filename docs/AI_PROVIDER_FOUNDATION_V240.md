@@ -24,6 +24,12 @@ Before rollback, retain the migration and tables if audit history or encrypted p
 
 Multiple instances of any type are supported. Provider type is not an identifier: “Local Ollama” and “Remote Ollama” are separate rows with their own UUIDs, models, health, priorities, fallbacks, and budgets.
 
+Each provider may inherit the global AI timeout policy or enable a complete
+provider-specific replacement policy. The provider editor previews the
+effective values and offers Ollama presets for slow initial model loading and
+no request timeout. Presets populate the form but never save automatically.
+See [Local AI Model Loading & Unlimited Timeouts](AI_LOCAL_MODEL_TIMEOUTS_V2422.md).
+
 ## Enabling and configuring
 
 Open **Settings → AI Provider Foundation** as an administrator. Add and save a provider, test its connection with the fixed minimal prompt, refresh model discovery, and select default/fast/reasoning models. Saving an untested provider is allowed and leaves it marked **Not tested**.

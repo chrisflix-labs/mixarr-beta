@@ -6,7 +6,13 @@ Recipe Copilot used the shared AI coordinator, which selected the strictest of t
 
 ## Timeout policy
 
-The coordinator remains the only owner of the total-request `AbortController` timer. `AI_REQUEST_TIMEOUT_SECONDS` is the deployment ceiling and defaults to 120 seconds. It accepts whole seconds from 30 through 600. The request, provider, global, and governance values remain policy inputs; the strictest valid value wins, but they do not create additional timers.
+As of v2.4.22, the coordinator owns a lifecycle timer for each request phase.
+Explicit request overrides take precedence, followed by an enabled provider
+replacement policy, the global AI policy, and application defaults. The old
+`AI_REQUEST_TIMEOUT_SECONDS` deployment ceiling is ignored. Connection,
+first-token, total-request, and stream-idle values may be `null` for Unlimited;
+cancellation grace remains finite. See
+[Local AI Model Loading & Unlimited Timeouts](AI_LOCAL_MODEL_TIMEOUTS_V2422.md).
 
 The v2.4.15 migration changes the global and provider defaults from 30,000 to 120,000 ms and upgrades rows still holding the old default. Explicit values other than the legacy default are preserved. Provider health checks retain their shorter administrative timeouts, and stream idle timeout remains a separate stalled-stream safeguard rather than a competing total-request deadline.
 

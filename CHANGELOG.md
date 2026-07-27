@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.4.22 - Local AI Model Loading & Unlimited Timeout Support
+
+- Added independently nullable connection, first-token, total-request, and streaming-idle timeouts; cancellation grace remains finite.
+- Added provider-specific replacement policies, effective-policy previews, and Ollama slow-load/no-request-timeout presets.
+- Separated transport connection, first content, streaming activity, total duration, and cancellation cleanup lifecycle timers.
+- Removed hidden stream duration and idle environment caps from AI execution and added phase-specific error codes and audit snapshots.
+- Kept unlimited requests cancellable and added periodic background-job lease heartbeats during long model loads.
+
 ## v2.4.21 - Lossless Library Intelligence Backup & Restore
 
 - Fixed the exact 2,772-track round-trip loss: 1,529 shared-Plex-GUID records were silently de-duplicated during schema-v1 parsing and the 1,243 surviving group representatives were then rejected as ambiguous.

@@ -80,6 +80,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.22",
+    title: "Local AI Model Loading & Unlimited Timeouts",
+    releaseDate: "July 26, 2026",
+    badges: ["AI", "Reliability", "Settings", "Worker", "Database", "UI"],
+    changes: [
+      "Added finite or Unlimited modes for connection, first-token, total-request, and streaming-idle phases while keeping cancellation cleanup finite.",
+      "Added provider-specific replacement policies, effective-policy previews, and Ollama slow-load and no-request-timeout presets.",
+      "Separated connection establishment from model loading and only starts streaming idle enforcement after the first meaningful content.",
+      "Recorded the effective timeout policy on every AI audit and reports phase-specific timeout and cancellation error codes.",
+      "Removed hidden Mixarr stream-duration caps and kept long-running background requests observable through worker heartbeats and cancellation.",
+    ],
+  },
+  {
     version: "2.4.21",
     title: "Lossless Library Intelligence Backup & Restore",
     releaseDate: "July 26, 2026",

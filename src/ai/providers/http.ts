@@ -1,4 +1,7 @@
-import type { AiMessage, AiStreamEvent, ResolvedAiProviderConfig } from "../contracts";
+import http from "http";
+import https from "https";
+import { Readable } from "stream";
+import type { AiMessage, AiProviderLifecycle, AiStreamEvent, ResolvedAiProviderConfig } from "../contracts";
 import { AiError, normalizeProviderError } from "../errors";
 
 export type ProviderHttpDiagnostics = {
@@ -6,6 +9,8 @@ export type ProviderHttpDiagnostics = {
   provider?: string;
   model?: string;
   stage?: string;
+  lifecycle?: AiProviderLifecycle;
+  sslVerification?: boolean;
 };
 
 type ProviderTransport = {
@@ -32,12 +37,75 @@ export function configuredHeaders(config: ResolvedAiProviderConfig, providerHead
   return headers;
 }
 
-async function readBoundedBody(response: Response, maxBytes: number) {
+export async function providerFetch(url: string, init: RequestInit = {}, lifecycle?: AiProviderLifecycle, sslVerification = true): Promise<Response> {
+  const endpoint = new URL(url);
+  if (!["http:", "https:"].includes(endpoint.protocol)) throw new AiError("INVALID_REQUEST", "Provider URLs must use HTTP or HTTPS.");
+  return new Promise<Response>((resolve, reject) => {
+    const headers = new Headers(init.headers);
+    const body = init.body;
+    if (body != null && typeof body !== "string" && !(body instanceof Uint8Array)) {
+      reject(new AiError("INVALID_REQUEST", "Unsupported provider request body."));
+      return;
+    }
+    if (body != null && !headers.has("content-length")) headers.set("content-length", String(Buffer.byteLength(body)));
+    let settled = false;
+    let connectionReported = false;
+    const reportConnection = () => {
+      if (connectionReported) return;
+      connectionReported = true;
+      lifecycle?.connectionEstablished();
+    };
+    const transport = endpoint.protocol === "https:" ? https : http;
+    const request = transport.request({
+      protocol: endpoint.protocol,
+      hostname: endpoint.hostname,
+      port: endpoint.port || undefined,
+      path: `${endpoint.pathname}${endpoint.search}`,
+      method: init.method || "GET",
+      headers: Object.fromEntries(headers.entries()),
+      ...(endpoint.protocol === "https:" ? { rejectUnauthorized: sslVerification } : {}),
+    }, (incoming) => {
+      reportConnection();
+      settled = true;
+      const unregisterResponseCleanup = lifecycle?.registerForceCleanup(() => incoming.destroy(new Error("AI cancellation grace expired.")));
+      incoming.once("close", () => unregisterResponseCleanup?.());
+      const responseHeaders = new Headers();
+      for (const [name, value] of Object.entries(incoming.headers)) {
+        if (Array.isArray(value)) for (const item of value) responseHeaders.append(name, item);
+        else if (value != null) responseHeaders.set(name, String(value));
+      }
+      const responseBody = Readable.toWeb(incoming) as unknown as ReadableStream<Uint8Array>;
+      resolve(new Response(responseBody as any, { status: incoming.statusCode || 500, statusText: incoming.statusMessage, headers: responseHeaders }));
+    });
+    const unregisterCleanup = lifecycle?.registerForceCleanup(() => request.destroy(new Error("AI cancellation grace expired.")));
+    const abort = () => request.destroy(new DOMException(String(init.signal?.reason || "AI request cancelled."), "AbortError"));
+    if (init.signal?.aborted) abort();
+    else init.signal?.addEventListener("abort", abort, { once: true });
+    request.on("socket", (socket: any) => {
+      if (!socket.connecting) reportConnection();
+      else socket.once(endpoint.protocol === "https:" ? "secureConnect" : "connect", reportConnection);
+    });
+    request.on("error", (error) => {
+      init.signal?.removeEventListener("abort", abort);
+      unregisterCleanup?.();
+      if (!settled) reject(error);
+    });
+    request.on("close", () => {
+      init.signal?.removeEventListener("abort", abort);
+      unregisterCleanup?.();
+    });
+    if (body != null) request.write(body);
+    request.end();
+  });
+}
+
+async function readBoundedBody(response: Response, maxBytes: number, lifecycle?: AiProviderLifecycle) {
   if (!response.body) return new Uint8Array();
   const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let total = 0;
   while (true) {
     const { done, value } = await reader.read(); if (done) break;
     total += value.byteLength;
+    lifecycle?.responseActivity({ meaningful: true, producedOutput: false });
     if (total > maxBytes) { await reader.cancel(); throw new AiError("RESPONSE_TOO_LARGE"); }
     chunks.push(value);
   }
@@ -70,11 +138,11 @@ function providerHttpDetails(transport: ProviderTransport, diagnostics: Provider
 export async function safeFetchJsonDetailed(url: string, init: RequestInit, maxBytes: number, diagnostics: ProviderHttpDiagnostics = {}) {
   const started = Date.now();
   let response: Response;
-  try { response = await fetch(url, init); } catch (error) { throw normalizeProviderError(error); }
+  try { response = await providerFetch(url, init, diagnostics.lifecycle, diagnostics.sslVerification); } catch (error) { throw normalizeProviderError(error); }
   const contentType = (response.headers.get("content-type") || "").toLowerCase();
   const streamed = contentType.includes("text/event-stream");
   let bytes: Uint8Array;
-  try { bytes = await readBoundedBody(response, maxBytes); }
+  try { bytes = await readBoundedBody(response, maxBytes, diagnostics.lifecycle); }
   catch (error) {
     console.warn("[AI Provider] response read failed", { requestId: diagnostics.requestId, provider: diagnostics.provider, model: diagnostics.model, endpointHostname: new URL(url).hostname, elapsedMs: Date.now() - started, httpStatus: response.status, contentType, streamed, stage: "RESPONSE_READ" });
     throw error;
@@ -106,7 +174,7 @@ export async function safeFetchJson(url: string, init: RequestInit, maxBytes: nu
   return (await safeFetchJsonDetailed(url, init, maxBytes)).payload;
 }
 
-export async function *parseTextLines(response: Response, maxBytes: number, signal: AbortSignal) {
+export async function *parseTextLines(response: Response, maxBytes: number, signal: AbortSignal, lifecycle?: AiProviderLifecycle) {
   if (!response.body) throw new AiError("STREAM_INTERRUPTED");
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -117,6 +185,7 @@ export async function *parseTextLines(response: Response, maxBytes: number, sign
       if (signal.aborted) throw new AiError("REQUEST_CANCELLED");
       const { done, value } = await reader.read();
       if (done) break;
+      lifecycle?.responseActivity({ meaningful: false });
       total += value.byteLength;
       if (total > maxBytes) throw new AiError("RESPONSE_TOO_LARGE");
       pending += decoder.decode(value, { stream: true });

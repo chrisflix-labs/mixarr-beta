@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+import type { AiTimeoutPolicy, AiTimeoutPolicyOverride } from "../config/timeout";
 
 export const AI_PROVIDER_TYPES = ["ollama", "litellm", "lm_studio", "deepseek", "openai", "chatgpt_subscription", "openai_compatible", "openrouter", "anthropic"] as const;
 export type AiProviderType = typeof AI_PROVIDER_TYPES[number];
@@ -67,7 +68,10 @@ export type AiRequest<T = unknown> = {
   estimatedOutputTokens?: number;
   resolvedModelCapabilities?: AiModelCapabilities;
   maxResponseBytes?: number;
-  timeoutMs?: number;
+  /** Explicit internal total-request override. null intentionally disables it. */
+  timeoutMs?: number | null;
+  /** Explicit per-phase internal override; omitted phases continue through precedence. */
+  timeoutPolicy?: AiTimeoutPolicyOverride;
   signal?: AbortSignal;
   correlationId?: string;
   metadata?: Record<string, string | number | boolean>;
@@ -144,7 +148,10 @@ export type ResolvedAiProviderConfig = {
   reasoningModel?: string;
   fallbackProviderId?: string;
   maximumContextTokens?: number;
+  /** Deprecated single timeout retained for rollback compatibility. */
   requestTimeoutMs: number;
+  timeoutOverrideEnabled?: boolean;
+  timeoutPolicy?: AiTimeoutPolicy;
   retryCount: number;
   initialRetryDelayMs: number;
   maximumRetryDelayMs: number;
@@ -154,7 +161,13 @@ export type ResolvedAiProviderConfig = {
   customConfiguration: Record<string, unknown>;
 };
 
-export type AiProviderExecutionContext = { requestId: string; providerId: string; model: string; signal: AbortSignal; maxResponseBytes: number; modelCapabilities?: AiModelCapabilities };
+export type AiProviderLifecycle = {
+  connectionEstablished(): void;
+  responseActivity(options?: { meaningful?: boolean; producedOutput?: boolean }): void;
+  registerForceCleanup(cleanup: () => void): () => void;
+};
+
+export type AiProviderExecutionContext = { requestId: string; providerId: string; model: string; signal: AbortSignal; maxResponseBytes: number; modelCapabilities?: AiModelCapabilities; lifecycle?: AiProviderLifecycle };
 
 export interface AiProviderAdapter {
   readonly providerType: AiProviderType;

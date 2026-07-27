@@ -40,6 +40,7 @@ export async function GET(request: Request) {
         httpStatus: true, providerRequestId: true, costState: true, structuredOutputResult: true, schemaValidationResult: true,
         budgetControlResult: true, limitControlResult: true, blockReason: true, errorCategory: true,
         sanitizedErrorCode: true, createdAt: true, provider: { select: { deletedAt: true } }
+        , effectiveTimeoutPolicyJson: true
       }
     });
     const hasMore = rows.length > take;

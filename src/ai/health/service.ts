@@ -6,8 +6,18 @@ import { AiError, normalizeProviderError } from "../errors";
 import { createAiRequestSignal } from "../utilities/cancellation";
 import { beginAdministrativeAiOperation, finishAdministrativeAiOperation } from "../governance/service";
 import { classifyOpenAiModel } from "../providers/openai";
+import { resolveEffectiveTimeoutPolicy } from "../config/timeout";
 
 const activeProviderTests = new Set<string>();
+
+async function administrativeTimeoutPolicy(config: Awaited<ReturnType<typeof resolveAiProvider>>) {
+  const governance = await prisma.aiGovernanceSetting.findUnique({ where: { id: "global" } });
+  return resolveEffectiveTimeoutPolicy({
+    providerOverrideEnabled: config.timeoutOverrideEnabled,
+    providerPolicy: config.timeoutPolicy,
+    globalPolicy: governance || undefined,
+  });
+}
 
 function safeMessage(error: AiError) { return error.toSafePayload().message; }
 function safeOrigin(value?: string) { if (!value) return undefined; try { return new URL(value).origin; } catch { return "invalid-url"; } }
@@ -81,7 +91,8 @@ export async function testAiProviderConnection(providerId: string, signal?: Abor
 
   const governanceOperation = await beginAdministrativeAiOperation({ provider: config, source: "CONNECTION_TEST", model: selectedModel, userId, signal, background });
   activeProviderTests.add(providerId);
-  const timed = createAiRequestSignal(signal, Math.min(config.requestTimeoutMs, 30_000));
+  const timeoutPolicy = await administrativeTimeoutPolicy(config);
+  const timed = createAiRequestSignal(signal, timeoutPolicy.totalRequestTimeoutMs);
   const started = Date.now();
   const initialProfile = { retryAttempt: 0, thinkingMode: "disabled" as const };
   try {
@@ -103,7 +114,7 @@ export async function testAiProviderConnection(providerId: string, signal?: Abor
     const current = await prisma.aiProviderHealth.findUnique({ where: { providerConfigId: providerId } });
     const failures = (current?.consecutiveFailureCount || 0) + 1;
     const now = new Date();
-    const next = new Date(Date.now() + Math.min(24 * 60, config.requestTimeoutMs / 1000 + 2 ** failures) * 60_000);
+    const next = new Date(Date.now() + Math.min(24 * 60, 2 ** failures) * 60_000);
     const info = details(normalized);
     const authState = normalized.category === "PROVIDER_UNAUTHORIZED" ? "FAILED" : current?.authenticationState || "NOT_TESTED";
     await prisma.$transaction([
@@ -120,7 +131,8 @@ export async function verifyAiProviderCredentials(providerId: string, signal?: A
   if (!config.enabled) throw new AiError("PROVIDER_DISABLED");
   const operation = await beginAdministrativeAiOperation({ provider: config, source: "MODEL_DISCOVERY", userId, signal });
   const adapter = aiProviderRegistry.get(config.providerType);
-  const timed = createAiRequestSignal(signal, Math.min(config.requestTimeoutMs, 30_000));
+  const timeoutPolicy = await administrativeTimeoutPolicy(config);
+  const timed = createAiRequestSignal(signal, timeoutPolicy.totalRequestTimeoutMs);
   const started = Date.now();
   try {
     const models = await adapter.discoverModels(config, timed.signal);
@@ -149,7 +161,8 @@ export async function refreshAiProviderModels(providerId: string, signal?: Abort
   if (!config.enabled) throw new AiError("PROVIDER_DISABLED");
   const operation = await beginAdministrativeAiOperation({ provider: config, source: "MODEL_DISCOVERY", userId, signal });
   const adapter = aiProviderRegistry.get(config.providerType);
-  const timed = createAiRequestSignal(signal, Math.min(config.requestTimeoutMs, 60_000));
+  const timeoutPolicy = await administrativeTimeoutPolicy(config);
+  const timed = createAiRequestSignal(signal, timeoutPolicy.totalRequestTimeoutMs);
   try {
     const models = await adapter.discoverModels(config, timed.signal);
     const now = new Date();

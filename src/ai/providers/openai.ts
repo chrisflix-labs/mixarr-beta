@@ -3,6 +3,7 @@ import type { AiCapabilityResult, AiConnectionTestResult, AiModel, AiModelCompat
 import { AiError } from "../errors";
 import { configuredHeaders } from "./http";
 import { normalizeAIResponse } from "./normalizeResponse";
+import { providerFetch } from "./http";
 
 const DEFAULT_OPENAI_API_ROOT = "https://api.openai.com/v1";
 const ADMIN_TEST_PROMPT = "Reply with exactly: MIXARR_OK";
@@ -93,7 +94,7 @@ export function classifyOpenAiHttpError(status: number, body: any, providerReque
   return new AiError("PROVIDER_SERVICE_ERROR", undefined, 502, undefined, details);
 }
 
-async function readResponseJson(response: Response, maxBytes: number) {
+async function readResponseJson(response: Response, maxBytes: number, lifecycle?: AiProviderExecutionContext["lifecycle"]) {
   if (!response.body) throw new AiError("PROVIDER_RESPONSE_INVALID", undefined, 502, undefined, { http_status: response.status });
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -101,6 +102,7 @@ async function readResponseJson(response: Response, maxBytes: number) {
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
+    lifecycle?.responseActivity({ meaningful: true, producedOutput: false });
     total += value.byteLength;
     if (total > maxBytes) { await reader.cancel(); throw new AiError("RESPONSE_TOO_LARGE"); }
     chunks.push(value);
@@ -112,16 +114,16 @@ async function readResponseJson(response: Response, maxBytes: number) {
   catch { throw new AiError("PROVIDER_RESPONSE_INVALID", undefined, 502, undefined, { http_status: response.status, provider_request_id: response.headers.get("x-request-id") || undefined }); }
 }
 
-async function openAiFetchJson(url: string, init: RequestInit, maxBytes: number): Promise<OpenAiHttpResult> {
+async function openAiFetchJson(url: string, init: RequestInit, maxBytes: number, lifecycle?: AiProviderExecutionContext["lifecycle"], sslVerification = true): Promise<OpenAiHttpResult> {
   let response: Response;
-  try { response = await fetch(url, init); }
+  try { response = await providerFetch(url, init, lifecycle, sslVerification); }
   catch (error) {
     if ((error as Error)?.name === "AbortError") throw new AiError("REQUEST_CANCELLED");
     throw new AiError("PROVIDER_CONNECTION_FAILED", undefined, 502, undefined, { exception_class: (error as Error)?.name || "Error", sanitized_exception_message: sanitizeErrorText(error, 200) });
   }
   const providerRequestId = response.headers.get("x-request-id") || response.headers.get("openai-request-id") || undefined;
   let payload: any;
-  try { payload = await readResponseJson(response, maxBytes); }
+  try { payload = await readResponseJson(response, maxBytes, lifecycle); }
   catch (error) { if (!response.ok && error instanceof AiError && error.category === "PROVIDER_RESPONSE_INVALID") payload = {}; else throw error; }
   if (!response.ok) {
     const classified = classifyOpenAiHttpError(response.status, payload, providerRequestId);
@@ -175,9 +177,9 @@ export class OpenAIProviderAdapter implements AiProviderAdapter {
     }).filter((model: AiModel) => !!model.id).sort((left: AiModel, right: AiModel) => left.id.localeCompare(right.id));
   }
 
-  private async response(config: ResolvedAiProviderConfig, model: string, input: string, signal: AbortSignal, maxBytes: number) {
+  private async response(config: ResolvedAiProviderConfig, model: string, input: string, signal: AbortSignal, maxBytes: number, lifecycle?: AiProviderExecutionContext["lifecycle"]) {
     const body = { model, input };
-    return openAiFetchJson(endpoint(config, "responses"), { method: "POST", headers: headers(config), signal, body: JSON.stringify(body) }, maxBytes);
+    return openAiFetchJson(endpoint(config, "responses"), { method: "POST", headers: headers(config), signal, body: JSON.stringify(body) }, maxBytes, lifecycle, config.sslVerification);
   }
 
   async testConnection(config: ResolvedAiProviderConfig, signal?: AbortSignal, model?: string): Promise<AiConnectionTestResult> {
@@ -194,9 +196,10 @@ export class OpenAIProviderAdapter implements AiProviderAdapter {
 
   async complete<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): Promise<AiResponse<T>> {
     const started = Date.now();
-    const result = await this.response(config, context.model, promptFor(request), context.signal, context.maxResponseBytes);
+    const result = await this.response(config, context.model, promptFor(request), context.signal, context.maxResponseBytes, context.lifecycle);
     const content = extractOpenAiResponseText(result.payload);
     if (!content) throw new AiError("PROVIDER_RESPONSE_INVALID", undefined, 502, undefined, { http_status: result.httpStatus, provider_request_id: result.providerRequestId });
+    context.lifecycle?.responseActivity({ meaningful: true, producedOutput: content.length > 0 });
     return { requestId: context.requestId, providerId: config.id, providerType: "openai", model: String(result.payload?.model || context.model), content, usage: usage(result.payload, result.providerRequestId), finishReason: String(result.payload?.status || "completed"), latencyMs: Date.now() - started, retryCount: 0, streaming: false, warnings: [] };
   }
 }

@@ -2,7 +2,7 @@ import { AiError } from "../errors";
 
 export function isRetryEligible(error: unknown) {
   return error instanceof AiError && (
-    ["RATE_LIMITED", "REQUEST_TIMEOUT", "CONNECTION_FAILED", "PROVIDER_OVERLOADED", "STREAM_INTERRUPTED"].includes(error.category)
+    ["RATE_LIMITED", "REQUEST_TIMEOUT", "CONNECTION_FAILED", "PROVIDER_OVERLOADED", "STREAM_INTERRUPTED", "AI_CONNECTION_TIMEOUT", "AI_FIRST_TOKEN_TIMEOUT", "AI_TOTAL_TIMEOUT", "AI_STREAM_IDLE_TIMEOUT"].includes(error.category)
     || error.category === "AI_PROVIDER_HTTP_ERROR" && error.details?.retryable === true
   );
 }

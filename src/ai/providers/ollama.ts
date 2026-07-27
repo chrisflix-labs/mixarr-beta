@@ -1,6 +1,6 @@
 import type { AiCapabilityResult, AiConnectionTestResult, AiModel, AiProviderAdapter, AiProviderExecutionContext, AiRequest, AiResponse, AiStreamEvent, ResolvedAiProviderConfig } from "../contracts";
 import { AiError, normalizeProviderError } from "../errors";
-import { configuredHeaders, joinUrl, parseTextLines, safeFetchJson, safeFetchJsonDetailed } from "./http";
+import { configuredHeaders, joinUrl, parseTextLines, providerFetch, safeFetchJson, safeFetchJsonDetailed } from "./http";
 import { normalizeAIResponse } from "./normalizeResponse";
 
 export class OllamaAdapter implements AiProviderAdapter {
@@ -25,22 +25,24 @@ export class OllamaAdapter implements AiProviderAdapter {
   async complete<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): Promise<AiResponse<T>> {
     const started = Date.now();
     const messages = [...(request.systemInstructions ? [{ role: "system", content: request.systemInstructions }] : []), ...request.messages];
-    const result = await safeFetchJsonDetailed(joinUrl(this.base(config), "/api/chat"), { method: "POST", headers: configuredHeaders(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages, stream: false, format: request.responseFormat ? "json" : undefined, options: request.temperature == null ? undefined : { temperature: request.temperature } }) }, context.maxResponseBytes, { requestId: context.requestId, provider: config.displayName, model: context.model, stage: "CHAT_COMPLETION" });
+    const result = await safeFetchJsonDetailed(joinUrl(this.base(config), "/api/chat"), { method: "POST", headers: configuredHeaders(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages, stream: false, format: request.responseFormat ? "json" : undefined, options: request.temperature == null ? undefined : { temperature: request.temperature } }) }, context.maxResponseBytes, { requestId: context.requestId, provider: config.displayName, model: context.model, stage: "CHAT_COMPLETION", lifecycle: context.lifecycle, sslVerification: config.sslVerification });
     const payload = { ...result.payload, usage: { input_tokens: result.payload?.prompt_eval_count, output_tokens: result.payload?.eval_count } };
     const normalized = normalizeAIResponse(payload, { providerType: "ollama", provider: config.displayName, requestedModel: context.model, requestId: context.requestId, transport: result.transport, allowDirectStructuredObject: !!request.responseFormat });
+    context.lifecycle?.responseActivity({ meaningful: true, producedOutput: normalized.text.length > 0 });
     return { requestId: context.requestId, providerId: config.id, providerType: "ollama", model: normalized.model || context.model, content: normalized.text, usage: normalized.usage, latencyMs: Date.now() - started, retryCount: 0, streaming: false, finishReason: normalized.finishReason, warnings: ["Local provider - API cost not tracked"], transport: result.transport };
   }
   async *stream<T>(request: AiRequest<T>, config: ResolvedAiProviderConfig, context: AiProviderExecutionContext): AsyncIterable<AiStreamEvent> {
     const messages = [...(request.systemInstructions ? [{ role: "system", content: request.systemInstructions }] : []), ...request.messages];
     let response: Response;
-    try { response = await fetch(joinUrl(this.base(config), "/api/chat"), { method: "POST", headers: configuredHeaders(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages, stream: true, format: request.responseFormat ? "json" : undefined, options: request.temperature == null ? undefined : { temperature: request.temperature } }) }); }
+    try { response = await providerFetch(joinUrl(this.base(config), "/api/chat"), { method: "POST", headers: configuredHeaders(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages, stream: true, format: request.responseFormat ? "json" : undefined, options: request.temperature == null ? undefined : { temperature: request.temperature } }) }, context.lifecycle, config.sslVerification); }
     catch (error) { throw normalizeProviderError(error); }
     if (!response.ok) throw normalizeProviderError(new Error(`Provider returned HTTP ${response.status}.`), response.status);
     yield { type: "started", requestId: context.requestId };
-    for await (const line of parseTextLines(response, context.maxResponseBytes, context.signal)) {
+    for await (const line of parseTextLines(response, context.maxResponseBytes, context.signal, context.lifecycle)) {
       if (!line.trim()) continue;
       let event: any; try { event = JSON.parse(line); } catch { throw new AiError("INVALID_RESPONSE"); }
       const delta = event?.message?.content;
+      context.lifecycle?.responseActivity({ meaningful: !!delta || event.done === true, producedOutput: !!delta });
       if (typeof delta === "string" && delta) yield request.responseFormat ? { type: "structured_delta", delta } : { type: "text_delta", delta };
       if (event.done) { yield { type: "usage", usage: { inputTokens: event.prompt_eval_count, outputTokens: event.eval_count, totalTokens: Number(event.prompt_eval_count || 0) + Number(event.eval_count || 0) } }; yield { type: "completed", finishReason: event.done_reason }; return; }
     }

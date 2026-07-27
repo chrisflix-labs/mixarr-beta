@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AiCapabilityResult, AiConnectionTestResult, AiModel, AiModelCapabilities, AiProviderAdapter, AiProviderExecutionContext, AiProviderTestProfile, AiProviderType, AiRequest, AiResponse, AiStreamEvent, AiStructuredOutputMode, AiThinkingMode, ResolvedAiProviderConfig } from "../contracts";
 import { AiError, normalizeProviderError } from "../errors";
-import { configuredHeaders, joinUrl, openAiMessages, parseTextLines, safeFetchJson, safeFetchJsonDetailed } from "./http";
+import { configuredHeaders, joinUrl, openAiMessages, parseTextLines, providerFetch, safeFetchJson, safeFetchJsonDetailed } from "./http";
 import { normalizeAIResponse, normalizeAIUsage } from "./normalizeResponse";
 import { resolveModelCapabilities } from "../registry/modelCapabilities";
 import { zodToJsonSchema } from "../validation/jsonSchema";
@@ -129,7 +129,7 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
     const systemInstructions = [request.systemInstructions, structuredInstruction(request, outputMode)].filter(Boolean).join("\n");
     const retryAttempt = Number(request.metadata?.retryAttempt || 0);
     const body = { model: context.model, messages: openAiMessages(request.messages, systemInstructions || undefined), ...(config.providerType === "deepseek" && request.responseFormat ? {} : request.temperature == null ? {} : { temperature: request.temperature }), response_format: nativeResponseFormat(request, outputMode), ...(config.providerType === "deepseek" && (modelCapabilities.supportsThinkingMode || request.requestSource === "CONNECTION_TEST") && thinkingMode !== "provider_default" ? { thinking: { type: thinkingMode } } : {}), ...(!request.responseFormat && thinkingMode === "enabled" && request.reasoningEffort && modelCapabilities.supportsReasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}), stream: false };
-    const result = await safeFetchJsonDetailed(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify(body) }, context.maxResponseBytes, { requestId: context.requestId, provider: config.displayName, model: context.model, stage: "CHAT_COMPLETION" });
+    const result = await safeFetchJsonDetailed(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify(body) }, context.maxResponseBytes, { requestId: context.requestId, provider: config.displayName, model: context.model, stage: "CHAT_COMPLETION", lifecycle: context.lifecycle, sslVerification: config.sslVerification });
     const payload = result.payload;
     let normalized;
     try { normalized = normalizeAIResponse(payload, {
@@ -147,6 +147,7 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
       throw normalizedError;
     }
     const cost = Number(payload?.usage?.cost ?? payload?.cost);
+    context.lifecycle?.responseActivity({ meaningful: true, producedOutput: normalized.text.length > 0 });
     if (normalized.usage && result.transport.providerRequestId) normalized.usage.providerRequestId = result.transport.providerRequestId;
     console.info("[AI Provider Response]", providerDiagnostics({ config, model: context.model, request, transport: result.transport, finishReason: normalized.finishReason, thinkingMode, structuredOutputMode: outputMode, hasReasoningContent: normalized.hasReasoningContent, finalContentCharacterCount: normalized.finalContentCharacterCount, usage: normalized.usage, retryAttempt, elapsedMs: Date.now() - started }));
     return { requestId: context.requestId, providerId: config.id, providerType: this.providerType, model: normalized.model || context.model, content: normalized.text, usage: normalized.usage, actualCost: Number.isFinite(cost) && cost >= 0 ? cost : undefined, finishReason: normalized.finishReason, latencyMs: Date.now() - started, retryCount: 0, streaming: false, warnings: [], transport: result.transport, thinkingModeRequested: thinkingMode, hasReasoningContent: normalized.hasReasoningContent, reasoningCharacterCount: normalized.reasoningCharacterCount, finalContentCharacterCount: normalized.finalContentCharacterCount, structuredOutputMode: outputMode };
@@ -158,16 +159,17 @@ export class OpenAiCompatibleAdapter implements AiProviderAdapter {
     const thinkingMode = thinkingModeFor(request, config, modelCapabilities.supportsThinkingMode);
     const outputMode = structuredOutputMode(request, modelCapabilities);
     const systemInstructions = [request.systemInstructions, structuredInstruction(request, outputMode)].filter(Boolean).join("\n");
-    try { response = await fetch(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages: openAiMessages(request.messages, systemInstructions || undefined), ...(config.providerType === "deepseek" && request.responseFormat ? {} : request.temperature == null ? {} : { temperature: request.temperature }), response_format: nativeResponseFormat(request, outputMode), ...(config.providerType === "deepseek" && modelCapabilities.supportsThinkingMode && thinkingMode !== "provider_default" ? { thinking: { type: thinkingMode } } : {}), ...(!request.responseFormat && thinkingMode === "enabled" && request.reasoningEffort && modelCapabilities.supportsReasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}), stream: true, stream_options: { include_usage: true } }) }); }
+    try { response = await providerFetch(joinUrl(this.base(config), endpoint), { method: "POST", headers: this.headers(config), signal: context.signal, body: JSON.stringify({ model: context.model, messages: openAiMessages(request.messages, systemInstructions || undefined), ...(config.providerType === "deepseek" && request.responseFormat ? {} : request.temperature == null ? {} : { temperature: request.temperature }), response_format: nativeResponseFormat(request, outputMode), ...(config.providerType === "deepseek" && modelCapabilities.supportsThinkingMode && thinkingMode !== "provider_default" ? { thinking: { type: thinkingMode } } : {}), ...(!request.responseFormat && thinkingMode === "enabled" && request.reasoningEffort && modelCapabilities.supportsReasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}), stream: true, stream_options: { include_usage: true } }) }, context.lifecycle, config.sslVerification); }
     catch (error) { throw normalizeProviderError(error); }
     if (!response.ok) throw normalizeProviderError(new Error(`Provider returned HTTP ${response.status}.`), response.status);
     yield { type: "started", requestId: context.requestId };
-    for await (const line of parseTextLines(response, context.maxResponseBytes, context.signal)) {
+    for await (const line of parseTextLines(response, context.maxResponseBytes, context.signal, context.lifecycle)) {
       if (!line.startsWith("data:")) continue;
       const raw = line.slice(5).trim();
       if (raw === "[DONE]") { yield { type: "completed" }; return; }
       let event: any; try { event = JSON.parse(raw); } catch { throw new AiError("INVALID_RESPONSE"); }
       const delta = event?.choices?.[0]?.delta?.content;
+      context.lifecycle?.responseActivity({ meaningful: typeof delta === "string" && delta.length > 0, producedOutput: typeof delta === "string" && delta.length > 0 });
       if (typeof delta === "string" && delta) yield request.responseFormat ? { type: "structured_delta", delta } : { type: "text_delta", delta };
       if (event?.usage) yield { type: "usage", usage: normalizeAIUsage(event) || {} };
       const finish = event?.choices?.[0]?.finish_reason;

@@ -5671,10 +5671,10 @@ model AiGovernanceSetting {
   secureDebugEnabled                Boolean  @default(false)
   secureDebugRetentionHours         Int      @default(24)
   defaultContextTrimmingStrategy    String   @default("REJECT")
-  connectionTimeoutMs               Int      @default(10000)
-  firstTokenTimeoutMs               Int      @default(30000)
-  totalRequestTimeoutMs             Int      @default(120000)
-  streamingIdleTimeoutMs            Int      @default(30000)
+  connectionTimeoutMs               Int?     @default(10000)
+  firstTokenTimeoutMs               Int?     @default(30000)
+  totalRequestTimeoutMs             Int?     @default(120000)
+  streamingIdleTimeoutMs            Int?     @default(30000)
   cancellationGraceMs               Int      @default(2000)
   maximumRetryAttempts              Int      @default(1)
   maximumRetryCost                  Decimal? @db.Decimal(18, 6)
@@ -5740,7 +5740,14 @@ model AiProviderConfig {
   maximumContextTokens        Int?
   /// Deprecated Mixarr output cap. Provider-native limits are represented by model capability metadata.
   maximumOutputTokens         Int?
+  /// Deprecated v2.4.22 single request timeout. Retained for rollback compatibility.
   requestTimeoutMs            Int                   @default(120000)
+  timeoutOverrideEnabled      Boolean               @default(false)
+  connectionTimeoutMs         Int?                  @default(10000)
+  firstTokenTimeoutMs         Int?                  @default(30000)
+  totalRequestTimeoutMs       Int?                  @default(120000)
+  streamingIdleTimeoutMs      Int?                  @default(30000)
+  cancellationGraceMs         Int                   @default(2000)
   retryCount                  Int                   @default(1)
   initialRetryDelayMs         Int                   @default(500)
   maximumRetryDelayMs         Int                   @default(10000)
@@ -5968,6 +5975,7 @@ model AiRequestAudit {
   httpStatus                  Int?
   providerErrorCode           String?
   costState                   String?
+  effectiveTimeoutPolicyJson Json?
   createdAt                   DateTime              @default(now())
   provider                    AiProviderConfig?     @relation(fields: [providerConfigId], references: [id], onDelete: SetNull)
   attempts                    AiProviderAttempt[]

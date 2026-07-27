@@ -1,6 +1,6 @@
 import { normalizeProviderError, type AiError, type AiErrorCategory } from "../errors";
 
-const fallbackCategories = new Set<AiErrorCategory>(["PROVIDER_UNAVAILABLE", "CONNECTION_FAILED", "RATE_LIMITED", "REQUEST_TIMEOUT", "TLS_ERROR", "PROVIDER_OVERLOADED", "AI_PROVIDER_TIMEOUT", "AI_PROVIDER_MALFORMED_JSON", "AI_PROVIDER_UNSUPPORTED_RESPONSE_SHAPE", "AI_PROVIDER_EMPTY_RESPONSE"]);
+const fallbackCategories = new Set<AiErrorCategory>(["PROVIDER_UNAVAILABLE", "CONNECTION_FAILED", "RATE_LIMITED", "REQUEST_TIMEOUT", "TLS_ERROR", "PROVIDER_OVERLOADED", "AI_PROVIDER_TIMEOUT", "AI_CONNECTION_TIMEOUT", "AI_FIRST_TOKEN_TIMEOUT", "AI_TOTAL_TIMEOUT", "AI_STREAM_IDLE_TIMEOUT", "AI_PROVIDER_MALFORMED_JSON", "AI_PROVIDER_UNSUPPORTED_RESPONSE_SHAPE", "AI_PROVIDER_EMPTY_RESPONSE"]);
 
 export function isFallbackEligible(error: AiError) {
   return fallbackCategories.has(error.category) || error.category === "AI_PROVIDER_HTTP_ERROR" && error.details?.retryable === true;
