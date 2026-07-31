@@ -13,6 +13,6 @@ export function advisoryRouteError(error: unknown) {
   const value = error as any; const status = Number(value?.status) || 500;
   const code = String(value?.code || value?.category || "AI_ADVISORY_ERROR");
   const message = status >= 500 ? "The AI advisory operation could not be completed." : error instanceof Error ? error.message : "The request could not be completed.";
-  return NextResponse.json({ error: { code, message }, code, message }, { status });
+  const requestId = typeof value?.details?.request_id === "string" ? value.details.request_id : undefined;
+  return NextResponse.json({ error: { code, message, ...(requestId ? { details: { requestId } } : {}) }, code, message, ...(requestId ? { requestId } : {}) }, { status });
 }
-

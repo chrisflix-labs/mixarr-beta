@@ -47,3 +47,20 @@ export function zodToJsonSchema(schema: z.ZodTypeAny): JsonSchema {
   }
   return {};
 }
+
+/** Build a complete, schema-derived example without maintaining a second hand-written contract. */
+export function jsonSchemaExample(schema: JsonSchema): unknown {
+  if ("const" in schema) return schema.const;
+  if (Array.isArray(schema.enum) && schema.enum.length) return schema.enum[0];
+  if (Array.isArray(schema.anyOf) && schema.anyOf.length) return jsonSchemaExample(schema.anyOf[0] as JsonSchema);
+  if (Array.isArray(schema.oneOf) && schema.oneOf.length) return jsonSchemaExample(schema.oneOf[0] as JsonSchema);
+  if (schema.type === "object") {
+    const properties = schema.properties && typeof schema.properties === "object" ? schema.properties as Record<string, JsonSchema> : {};
+    return Object.fromEntries(Object.entries(properties).map(([key, value]) => [key, jsonSchemaExample(value)]));
+  }
+  if (schema.type === "array") return [jsonSchemaExample((schema.items || {}) as JsonSchema)];
+  if (schema.type === "integer" || schema.type === "number") return typeof schema.minimum === "number" ? schema.minimum : 0;
+  if (schema.type === "boolean") return false;
+  if (schema.type === "null") return null;
+  return "value";
+}

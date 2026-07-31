@@ -12,7 +12,7 @@ const TYPES = [
 ] as const;
 const defaultTypes = ["ONE_SENTENCE", "DETAILED_DESCRIPTION", "PLEX_FRIENDLY"];
 
-async function api(url: string, init?: RequestInit) { const response = await fetch(url, { cache: "no-store", ...init, headers: { "Content-Type": "application/json", ...(init?.headers || {}) } }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error?.message || body.message || "Request failed."); return body; }
+async function api(url: string, init?: RequestInit) { const response = await fetch(url, { cache: "no-store", ...init, headers: { "Content-Type": "application/json", ...(init?.headers || {}) } }); const body = await response.json().catch(() => ({})); if (!response.ok) { const requestId = body.error?.details?.requestId || body.requestId; throw new Error(`${body.error?.message || body.message || "Request failed."}${requestId ? ` Request ID: ${requestId}` : ""}`); } return body; }
 const label = (type: string) => TYPES.find(([value]) => value === type)?.[1] || type.replaceAll("_", " ").toLowerCase();
 
 export default function PlaylistAiSummaries({ playlistId, playlistName, openInitially = false }: { playlistId: string; playlistName: string; openInitially?: boolean }) {
@@ -45,4 +45,3 @@ export default function PlaylistAiSummaries({ playlistId, playlistName, openInit
     </div>
   </details>;
 }
-

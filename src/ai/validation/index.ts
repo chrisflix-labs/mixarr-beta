@@ -62,14 +62,14 @@ function validationIssues(error: z.ZodError, parsed: unknown) {
   });
 }
 
-export function parseStructuredResponseDetailed<T>(content: string, format: AiResponseFormat<T>, maxBytes: number, maximumStructuredItems = AI_RESPONSE_LIMITS.maxArrayLength): { data: T; repaired: boolean; repairMethod?: string; jsonParsed: true; normalization: { codeFenceRemoved: boolean; objectExtracted: boolean; jsonStringDecoded: boolean; wrapperUnwrapped: boolean } } {
+export function parseStructuredResponseDetailed<T>(content: string, format: AiResponseFormat<T>, maxBytes: number, maximumStructuredItems = AI_RESPONSE_LIMITS.maxArrayLength): { data: T; repaired: boolean; repairMethod?: string; jsonParsed: true; normalization: { codeFenceRemoved: boolean; objectExtracted: boolean; jsonStringDecoded: boolean; wrapperUnwrapped: boolean; featureNormalized: boolean; featureDetails?: Record<string, unknown> } } {
   if (Buffer.byteLength(content, "utf8") > maxBytes) throw new AiError("RESPONSE_TOO_LARGE");
   let parsed: unknown;
   let source = content.trim();
   if (!source) throw new AiError("AI_PROVIDER_EMPTY_RESPONSE", undefined, 502, undefined, { failure_stage: "EMPTY_BODY" });
   let repaired = false;
   const methods: string[] = [];
-  const normalization = { codeFenceRemoved: false, objectExtracted: false, jsonStringDecoded: false, wrapperUnwrapped: false };
+  const normalization: { codeFenceRemoved: boolean; objectExtracted: boolean; jsonStringDecoded: boolean; wrapperUnwrapped: boolean; featureNormalized: boolean; featureDetails?: Record<string, unknown> } = { codeFenceRemoved: false, objectExtracted: false, jsonStringDecoded: false, wrapperUnwrapped: false, featureNormalized: false };
   try { parsed = JSON.parse(source); } catch {
     const fenced = source.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
     if (fenced) { source = fenced[1].trim(); repaired = true; normalization.codeFenceRemoved = true; methods.push("REMOVED_JSON_CODE_FENCE"); }
@@ -97,10 +97,23 @@ export function parseStructuredResponseDetailed<T>(content: string, format: AiRe
     }
   }
   assertJsonComplexity(parsed, 0, { ...AI_RESPONSE_LIMITS, maxArrayLength: Math.min(AI_RESPONSE_LIMITS.maxArrayLength, Math.max(1, maximumStructuredItems)) });
+  if (format.normalizeParsedValue) {
+    try {
+      const featureResult = format.normalizeParsedValue(parsed);
+      parsed = featureResult.value;
+      normalization.featureDetails = featureResult.details;
+      if (featureResult.method) { repaired = true; normalization.featureNormalized = true; methods.push(featureResult.method); }
+    } catch (error) {
+      const normalized = error instanceof AiError ? error : new AiError("STRUCTURED_RESPONSE_INVALID");
+      normalized.details = { json_parsed: true, normalized: repaired, normalization_applied: repaired, repair_attempted: false, repair_method: methods.join("_AND_") || undefined, ...normalization, ...normalized.details };
+      throw normalized;
+    }
+  }
+  assertJsonComplexity(parsed, 0, { ...AI_RESPONSE_LIMITS, maxArrayLength: Math.min(AI_RESPONSE_LIMITS.maxArrayLength, Math.max(1, maximumStructuredItems)) });
   const result = format.schema.safeParse(parsed);
   if (!result.success) {
     const issues = validationIssues(result.error, parsed);
-    throw new AiError("STRUCTURED_RESPONSE_INVALID", undefined, 422, undefined, { failure_stage: "SCHEMA_VALIDATION", json_parsed: true, normalized: repaired, normalization_applied: repaired, issue_count: issues.length, issues, repair_attempted: false, repair_method: methods.join("_AND_") || undefined, ...normalization });
+    throw new AiError("STRUCTURED_RESPONSE_INVALID", undefined, 422, undefined, { failure_stage: format.validationFailureStage?.(issues) || "SCHEMA_VALIDATION", json_parsed: true, normalized: repaired, normalization_applied: repaired, issue_count: issues.length, issues, repair_attempted: false, repair_method: methods.join("_AND_") || undefined, ...normalization, ...(normalization.featureDetails || {}) });
   }
   return { data: result.data, repaired, repairMethod: methods.join("_AND_") || undefined, jsonParsed: true, normalization };
 }
@@ -118,7 +131,8 @@ export async function parseStructuredResponseWithProviderRepair<T>(input: {
     return { ...parsed, content: input.content, providerRepairUsed: false };
   } catch (error) {
     const structured = error instanceof AiError ? error : new AiError("STRUCTURED_RESPONSE_INVALID");
-    if (!["JSON_PARSE", "SCHEMA_VALIDATION"].includes(String(structured.details?.failure_stage)) || input.providerRepairAttempts < 1 || !input.repair) throw structured;
+    const repairable = structured.details?.repairable === true || ["JSON_PARSE", "SCHEMA_VALIDATION", "SUMMARY_ROOT_VALIDATION", "SUMMARY_ITEM_VALIDATION"].includes(String(structured.details?.failure_stage));
+    if (!repairable || input.providerRepairAttempts < 1 || !input.repair) throw structured;
     const repairedContent = await input.repair(input.content, structured.details);
     try {
       const parsed = parseStructuredResponseDetailed(repairedContent, input.format, input.maxBytes, input.maximumStructuredItems);

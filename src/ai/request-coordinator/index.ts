@@ -23,6 +23,7 @@ import { quarantineAiResponse, storeAiResponse } from "../quarantine/service";
 import { resolveEffectiveTimeoutPolicy, type AiTimeoutPolicyOverride } from "../config/timeout";
 import { executeEligibleFallback } from "../utilities/fallback";
 import { SCORING_MODELS } from "@/lib/scoringModelCatalog";
+import { safePlaylistSummaryLogDetails } from "../playlistSummaries/responseFormat";
 
 const supportedCapability = new Set<AiCapabilityConfidence>(["CONFIRMED", "REPORTED", "ASSUMED", "MANUALLY_ENABLED"]);
 
@@ -324,7 +325,16 @@ export class AiRequestCoordinator {
             const repairStarted = Date.now();
             let repairResponse: AiResponse<T>;
             const validationIssues = Array.isArray(validationDetails?.issues) ? validationDetails.issues : [];
-            const issuePaths = validationIssues.map((issue: any) => String(issue.path || "")).filter(Boolean).slice(0, 25);
+            const repairIssues = validationIssues.map((issue: any) => ({ path: String(issue.path || ""), code: String(issue.code || "unknown"), expected: issue.expected, receivedType: String(issue.receivedType || "unknown") })).slice(0, 25);
+            const repairDiagnostics = {
+              failureStage: validationDetails?.failure_stage,
+              rootValueType: validationDetails?.rootValueType,
+              rootPropertyNames: validationDetails?.rootPropertyNames,
+              nestedWrapperPropertyNames: validationDetails?.nestedWrapperPropertyNames,
+              summaryCandidatePaths: validationDetails?.summaryCandidatePaths,
+              invalidCollectionPaths: validationDetails?.invalidCollectionPaths,
+              issues: repairIssues,
+            };
             const scoringIssue = validationIssues.find((issue: any) => String(issue.path || "").endsWith("scoring.scoringModel"));
             if (request.featureKey === "recipe_copilot" && scoringIssue) {
               console.warn("[Recipe Copilot] Unsupported proposal enum", {
@@ -338,7 +348,7 @@ export class AiRequestCoordinator {
               });
             }
             const exactSchema = request.responseFormat?.jsonSchema ? JSON.stringify(request.responseFormat.jsonSchema) : "Use the response schema supplied through the native structured-output request.";
-            try { repairResponse = await finalCandidate.adapter.complete({ ...request, systemInstructions: `This is one schema repair attempt. Return only one corrected JSON object matching this canonical schema: ${exactSchema}`, messages: [{ role: "user", content: `Validation issue paths: ${JSON.stringify(issuePaths)}\nInvalid generated JSON:\n${malformedContent.slice(0, 100_000)}\nReturn only corrected JSON.` }], stream: false, thinkingMode: finalCandidate.config.providerType === "deepseek" ? "disabled" : request.thinkingMode, reasoningEffort: undefined, temperature: undefined, metadata: { ...(request.metadata || {}), schema_repair: true, retryAttempt: 1 } }, finalCandidate.config, { requestId, providerId: finalCandidate.config.id, model: finalCandidate.model, signal: timed.signal, maxResponseBytes: maxBytes, modelCapabilities: request.resolvedModelCapabilities, lifecycle: timed.lifecycle }); }
+            try { repairResponse = await finalCandidate.adapter.complete({ ...request, systemInstructions: `This is the only schema repair attempt. Return only one corrected canonical JSON object matching this JSON Schema: ${exactSchema}. Do not return prose, Markdown, code fences, aliases, or wrapper objects.`, messages: [{ role: "user", content: `Exact validation errors: ${JSON.stringify(repairDiagnostics)}\nOriginal provider response:\n${malformedContent.slice(0, 100_000)}\nReturn only the corrected canonical JSON object.` }], stream: false, thinkingMode: finalCandidate.config.providerType === "deepseek" ? "disabled" : request.thinkingMode, reasoningEffort: undefined, temperature: undefined, metadata: { ...(request.metadata || {}), schema_repair: true, retryAttempt: 1 } }, finalCandidate.config, { requestId, providerId: finalCandidate.config.id, model: finalCandidate.model, signal: timed.signal, maxResponseBytes: maxBytes, modelCapabilities: request.resolvedModelCapabilities, lifecycle: timed.lifecycle }); }
             catch (repairError) { if (repairAttempt) await prisma.aiProviderAttempt.update({ where: { id: repairAttempt.id }, data: { status: "FAILED", completedAt: new Date(), providerAcknowledged: (repairError as AiError)?.details?.billing_possible !== false, errorCategory: repairError instanceof AiError ? repairError.category : "AI_PROVIDER_INVALID_RESPONSE" } }).catch(() => null); throw repairError; }
             if (repairAttempt) await prisma.aiProviderAttempt.update({ where: { id: repairAttempt.id }, data: { status: "COMPLETED", completedAt: new Date(), providerAcknowledged: true, inputTokens: repairResponse.usage?.inputTokens, outputTokens: repairResponse.usage?.outputTokens, actualCost: repairResponse.actualCost, estimatedCost: repairResponse.estimatedCost } }).catch(() => null);
             response.usage = { inputTokens: Number(response.usage?.inputTokens || 0) + Number(repairResponse.usage?.inputTokens || 0) || undefined, outputTokens: Number(response.usage?.outputTokens || 0) + Number(repairResponse.usage?.outputTokens || 0) || undefined, totalTokens: Number(response.usage?.totalTokens || 0) + Number(repairResponse.usage?.totalTokens || 0) || undefined, providerReported: response.usage?.providerReported === true && repairResponse.usage?.providerReported === true, providerRequestId: repairResponse.usage?.providerRequestId, rawUsage: repairResponse.usage?.rawUsage };
@@ -352,11 +362,20 @@ export class AiRequestCoordinator {
           } });
           response.content = parsed.content;
           response.data = parsed.data;
+          if (request.featureKey === "playlist_ai_summaries" && process.env.NODE_ENV !== "production") console.info("[Playlist Summaries] Parsed response shape", { requestId, provider: finalCandidate.config.displayName, model: finalCandidate.model, ...safePlaylistSummaryLogDetails(parsed.normalization.featureDetails) });
           if (parsed.repaired || parsed.providerRepairUsed) await prisma.aiResponseRecord.update({ where: { id: stored.id }, data: { repairAttempts: 1, repairMethod: parsed.repairMethod, status: "SCHEMA_VALIDATED" } });
         } catch (error) {
           const structured = error instanceof AiError ? error : new AiError("AI_PROVIDER_INVALID_RESPONSE");
           const usageDetails = { usage_input_tokens: response.usage?.inputTokens, usage_output_tokens: response.usage?.outputTokens, usage_total_tokens: response.usage?.totalTokens, usage_provider_reported: response.usage?.providerReported === true, estimated_cost: response.estimatedCost ?? governed.preview.cost.expectedEstimatedCost, actual_cost: response.actualCost, billing_possible: response.transport?.httpStatus === 200, http_status: response.transport?.httpStatus, response_content_type: response.transport?.contentType, response_body_length: response.transport?.bodyLength, response_streamed: response.transport?.streamed, finish_reason: response.finishReason, final_content_character_count: response.finalContentCharacterCount ?? response.content?.length ?? 0 };
           await quarantineAiResponse({ requestId, responseRecordId: stored.id, userId, featureKey: request.featureKey, providerConfigId: response.providerId, model: response.model, reasons: [structured.details?.failure_stage === "SCHEMA_VALIDATION" ? "schema_validation_failed" : "json_parse_failed"], requestPreview: { feature: request.featureKey }, responsePreview: { contentType: "private_provider_output", characterCount: response.content?.length || 0, jsonParsed: structured.details?.json_parsed === true, propertyPaths: Array.isArray(structured.details?.issues) ? structured.details.issues.map((issue: any) => String(issue.path || "")).slice(0, 25) : [] }, validationFailures: structured.details });
+          if (request.featureKey === "playlist_ai_summaries") {
+            const details: Record<string, unknown> = { ...structured.details, ...usageDetails, request_id: requestId, provider: finalCandidate.config.displayName, model: finalCandidate.model };
+            console.warn("[Playlist Summaries] Structured output validation failed", { requestId, provider: finalCandidate.config.displayName, model: finalCandidate.model, ...safePlaylistSummaryLogDetails(details) });
+            const message = details.repair_attempted === true
+              ? "The AI provider returned playlist summaries in an unsupported format. Mixarr attempted to repair the response, but it still did not match the required schema."
+              : "The AI provider returned playlist summaries in an unsupported format and it did not match the required schema.";
+            throw new AiError("AI_PROVIDER_INVALID_RESPONSE", message, 422, undefined, details);
+          }
           console.warn("[Recipe Copilot] Structured output validation failed", { correlationId: requestId, provider: finalCandidate.config.displayName, model: finalCandidate.model, jsonParsed: structured.details?.json_parsed === true, normalized: structured.details?.normalized === true, issueCount: structured.details?.issue_count || 0, issues: structured.details?.issues || [], codeFenceRemoved: structured.details?.codeFenceRemoved === true, wrapperUnwrapped: structured.details?.wrapperUnwrapped === true, repairAttempted: structured.details?.repair_attempted === true });
           if (request.featureKey !== "recipe_copilot") { structured.details = { ...structured.details, ...usageDetails }; throw structured; }
           const scoringEnumIssue = Array.isArray(structured.details?.issues)

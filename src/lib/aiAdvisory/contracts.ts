@@ -3,7 +3,7 @@ import { z } from "zod";
 export const PLAYLIST_SUMMARY_FEATURE_KEY = "playlist_ai_summaries";
 export const METADATA_SUGGESTION_FEATURE_KEY = "metadata_suggestions";
 export const PLAYLIST_ANALYSIS_SCHEMA_VERSION = "1.0";
-export const PLAYLIST_SUMMARY_PROMPT_VERSION = "playlist-summary-1.0";
+export const PLAYLIST_SUMMARY_PROMPT_VERSION = "playlist-summary-1.1";
 export const METADATA_SUGGESTION_PROMPT_VERSION = "metadata-suggestion-1.0";
 
 export const SUMMARY_TYPES = [
@@ -35,14 +35,16 @@ export const generateSummaryRequestSchema = z.object({
   previewAcknowledged: z.boolean().optional(),
 }).strict();
 
+export const summaryProviderItemSchema = z.object({
+  type: z.enum(SUMMARY_TYPES),
+  text: boundedText(6000),
+  usedFacts: z.array(boundedText(80)).max(40).default([]),
+  unavailableFacts: z.array(boundedText(80)).max(40).default([]),
+}).strict();
+
 export const summaryProviderResponseSchema = z.object({
   schemaVersion: z.literal("1.0"),
-  summaries: z.array(z.object({
-    type: z.enum(SUMMARY_TYPES),
-    text: boundedText(6000),
-    usedFacts: z.array(boundedText(80)).max(40).default([]),
-    unavailableFacts: z.array(boundedText(80)).max(40).default([]),
-  }).strict()).min(1).max(SUMMARY_TYPES.length),
+  summaries: z.array(summaryProviderItemSchema).max(SUMMARY_TYPES.length),
 }).strict();
 
 export const updateSummarySchema = z.object({

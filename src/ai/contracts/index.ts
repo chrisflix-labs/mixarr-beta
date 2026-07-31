@@ -51,6 +51,8 @@ export type AiResponseFormat<T = unknown> = {
   unknownFields?: "reject" | "strip";
   allowEmbeddedJson?: boolean;
   knownRootWrappers?: string[];
+  normalizeParsedValue?: (value: unknown) => { value: unknown; method?: string; details?: Record<string, unknown> };
+  validationFailureStage?: (issues: Array<{ path: string; code: string; expected?: unknown; receivedType: string }>) => string;
 };
 
 export type AiRequest<T = unknown> = {
