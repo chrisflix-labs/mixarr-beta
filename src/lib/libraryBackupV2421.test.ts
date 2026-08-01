@@ -6,7 +6,7 @@ const read = (path: string) => readFileSync(path, "utf8");
 
 describe("v2.4.21 lossless Library Intelligence release contract", () => {
   it("ships the release metadata and root-cause documentation", () => {
-    assert.equal(JSON.parse(read("package.json")).version, "2.4.22");
+    assert.equal(JSON.parse(read("package.json")).version, "2.4.23");
     assert.match(read("CHANGELOG.md"), /v2\.4\.21 - Lossless Library Intelligence Backup & Restore/);
     const docs = read("docs/LIBRARY_INTELLIGENCE_BACKUP_V2421.md");
     assert.match(docs, /1,529 \+ 1,243 = 2,772/);

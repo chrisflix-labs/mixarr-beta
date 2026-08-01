@@ -9,6 +9,7 @@ import { AlertCircle, ArrowDown, ArrowLeft, CheckCircle2, Copy, Download, Edit3,
 import styles from "./recipe-detail.module.css";
 import TroubleshootLink from "@/components/TroubleshootLink";
 import { SCORING_MODEL_OPTIONS, SCORING_MODELS } from "@/lib/scoringModelCatalog";
+import { ClipboardCopyError, copyTextToClipboard } from "@/lib/clipboard";
 
 const categories = ["Driving", "Workout", "Party", "Focus", "Chill", "Relaxation", "Sleep", "Discovery", "Deep Cuts", "Recently Added", "Forgotten Favorites", "Decade Mixes", "Seasonal Mixes", "Genre Journeys", "Artist Radio", "Album Exploration", "Mood Progressions", "Mood", "Decade", "Genre", "Artist", "Seasonal", "Custom"];
 const sections = ["Recipe Foundation", "Overview", "Mood and Energy", "BPM Flow", "Discovery", "Scoring", "Artist and Album Variety", "Playlist Identity", "Refresh and Automation", "Effective Configuration", "Import Mapping", "Governance", "Validation", "Generated Playlists"];
@@ -183,8 +184,8 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
 
   async function copyShareCode() {
     if (!draft) return; const metadata = communityMetadata(); if (!metadata) return; setSaving(true); setError("");
-    try { const response = await axios.post(`/api/playlist-recipes/${draft.id}/community/code`, { metadata }); await navigator.clipboard.writeText(response.data.code); setNotice(`Share code copied (${response.data.characterCount} characters). Its checksum detects corruption but does not prove authorship.`); }
-    catch (caught: any) { setError(caught.response?.data?.error || "Share code could not be copied."); } finally { setSaving(false); }
+    try { const response = await axios.post(`/api/playlist-recipes/${draft.id}/community/code`, { metadata }); await copyTextToClipboard(response.data.code); setError(""); setNotice(`Share code copied (${response.data.characterCount} characters). Its checksum detects corruption but does not prove authorship.`); }
+    catch (caught: any) { setNotice(""); setError(caught instanceof ClipboardCopyError ? `${caught.message} Allow clipboard permission or use a secure browser context and try again.` : caught.response?.data?.error || "The share code could not be created."); } finally { setSaving(false); }
   }
 
   async function reportCommunity() {

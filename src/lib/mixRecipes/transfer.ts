@@ -84,7 +84,7 @@ export type RecipeBundleEnvelope = {
   integrity: RecipeIntegrity;
 };
 
-export type SensitiveFinding = { category: string; path: string };
+export type SensitiveFinding = { category: string; categoryCode: string; detectorRule: string; path: string };
 export type SensitiveScanResult = { safe: boolean; findingCount: number; categories: { category: string; count: number }[]; findings: SensitiveFinding[] };
 
 export type ImportAdaptation = {
@@ -325,27 +325,32 @@ export function buildBundleEnvelope(recipes: PortableRecipePayload[], exportedAt
   return envelope;
 }
 
-const prohibitedKeyMatchers: Array<[RegExp, string]> = [
-  [/^(plexToken|xPlexToken|accessToken)$/i, "Plex authentication token"],
-  [/(api.?key|bearer.?token|authorization|session.?cookie|password|client.?secret|webhook.?secret)/i, "Credential or secret"],
-  [/^(machineIdentifier|plexMachineId)$/i, "Plex machine identifier"],
-  [/^(plexLibraryId|libraryId)$/i, "Plex library identifier"],
-  [/^(ratingKey|plexRatingKey|trackId|trackIds|albumId|albumIds|artistId|artistIds|playlistId|playlistIds|sourcePlaylistId|relatedPlaylistIds)$/i, "Server-specific media identifier"],
-  [/^(userId|ownerId|installationId|notificationDestination|notificationDestinationId)$/i, "Private account or installation identifier"],
-  [/^(listeningHistory|playbackHistory|rejectedTracks|likedTracks|dislikedTracks|feedbackHistory|recommendationProfile|userProfile|personalizedScoringAdjustments)$/i, "Private listening or feedback data"],
-  [/(databaseUrl|connectionString|dockerVolume|filesystemPath|hostPath)/i, "Private server configuration"],
+type SensitiveMatcher = { pattern: RegExp; category: string; categoryCode: string; detectorRule: string };
+
+const prohibitedKeyMatchers: SensitiveMatcher[] = [
+  { pattern: /^(plexToken|xPlexToken|accessToken)$/i, category: "Plex authentication token", categoryCode: "credential", detectorRule: "plex_token_key" },
+  { pattern: /(api.?key|bearer.?token|authorization|session.?cookie|password|client.?secret|webhook.?secret)/i, category: "Credential or secret", categoryCode: "credential", detectorRule: "credential_key" },
+  { pattern: /^(machineIdentifier|plexMachineId)$/i, category: "Plex machine identifier", categoryCode: "installation_identifier", detectorRule: "machine_identifier_key" },
+  { pattern: /^(plexLibraryId|libraryId)$/i, category: "Plex library identifier", categoryCode: "installation_identifier", detectorRule: "library_identifier_key" },
+  { pattern: /^(ratingKey|plexRatingKey|trackId|trackIds|albumId|albumIds|artistId|artistIds|playlistId|playlistIds|sourcePlaylistId|relatedPlaylistIds)$/i, category: "Server-specific media identifier", categoryCode: "installation_identifier", detectorRule: "media_identifier_key" },
+  { pattern: /^(userId|ownerId|householdId|providerConnectionId|jobId|auditId|installationId|notificationDestination|notificationDestinationId)$/i, category: "Private account or installation identifier", categoryCode: "installation_identifier", detectorRule: "installation_identifier_key" },
+  { pattern: /^(listeningHistory|playbackHistory|rejectedTracks|likedTracks|dislikedTracks|feedbackHistory|recommendationProfile|userProfile|personalizedScoringAdjustments)$/i, category: "Private listening or feedback data", categoryCode: "private_data", detectorRule: "private_history_key" },
+  { pattern: /(databaseUrl|connectionString|dockerVolume|filesystemPath|hostPath|serverOrigin|requestUrl)/i, category: "Private server configuration", categoryCode: "server_configuration", detectorRule: "server_configuration_key" },
 ];
 
-const valueMatchers: Array<[RegExp, string]> = [
-  [/(?:X-Plex-Token=|plex[_-]?token["'=:\s]+)[A-Za-z0-9_-]{8,}/i, "Plex authentication token"],
-  [/\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b/i, "Bearer token"],
-  [/(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s"']+/i, "Database connection string"],
-  [/https?:\/\/[^\s/@:]+:[^\s/@]+@/i, "URL containing credentials"],
-  [/\b(?:10\.|127\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)\d{1,3}\.\d{1,3}\b/, "Local IP address"],
-  [/https?:\/\/(?:localhost|[A-Za-z0-9_-]+\.local|[A-Za-z0-9_-]+)(?::\d+)?(?:\/|$)/i, "Internal hostname"],
-  [/(?:^|[\s"'])(?:[A-Za-z]:\\|\\\\[^\\\s]+\\|\/(?:home|Users|var|etc|mnt|volume|docker)\/)[^\s"']*/i, "Local filesystem path"],
-  [/https:\/\/(?:discord(?:app)?\.com\/api\/webhooks|hooks\.slack\.com\/services)\//i, "Notification webhook"],
-  [/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i, "Email address"],
+const valueMatchers: SensitiveMatcher[] = [
+  { pattern: /(?:X-Plex-Token=|plex[_-]?token["'=:\s]+)[A-Za-z0-9_-]{8,}/i, category: "Plex authentication token", categoryCode: "credential", detectorRule: "plex_token" },
+  { pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b/i, category: "Bearer token", categoryCode: "credential", detectorRule: "bearer_token" },
+  { pattern: /\b(?:api[_-]?key|access[_-]?token|client[_-]?secret)\s*[:=]\s*[A-Za-z0-9._~+/=-]{12,}\b/i, category: "Credential or secret", categoryCode: "credential", detectorRule: "inline_credential" },
+  { pattern: /\b(?:sk|rk|pk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}\b/i, category: "Credential or secret", categoryCode: "credential", detectorRule: "known_token_format" },
+  { pattern: /(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s"']+/i, category: "Database connection string", categoryCode: "server_configuration", detectorRule: "database_url" },
+  { pattern: /https?:\/\/[^\s/@:]+:[^\s/@]+@/i, category: "URL containing credentials", categoryCode: "credential", detectorRule: "credentialed_url" },
+  { pattern: /\b(?:10(?:\.\d{1,3}){3}|127(?:\.\d{1,3}){3}|169\.254(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})\b/, category: "Private address", categoryCode: "private_address", detectorRule: "private_ipv4" },
+  { pattern: /https?:\/\/(?:localhost|[A-Za-z0-9_-]+\.(?:local|internal|lan|home|localdomain)|[A-Za-z0-9_-]+)(?::\d+)?(?:\/|$)/i, category: "Internal hostname", categoryCode: "private_address", detectorRule: "internal_hostname" },
+  { pattern: /(?:^|[\s"'])(?:[A-Za-z]:\\|\\\\[^\\\s]+\\|\/(?:home|Users|var|etc|mnt|volume|docker)\/)[^\s"']*/i, category: "Local filesystem path", categoryCode: "filesystem_path", detectorRule: "local_filesystem_path" },
+  { pattern: /https:\/\/(?:discord(?:app)?\.com\/api\/webhooks|hooks\.slack\.com\/services)\//i, category: "Notification webhook", categoryCode: "credential", detectorRule: "notification_webhook" },
+  { pattern: /(?:\$\{[A-Z][A-Z0-9_]{2,}\}|\bprocess\.env\.[A-Z][A-Z0-9_]{2,}\b|\b(?:MIXARR|DATABASE|PLEX|DOCKER|POSTGRES|MYSQL|MONGODB)_[A-Z0-9_]+\s*=)/i, category: "Environment value", categoryCode: "environment_value", detectorRule: "environment_reference" },
+  { pattern: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i, category: "Email address", categoryCode: "private_data", detectorRule: "email_address" },
 ];
 
 export function scanSensitiveData(value: unknown): SensitiveScanResult {
@@ -360,10 +365,10 @@ export function scanSensitiveData(value: unknown): SensitiveScanResult {
       for (const [key, child] of Object.entries(node)) {
         const childPath = path ? `${path}.${key}` : key;
         const hasSensitiveValue = child !== null && child !== undefined && child !== "" && (!Array.isArray(child) || child.length > 0);
-        for (const [matcher, category] of prohibitedKeyMatchers) {
-          if (hasSensitiveValue && matcher.test(key)) {
-            const signature = `${category}:${childPath}`;
-            if (!seen.has(signature)) { findings.push({ category, path: childPath }); seen.add(signature); }
+        for (const matcher of prohibitedKeyMatchers) {
+          if (hasSensitiveValue && matcher.pattern.test(key)) {
+            const signature = `${matcher.detectorRule}:${childPath}`;
+            if (!seen.has(signature)) { findings.push({ category: matcher.category, categoryCode: matcher.categoryCode, detectorRule: matcher.detectorRule, path: childPath }); seen.add(signature); }
             break;
           }
         }
@@ -372,10 +377,10 @@ export function scanSensitiveData(value: unknown): SensitiveScanResult {
       return;
     }
     if (typeof node === "string") {
-      for (const [matcher, category] of valueMatchers) {
-        if (matcher.test(node)) {
-          const signature = `${category}:${path}`;
-          if (!seen.has(signature)) { findings.push({ category, path }); seen.add(signature); }
+      for (const matcher of valueMatchers) {
+        if (matcher.pattern.test(node)) {
+          const signature = `${matcher.detectorRule}:${path}`;
+          if (!seen.has(signature)) { findings.push({ category: matcher.category, categoryCode: matcher.categoryCode, detectorRule: matcher.detectorRule, path }); seen.add(signature); }
         }
       }
     }
@@ -390,7 +395,9 @@ export function assertExportIsSafe(value: unknown) {
   const scan = scanSensitiveData(value);
   if (!scan.safe) {
     const error = new Error(`Recipe export blocked by sensitive-data scan: ${scan.categories.map((item) => item.category).join(", ")}`);
-    (error as Error & { code?: string }).code = "SENSITIVE_DATA_DETECTED";
+    const typed = error as Error & { code?: string; findings?: SensitiveFinding[] };
+    typed.code = "SENSITIVE_DATA_DETECTED";
+    typed.findings = scan.findings;
     throw error;
   }
 }
@@ -537,7 +544,8 @@ function portableFromUnknown(raw: unknown, adaptations: ImportAdaptation[], unsu
   return portable;
 }
 
-function internalDocumentFromPortable(portable: PortableRecipePayload): MixRecipeDocument {
+/** Rebuilds the canonical internal recipe shape from the explicit portable DTO. */
+export function mixRecipeDocumentFromPortablePayload(portable: PortableRecipePayload): MixRecipeDocument {
   const automation = recipeAutomationPolicySchema.parse({ ...portable.settings.automationPolicy, enabled: false, libraryId: null });
   return {
     format: "mixarr-recipe",
@@ -585,7 +593,7 @@ function makeCandidate(input: { raw: unknown; integrity: unknown; index: number;
   let warnings: RecipeValidationMessage[] = [];
   try {
     portable = portableFromUnknown(input.raw, adaptations, unsupported);
-    const result = validateRecipe(internalDocumentFromPortable(portable));
+    const result = validateRecipe(mixRecipeDocumentFromPortablePayload(portable));
     normalizedRecipe = result.normalizedRecipe;
     errors = result.errors;
     warnings = result.warnings;

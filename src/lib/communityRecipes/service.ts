@@ -8,13 +8,13 @@ import { APP_VERSION_NUMBER } from "../appVersion";
 import { isUserAdmin } from "../auth";
 import { assertStorageAvailable, registerActiveManagedFile, resolveStoragePaths } from "../storage";
 import { createPlaylistRecipeData, portableRecipeFromRecord, updatePlaylistRecipeData, type PlaylistRecipeInput } from "../playlistRecipes";
-import { safeRecipeFilename } from "../mixRecipes/transfer";
+import { mixRecipeDocumentFromPortablePayload, portableRecipePayloadFromRecord, safeRecipeFilename, scanSensitiveData } from "../mixRecipes/transfer";
 import { validateArtwork } from "../mixRecipes/archive";
 import { buildRecipeGovernancePlan, createRecipeSnapshot, recipeGovernanceData, writeRecipeAudit } from "../mixRecipes/governanceService";
 import {
   COMMUNITY_FORMAT_VERSION, COMMUNITY_RECIPE_FORMAT, buildCommunityBundle, buildCommunityJson, checksumCommunityDocument, compareVersions,
   communityError, communityManifestSchema, decodeShareCode, encodeShareCode, parseCommunityBundle, parseCommunityJson,
-  safeDisplayUrl, validateCommunityDocument, type CommunityDocument, type CommunityPreview,
+  safeDisplayUrl, summarizeSensitiveFindings, validateCommunityDocument, type CommunityDocument, type CommunityPreview,
   validateCommunityImage,
 } from "./core";
 import { fetchCommunityRecipe, normalizeCommunitySourceUrl } from "./url";
@@ -140,13 +140,29 @@ export async function installStagedCommunityRecipe(input: { userId: string; stag
 }
 
 function manifestFromRecord(record: any, metadata: Partial<z.input<typeof communityManifestSchema>> = {}) {
-  const recipe = portableRecipeFromRecord(record); const id = metadata.recipeId || record.communityRecipeId || `local.mixarr.${safeRecipeFilename(record.name)}`;
+  const id = metadata.recipeId || record.communityRecipeId || `local.mixarr.${safeRecipeFilename(record.name)}`;
   return communityManifestSchema.parse({ format: COMMUNITY_RECIPE_FORMAT, formatVersion: COMMUNITY_FORMAT_VERSION, recipeId: id, name: metadata.name || record.name, version: metadata.version || record.communityVersion || "1.0.0", description: metadata.description ?? record.description ?? "", author: metadata.author || { name: record.communityAuthorName || "Mixarr user", url: record.communityAuthorUrl || null }, license: metadata.license || record.communityLicense || "Unlicense", minimumMixarrVersion: metadata.minimumMixarrVersion || APP_VERSION_NUMBER, homepage: metadata.homepage || record.communityHomepageUrl || null, documentationUrl: metadata.documentationUrl || record.communityDocumentationUrl || null, sourceUrl: metadata.sourceUrl || record.communitySourceUrl || null, supportUrl: metadata.supportUrl || null, tags: metadata.tags || record.communityTagsJson || [], artwork: null, screenshots: [], changelog: metadata.changelog || record.communityChangelog || null, recipe: "recipe.json" });
 }
 
 export async function exportCommunityRecipe(input: { userId: string; recipeId: string; type: "json" | "bundle" | "code"; metadata?: Record<string, unknown> }) {
-  const record = await prisma.playlistRecipe.findFirst({ where: { id: input.recipeId, userId: input.userId, isArchived: false, deletedAt: null } }); if (!record) throw communityError("NOT_FOUND", "Recipe not found.", undefined, 404);
-  const document: CommunityDocument = { manifest: manifestFromRecord(record, input.metadata || {}), recipe: portableRecipeFromRecord(record), changelog: typeof input.metadata?.changelog === "string" ? input.metadata.changelog : record.communityChangelog };
+  const record = await prisma.playlistRecipe.findFirst({
+    where: { id: input.recipeId, userId: input.userId, isArchived: false, deletedAt: null },
+    select: {
+      id: true, name: true, slug: true, description: true, category: true, artworkUrl: true,
+      schemaVersion: true, recipeVersion: true, filtersJson: true, scoringJson: true,
+      targetsJson: true, bpmFlowJson: true, discoveryJson: true, varietyJson: true,
+      identityDefaultsJson: true, refreshPolicyJson: true, automationPolicyJson: true,
+      communityRecipeId: true, communityVersion: true, communityAuthorName: true,
+      communityAuthorUrl: true, communityLicense: true, communityHomepageUrl: true,
+      communityDocumentationUrl: true, communitySourceUrl: true, communityTagsJson: true,
+      communityChangelog: true, communityScreenshotsJson: true,
+    },
+  }); if (!record) throw communityError("NOT_FOUND", "Recipe not found.", undefined, 404);
+  // Community formats are built from the same explicit portable DTO as recipe
+  // import/export. Reconstructing the canonical document from that DTO keeps the
+  // established MXR1/community-v1 wire format while excluding all local IDs.
+  const portableRecipe = portableRecipePayloadFromRecord(record);
+  const document: CommunityDocument = { manifest: manifestFromRecord(record, input.metadata || {}), recipe: mixRecipeDocumentFromPortablePayload(portableRecipe), changelog: typeof input.metadata?.changelog === "string" ? input.metadata.changelog : record.communityChangelog };
   const binaryAssets: Record<string, Uint8Array> = {};
   if (input.type === "bundle") {
     const sourceAssets = [record.artworkUrl, ...(Array.isArray(record.communityScreenshotsJson) ? record.communityScreenshotsJson : [])].filter((value): value is string => typeof value === "string" && (value.startsWith("/uploads/") || value.startsWith("/api/storage/artwork/")));
@@ -155,7 +171,13 @@ export async function exportCommunityRecipe(input: { userId: string; recipeId: s
       try { const asset = validateCommunityImage(new Uint8Array(await fs.readFile(source))); const target = index === 0 && sourceAssets[index] === record.artworkUrl ? `artwork/cover.${asset.extension}` : `screenshots/screenshot-${index + 1}.${asset.extension}`; binaryAssets[target] = asset.data; if (target.startsWith("artwork/")) document.manifest.artwork = target; else document.manifest.screenshots.push(target); } catch { /* Omit missing or invalid local assets from portable exports. */ }
     }
   }
-  const preview = validateCommunityDocument(document, { importMethod: "paste" }); if (!preview.installable) throw communityError("EXPORT_BLOCKED", preview.messages.find((item) => item.blocking)?.message || "Export blocked.");
+  const preview = validateCommunityDocument(document, { importMethod: "paste" });
+  if (!preview.installable) {
+    const scan = scanSensitiveData({ manifest: document.manifest, recipe: document.recipe, changelog: document.changelog || null });
+    const first = scan.findings[0];
+    console.warn("[CommunityRecipe] Portable export blocked", { action: "recipe_share_export", recipeId: record.id, exportFormat: input.type === "code" ? "share_code" : input.type === "bundle" ? "community_bundle" : "community_json", blockedCategory: first?.categoryCode || "executable_content", blockedPath: first?.path || preview.messages.find((item) => item.blocking)?.field || "recipe", detectorRule: first?.detectorRule || "executable_content", findingCount: scan.findingCount || preview.messages.filter((item) => item.blocking).length, result: "blocked" });
+    throw communityError("EXPORT_BLOCKED", scan.safe ? preview.messages.find((item) => item.blocking)?.message || "Export blocked." : summarizeSensitiveFindings(scan.findings, input.type === "code" ? "share code" : input.type === "bundle" ? "community bundle" : "community JSON"), first?.path, 400, scan.findings);
+  }
   let content: string | Uint8Array; let contentType: string; let filename: string;
   if (input.type === "code") { content = encodeShareCode(document); contentType = "text/plain; charset=utf-8"; filename = `${safeRecipeFilename(record.name)}.mixarr-code.txt`; }
   else if (input.type === "bundle") { content = buildCommunityBundle(document, binaryAssets); contentType = "application/zip"; filename = `${safeRecipeFilename(record.name)}.mixarr-recipe.zip`; }

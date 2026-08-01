@@ -1,6 +1,6 @@
 # Mixarr
 
-Current release: **v2.4.22 — Local AI Model Loading & Unlimited Timeout Support**. Each AI request phase can use a finite duration or Unlimited, provider overrides replace the global policy, Ollama presets accommodate slow model loading, and the exact effective policy is retained in request audit history. See [the v2.4.22 implementation guide](docs/AI_LOCAL_MODEL_TIMEOUTS_V2422.md).
+Current release: **v2.4.23 — Portable Recipe Share-Code Security Fix**. Recipe share codes and community exports now originate from one explicit portable allowlist, field-level security failures are redacted and actionable, and clipboard failures are distinct from safeguard blocks. Existing MXR1 codes remain importable. See [the v2.4.23 implementation guide](docs/RECIPE_SHARING_V2423.md).
 
 Previous release: **v2.4.14 — Per-Request AI Cost Limit Configuration**. See [the v2.4.14 guide](docs/AI_PER_REQUEST_COST_LIMIT_V2414.md).
 

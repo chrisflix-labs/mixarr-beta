@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.4.23 - Portable Recipe Share-Code Security Fix
+
+- Fixed the false-positive share-code safeguard that scanned a source installation's `generation.libraryId` after reconstructing the complete internal recipe document.
+- Routed Copy share code, Community JSON, and Community bundle through the shared explicit portable recipe allowlist before serialization; database, user, provider, library, playlist, browser, server, and installation identifiers remain excluded.
+- Added redacted field-level export diagnostics with detector rule, category, and object path while never logging matched values, complete payloads, credentials, or share codes.
+- Added Clipboard API fallback handling for non-secure LAN HTTP contexts and browsers with unavailable or denied clipboard access, with clipboard failures classified separately from security validation.
+- Preserved MXR1/community-format-v1 import compatibility, deterministic share codes, and protections for credentials, private addresses, environment references, database URLs, local filesystem paths, and installation-specific data.
+- See [Portable Recipe Sharing and Share-Code Security](docs/RECIPE_SHARING_V2423.md).
+
 ## v2.4.22 - Local AI Model Loading & Unlimited Timeout Support
 
 - Added independently nullable connection, first-token, total-request, and streaming-idle timeouts; cancellation grace remains finite.

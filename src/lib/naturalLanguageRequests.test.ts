@@ -63,6 +63,6 @@ describe("natural-language playlist interpretation", () => {
     for (const marker of [/Review privacy & cost/, /Explicit requirements/, /Assumptions and ambiguities/, /Deterministic preview/, /Approve & create/, /Edit in Recipe Studio/]) assert.match(ui, marker);
     assert.match(css, /:focus-visible/); assert.match(css, /@media\(max-width:560px\)/);
     assert.match(docs, /AI interprets intent/i); assert.match(docs, /idempotency/i); assert.match(migration, /NaturalLanguageRequestRevision/);
-    assert.equal(JSON.parse(read("package.json")).version, "2.4.22");
+    assert.equal(JSON.parse(read("package.json")).version, "2.4.23");
   });
 });

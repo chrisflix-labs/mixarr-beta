@@ -198,6 +198,6 @@ describe("v2.4.22 persistence, UI, worker, and documentation contracts", () => {
     assert.match(docs, /First-token timeout covers/);
     assert.match(docs, /manually cancellable/);
     assert.match(docs, /Reverse proxies/);
-    assert.equal(JSON.parse(read("package.json")).version, "2.4.22");
+    assert.equal(JSON.parse(read("package.json")).version, "2.4.23");
   });
 });

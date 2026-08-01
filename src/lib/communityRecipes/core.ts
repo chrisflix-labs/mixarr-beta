@@ -4,7 +4,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { z } from "zod";
 import { APP_VERSION_NUMBER } from "../appVersion";
 import { validateArtwork } from "../mixRecipes/archive";
-import { canonicalize, scanSensitiveData } from "../mixRecipes/transfer";
+import { canonicalize, scanSensitiveData, type SensitiveFinding } from "../mixRecipes/transfer";
 import { mixRecipeDocumentSchema, type MixRecipeDocument } from "../mixRecipes/schema";
 import { parseJsonRejectingDuplicateKeys } from "../mixRecipes/transfer";
 import { validateRecipe } from "../mixRecipes/validation";
@@ -47,7 +47,7 @@ export const communityManifestSchema = z.object({
 
 export type CommunityManifest = z.infer<typeof communityManifestSchema>;
 export type ValidationSeverity = "info" | "warning" | "error";
-export type CommunityValidationMessage = { severity: ValidationSeverity; code: string; message: string; field?: string; blocking: boolean; suggestion?: string };
+export type CommunityValidationMessage = { severity: ValidationSeverity; code: string; message: string; field?: string; category?: string; detectorRule?: string; blocking: boolean; suggestion?: string };
 export type CommunityTrustState = "official" | "known" | "unknown" | "modified" | "warning" | "blocked";
 export type CommunityDocument = { manifest: CommunityManifest; recipe: MixRecipeDocument; changelog?: string | null; assets?: Record<string, string> };
 export type CommunityPreview = {
@@ -180,6 +180,7 @@ export function checksumCommunityDocument(document: CommunityDocument) {
 
 export function encodeShareCode(document: CommunityDocument) {
   const portable = { manifest: { ...document.manifest, artwork: null, screenshots: [] }, recipe: document.recipe, changelog: document.changelog || null };
+  assertCommunityPayloadIsSafe(portable);
   const json = canonicalize(portable); if (Buffer.byteLength(json) > MAX_COMMUNITY_JSON_BYTES) throw communityError("CONTENT_TOO_LARGE", "This recipe is too large for a share code.");
   const payload = deflateRawSync(Buffer.from(json)).toString("base64url"); const checksum = createHash("sha256").update(json).digest("hex").slice(0, 24); return `${SHARE_CODE_PREFIX}${payload}.${checksum}`;
 }
@@ -192,10 +193,11 @@ export function decodeShareCode(code: string) {
 }
 
 export function buildCommunityJson(document: CommunityDocument) {
-  const normalized = { ...document, manifest: parseManifest(document.manifest) }; const checksum = checksumCommunityDocument(normalized); return JSON.stringify({ manifest: normalized.manifest, recipe: normalized.recipe, changelog: normalized.changelog || undefined, integrity: { algorithm: "sha256", checksum } }, null, 2);
+  const normalized = { ...document, manifest: parseManifest(document.manifest) }; const checksum = checksumCommunityDocument(normalized); const output = { manifest: normalized.manifest, recipe: normalized.recipe, changelog: normalized.changelog || undefined, integrity: { algorithm: "sha256", checksum } }; assertCommunityPayloadIsSafe(output); return JSON.stringify(output, null, 2);
 }
 
 export function buildCommunityBundle(document: CommunityDocument, binaryAssets: Record<string, Uint8Array> = {}) {
+  assertCommunityPayloadIsSafe({ manifest: document.manifest, recipe: document.recipe, changelog: document.changelog || null });
   const manifest = { ...document.manifest, recipe: "recipe.json" }; const files: Record<string, Uint8Array> = { "manifest.json": strToU8(JSON.stringify(manifest, null, 2)), "recipe.json": strToU8(JSON.stringify(document.recipe, null, 2)) };
   if (document.changelog) { files["CHANGELOG.md"] = strToU8(document.changelog); manifest.changelog = "CHANGELOG.md"; files["manifest.json"] = strToU8(JSON.stringify(manifest, null, 2)); }
   for (const [path, bytes] of Object.entries(binaryAssets)) { validateCommunityArchivePath(path); validateCommunityImage(bytes); files[path] = bytes; }
@@ -205,7 +207,7 @@ export function buildCommunityBundle(document: CommunityDocument, binaryAssets: 
 export function validateCommunityDocument(document: CommunityDocument, options: { sourceUrl?: string | null; importMethod: CommunityPreview["importMethod"]; official?: boolean; known?: boolean }): CommunityPreview {
   const messages: CommunityValidationMessage[] = []; const normalization: CommunityPreview["normalization"] = [];
   const scan = scanSensitiveData({ manifest: document.manifest, recipe: document.recipe, changelog: document.changelog });
-  for (const finding of scan.findings) messages.push({ severity: "error", code: "PROHIBITED_SECRET", message: "A credential, private address, environment value, or installation-specific identifier was detected.", field: finding.path, blocking: true, suggestion: "Remove the prohibited value; community recipes must contain portable data only." });
+  for (const finding of scan.findings) messages.push({ severity: "error", code: "PROHIBITED_SECRET", message: `A ${finding.category.toLowerCase()} was found in '${finding.path}'.`, field: finding.path, category: finding.categoryCode, detectorRule: finding.detectorRule, blocking: true, suggestion: "Remove the prohibited value; community recipes must contain portable data only." });
   const serialized = canonicalize(document);
   if (/(?:pre|post)[-_ ]?install|runCommand|customScript|<script|javascript:|onerror\s*=|\$\{(?:process|env)\.|BEGIN (?:RSA |OPENSSH )?PRIVATE KEY/i.test(serialized)) messages.push({ severity: "error", code: "EXECUTABLE_CONTENT", message: "Script-like, hook, template, or executable content is not allowed.", blocking: true });
   if (document.manifest.minimumMixarrVersion && compareVersions(APP_VERSION_NUMBER, document.manifest.minimumMixarrVersion) < 0) messages.push({ severity: "error", code: "MIXARR_VERSION_INCOMPATIBLE", message: `This recipe requires Mixarr ${document.manifest.minimumMixarrVersion}; installed version is ${APP_VERSION_NUMBER}.`, field: "minimumMixarrVersion", blocking: true, suggestion: "Upgrade Mixarr before importing this recipe." });
@@ -219,7 +221,20 @@ export function validateCommunityDocument(document: CommunityDocument, options: 
 }
 
 export function safeDisplayUrl(value: string) { const url = new URL(value); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; return url.toString(); }
-export function communityError(code: string, message: string, field?: string, status = 400) { return Object.assign(new Error(message), { code, field, status }); }
+export function communityError(code: string, message: string, field?: string, status = 400, findings?: SensitiveFinding[]) { return Object.assign(new Error(message), { code, field, status, findings }); }
+
+export function summarizeSensitiveFindings(findings: SensitiveFinding[], subject = "share code") {
+  const grouped = Array.from(new Map(findings.map((finding) => [`${finding.categoryCode}:${finding.path}`, finding])).values());
+  if (!grouped.length) return `The ${subject} could not be created because prohibited private data was found.`;
+  const shown = grouped.slice(0, 3).map((finding) => `${finding.category.toLowerCase()} in '${finding.path}'`);
+  const suffix = grouped.length > shown.length ? ` and ${grouped.length - shown.length} more field${grouped.length - shown.length === 1 ? "" : "s"}` : "";
+  return `The ${subject} could not be created because ${shown.join(", ")}${suffix}.`;
+}
+
+function assertCommunityPayloadIsSafe(payload: unknown) {
+  const scan = scanSensitiveData(payload);
+  if (!scan.safe) throw communityError("EXPORT_BLOCKED", summarizeSensitiveFindings(scan.findings), scan.findings[0]?.path, 400, scan.findings);
+}
 
 function decodeUtf8(bytes: Uint8Array, filename: string) { try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { throw communityError("INVALID_UTF8", `${filename} must contain valid UTF-8 text.`); } }
 function verifyDocumentIntegrity(document: CommunityDocument, integrity: unknown) { if (integrity == null) return; if (!integrity || typeof integrity !== "object" || (integrity as any).algorithm !== "sha256" || !/^[a-f0-9]{64}$/.test((integrity as any).checksum || "")) throw communityError("INVALID_CHECKSUM", "The community recipe integrity field is invalid."); if ((integrity as any).checksum !== checksumCommunityDocument(document)) throw communityError("CHECKSUM_MISMATCH", "The community recipe checksum does not match its content."); }

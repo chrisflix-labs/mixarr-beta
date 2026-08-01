@@ -13,7 +13,8 @@ import {
 describe("release notes", () => {
   it("sorts release notes from oldest to newest", () => {
     const ordered = getReleaseNotesOldestFirst();
-    ordered.pop(); // v2.4.22 through v2.0.5 are asserted separately below.
+    ordered.pop(); // v2.4.23 through v2.0.5 are asserted separately below.
+    ordered.pop();
     ordered.pop();
     ordered.pop();
     ordered.pop();
@@ -81,7 +82,8 @@ describe("release notes", () => {
 
   it("sorts release notes from newest to oldest", () => {
     const ordered = getReleaseNotesNewestFirst();
-    ordered.shift(); // v2.4.22 through v2.0.5 are asserted separately below.
+    ordered.shift(); // v2.4.23 through v2.0.5 are asserted separately below.
+    ordered.shift();
     ordered.shift();
     ordered.shift();
     ordered.shift();
@@ -443,12 +445,12 @@ describe("release notes", () => {
     assert.deepEqual(ordered.map((note) => note.version), ["v2.0.0", "v1.3.10", "v1.3.9.2", "v1.3.9.1", "v1.3.9", "v1.3.8"]);
   });
 
-  it("adds the v2.4.22 release note at the top", () => {
+  it("adds the v2.4.23 release note at the top", () => {
     const [latest] = getReleaseNotesNewestFirst();
 
-    assert.equal(latest.version, "2.4.22");
-    assert.equal(latest.title, "Local AI Model Loading & Unlimited Timeouts");
-    assert.ok(latest.badges.includes("AI"));
+    assert.equal(latest.version, "2.4.23");
+    assert.equal(latest.title, "Portable Recipe Share-Code Security Fix");
+    assert.ok(latest.badges.includes("Security"));
   });
 
   it("links the sidebar navigation to the release notes page", () => {

@@ -80,6 +80,19 @@ export type ReleaseNote = {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    version: "2.4.23",
+    title: "Portable Recipe Share-Code Security Fix",
+    releaseDate: "July 31, 2026",
+    badges: ["Bug Fix", "Recipes", "Sharing", "Export", "Security", "Privacy", "UI"],
+    changes: [
+      "Fixed the false-positive share-code block caused by a source installation library ID surviving in the full internal recipe document scanned by the community exporter.",
+      "Routed share codes, Community JSON, and Community bundles through the shared explicit portable recipe allowlist before serialization.",
+      "Added redacted detector rule, category, and field-path diagnostics without exposing matched values, payloads, credentials, or share codes.",
+      "Added a temporary-textarea clipboard fallback and reports browser clipboard denial separately from sensitive-data validation.",
+      "Kept MXR1 and community format v1 backward compatible while retaining credential, private-address, environment, database URL, filesystem path, and installation-data protections.",
+    ],
+  },
+  {
     version: "2.4.22",
     title: "Local AI Model Loading & Unlimited Timeouts",
     releaseDate: "July 26, 2026",
