@@ -1,4 +1,5 @@
 import type { SummaryType } from "./contracts";
+import { envFlag } from "../envBoolean";
 
 export type PlaylistAnalysisTrack = {
   id: string; identifier?: string; title: string; artist?: string | null; album?: string | null; albumId?: string | null;
@@ -156,6 +157,8 @@ export function ignoreRuleMatches(candidate: MetadataCandidate, scope: string, m
 }
 
 export const AI_METADATA_WRITES_ENABLED = false as const;
-export const AI_PLAYLIST_SUMMARIES_ENABLED = process.env.AI_PLAYLIST_SUMMARIES_ENABLED !== "false";
-export const AI_METADATA_SUGGESTIONS_ENABLED = process.env.AI_METADATA_SUGGESTIONS_ENABLED !== "false";
+// Enabled unless the operator turns them off. Parsed through the shared reader so
+// `0`, `no`, and `off` disable them as well as `false`.
+export const AI_PLAYLIST_SUMMARIES_ENABLED = envFlag("AI_PLAYLIST_SUMMARIES_ENABLED", true);
+export const AI_METADATA_SUGGESTIONS_ENABLED = envFlag("AI_METADATA_SUGGESTIONS_ENABLED", true);
 export function assertMetadataWritesDisabled() { if (AI_METADATA_WRITES_ENABLED !== false) throw new Error("AI metadata writes must remain disabled in v2.4.6."); return true; }

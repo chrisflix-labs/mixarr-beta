@@ -1,4 +1,5 @@
 import http from "http";
+import { envFlag } from "./envBoolean";
 import crypto from "crypto";
 import {
   Registry,
@@ -593,7 +594,7 @@ export const startMetricsServer = (port: number): http.Server | null => {
       const trusted = new Set((process.env.METRICS_TRUSTED_NETWORKS || "").split(",").map((value) => value.trim()).filter(Boolean));
       const remote = req.socket.remoteAddress || "";
       const tokenMatches = !!configuredToken && suppliedToken.length === configuredToken.length && crypto.timingSafeEqual(Buffer.from(suppliedToken), Buffer.from(configuredToken));
-      const authorized = tokenMatches || trusted.has(remote) || process.env.METRICS_ALLOW_UNAUTHENTICATED === "true";
+      const authorized = tokenMatches || trusted.has(remote) || envFlag("METRICS_ALLOW_UNAUTHENTICATED", false);
       if (!authorized) {
         res.statusCode = 401;
         res.setHeader("WWW-Authenticate", "Bearer");

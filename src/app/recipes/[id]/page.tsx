@@ -185,13 +185,22 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
   async function copyShareCode() {
     if (!draft) return; const metadata = communityMetadata(); if (!metadata) return; setSaving(true); setError("");
     try { const response = await axios.post(`/api/playlist-recipes/${draft.id}/community/code`, { metadata }); await copyTextToClipboard(response.data.code); setError(""); setNotice(`Share code copied (${response.data.characterCount} characters). Its checksum detects corruption but does not prove authorship.`); }
-    catch (caught: any) { setNotice(""); setError(caught instanceof ClipboardCopyError ? `${caught.message} Allow clipboard permission or use a secure browser context and try again.` : caught.response?.data?.error || "The share code could not be created."); } finally { setSaving(false); }
+    catch (caught: any) { setNotice(""); setError(caught instanceof ClipboardCopyError ? `The share code was created, but ${caught.message.replace(/^The /, "").replace(/\.$/, "")}. Allow clipboard permission or use a secure browser context and try again.` : caught.response?.data?.error || "The share code could not be created."); } finally { setSaving(false); }
   }
 
   async function reportCommunity() {
     if (!draft?.community) return; const category = window.prompt("Report category (for example: Suspicious content or Broken recipe)", "Broken recipe"); if (!category) return; const description = window.prompt("Optional description", "") || "";
-    try { const response = await axios.post(`/api/playlist-recipes/${draft.id}/community/report`, { category, description }); await navigator.clipboard.writeText(response.data.text); if (response.data.issueUrl && window.confirm("Sanitized report copied. Open a prefilled GitHub issue too?")) window.open(response.data.issueUrl, "_blank", "noopener,noreferrer"); else setNotice("Sanitized community recipe report copied. It excludes credentials, paths, server details, and logs."); }
-    catch (caught: any) { setError(caught.response?.data?.error || "The report could not be created."); }
+    // The report and the clipboard copy are separate stages: a browser clipboard
+    // denial must not be reported as a failure to create the report.
+    let report: { text: string; issueUrl?: string | null };
+    try { report = (await axios.post(`/api/playlist-recipes/${draft.id}/community/report`, { category, description })).data; }
+    catch (caught: any) { setError(caught.response?.data?.error || "The report could not be created."); return; }
+    let copied = true;
+    try { await copyTextToClipboard(report.text); }
+    catch { copied = false; }
+    setError(copied ? "" : "The report was created, but the browser denied clipboard access. Copy it from the downloaded issue link or retry in a secure browser context.");
+    if (report.issueUrl && window.confirm(`${copied ? "Sanitized report copied." : "Sanitized report created (not copied)."} Open a prefilled GitHub issue too?`)) window.open(report.issueUrl, "_blank", "noopener,noreferrer");
+    else if (copied) setNotice("Sanitized community recipe report copied. It excludes credentials, paths, server details, and logs.");
   }
 
   async function governanceAction(action: "approve" | "reject" | "revalidate" | "revoke") {

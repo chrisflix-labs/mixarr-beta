@@ -1,5 +1,6 @@
 import type { ScheduledTask } from "node-cron";
 import prisma from "../prisma";
+import { envFlag } from "../envBoolean";
 import { cleanupIntegrationHistory, deliverWebhook, detectPlaylistChange, runMountChecks, testPlexServer } from "./service";
 
 const db = prisma as any;
@@ -27,7 +28,7 @@ async function runIntegrationMaintenance() {
 }
 
 export async function initializeIntegrationScheduler() {
-  if (process.env.INTEGRATION_SCHEDULER_ENABLED === "false") return;
+  if (!envFlag("INTEGRATION_SCHEDULER_ENABLED", true)) return;
   const cron = await import("node-cron");
   runtime.healthTask?.stop(); runtime.cleanupTask?.stop();
   runtime.healthTask = cron.schedule(process.env.INTEGRATION_HEALTH_CRON || "*/5 * * * *", () => { void runIntegrationMaintenance(); });

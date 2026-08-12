@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { envFlag } from "../envBoolean";
 import prisma from "../prisma";
 import { decryptSecret, encryptSecret, isSecretEncryptionConfigured } from "../secretStorage";
 import { sanitizeErrorText } from "../supportRedaction";
@@ -516,7 +517,7 @@ export async function deliverWebhook(deliveryRowId: string, suppliedEnvelope?: a
   if (!delivery) throw new IntegrationError("DELIVERY_NOT_FOUND", "Webhook delivery not found.", 404);
   const endpoint = delivery.endpoint;
   const envelope = suppliedEnvelope || { id: delivery.eventRecord.id, event: delivery.eventRecord.event, version: delivery.eventRecord.envelopeVersion, createdAt: delivery.eventRecord.createdAt.toISOString(), source: "mixarr", mixarrVersion: APP_VERSION.replace(/^v/, ""), data: delivery.eventRecord.dataJson, context: delivery.eventRecord.contextJson };
-  const url = validatePublicDestination(decryptSecret(endpoint.destinationUrlEncrypted), process.env.MIXARR_ALLOW_PRIVATE_WEBHOOKS === "true");
+  const url = validatePublicDestination(decryptSecret(endpoint.destinationUrlEncrypted), envFlag("MIXARR_ALLOW_PRIVATE_WEBHOOKS", false));
   const secret = decryptSecret(endpoint.secretEncrypted);
   const raw = JSON.stringify(endpoint.includeSensitiveFields ? envelope : sanitizePayload(envelope));
   const timestamp = new Date().toISOString();
@@ -540,7 +541,7 @@ async function deliverNativeIntegration(integration: any, envelope: any) {
   const secrets = integration.encryptedSecretJson ? jsonObject(JSON.parse(decryptSecret(integration.encryptedSecretJson))) : {};
   const rawUrl = secrets.webhookUrl || secrets.url;
   if (!rawUrl) return;
-  const url = validatePublicDestination(rawUrl, process.env.MIXARR_ALLOW_PRIVATE_WEBHOOKS === "true");
+  const url = validatePublicDestination(rawUrl, envFlag("MIXARR_ALLOW_PRIVATE_WEBHOOKS", false));
   const body = integration.key === "discord" ? { username: config.displayName || "Mixarr", avatar_url: config.avatarUrl || undefined, content: `**${envelope.event}**`, embeds: [{ title: envelope.data?.recipe?.name || envelope.data?.playlist?.title || "Mixarr event", description: JSON.stringify(sanitizePayload(envelope.data)).slice(0, 3500), footer: { text: `Mixarr ${APP_VERSION}` } }] } : { event: envelope.event, notification: sanitizePayload(envelope.data), severity: config.severityThreshold || "info", source: "Mixarr" };
   const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...(secrets.apiKey ? { "X-API-Key": secrets.apiKey } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
   if (!response.ok) throw new Error(`${integration.displayName} returned HTTP ${response.status}.`);

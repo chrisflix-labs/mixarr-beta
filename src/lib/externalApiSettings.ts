@@ -1,4 +1,5 @@
 import prisma from "./prisma";
+import { envFlag } from "./envBoolean";
 import { decryptSecret, encryptSecret, isSecretEncryptionConfigured, maskSecret } from "./secretStorage";
 import { sanitizeErrorText } from "./supportRedaction";
 
@@ -33,9 +34,7 @@ type ProviderDefinition = {
 };
 
 function envEnabled(name: string, defaultValue: boolean) {
-  const value = process.env[name]?.trim().toLowerCase();
-  if (!value) return defaultValue;
-  return ["1", "true", "yes", "on"].includes(value);
+  return envFlag(name, defaultValue);
 }
 
 function pickFilled(input: ExternalApiCredentials) {

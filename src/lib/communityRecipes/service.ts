@@ -18,6 +18,7 @@ import {
   validateCommunityImage,
 } from "./core";
 import { fetchCommunityRecipe, normalizeCommunitySourceUrl } from "./url";
+import { envFlag } from "../envBoolean";
 
 const STAGE_TTL_MS = 30 * 60 * 1000;
 const OFFICIAL_INDEX_TTL_MS = 15 * 60 * 1000;
@@ -188,7 +189,7 @@ export async function exportCommunityRecipe(input: { userId: string; recipeId: s
 const officialIndexSchema = z.object({ format: z.literal("mixarr-community-index"), formatVersion: z.literal(1), recipes: z.array(z.object({ recipeId: z.string(), name: z.string(), version: z.string(), description: z.string().optional(), author: z.string().optional(), tags: z.array(z.string()).default([]), minimumMixarrVersion: z.string().optional(), path: z.string().min(1), artwork: z.string().optional() }).strict()).max(500) }).strict();
 
 export async function loadOfficialRecipeIndex(force = false) {
-  if (process.env.COMMUNITY_RECIPES_ENABLED === "false") return { enabled: false, recipes: [], refreshedAt: null };
+  if (!envFlag("COMMUNITY_RECIPES_ENABLED", true)) return { enabled: false, recipes: [], refreshedAt: null };
   if (!process.env.COMMUNITY_RECIPES_REPOSITORY) return { enabled: false, recipes: [], refreshedAt: null };
   if (!force && officialIndexCache && officialIndexCache.expires > Date.now()) return { enabled: true, ...(officialIndexCache.value as object), refreshedAt: officialIndexCache.refreshedAt };
   const repository = new URL(process.env.COMMUNITY_RECIPES_REPOSITORY); const branch = (process.env.COMMUNITY_RECIPES_BRANCH || "main").replace(/[^A-Za-z0-9._/-]/g, ""); const indexPath = (process.env.COMMUNITY_RECIPES_INDEX || "index.json").replace(/^\/+/, "");

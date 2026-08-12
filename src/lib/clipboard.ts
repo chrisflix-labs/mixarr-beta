@@ -1,8 +1,13 @@
 export class ClipboardCopyError extends Error {
   readonly code = "CLIPBOARD_COPY_FAILED";
 
+  /**
+   * The message stays generic so every caller can state what *was* produced
+   * before the copy failed. Only the copy failed; the value the caller asked
+   * for still exists and is still on screen.
+   */
   constructor() {
-    super("The share code was created, but the browser denied clipboard access.");
+    super("The browser denied clipboard access.");
     this.name = "ClipboardCopyError";
   }
 }

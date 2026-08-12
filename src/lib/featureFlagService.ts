@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { envBoolean as sharedEnvBoolean } from "./envBoolean";
 import prisma from "./prisma";
 import { isUserAdmin } from "./auth";
 import { accessLevelRank, betaAccessLevelLabel, featureFlagByKey, featureFlagRegistry, isFeatureImplemented, normalizeBetaAccessLevel, type BetaAccessLevel, type FeatureFlagDefinition } from "./featureFlagRegistry";
@@ -55,8 +56,7 @@ export function requiresBetaAcknowledgement(input: { enableBetaFeatures: boolean
 }
 
 function envBoolean(value: string | undefined, fallback = false) {
-  if (value == null || value.trim() === "") return fallback;
-  return ["1", "true", "yes", "on", "enabled"].includes(value.trim().toLowerCase());
+  return sharedEnvBoolean(value, fallback);
 }
 
 function emergencyDisabledFeatures() {

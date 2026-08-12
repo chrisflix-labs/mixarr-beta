@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { CheckCircle2, Copy, Download, ExternalLink, FlaskConical, LifeBuoy, Loader2, RotateCcw, Save, ShieldAlert, Sparkles } from "lucide-react";
 import styles from "@/app/settings/settings.module.css";
+import { copyTextToClipboard } from "@/lib/clipboard";
 
 type FeatureState = { key: string; enabled: boolean; available: boolean; reason: string; userSelectable: boolean; explanation: string; definition: { name: string; description: string; category: string; minimumAccessLevel: string; adminOnly: boolean; riskLevel: string; warningText: string; feedbackCategory: string; stableFallback: string } };
 type Payload = { applicationVersion?: string; enabled: boolean; accessLevel: string; serverAccessLevel: string; isAdmin: boolean; warningAcceptedAt: string | null; features: FeatureState[]; sponsors?: { url: string; text: string } | null; support?: { feedbackUrl?: string | null; githubIssuesUrl?: string | null; discordSupportUrl?: string | null } };
@@ -92,7 +93,7 @@ export default function BetaFeatureSettingsForm() {
         <button type="button" className={styles.secondaryButton} onClick={() => void previewDiagnostics()}><ShieldAlert size={15} /> Preview Diagnostic Report</button>
         {payload.isAdmin && <Link className={styles.secondaryButton} href="/settings/beta">Beta Administration</Link>}
       </div>
-      {diagnosticReport && <details open><summary>Sanitized diagnostic preview</summary><pre className={styles.betaReportPreview}>{reportText}</pre><div className={styles.betaActions}><button type="button" className={styles.secondaryButton} onClick={() => void navigator.clipboard.writeText(reportText)}><Copy size={15} /> Copy Report</button><button type="button" className={styles.secondaryButton} onClick={downloadDiagnostics}><Download size={15} /> Download Report</button>{payload.support?.discordSupportUrl && <a className={styles.secondaryButton} href={payload.support.discordSupportUrl} target="_blank" rel="noopener noreferrer">Open Discord Support</a>}</div></details>}
+      {diagnosticReport && <details open><summary>Sanitized diagnostic preview</summary><pre className={styles.betaReportPreview}>{reportText}</pre><div className={styles.betaActions}><button type="button" className={styles.secondaryButton} onClick={() => void copyTextToClipboard(reportText).then(() => setError("")).catch(() => setError("The browser denied clipboard access. Use Download Report, or select the report text above and copy it manually."))}><Copy size={15} /> Copy Report</button><button type="button" className={styles.secondaryButton} onClick={downloadDiagnostics}><Download size={15} /> Download Report</button>{payload.support?.discordSupportUrl && <a className={styles.secondaryButton} href={payload.support.discordSupportUrl} target="_blank" rel="noopener noreferrer">Open Discord Support</a>}</div></details>}
       {error && <p className={styles.errorText}>{error}</p>}
 
       {showConfirmation && <div className={styles.betaModalBackdrop} role="presentation" onMouseDown={() => setShowConfirmation(false)}>
