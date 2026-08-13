@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
@@ -9,7 +9,8 @@ import { AlertCircle, ArrowDown, ArrowLeft, CheckCircle2, Copy, Download, Edit3,
 import styles from "./recipe-detail.module.css";
 import TroubleshootLink from "@/components/TroubleshootLink";
 import { SCORING_MODEL_OPTIONS, SCORING_MODELS } from "@/lib/scoringModelCatalog";
-import { ClipboardCopyError, copyTextToClipboard } from "@/lib/clipboard";
+import { copyTextToClipboard, tryCopyTextToClipboard, type CopyResult } from "@/lib/clipboard";
+import { createAndCopyShareCode, type CreatedShareCode } from "@/lib/shareCodeCopy";
 
 const categories = ["Driving", "Workout", "Party", "Focus", "Chill", "Relaxation", "Sleep", "Discovery", "Deep Cuts", "Recently Added", "Forgotten Favorites", "Decade Mixes", "Seasonal Mixes", "Genre Journeys", "Artist Radio", "Album Exploration", "Mood Progressions", "Mood", "Decade", "Genre", "Artist", "Seasonal", "Custom"];
 const sections = ["Recipe Foundation", "Overview", "Mood and Energy", "BPM Flow", "Discovery", "Scoring", "Artist and Album Variety", "Playlist Identity", "Refresh and Automation", "Effective Configuration", "Import Mapping", "Governance", "Validation", "Generated Playlists"];
@@ -61,6 +62,15 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [migrationPlan, setMigrationPlan] = useState<any>(null);
   const [restorePlan, setRestorePlan] = useState<any>(null);
+  const [shareCode, setShareCode] = useState<CreatedShareCode | null>(null);
+  const [manualShareCode, setManualShareCode] = useState(false);
+  const shareCodeField = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!manualShareCode) return;
+    shareCodeField.current?.focus();
+    shareCodeField.current?.select();
+  }, [manualShareCode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,7 +114,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
           discoveryPresetId: draft.discoveryPresetId, varietyPresetId: draft.varietyPresetId, automationPresetId: draft.automationPresetId,
         } : {}),
       });
-      setRecipe(response.data.recipe); setDraft(structuredClone(response.data.recipe)); setNotice(`Saved recipe v${response.data.recipe.recipeVersion}.`);
+      setRecipe(response.data.recipe); setDraft(structuredClone(response.data.recipe)); setShareCode(null); setManualShareCode(false); setNotice(`Saved recipe v${response.data.recipe.recipeVersion}.`);
       setResolution((await axios.get(`/api/playlist-recipes/${draft.id}/effective-configuration`)).data);
     } catch (caught: any) { setError(caught.response?.data?.error?.message || caught.response?.data?.error || "Unable to save this recipe."); }
     finally { setSaving(false); }
@@ -182,10 +192,43 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
     catch { setError("Community export failed."); } finally { setSaving(false); }
   }
 
+  function reportShareCodeCopy(created: CreatedShareCode, result: CopyResult) {
+    if (result.ok) {
+      setManualShareCode(false);
+      setError("");
+      setNotice(`Share code copied to clipboard. ${created.characterCount} characters; its checksum detects corruption but does not prove authorship.`);
+      return;
+    }
+    setManualShareCode(true);
+    setNotice("");
+    setError(result.reason === "not-secure-context"
+      ? "Automatic clipboard access is unavailable in this browser context. Copy the share code manually below."
+      : "Share code created, but your browser blocked automatic copying. Copy it manually below.");
+  }
+
+  async function copyExistingShareCode(created: CreatedShareCode) {
+    setSaving(true); setError(""); setNotice("");
+    try { reportShareCodeCopy(created, await tryCopyTextToClipboard(created.code)); }
+    finally { setSaving(false); }
+  }
+
   async function copyShareCode() {
-    if (!draft) return; const metadata = communityMetadata(); if (!metadata) return; setSaving(true); setError("");
-    try { const response = await axios.post(`/api/playlist-recipes/${draft.id}/community/code`, { metadata }); await copyTextToClipboard(response.data.code); setError(""); setNotice(`Share code copied (${response.data.characterCount} characters). Its checksum detects corruption but does not prove authorship.`); }
-    catch (caught: any) { setNotice(""); setError(caught instanceof ClipboardCopyError ? `The share code was created, but ${caught.message.replace(/^The /, "").replace(/\.$/, "")}. Allow clipboard permission or use a secure browser context and try again.` : caught.response?.data?.error || "The share code could not be created."); } finally { setSaving(false); }
+    if (!draft) return;
+    // Once generated, subsequent clicks are direct user-triggered writes. This
+    // avoids another request and restores transient activation in browsers such
+    // as Firefox without changing the share code or its security semantics.
+    if (shareCode) { await copyExistingShareCode(shareCode); return; }
+    const metadata = communityMetadata(); if (!metadata) return; setSaving(true); setError(""); setNotice("");
+    try {
+      const outcome = await createAndCopyShareCode(async () => {
+        const response = await axios.post(`/api/playlist-recipes/${draft.id}/community/code`, { metadata });
+        return { code: response.data.code, characterCount: response.data.characterCount };
+      });
+      setShareCode(outcome.created);
+      reportShareCodeCopy(outcome.created, outcome.copyResult);
+    }
+    catch (caught: any) { setError(caught.response?.data?.error || "The share code could not be created."); }
+    finally { setSaving(false); }
   }
 
   async function reportCommunity() {
@@ -198,7 +241,7 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
     let copied = true;
     try { await copyTextToClipboard(report.text); }
     catch { copied = false; }
-    setError(copied ? "" : "The report was created, but the browser denied clipboard access. Copy it from the downloaded issue link or retry in a secure browser context.");
+    setError(copied ? "" : "The report was created, but your browser blocked automatic copying. Copy it from the downloaded issue link.");
     if (report.issueUrl && window.confirm(`${copied ? "Sanitized report copied." : "Sanitized report created (not copied)."} Open a prefilled GitHub issue too?`)) window.open(report.issueUrl, "_blank", "noopener,noreferrer");
     else if (copied) setNotice("Sanitized community recipe report copied. It excludes credentials, paths, server details, and logs.");
   }
@@ -273,13 +316,19 @@ export default function RecipeDetailPage({ params }: { params: { id: string } })
     <header className={styles.header}>
       <TroubleshootLink resourceType="RECIPE" resourceId={draft.id} category="PLAYLIST_CANDIDATES" compact />
       <div><Link href="/recipes" className={styles.back}><ArrowLeft size={15} /> Recipe Library</Link><h2>{draft.name}</h2><p>Schema v{draft.schemaVersion} · Recipe v{draft.recipeVersion} · {draft.category}</p></div>
-      <div className={styles.headerActions}><Link href={`/recipes/${draft.id}/edit`} className={styles.primary}><Edit3 size={15} /> Open Studio</Link><Link href={`/recipes/${draft.id}/compare`}><GitCompareArrows size={15} /> Compare</Link><button onClick={() => exportCommunity("json")}><Share2 size={15} /> Community JSON</button><button onClick={() => exportCommunity("bundle")}><Download size={15} /> Community bundle</button><button onClick={copyShareCode}><Copy size={15} /> Copy share code</button><button onClick={() => setShowClone(true)}><Copy size={15} /> Clone</button><button onClick={validate} disabled={validating}>{validating ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} Validate</button><button className={styles.primary} onClick={save} disabled={!dirty || saving}>{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Save</button></div>
+      <div className={styles.headerActions}><Link href={`/recipes/${draft.id}/edit`} className={styles.primary}><Edit3 size={15} /> Open Studio</Link><Link href={`/recipes/${draft.id}/compare`}><GitCompareArrows size={15} /> Compare</Link><button onClick={() => exportCommunity("json")}><Share2 size={15} /> Community JSON</button><button onClick={() => exportCommunity("bundle")}><Download size={15} /> Community bundle</button><button onClick={copyShareCode} disabled={saving}><Copy size={15} /> Copy share code</button><button onClick={() => setShowClone(true)}><Copy size={15} /> Clone</button><button onClick={validate} disabled={validating}>{validating ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} Validate</button><button className={styles.primary} onClick={save} disabled={!dirty || saving}>{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Save</button></div>
     </header>
     {draft.sourceRecipeId && <div className={styles.sourceBanner}><Sparkles size={18} /><div><strong>Started from {sourceDetails?.name || draft.sourceRecipeId}</strong><p>Installed source v{draft.sourceRecipeVersion || "unknown"}{sourceDetails ? ` · Bundled source v${sourceDetails.version}` : ""}. Your customizations are never overwritten automatically.</p></div>{sourceDetails?.installedRecipe?.updateStatus === "update_available" && <span>Update available</span>}<Link href={`/recipes/library`}>View built-in</Link><button onClick={restoreBuiltIn} disabled={saving}><RotateCcw size={15} /> Restore original</button></div>}
     {draft.community && <section className={styles.communityBanner} aria-label="Community recipe attribution"><ShieldAlert size={20} /><div><strong>{draft.community.trustState.replaceAll("_", " ")} community recipe{draft.community.locallyModified ? " · locally modified" : ""}</strong><p>Created by {draft.community.author?.name || "Unknown author"} · v{draft.community.version || "unknown"} · {draft.community.license || "license not declared"} · imported {draft.importedAt ? new Date(draft.importedAt).toLocaleDateString() : "date unknown"}. Mixarr did not create, endorse, or guarantee this third-party recipe.</p><div className={styles.communityLinks}>{draft.community.sourceUrl && <a href={draft.community.sourceUrl} target="_blank" rel="noopener noreferrer">Source</a>}{draft.community.documentationUrl && <a href={draft.community.documentationUrl} target="_blank" rel="noopener noreferrer">Documentation</a>}{draft.community.homepageUrl && <a href={draft.community.homepageUrl} target="_blank" rel="noopener noreferrer">Homepage</a>}{(draft.community.tags || []).map((tag: string) => <span key={tag}>{tag}</span>)}</div></div><div className={styles.communityActions}>{draft.community.sourceUrl && <Link href={`/recipes/community?url=${encodeURIComponent(draft.community.sourceUrl)}`}><RefreshCw size={14} /> Check for update</Link>}<button onClick={reportCommunity}><Flag size={14} /> Report Recipe</button></div></section>}
     {draft.community && ((draft.community.screenshots || []).length > 0 || draft.community.changelog) && <section className={styles.communityMedia} aria-label="Community recipe media and changelog">{(draft.community.screenshots || []).length > 0 && <div className={styles.communityGallery}>{draft.community.screenshots.map((screenshot: string, index: number) => <img key={screenshot} src={screenshot} loading="lazy" alt={`${draft.name} community screenshot ${index + 1}`} />)}</div>}{draft.community.changelog && <details><summary>Community recipe changelog</summary><pre>{draft.community.changelog}</pre></details>}</section>}
     {notice && <div className={styles.notice}><CheckCircle2 size={16} /> {notice}</div>}
     {error && <div className={styles.error}><AlertCircle size={16} /> {error}</div>}
+    {shareCode && manualShareCode && <section className={styles.manualCopy} aria-labelledby="share-code-copy-heading">
+      <div><h3 id="share-code-copy-heading">Share code</h3><p>Automatic clipboard access was blocked by your browser. Select the code and press Ctrl+C or Cmd+C.</p></div>
+      <label htmlFor="share-code-value">Generated share code</label>
+      <textarea ref={shareCodeField} id="share-code-value" readOnly rows={4} value={shareCode.code} onFocus={(event) => event.currentTarget.select()} onClick={(event) => event.currentTarget.select()} />
+      <div className={styles.actions}><button type="button" className={styles.primary} onClick={() => void copyExistingShareCode(shareCode)} disabled={saving}><Copy size={15} /> Copy again</button></div>
+    </section>}
     <div className={styles.workspace}>
       <nav className={styles.tabs} aria-label="Recipe editor sections">{sections.map((section) => <button key={section} data-active={activeSection === section} onClick={() => setActiveSection(section)}>{section}</button>)}</nav>
       <section className={styles.editor}>

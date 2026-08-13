@@ -2,6 +2,14 @@
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  // Clipboard writes are needed only by Mixarr's own pages. Keep the policy
+  // narrow and explicit; reverse proxies may append other unrelated policies.
+  async headers() {
+    return [{
+      source: "/:path*",
+      headers: [{ key: "Permissions-Policy", value: "clipboard-write=(self)" }],
+    }];
+  },
   experimental: {
     instrumentationHook: true,
     serverComponentsExternalPackages: ["prisma", "@prisma/client", "node-cron", "prom-client"]

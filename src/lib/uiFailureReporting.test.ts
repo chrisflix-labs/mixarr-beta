@@ -53,7 +53,7 @@ describe("clipboard controls report their outcome", () => {
         execCommand: () => { calls.push("exec"); return true; },
       },
     } as any;
-    assert.equal(await copyTextToClipboard("token-value", environment), "exec_command");
+    assert.equal(await copyTextToClipboard("token-value", environment), "legacy-copy");
     assert.deepEqual(calls, ["api", "append", "exec", "remove"]);
 
     const failing = { ...environment, document: { ...environment.document, execCommand: () => false } };
@@ -65,14 +65,14 @@ describe("clipboard controls report their outcome", () => {
     const error = new ClipboardCopyError();
     assert.doesNotMatch(error.message, /share code/i, "the shared error is reused by token, summary, and report copies");
     // The recipe page still names the share code specifically.
-    assert.match(read("src", "app", "recipes", "[id]", "page.tsx"), /The share code was created, but/);
+    assert.match(read("src", "app", "recipes", "[id]", "page.tsx"), /Share code created, but your browser blocked automatic copying/);
   });
 
   it("separates report creation from report copying", () => {
     const source = read("src", "app", "recipes", "[id]", "page.tsx");
     // A clipboard denial previously surfaced as "The report could not be
     // created.", which was untrue — the report existed.
-    assert.match(source, /The report was created, but the browser denied clipboard access/);
+    assert.match(source, /The report was created, but your browser blocked automatic copying/);
   });
 });
 

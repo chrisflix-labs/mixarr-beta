@@ -14,6 +14,11 @@
 .notice, .error { display: flex; align-items: center; gap: .45rem; padding: .7rem .8rem; border-radius: var(--radius-md); font-size: .84rem; }
 .notice { border: 1px solid rgba(53,174,234,.3); background: rgba(53,174,234,.08); color: #b9e9ff; }
 .error { border: 1px solid rgba(215,91,91,.35); background: rgba(215,91,91,.08); color: #ffc4c4; }
+.manualCopy { display: grid; gap: .65rem; padding: 1rem; border: 1px solid rgba(215,173,91,.4); border-radius: var(--radius-md); background: rgba(215,173,91,.08); }
+.manualCopy h3, .manualCopy p { margin: 0; }
+.manualCopy p, .manualCopy label { color: var(--muted); font-size: .8rem; }
+.manualCopy label { font-weight: 750; }
+.manualCopy textarea { width: 100%; padding: .7rem; resize: vertical; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--fg); background: rgba(0,0,0,.25); font: .78rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
 .sourceBanner { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto auto; align-items: center; gap: .7rem; padding: .8rem; border: 1px solid rgba(124,111,247,.35); border-radius: var(--radius-md); background: rgba(124,111,247,.08); }
 .sourceBanner > svg { color: var(--accent); }
 .sourceBanner p { margin: .15rem 0 0; color: var(--muted); font-size: .76rem; }

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Clipboard, Download } from "lucide-react";
 import styles from "./support.module.css";
+import { tryCopyTextToClipboard } from "@/lib/clipboard";
 
 type Props = {
   summary: {
@@ -34,16 +35,20 @@ export default function SupportActions({ summary }: Props) {
     setWorking(key);
     setMessage(null);
     setManualText(null);
+    let text: string | null = null;
     try {
-      const text = await readTextResponse(url);
-      if (!navigator.clipboard?.writeText) {
+      text = await readTextResponse(url);
+      const result = await tryCopyTextToClipboard(text);
+      if (!result.ok) {
         setManualText(text);
-        setMessage("Copy failed. Select and copy manually.");
+        setMessage(result.reason === "not-secure-context" ? "Automatic clipboard access is unavailable here. Select and copy manually." : "Automatic copying was blocked. Select and copy manually.");
         return;
       }
-      await navigator.clipboard.writeText(text);
       setMessage("Copied to clipboard.");
     } catch (error) {
+      // Generation and copying are separate stages. A successfully generated
+      // template stays available even if the browser refuses both copy paths.
+      if (text) setManualText(text);
       setMessage(error instanceof Error ? error.message : "Copy failed. Select and copy manually.");
     } finally {
       setWorking(null);

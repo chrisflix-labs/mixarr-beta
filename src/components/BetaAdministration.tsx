@@ -64,7 +64,7 @@ export default function BetaAdministration() {
   const copyDiagnostics = async () => {
     setMessage(""); setActionError("");
     try { await copyTextToClipboard(JSON.stringify({ serverAccessLevel: payload?.serverAccessLevel, overrides: payload?.overrides, usage }, null, 2)); setMessage("Sanitized beta administration summary copied."); }
-    catch { setActionError("The browser denied clipboard access. Retry in a secure browser context, or read the values from this page."); }
+    catch { setActionError("Your browser blocked automatic copying. Read and copy the values from this page."); }
   };
   if (loadError && !payload) return <div className={styles.betaWarning}><ShieldAlert size={17} /><span>{loadError} <button type="button" className={styles.secondaryButton} onClick={() => void load()}>Retry</button></span></div>;
   if (!payload) return <div className={styles.betaLoading}><Loader2 size={16} className={styles.spinIcon} /> Loading beta administration...</div>;

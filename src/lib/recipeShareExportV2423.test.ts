@@ -167,7 +167,7 @@ describe("v2.4.23 share-code clipboard handling", () => {
   it("copies the complete share code through the Clipboard API", async () => {
     let copied = "";
     const method = await copyTextToClipboard("MXR1:complete.share-code", { navigator: { clipboard: { writeText: async (value) => { copied = value; } } } });
-    assert.equal(method, "clipboard_api");
+    assert.equal(method, "clipboard-api");
     assert.equal(copied, "MXR1:complete.share-code");
   });
 
@@ -177,7 +177,7 @@ describe("v2.4.23 share-code clipboard handling", () => {
     const body = { appendChild: (value: any) => { textarea = value; } } as any;
     const fakeTextarea = { value: "", style: {}, setAttribute() {}, focus() {}, select() {}, remove() { removed = true; } };
     const method = await copyTextToClipboard("MXR1:fallback.code", { navigator: {}, document: { body, createElement: () => fakeTextarea as any, execCommand: (command: string) => command === "copy" } as any });
-    assert.equal(method, "exec_command");
+    assert.equal(method, "legacy-copy");
     assert.equal(textarea.value, "MXR1:fallback.code");
     assert.equal(removed, true);
   });

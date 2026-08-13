@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { tryCopyTextToClipboard } from "@/lib/clipboard";
 
 export default function CopySupportButton({
   url,
@@ -19,21 +20,23 @@ export default function CopySupportButton({
     setWorking(true);
     setMessage(null);
     setFallback(null);
+    let text: string | null = null;
     try {
       const response = await fetch(url, { cache: "no-store" });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         throw new Error(data?.error || "Copy failed. Select and copy manually.");
       }
-      const text = await response.text();
-      if (!navigator.clipboard?.writeText) {
+      text = await response.text();
+      const result = await tryCopyTextToClipboard(text);
+      if (!result.ok) {
         setFallback(text);
-        setMessage("Copy failed. Select and copy manually.");
+        setMessage(result.reason === "not-secure-context" ? "Automatic clipboard access is unavailable here. Select and copy manually." : "Automatic copying was blocked. Select and copy manually.");
         return;
       }
-      await navigator.clipboard.writeText(text);
       setMessage("Copied to clipboard.");
     } catch (error) {
+      if (text) setFallback(text);
       setMessage(error instanceof Error ? error.message : "Copy failed. Select and copy manually.");
     } finally {
       setWorking(false);
