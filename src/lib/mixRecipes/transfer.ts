@@ -19,6 +19,7 @@ import {
 import { validateRecipe, type RecipeValidationMessage } from "./validation";
 import { scanForbiddenRecipeActions } from "./governance";
 import type { RecipeGovernancePlan } from "./governanceService";
+import { securityFingerprint } from "./previewToken";
 
 export const RECIPE_EXPORT_FORMAT = "mixarr-recipe" as const;
 export const RECIPE_BUNDLE_FORMAT = "mixarr-recipe-bundle" as const;
@@ -771,6 +772,17 @@ export function publicImportPreview(parsed: ParsedTransfer) {
     ready: candidate.validationErrors.length === 0,
   }));
   return {
+    previewId: securityFingerprint({
+      format: parsed.format,
+      sourceDigest: parsed.sourceDigest,
+      candidates: parsed.candidates.map((candidate) => ({
+        index: candidate.index,
+        sourceRecipeFingerprint: candidate.calculatedChecksum,
+        governanceFingerprint: candidate.governance?.planHash || null,
+        adaptiveMappingFingerprint: candidate.adaptiveAnalysis?.mappingStateHash || null,
+        effectiveRecipeFingerprint: securityFingerprint(candidate.adaptiveAnalysis?.adaptedRecipe || candidate.governance?.normalizedRecipe || candidate.normalizedRecipe),
+      })),
+    }),
     format: parsed.format,
     formatVersion: parsed.formatVersion,
     exportingApplicationVersion: parsed.exportingApplicationVersion,

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import prisma from "../prisma";
 import { isUserAdmin } from "../auth";
@@ -6,6 +6,7 @@ import { sanitizePayload } from "../integrations/core";
 import { highRiskRecipesTotal, recipeMigrationsTotal, recipeRestoresTotal, recipeSignatureVerificationsTotal, recipeValidationDurationSeconds, recipesQuarantinedTotal } from "../metrics";
 import type { MixRecipeDocument } from "./schema";
 import { validateRecipe } from "./validation";
+import { createRecipeImportPreviewToken, securityFingerprint, type RecipeImportPreviewToken } from "./previewToken";
 import {
   analyzeImpossibleRequirements, analyzeRecipeRisk, applyRecipeSafetyLimits, canonicalRecipeSignaturePayload,
   evaluateRecipeCompatibility, inferRecipePermissions, normalizeSafetyLimits, scanForbiddenRecipeActions, verifyRecipeSignature,
@@ -14,8 +15,9 @@ import {
 
 export type RecipeImportMode = "suggest_only" | "approval_required" | "automatic_with_limits" | "use_recipe_settings";
 export type RecipeGovernancePlan = {
-  planVersion: 1;
+  planVersion: 2;
   planHash: string;
+  previewToken: RecipeImportPreviewToken;
   generatedAt: string;
   source: string;
   normalizedRecipe: MixRecipeDocument;
@@ -38,7 +40,6 @@ export type RecipeGovernancePlan = {
 };
 
 function json(value: unknown): Prisma.InputJsonValue { return sanitizePayload(value) as Prisma.InputJsonValue; }
-function hash(value: unknown) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 function sourceIsExternal(source: string) { return !["local", "editor", "migration", "built_in"].includes(source.toLowerCase()); }
 async function emitGovernanceEvent(event: string, userId: string, recipeId: string | null, payload: Record<string, unknown>, correlationId: string) {
   try { const { emitIntegrationEvent } = await import("../integrations/service"); await emitIntegrationEvent(event as any, { recipe: { id: recipeId, ...payload }, correlationId }, { actorType: "user", actorId: userId }, `${event}:${correlationId}`); }
@@ -87,10 +88,11 @@ async function evaluateDependencies(userId: string, recipe: MixRecipeDocument) {
 
 export async function buildRecipeGovernancePlan(input: { userId: string; recipe: MixRecipeDocument; source: string; rawPayload?: unknown; configuredLimits?: Partial<RecipeSafetyLimits> | null }) {
   const validationStarted = performance.now();
-  const [keys, policy, dependencies] = await Promise.all([
+  const [keys, policy, dependencies, administrator] = await Promise.all([
     prisma.recipeSigningKey.findMany({ select: { keyId: true, algorithm: true, publicKey: true, identity: true, official: true, trusted: true, expiresAt: true, revokedAt: true } }),
     prisma.recipeSafetyPolicy.findUnique({ where: { userId: input.userId }, select: { limitsJson: true } }),
     evaluateDependencies(input.userId, input.recipe),
+    isUserAdmin(input.userId),
   ]);
   const safety = applyRecipeSafetyLimits(input.recipe, input.configuredLimits || (policy?.limitsJson as Partial<RecipeSafetyLimits> | null));
   const signature = verifyRecipeSignature(safety.recipe, keys);
@@ -118,8 +120,19 @@ export async function buildRecipeGovernancePlan(input: { userId: string; recipe:
   const restrictedPermissions = permissions.filter((item) => item.decision !== "allow").map((item) => item.permission);
   const recommendedImportMode: RecipeImportMode = external || highRisk ? "suggest_only" : risk.recommendedImportMode as RecipeImportMode;
   const availableImportModes: RecipeImportMode[] = highRisk ? ["suggest_only", "approval_required", "automatic_with_limits"] : ["suggest_only", "approval_required", "automatic_with_limits", "use_recipe_settings"];
+  const previewToken = createRecipeImportPreviewToken({
+    sourceRecipe: input.recipe,
+    effectiveRecipe: safety.recipe,
+    trustPolicy: { signature },
+    safetyPolicy: safety.limits,
+    compatibility,
+    dependencies,
+    permissions: { permissions, administrator },
+    governanceRevision: "recipe-governance-v2",
+  });
   const unsignedPlan = {
-    planVersion: 1 as const, generatedAt: new Date().toISOString(), source: input.source, normalizedRecipe: safety.recipe,
+    planVersion: 2 as const, generatedAt: new Date().toISOString(), source: input.source, normalizedRecipe: safety.recipe,
+    previewToken,
     signature, official, trustState, approvalState: quarantineRequired ? "QUARANTINED" as const : external ? "PENDING_REVIEW" as const : "APPROVED" as const,
     quarantine: { required: quarantineRequired, reasons: Array.from(new Set(quarantineReasons)) }, permissions, grantedPermissions, restrictedPermissions,
     compatibility, dependencies, risk, findings, safetyAdjustments: safety.adjustments, recommendedImportMode, availableImportModes,
@@ -129,7 +142,7 @@ export async function buildRecipeGovernancePlan(input: { userId: string; recipe:
   if (["high", "destructive"].includes(risk.riskLevel)) highRiskRecipesTotal.inc({ risk: risk.riskLevel });
   if (quarantineRequired) recipesQuarantinedTotal.inc({ reason: signatureUnsafe ? "signature" : external && signature.status === "MISSING" ? "external_unsigned" : "policy" });
   recipeValidationDurationSeconds.observe((performance.now() - validationStarted) / 1000);
-  return { ...unsignedPlan, planHash: hash({ ...unsignedPlan, generatedAt: undefined }) } satisfies RecipeGovernancePlan;
+  return { ...unsignedPlan, planHash: securityFingerprint(previewToken) } satisfies RecipeGovernancePlan;
 }
 
 export function recipeGovernanceData(plan: RecipeGovernancePlan, input: { source: string; originalPayload: unknown; approvedById?: string | null }) {
@@ -274,7 +287,7 @@ export async function restoreSnapshot(userId: string, snapshotId: string, confir
 
 export function migrationPreview(original: unknown) {
   const validation = validateRecipe(original);
-  return { original, normalized: validation.normalizedRecipe, valid: validation.valid, changes: validation.warnings.filter((item) => item.code.includes("migrat") || item.code.includes("inferred")), errors: validation.errors, diffHash: hash({ original, normalized: validation.normalizedRecipe }) };
+  return { original, normalized: validation.normalizedRecipe, valid: validation.valid, changes: validation.warnings.filter((item) => item.code.includes("migrat") || item.code.includes("inferred")), errors: validation.errors, diffHash: securityFingerprint({ original, normalized: validation.normalizedRecipe }) };
 }
 
 export async function previewStoredRecipeMigration(userId: string, recipeId: string) {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { cancelStagedImport, getStagedImport } from "@/lib/mixRecipes/transferService";
+import { cancelStagedImport, getStagedImport, refreshStagedRecipePreview } from "@/lib/mixRecipes/transferService";
 
 function responseError(error: unknown) {
   const caught = error as Error & { code?: string; status?: number };
@@ -11,6 +11,12 @@ export async function GET(_req: Request, { params }: { params: { stageId: string
   const userId = cookies().get("mixarr_session")?.value;
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try { return NextResponse.json(await getStagedImport(userId, params.stageId)); } catch (error) { return responseError(error); }
+}
+
+export async function POST(_req: Request, { params }: { params: { stageId: string } }) {
+  const userId = cookies().get("mixarr_session")?.value;
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try { return NextResponse.json(await refreshStagedRecipePreview(userId, params.stageId)); } catch (error) { return responseError(error); }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { stageId: string } }) {

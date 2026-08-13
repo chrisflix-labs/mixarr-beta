@@ -200,14 +200,14 @@ export async function persistImportAnalysis(input: { userId: string; stageId: st
   });
 }
 
-export async function saveConfirmedMappingRules(userId: string, libraryId: string, mappings: AdaptiveMappingDecision[]) {
+export async function saveConfirmedMappingRules(userId: string, libraryId: string, mappings: AdaptiveMappingDecision[], database: Prisma.TransactionClient | typeof prisma = prisma) {
   const selected = mappings.filter((mapping) => mapping.saveForFuture && mapping.mappedValues.length > 0 && ["genre", "mood", "artist", "bpm", "energy"].includes(mapping.mappingType));
   for (const mapping of selected) {
     const normalized = normalizeRecipeVocabulary(mapping.originalValue);
-    const existing = await prisma.savedRecipeMappingRule.findFirst({ where: { userId, libraryId, mappingType: mapping.mappingType, sourceValueNormalized: normalized } });
+    const existing = await database.savedRecipeMappingRule.findFirst({ where: { userId, libraryId, mappingType: mapping.mappingType, sourceValueNormalized: normalized } });
     const data = { sourceValueDisplay: mapping.originalValue, destinationValuesJson: json(mapping.mappedValues), confidence: Math.max(mapping.confidence, 0.9), source: "manual_import", manuallyConfirmed: true, enabled: true, usageCount: { increment: 1 }, lastUsedAt: new Date() } as const;
-    if (existing) await prisma.savedRecipeMappingRule.update({ where: { id: existing.id }, data });
-    else await prisma.savedRecipeMappingRule.create({ data: { userId, libraryId, mappingType: mapping.mappingType, sourceValueNormalized: normalized, sourceValueDisplay: mapping.originalValue, destinationValuesJson: json(mapping.mappedValues), confidence: Math.max(mapping.confidence, 0.9), source: "manual_import", manuallyConfirmed: true, enabled: true, usageCount: 1, lastUsedAt: new Date() } });
+    if (existing) await database.savedRecipeMappingRule.update({ where: { id: existing.id }, data });
+    else await database.savedRecipeMappingRule.create({ data: { userId, libraryId, mappingType: mapping.mappingType, sourceValueNormalized: normalized, sourceValueDisplay: mapping.originalValue, destinationValuesJson: json(mapping.mappedValues), confidence: Math.max(mapping.confidence, 0.9), source: "manual_import", manuallyConfirmed: true, enabled: true, usageCount: 1, lastUsedAt: new Date() } });
   }
   profileCache.delete(`${userId}:${libraryId}`);
   return selected.length;

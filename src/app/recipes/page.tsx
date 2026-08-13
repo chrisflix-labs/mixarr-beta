@@ -44,12 +44,13 @@ type PreviewRecipe = {
   governance?: any;
 };
 type ImportPreview = {
+  previewId: string;
   format: string; formatVersion: number; exportingApplicationVersion: string | null; bundleChecksumStatus: string | null; totalRecipes: number;
   ready: number; requireAdaptation: number; haveConflicts: number; invalid: number; duplicateContentMatches: number; artworkCount: number;
   totalImportSize: number; securityStatus: string; recipes: PreviewRecipe[];
 };
 type Decision = { selected: boolean; action: ConflictAction; name: string; adaptationMode: "adapted" | "original"; analysisId?: string; acknowledgeMajorIdentityChange: boolean; acknowledgeLowCompatibility: boolean; importMode?: string; grantedPermissions?: string[]; confirmConsequences?: string[] };
-type ImportResult = { historyId: string; status: string; counts: Record<string, number>; results: Array<{ index: number; name: string; action: string; error?: string }> };
+type ImportResult = { historyId: string; status: string; counts: Record<string, number>; results: Array<{ index: number; name: string; action: string; error?: string; definition?: "adapted" | "original"; compatibility?: string; warnings?: string[] }> };
 type HistoryData = { imports: any[]; exports: any[] };
 
 const wizardLabels = ["Select file", "Validate", "Preview", "Resolve", "Confirm", "Results"];
@@ -75,6 +76,7 @@ export default function RecipesPage() {
   const [importBusy, setImportBusy] = useState(false); const [importError, setImportError] = useState(""); const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false); const [history, setHistory] = useState<HistoryData | null>(null); const [historyBusy, setHistoryBusy] = useState(false);
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); const analysisAbortRef = useRef<AbortController | null>(null);
+  const staleRefreshAttemptedRef = useRef(false);
 
   const displayed = useMemo(() => recipes.filter((recipe) => !search || `${recipe.name} ${recipe.description || ""}`.toLowerCase().includes(search.toLowerCase()))
     .filter((recipe) => category === "all" || recipe.category === category).filter((recipe) => status === "all" || recipe.enabled === (status === "enabled"))
@@ -106,11 +108,13 @@ export default function RecipesPage() {
   const resetWizard = async (cancel = true) => {
     if (cancel && stageId) await axios.delete(`/api/playlist-recipes/import/${stageId}`).catch(() => undefined);
     setWizardStep(1); setImportFileName(""); setStageId(""); setPreview(null); setDecisions({}); setImportError(""); setImportResult(null); setImportMode("atomic");
+    staleRefreshAttemptedRef.current = false;
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
   const closeWizard = async () => { await resetWizard(true); setWizardOpen(false); };
 
   const stageFile = async (file: File) => {
+    staleRefreshAttemptedRef.current = false;
     setImportError(""); setImportResult(null); setImportFileName(file.name); setWizardStep(2); setImportBusy(true);
     const lower = file.name.toLowerCase(); const archive = lower.endsWith(".zip");
     if (!(lower.endsWith(".json") || archive)) { setImportError("Choose a .mixarr-recipe.json, .mixarr-bundle.json, .mixarr-recipe.zip, or .mixarr-bundle.zip file."); setWizardStep(1); setImportBusy(false); return; }
@@ -168,9 +172,25 @@ export default function RecipesPage() {
   const confirmImport = async () => {
     if (!stageId || !preview) return; setImportBusy(true); setImportError("");
     try {
-      const response = await axios.post("/api/playlist-recipes/import", { stageId, mode: importMode, decisions: Object.entries(decisions).map(([index, decision]) => ({ index: Number(index), ...decision })) });
+      const response = await axios.post("/api/playlist-recipes/import", { stageId, previewId: preview.previewId, mode: importMode, decisions: Object.entries(decisions).map(([index, decision]) => ({ index: Number(index), ...decision })) });
       setImportResult(response.data); setWizardStep(6); await fetchRecipes();
-    } catch (caught: any) { setImportError(caught.response?.data?.error || "The import transaction failed."); } finally { setImportBusy(false); }
+    } catch (caught: any) {
+      const payload = caught.response?.data;
+      if (payload?.code === "RECIPE_IMPORT_PREVIEW_STALE" && !staleRefreshAttemptedRef.current) {
+        staleRefreshAttemptedRef.current = true;
+        try {
+          const refreshed = await axios.post(`/api/playlist-recipes/import/${stageId}`);
+          setPreview(refreshed.data.preview);
+          setDecisions((current) => Object.fromEntries(refreshed.data.preview.recipes.map((recipe: PreviewRecipe) => {
+            const existing = current[recipe.index];
+            return [recipe.index, existing ? { ...existing, analysisId: recipe.adaptiveAnalysis?.analysisId } : { selected: recipe.ready, action: recipe.recommendedAction, name: recipe.proposedName, adaptationMode: recipe.adaptiveAnalysis ? "adapted" : "original", analysisId: recipe.adaptiveAnalysis?.analysisId, acknowledgeMajorIdentityChange: false, acknowledgeLowCompatibility: false, importMode: recipe.governance?.recommendedImportMode || "suggest_only", grantedPermissions: recipe.governance?.permissions?.filter((item: any) => item.decision === "allow").map((item: any) => item.permission) || [], confirmConsequences: [] }];
+          })));
+          const domains = Array.isArray(payload.changedDomains) && payload.changedDomains.length ? payload.changedDomains.join(", ") : "security policy";
+          setImportError(`The import preview changed (${domains}). Mixarr refreshed it once; review the new preview before confirming again.`);
+          setWizardStep(3);
+        } catch (refreshError: any) { setImportError(refreshError.response?.data?.error || "The changed import preview could not be refreshed."); }
+      } else setImportError(payload?.error || "The import transaction failed.");
+    } finally { setImportBusy(false); }
   };
 
   const duplicateRecipe = async (recipe: PlaylistRecipe) => { setBusyId(recipe.id); try { const response = await axios.post(`/api/playlist-recipes/${recipe.id}/duplicate`); router.push(`/recipes/${response.data.recipe.id}`); } catch (caught: any) { setError(caught.response?.data?.error || "Recipe duplication failed."); } finally { setBusyId(""); } };
@@ -234,7 +254,7 @@ export default function RecipesPage() {
           <fieldset className={styles.modeChoice}><legend>Bundle transaction mode</legend><label><input type="radio" checked={importMode === "atomic"} onChange={() => setImportMode("atomic")} /> <span><b>Atomic import (recommended)</b><small>Roll back every selected recipe if any import fails.</small></span></label><label><input type="radio" checked={importMode === "independent"} onChange={() => setImportMode("independent")} /> <span><b>Independent import</b><small>Keep successful recipes and report failures individually.</small></span></label></fieldset>
           <p className={styles.confirmNotice}><Info size={16} /> Importing saves recipes only. It does not create playlists or activate automation.</p>
         </>}
-        {wizardStep === 6 && importResult && <><div className={styles.resultHero}><CheckCircle2 size={38} /><h4>Import {importResult.status.toLowerCase()}</h4><p>{importResult.counts.imported || 0} imported · {importResult.counts.renamed || 0} renamed · {importResult.counts.replaced || 0} replaced · {importResult.counts.alreadyPresent || 0} already present · {importResult.counts.skipped || 0} skipped · {importResult.counts.failed || 0} failed</p></div><div className={styles.resultList}>{importResult.results.map((item) => <p key={`${item.index}-${item.action}`} data-failed={item.action === "failed"}><span>{item.name}</span><b>{item.action.replace("_", " ")}</b>{item.error && <small>{item.error}</small>}</p>)}</div><div className={styles.resultActions}><button className={styles.secondaryButton} onClick={() => downloadDiagnostic(importResult.historyId)}><Download size={15} /> Download sanitized diagnostics</button><button className={styles.secondaryButton} onClick={() => { closeWizard(); loadHistory(); }}><History size={15} /> View history</button></div></>}
+        {wizardStep === 6 && importResult && <><div className={styles.resultHero}><CheckCircle2 size={38} /><h4>Import {importResult.status.toLowerCase()}</h4><p>{importResult.counts.imported || 0} imported · {importResult.counts.renamed || 0} renamed · {importResult.counts.replaced || 0} replaced · {importResult.counts.alreadyPresent || 0} already present · {importResult.counts.skipped || 0} skipped · {importResult.counts.failed || 0} failed</p></div><div className={styles.resultList}>{importResult.results.map((item) => <p key={`${item.index}-${item.action}`} data-failed={item.action === "failed"}><span>{item.name}{item.definition && <small>{item.definition} definition · {item.compatibility || "compatibility unavailable"}</small>}{item.warnings?.map((warning, index) => <small key={`${item.index}-${index}`}>{warning}</small>)}</span><b>{item.action.replace("_", " ")}</b>{item.error && <small>{item.error}</small>}</p>)}</div><div className={styles.resultActions}><button className={styles.secondaryButton} onClick={() => downloadDiagnostic(importResult.historyId)}><Download size={15} /> Download sanitized diagnostics</button><button className={styles.secondaryButton} onClick={() => { closeWizard(); loadHistory(); }}><History size={15} /> View history</button></div></>}
       </div>
       <footer className={styles.wizardFooter}>{wizardStep > 1 && wizardStep < 6 && <button className={styles.secondaryButton} onClick={() => setWizardStep((step) => Math.max(1, step - 1))} disabled={importBusy}>Back</button>}<span />{wizardStep === 3 && <button className={styles.primaryButton} onClick={() => setWizardStep(4)}>Resolve changes <ChevronRight size={16} /></button>}{wizardStep === 4 && <button className={styles.primaryButton} onClick={() => setWizardStep(5)}>Review import <ChevronRight size={16} /></button>}{wizardStep === 5 && <button className={styles.primaryButton} onClick={confirmImport} disabled={importBusy || !Object.values(decisions).some((item) => item.selected && item.action !== "skip")}>{importBusy ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Confirm import</button>}{wizardStep === 6 && <button className={styles.primaryButton} onClick={closeWizard}>Done</button>}</footer>
     </section></div>}
