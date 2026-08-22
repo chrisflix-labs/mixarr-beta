@@ -1,5 +1,6 @@
 import type { AiErrorCategory } from "../errors";
 import { canonicalFeatureId } from "../features/registry";
+import { evaluateProviderLifecycleAuthorization } from "./providerLifecycle";
 
 // v2.4.12 — single authoritative provider-feature authorization evaluator.
 //
@@ -121,9 +122,13 @@ export function evaluateProviderFeatureAuthorization(input: AuthorizationInput):
   if (!input.featureImplemented) return deny("FEATURE_DISABLED", "feature_exists");
   if (!input.featureEnabled) return deny("FEATURE_DISABLED", "feature_enabled");
 
-  if (input.provider.deleted) return deny("PROVIDER_NOT_FOUND", "provider_exists");
-  if (!input.provider.enabled) return deny("PROVIDER_DISABLED", "provider_enabled");
-  if (!input.provider.approved) return deny("AI_PROVIDER_NOT_APPROVED", "provider_approved");
+  const lifecycle = evaluateProviderLifecycleAuthorization("FEATURE_INFERENCE", {
+    exists: true,
+    deleted: input.provider.deleted,
+    enabled: input.provider.enabled,
+    approved: input.provider.approved,
+  });
+  if (!lifecycle.allowed) return deny(lifecycle.code!, lifecycle.failedCheck!);
 
   // Authoritative per-provider feature approval. Provider "approved" above does
   // not imply approval for every feature; this is a separate, granular control.

@@ -2,6 +2,8 @@
 
 ## v2.4.23 - Portable Recipe Share-Code Security Fix
 
+- Fixed AI provider setup authorization so enabled, unapproved Ollama providers can verify connectivity, discover installed models, run health checks, and perform a selected-model inference test while production feature inference continues to require explicit provider/model/feature approval.
+- Added real selected-model Ollama inference testing, native `/api/tags` validation, actionable connection/DNS/timeout/endpoint/no-model/model-missing diagnostics, visible production-approval status, and local zero-cost labeling.
 - Fixed the false-positive share-code safeguard that scanned a source installation's `generation.libraryId` after reconstructing the complete internal recipe document.
 - Routed Copy share code, Community JSON, and Community bundle through the shared explicit portable recipe allowlist before serialization; database, user, provider, library, playlist, browser, server, and installation identifiers remain excluded.
 - Added redacted field-level export diagnostics with detector rule, category, and object path while never logging matched values, complete payloads, credentials, or share codes.

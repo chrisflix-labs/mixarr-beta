@@ -22,11 +22,11 @@ Docker installations that use the bundled `prisma db push` startup path run `pri
 
 Administrators retain complete AI administration. Other users are denied until an unexpired grant exists for the exact permission: `ai.use`, `ai.request.create`, `ai.recipe.create`, `ai.recipe.review`, `ai.metadata.review`, `ai.troubleshoot`, `ai.provider.view`, `ai.provider.manage`, `ai.cost.view`, `ai.cost.manage`, or `ai.audit.view`.
 
-Feature checks are enforced in services and again at the centralized request coordinator. Permission grants and revocations are audited. Administrative provider operations also require an approved, enabled provider and are blocked during shutdown.
+Feature checks are enforced in services and again at the centralized request coordinator. Permission grants and revocations are audited. Administrative provider setup operations require provider-management permission and an enabled provider, but may run before production approval so endpoint validation, discovery, and minimal test inference are not circular. Global disable and emergency shutdown still block them.
 
 ## Provider, model, and external-data policy
 
-Provider configuration is not approval. A request is eligible only when the provider and selected model are enabled and approved, the feature and privacy mode are allowlisted, and required capabilities are declared by the model. Fallback candidates repeat the same policy checks; fallback cannot bypass approval, privacy, capability, pricing, budget, or external-data rules.
+Provider configuration is not production approval. Setup authorization covers credential/endpoint verification, discovery, health checks, and minimal test inference; it never grants feature access. A production request is eligible only when the provider and selected model are enabled and approved, the feature and privacy mode are allowlisted, and required capabilities are declared by the model. Fallback candidates repeat the same policy checks; fallback cannot bypass approval, privacy, capability, pricing, budget, or external-data rules.
 
 External providers are globally disabled by default. When enabled, the provider must allow external requests, the feature must be globally and provider-allowlisted, every data category must be globally and provider-allowlisted, and a per-request confirmation is required when configured. Request previews identify provider, model, locality, privacy mode, included categories, limits, and estimated cost without storing raw prompt content.
 

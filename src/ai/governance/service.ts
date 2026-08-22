@@ -11,6 +11,7 @@ import { classifyProviderAndModel, resolvePaidProviderPermission, type AiClassif
 import { unexpectedAiError } from "./logging";
 import { resolveModelCapabilities } from "../registry/modelCapabilities";
 import { MAX_AI_TIMEOUT_MS, MAX_CANCELLATION_GRACE_MS, MIN_CANCELLATION_GRACE_MS } from "../config/timeout";
+import { evaluateProviderLifecycleAuthorization, type AiProviderSetupOperation } from "./providerLifecycle";
 
 const warningThresholds = [0.5, 0.75, 0.9, 1];
 const deprecatedTokenFields = ["maximumInputTokens", "maximumOutputTokens", "maximumCombinedTokens", "maximumCompletionTokens", "maximumPromptTokens", "maximumReasoningTokens", "maximumRequestTokens", "tokenLimit", "dailyTokenLimit", "monthlyTokenLimit", "providerTokenLimit", "userTokenLimit", "featureTokenLimit", "defaultOutputTokens", "recommendedOutputTokens"] as const;
@@ -365,21 +366,47 @@ export async function listProviderComparison(inputTokens = 1000, outputTokens = 
   return providers.flatMap((provider) => provider.models.map((model) => { const pricing = provider.pricingProfiles.find((row) => row.modelIdentifier === model.modelIdentifier); const eligible = privacyMode !== "LOCAL_ONLY" || provider.locationClassification === "LOCAL" && provider.administratorConfirmedLocal; const cost = pricing ? estimateRequestCost({ inputTokens, estimatedOutputTokens: outputTokens, pricing: { ...pricing, inputPricePerMillion: pricing.inputPricePerMillion?.toString(), outputPricePerMillion: pricing.outputPricePerMillion?.toString(), cachedInputPricePerMillion: pricing.cachedInputPricePerMillion?.toString(), reasoningPricePerMillion: pricing.reasoningPricePerMillion?.toString(), fixedRequestCost: pricing.fixedRequestCost?.toString() } }) : null; return { providerId: provider.id, provider: provider.displayName, model: model.modelIdentifier, local: provider.locationClassification === "LOCAL" && provider.administratorConfirmedLocal, contextWindow: model.contextSize, capabilities: model.capabilityMetadata, healthStatus: provider.health?.healthState || "NOT_TESTED", privacyEligible: eligible, budgetStatus: provider.governanceBudget ? "CONFIGURED" : provider.monthlyBudget != null ? "LEGACY_LIMIT" : "NO_LIMIT", cost, expectedFallbackOrder: provider.priority, qualityNotAssessed: true }; }));
 }
 
-export async function beginAdministrativeAiOperation(input: { provider: ResolvedAiProviderConfig; source: "CONNECTION_TEST" | "MODEL_DISCOVERY"; model?: string; userId?: string; signal?: AbortSignal; background?: boolean }) {
+export async function beginAdministrativeAiOperation(input: { provider: ResolvedAiProviderConfig; operation: AiProviderSetupOperation; model?: string; userId?: string; signal?: AbortSignal; background?: boolean }) {
   const requestId = crypto.randomUUID();
-  const featureKey = input.source === "CONNECTION_TEST" ? "administrative_connection_test" : "administrative_model_discovery";
-  const specialModel = input.source === "MODEL_DISCOVERY" ? "__model_discovery__" : input.model || input.provider.defaultModel || "__connection_test__";
+  const inferenceOperation = input.operation === "PROVIDER_TEST_INFERENCE" || input.operation === "PROVIDER_HEALTH_CHECK";
+  const featureKey = input.operation === "PROVIDER_AUTHENTICATION" ? "administrative_provider_authentication" : input.operation === "PROVIDER_DISCOVERY" ? "administrative_model_discovery" : input.operation === "PROVIDER_HEALTH_CHECK" ? "administrative_provider_health_check" : "administrative_connection_test";
+  const requestSource = inferenceOperation ? "CONNECTION_TEST" : "MODEL_DISCOVERY";
+  const specialModel = input.operation === "PROVIDER_AUTHENTICATION" || input.operation === "PROVIDER_DISCOVERY" ? "__model_discovery__" : input.model || input.provider.defaultModel || "__connection_test__";
   const [global, governance, providerRow, pricing] = await Promise.all([
     prisma.aiGlobalSetting.findUnique({ where: { id: "global" } }),
     prisma.aiGovernanceSetting.upsert({ where: { id: "global" }, create: defaultGovernanceData(), update: {} }),
     prisma.aiProviderConfig.findUnique({ where: { id: input.provider.id } }),
     prisma.aiModelPricing.findFirst({ where: { providerConfigId: input.provider.id, modelIdentifier: specialModel, enabled: true }, orderBy: { effectiveAt: "desc" } })
   ]);
+  const lifecycle = evaluateProviderLifecycleAuthorization(input.operation, {
+    exists: !!providerRow,
+    deleted: !!providerRow?.deletedAt,
+    enabled: !!providerRow?.enabled,
+    approved: !!providerRow?.approved,
+  });
+  const environmentDisabled = /^(0|false|off|disabled)$/i.test(String(process.env.MIXARR_AI_ENABLED || "true"));
+  const authorizationFailure = environmentDisabled || !global?.enabled
+    ? { code: "AI_DISABLED" as const, failedCheck: "global_ai_enabled", reason: environmentDisabled ? "environment_disabled" : "global_ai_disabled" }
+    : global.emergencyShutdown
+      ? { code: "AI_EMERGENCY_SHUTDOWN" as const, failedCheck: "emergency_shutdown", reason: "emergency_shutdown_active" }
+      : !lifecycle.allowed
+        ? { code: lifecycle.code!, failedCheck: lifecycle.failedCheck!, reason: lifecycle.reason }
+        : null;
+  console.info("[AI] Provider operation authorization", {
+    correlationId: requestId,
+    providerId: input.provider.id,
+    providerType: providerRow?.providerType || input.provider.providerType,
+    providerMode: providerRow?.locationClassification || input.provider.locationClassification,
+    enabled: !!providerRow?.enabled,
+    approvalStatus: providerRow?.approved ? "APPROVED" : "NOT_APPROVED",
+    operation: input.operation,
+    feature: featureKey,
+    policyResult: authorizationFailure ? "BLOCKED" : "ALLOWED",
+    failedCheck: authorizationFailure?.failedCheck || null,
+    reason: authorizationFailure?.reason || lifecycle.reason,
+  });
+  if (authorizationFailure) throw new AiError(authorizationFailure.code, undefined, undefined, undefined, { correlation_id: requestId, operation: input.operation, failed_check: authorizationFailure.failedCheck, reason: authorizationFailure.reason });
   if (!providerRow) throw new AiError("PROVIDER_NOT_FOUND");
-  if (/^(0|false|off|disabled)$/i.test(String(process.env.MIXARR_AI_ENABLED || "true")) || !global?.enabled) throw new AiError("AI_DISABLED");
-  if (global.emergencyShutdown) throw new AiError("AI_EMERGENCY_SHUTDOWN");
-  if (!providerRow.enabled) throw new AiError("PROVIDER_DISABLED");
-  if (!providerRow.approved) throw new AiError("AI_PROVIDER_NOT_APPROVED");
   const classification = classifyProviderAndModel({ ...input.provider, administratorConfirmedLocal: providerRow.administratorConfirmedLocal, trustedNetwork: providerRow.trustedNetwork, customConfigurationJson: providerRow.customConfigurationJson }, specialModel, pricing);
   let auditId: string | undefined;
   try {
@@ -388,20 +415,20 @@ export async function beginAdministrativeAiOperation(input: { provider: Resolved
     if (input.background && (!governance.backgroundAiEnabled || classification.locality === "EXTERNAL" && !governance.externalBackgroundAiEnabled)) throw new AiError("BACKGROUND_REQUEST_NOT_PERMITTED", undefined, 409, undefined, { correlation_id: requestId });
   } catch (error) {
     const normalized = error instanceof AiError ? error : unexpectedAiError(error, { correlationId: requestId, featureName: featureKey, userId: input.userId, providerId: input.provider.id, providerType: input.provider.providerType, model: specialModel, privacyMode: governance.privacyMode, backgroundRequestPermission: governance.backgroundAiEnabled, governanceDecisionStage: "provider_classification" });
-    await recordBlockedAiRequest({ requestId, featureKey, userId: input.userId, requestSource: input.source, error: normalized, provider: input.provider, model: specialModel, classification }).catch((auditError) => { unexpectedAiError(auditError, { correlationId: requestId, featureName: featureKey, userId: input.userId, providerId: input.provider.id, providerType: input.provider.providerType, model: specialModel, privacyMode: governance.privacyMode, governanceDecisionStage: "audit_persistence" }); });
+    await recordBlockedAiRequest({ requestId, featureKey, userId: input.userId, requestSource, error: normalized, provider: input.provider, model: specialModel, classification }).catch((auditError) => { unexpectedAiError(auditError, { correlationId: requestId, featureName: featureKey, userId: input.userId, providerId: input.provider.id, providerType: input.provider.providerType, model: specialModel, privacyMode: governance.privacyMode, governanceDecisionStage: "audit_persistence" }); });
     throw normalized;
   }
   try {
-    const audit = await prisma.aiRequestAudit.create({ data: { requestId, correlationId: requestId, logicalRequestId: requestId, featureKey, userId: input.userId, providerConfigId: input.provider.id, providerType: input.provider.providerType, providerDisplayName: input.provider.displayName, model: specialModel, requestSource: input.source, background: !!input.background, locationClassification: classification.locality, providerModelClassification: classification.classification, privacyMode: governance.privacyMode, status: "RUNNING", testStage: input.source === "CONNECTION_TEST" ? "GOVERNANCE" : "DISCOVERY", governanceResult: "ALLOWED", modelCompatibilityResult: input.source === "CONNECTION_TEST" ? "ELIGIBLE" : "NOT_APPLICABLE", endpointMode: input.provider.providerType === "openai" ? "RESPONSES_API" : "PROVIDER_DEFAULT", costState: "NOT_YET_REPORTED", budgetControlResult: "EVALUATING", limitControlResult: "ALLOWED" } });
+    const audit = await prisma.aiRequestAudit.create({ data: { requestId, correlationId: requestId, logicalRequestId: requestId, featureKey, userId: input.userId, providerConfigId: input.provider.id, providerType: input.provider.providerType, providerDisplayName: input.provider.displayName, model: specialModel, requestSource, background: !!input.background, locationClassification: classification.locality, providerModelClassification: classification.classification, privacyMode: governance.privacyMode, status: "RUNNING", testStage: inferenceOperation ? "GOVERNANCE" : input.operation === "PROVIDER_AUTHENTICATION" ? "AUTHENTICATION" : "DISCOVERY", governanceResult: "ALLOWED", modelCompatibilityResult: inferenceOperation ? "ELIGIBLE" : "NOT_APPLICABLE", endpointMode: input.provider.providerType === "openai" ? "RESPONSES_API" : "PROVIDER_DEFAULT", costState: "NOT_YET_REPORTED", budgetControlResult: "EVALUATING", limitControlResult: "ALLOWED" } });
     auditId = audit.id;
   } catch (auditError) { throw unexpectedAiError(auditError, { correlationId: requestId, featureName: featureKey, userId: input.userId, providerId: input.provider.id, providerType: input.provider.providerType, model: specialModel, privacyMode: governance.privacyMode, governanceDecisionStage: "audit_persistence" }); }
   let reservationId: string | undefined; let resolvedPolicy: any = null;
-  if (input.source === "CONNECTION_TEST" || pricing) {
+  if (inferenceOperation || pricing) {
     try {
-      const governed = await reserveAiBudget({ request: { featureKey, systemInstructions: input.source === "CONNECTION_TEST" ? "You are performing an AI provider connectivity test. Return only valid JSON and no additional text." : undefined, messages: [{ role: "user", content: input.source === "CONNECTION_TEST" ? 'Return exactly this JSON object: {"ok":true}' : "Mixarr model discovery." }], estimatedOutputTokens: input.source === "CONNECTION_TEST" ? 32 : 1, thinkingMode: input.source === "CONNECTION_TEST" ? "disabled" : undefined, requestSource: input.source, signal: input.signal }, provider: input.provider, model: specialModel, userId: input.userId, requestId, auditId });
+      const governed = await reserveAiBudget({ request: { featureKey, systemInstructions: inferenceOperation ? "You are performing an AI provider connectivity test. Return only valid JSON and no additional text." : undefined, messages: [{ role: "user", content: inferenceOperation ? 'Return exactly this JSON object: {"ok":true}' : "Mixarr model discovery." }], estimatedOutputTokens: inferenceOperation ? 32 : 1, thinkingMode: inferenceOperation ? "disabled" : undefined, requestSource, signal: input.signal }, provider: input.provider, model: specialModel, userId: input.userId, requestId, auditId });
       reservationId = governed.reservation.id; resolvedPolicy = governed.preview.policyDecision;
-      if (input.source === "CONNECTION_TEST") (resolvedPolicy as any).__providerTest = { maximumEstimatedCost: governed.preview.cost.maximumEstimatedCost };
-      if (input.source === "CONNECTION_TEST" && auditId) await prisma.aiRequestAudit.update({ where: { id: auditId }, data: { thinkingModeRequested: "disabled" } });
+      if (inferenceOperation) (resolvedPolicy as any).__providerTest = { maximumEstimatedCost: governed.preview.cost.maximumEstimatedCost };
+      if (inferenceOperation && auditId) await prisma.aiRequestAudit.update({ where: { id: auditId }, data: { thinkingModeRequested: "disabled" } });
     } catch (error) {
       const normalized = error instanceof AiError ? error : unexpectedAiError(error, { correlationId: requestId, featureName: featureKey, userId: input.userId, providerId: input.provider.id, providerType: input.provider.providerType, model: specialModel, privacyMode: governance.privacyMode, governanceDecisionStage: "budget_and_policy_admission" });
       normalized.details = { ...(normalized.details || {}), correlation_id: requestId, provider_classification: classification.classification, classification_reason: classification.reason };

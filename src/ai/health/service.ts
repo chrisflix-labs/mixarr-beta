@@ -89,7 +89,7 @@ export async function testAiProviderConnection(providerId: string, signal?: Abor
     catch (error) { if (error instanceof AiError) { await recordValidationFailure(config, requestedModel, userId, error); throw error; } throw error; }
   }
 
-  const governanceOperation = await beginAdministrativeAiOperation({ provider: config, source: "CONNECTION_TEST", model: selectedModel, userId, signal, background });
+  const governanceOperation = await beginAdministrativeAiOperation({ provider: config, operation: background ? "PROVIDER_HEALTH_CHECK" : "PROVIDER_TEST_INFERENCE", model: selectedModel, userId, signal, background });
   activeProviderTests.add(providerId);
   const timeoutPolicy = await administrativeTimeoutPolicy(config);
   const timed = createAiRequestSignal(signal, timeoutPolicy.totalRequestTimeoutMs);
@@ -129,7 +129,7 @@ export async function testAiProviderConnection(providerId: string, signal?: Abor
 export async function verifyAiProviderCredentials(providerId: string, signal?: AbortSignal, userId?: string) {
   const config = await resolveAiProvider(providerId);
   if (!config.enabled) throw new AiError("PROVIDER_DISABLED");
-  const operation = await beginAdministrativeAiOperation({ provider: config, source: "MODEL_DISCOVERY", userId, signal });
+  const operation = await beginAdministrativeAiOperation({ provider: config, operation: "PROVIDER_AUTHENTICATION", userId, signal });
   const adapter = aiProviderRegistry.get(config.providerType);
   const timeoutPolicy = await administrativeTimeoutPolicy(config);
   const timed = createAiRequestSignal(signal, timeoutPolicy.totalRequestTimeoutMs);
@@ -159,7 +159,7 @@ export async function recordAiExecutionHealth(providerId: string, success: boole
 export async function refreshAiProviderModels(providerId: string, signal?: AbortSignal, userId?: string) {
   const config = await resolveAiProvider(providerId);
   if (!config.enabled) throw new AiError("PROVIDER_DISABLED");
-  const operation = await beginAdministrativeAiOperation({ provider: config, source: "MODEL_DISCOVERY", userId, signal });
+  const operation = await beginAdministrativeAiOperation({ provider: config, operation: "PROVIDER_DISCOVERY", userId, signal });
   const adapter = aiProviderRegistry.get(config.providerType);
   const timeoutPolicy = await administrativeTimeoutPolicy(config);
   const timed = createAiRequestSignal(signal, timeoutPolicy.totalRequestTimeoutMs);

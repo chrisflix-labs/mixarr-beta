@@ -37,6 +37,23 @@ export function configuredHeaders(config: ResolvedAiProviderConfig, providerHead
   return headers;
 }
 
+function normalizeProviderTransportError(error: unknown, diagnostics: ProviderHttpDiagnostics) {
+  if (error instanceof AiError) return error;
+  if ((error as Error)?.name === "AbortError") return new AiError("REQUEST_CANCELLED");
+  const code = String((error as NodeJS.ErrnoException)?.code || "").toUpperCase();
+  const message = String((error as Error)?.message || "");
+  const details = {
+    failure_stage: "NETWORK",
+    provider: diagnostics.provider,
+    model: diagnostics.model,
+    stage: diagnostics.stage,
+    network_reason: code === "ECONNREFUSED" ? "CONNECTION_REFUSED" : ["ENOTFOUND", "EAI_AGAIN"].includes(code) ? "DNS_FAILURE" : code === "ETIMEDOUT" ? "TIMEOUT" : "NETWORK_FAILURE",
+  };
+  if (code === "ETIMEDOUT" || /timed?\s*out/i.test(message)) return new AiError("PROVIDER_TIMEOUT", undefined, 504, undefined, details);
+  if (["CERT_HAS_EXPIRED", "DEPTH_ZERO_SELF_SIGNED_CERT", "UNABLE_TO_VERIFY_LEAF_SIGNATURE"].includes(code) || /certificate|\btls\b|\bssl\b/i.test(message)) return new AiError("TLS_ERROR", undefined, 502, undefined, details);
+  return new AiError("PROVIDER_CONNECTION_FAILED", undefined, 502, undefined, details);
+}
+
 export async function providerFetch(url: string, init: RequestInit = {}, lifecycle?: AiProviderLifecycle, sslVerification = true): Promise<Response> {
   const endpoint = new URL(url);
   if (!["http:", "https:"].includes(endpoint.protocol)) throw new AiError("INVALID_REQUEST", "Provider URLs must use HTTP or HTTPS.");
@@ -138,7 +155,7 @@ function providerHttpDetails(transport: ProviderTransport, diagnostics: Provider
 export async function safeFetchJsonDetailed(url: string, init: RequestInit, maxBytes: number, diagnostics: ProviderHttpDiagnostics = {}) {
   const started = Date.now();
   let response: Response;
-  try { response = await providerFetch(url, init, diagnostics.lifecycle, diagnostics.sslVerification); } catch (error) { throw normalizeProviderError(error); }
+  try { response = await providerFetch(url, init, diagnostics.lifecycle, diagnostics.sslVerification); } catch (error) { throw normalizeProviderTransportError(error, diagnostics); }
   const contentType = (response.headers.get("content-type") || "").toLowerCase();
   const streamed = contentType.includes("text/event-stream");
   let bytes: Uint8Array;

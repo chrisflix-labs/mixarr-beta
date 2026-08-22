@@ -32,9 +32,11 @@ See [Local AI Model Loading & Unlimited Timeouts](AI_LOCAL_MODEL_TIMEOUTS_V2422.
 
 ## Enabling and configuring
 
-Open **Settings → AI Provider Foundation** as an administrator. Add and save a provider, test its connection with the fixed minimal prompt, refresh model discovery, and select default/fast/reasoning models. Saving an untested provider is allowed and leaves it marked **Not tested**.
+Open **Settings → AI → Providers** as an administrator. Add and enable a provider, verify its endpoint or credentials, refresh model discovery, select default/fast/reasoning models, and run the fixed minimal inference test. Saving an untested provider is allowed and leaves it marked **Not tested**.
 
-Global AI and each feature have separate controls. The coordinator rejects a normal request unless global AI, the feature, provider, model, capability, and budget are all eligible. v2.4.0 registers future feature descriptions as unavailable; they cannot be enabled. Manual connection tests remain available while global AI is disabled and never include Plex or library data.
+Global AI, provider setup, provider approval, model approval, and each feature have separate controls. Provider setup operations—authentication/endpoint verification, discovery, health checks, and minimal test inference—require an enabled provider and administrator permission, but do not require production approval. This avoids requiring a provider to be approved before the administrator can establish whether it works. Global disable and emergency shutdown still block provider-bound setup work.
+
+Normal feature inference follows the full production authorization path: global and feature enablement, provider and model approval, per-feature and privacy allowlists, required capabilities, external-data policy, request limits, and cost/budget controls. Approving a local provider is explicit; Mixarr does not hard-code an Ollama bypass or automatically approve unknown providers. Setup tests never include Plex or library data.
 
 ## Credential encryption and backup
 
@@ -66,7 +68,7 @@ Provider location is explicitly **Local**, **Remote**, **User classified**, or *
 
 > Information sent to this provider may leave your local network. Mixarr will limit data to the fields required by the selected AI feature, but the provider may process that information according to its own terms and privacy policy.
 
-Health checks run only when global AI, the provider, and its health-check setting are enabled and the interval/backoff allows it. Failures increase the next delay. Provider failure never changes the main application liveness/readiness result.
+Health checks run only when global AI, the provider, and its health-check setting are enabled and the interval/backoff allows it. They may establish health before production approval, but cannot make the provider eligible for a feature. Failures increase the next delay. Provider failure never changes the main application liveness/readiness result.
 
 ## Timeouts, retries, streams, cancellation, and fallback
 
@@ -80,7 +82,7 @@ Fallback is off unless the request and saved feature/provider configuration expl
 
 Safe audit rows store identifiers, status, provider/model display metadata, timing, retries, streaming/cancellation, usage tokens, response byte count, cost if returned, sanitized error category/code, user ID when available, safe metadata, and an optional one-way prompt hash. They do not store prompts, responses, headers, credentials, Plex tokens, private library rows, or raw provider bodies/errors.
 
-Cost is shown only when reported by the provider and is otherwise **Cost data unavailable**. Local providers show **Local provider — API cost not tracked**. Mixarr does not invent model prices. A configured provider monthly budget blocks further requests once recorded estimated/reported cost reaches it; Mixarr does not switch providers unless fallback is explicitly configured.
+Cost is shown only when reported by the provider and is otherwise **Cost data unavailable**. Administrator-confirmed local providers show **Local / no estimated provider cost** and resolve to a numeric zero estimate without treating zero as missing. Mixarr does not invent model prices. A configured provider monthly budget blocks further requests once recorded estimated/reported cost reaches it; Mixarr does not switch providers unless fallback is explicitly configured.
 
 Audit retention uses configurable days, excludes active records, deletes in bounded batches, and logs only a cleanup summary.
 
@@ -100,9 +102,9 @@ extra_hosts:
   - "host.docker.internal:host-gateway"
 ```
 
-For connection failures, verify the base URL, container routing, server bind address, firewall, selected authentication style, and that the discovery/chat endpoints match the server. For TLS failures, install the correct CA chain in the container. Keep SSL verification enabled in production; the saved compatibility switch is visible but the built-in fetch transport does not bypass certificate verification.
+For connection failures, verify the base URL, container routing, server bind address, firewall, selected authentication style, and that the discovery/chat endpoints match the server. Provider diagnostics distinguish connection refusal, DNS failure, timeout, TLS failure, invalid endpoint responses, an empty Ollama installation, model-not-installed inference, discovery failure, and inference failure without logging credentials or prompts. HTTP is supported for administrator-confirmed LAN and local Ollama endpoints; HTTPS is not forced. For TLS failures, install the correct CA chain in the container and keep certificate verification enabled unless the deployment has a deliberate, reviewed exception.
 
-For empty discovery results, enter a model identifier manually and confirm the server exposes model listing. If a configured model disappears, Mixarr retains it and warns instead of silently selecting another. Connection tests use no library metadata and normal settings pages never display raw provider bodies.
+An empty successful Ollama `/api/tags` response means Ollama is reachable but no models are installed; Mixarr does not manufacture model names. Install a model in Ollama and refresh discovery. If a configured model disappears, Mixarr retains it and reports that the selected model is not installed instead of silently selecting another. Connection tests use no library metadata and normal settings pages never display raw provider bodies.
 
 ## Security boundary confirmation
 

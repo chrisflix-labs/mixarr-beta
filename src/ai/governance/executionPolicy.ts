@@ -24,11 +24,19 @@ function authorizationError(decision: AuthorizationDecision, context: { model: s
 
 // Sanitized server-side decision log (request ID + the same fields returned to
 // admins). Never contains prompts, responses, secrets, or credentials.
-function logAuthorizationDecision(correlationId: string | undefined, decision: AuthorizationDecision) {
+function logAuthorizationDecision(correlationId: string | undefined, decision: AuthorizationDecision, input: AuthorizationInput) {
   console.info("[AI] Provider feature authorization", {
     correlationId: correlationId || null,
-    requestedFeature: decision.requestedFeature,
     providerId: decision.providerId,
+    providerType: input.provider.providerType || input.provider.slug || "unknown",
+    providerMode: input.provider.locationClassification,
+    enabled: input.provider.enabled,
+    approvalStatus: input.provider.approved ? "APPROVED" : "NOT_APPROVED",
+    operation: "FEATURE_INFERENCE",
+    feature: decision.requestedFeature,
+    policyResult: decision.allowed ? "ALLOWED" : "BLOCKED",
+    reason: decision.failedCheck || "production_request_permitted",
+    requestedFeature: decision.requestedFeature,
     providerSlug: decision.providerSlug,
     external: decision.external,
     privacyMode: decision.privacyMode,
@@ -90,7 +98,7 @@ export async function assertAiExecutionPolicy(input: { request: AiRequest; provi
   ]);
   const authorizationInput = buildAuthorizationInput({ request: input.request, requiredCapabilities: input.requiredCapabilities, model: input.model, global, governance, provider, model_: model, featureSetting });
   const decision = evaluateProviderFeatureAuthorization(authorizationInput);
-  logAuthorizationDecision(input.request.correlationId, decision);
+  logAuthorizationDecision(input.request.correlationId, decision, authorizationInput);
   if (!decision.allowed) throw authorizationError(decision, { model: input.model, providerDisplayName: provider?.displayName || input.provider.displayName });
   return { external: decision.external, privacyMode: decision.privacyMode, externalDataCategories: decision.externalDataCategories, provider, model, governance, global };
 }
