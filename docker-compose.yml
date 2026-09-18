@@ -5,13 +5,15 @@ services:
     container_name: mixarr_db
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-mixarr}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mixarrpass}
-      POSTGRES_DB: ${POSTGRES_DB:-mixarrdb}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in the Compose environment}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Compose environment}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in the Compose environment}
     volumes:
       - mixarr_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mixarr} -d ${POSTGRES_DB:-mixarrdb}"]
+      # Use TCP and a real query; pg_isready does not verify credentials.
+      # $$ defers expansion to the container instead of the Compose shell.
+      test: ["CMD-SHELL", "PGPASSWORD=\"$$POSTGRES_PASSWORD\" psql -h db -p 5432 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -w -Atqc 'SELECT 1' >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -30,6 +32,15 @@ services:
     environment:
       - NODE_ENV=production
       - DOCKER=1
+      # Resolve these from the SAME Compose interpolation source as db.
+      # The entrypoint encodes credentials and constructs DATABASE_URL at runtime.
+      - POSTGRES_USER=${POSTGRES_USER:?Set POSTGRES_USER in the Compose environment}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Compose environment}
+      - POSTGRES_DB=${POSTGRES_DB:?Set POSTGRES_DB in the Compose environment}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      # Legacy/custom URLs remain supported, but must agree with POSTGRES_*.
+      - DATABASE_URL=${DATABASE_URL:-}
       - MIXARR_AI_ENABLED=${MIXARR_AI_ENABLED:-true}
       # Where Library Intelligence backups are written (v2.4.11). Mount this on a
       # volume SEPARATE from the database so backups survive a database volume reset.

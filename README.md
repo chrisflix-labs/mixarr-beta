@@ -86,23 +86,20 @@ These features exist in the current beta, but are still being tested across diff
 
 1. Clone this repository.
 2. Copy `.env.example` to `.env`.
-3. Fill in the Plex settings and any optional provider keys you want to use.
+3. Set a unique `POSTGRES_PASSWORD` for a new database, then fill in the Plex settings and any optional provider keys. Leave `DATABASE_URL` unset for Docker Compose; Mixarr constructs it from `POSTGRES_*`. Existing installations must keep their initialized credentials or follow the [database authentication repair guide](docs/DATABASE_AUTH.md).
 4. Start the stack:
 
 ```bash
-docker-compose up -d --build
+docker compose --env-file .env config --quiet
+docker compose --env-file .env up -d --build
 ```
 
-If your Docker setup uses Compose v2, this command may also work:
-
-```bash
-docker compose up -d --build
-```
+Use Compose v2. Run these commands in your existing deployment directory with its existing project name so the stack continues using its original database volume.
 
 Open Mixarr at:
 
 ```text
-http://localhost:3000
+http://localhost:3030
 ```
 
 From there, connect Plex, choose your music library, start a metadata sync, and use the dashboard/settings tools to run optional metadata, BPM, genre, popularity, and audio-feature jobs.
@@ -132,6 +129,12 @@ Do not remove an abnormally large container before collecting `docker diff`, `du
 ## Configuration Notes
 
 Most users should start with `.env.example` and only change the values they need. Provider keys are optional, but more configured providers can improve metadata coverage.
+
+### Database
+
+The bundled stack uses `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` for both containers, with the internal address `db:5432`. Startup safely URL-encodes these values, checks any explicitly supplied `DATABASE_URL` for contradictions, and authenticates before running the existing Prisma schema/backfill sequence. The database healthcheck also authenticates over TCP.
+
+Changing `.env` does **not** change a password stored in an existing PostgreSQL volume. See [Database authentication: configuration, verification, and non-destructive repair](docs/DATABASE_AUTH.md) for environment precedence, custom URLs, secrets, and one-time password reconciliation. Never delete a database volume to fix P1000.
 
 ### Plex
 
@@ -222,10 +225,10 @@ MIXARR_STATUS_IDLE_POLL_SECONDS=30
 For larger installs, Prisma supports connection-string parameters such as `connection_limit` and `pool_timeout`:
 
 ```env
-DATABASE_URL=postgresql://mixarr:mixarrpass@db:5432/mixarrdb?schema=public&connection_limit=20&pool_timeout=20
+DATABASE_URL=postgresql://ENCODED_USER:ENCODED_PASSWORD@db:5432/ENCODED_DATABASE?schema=public&connection_limit=20&pool_timeout=20
 ```
 
-Prefer lowering job concurrency and avoiding overlapping syncs before raising the pool size.
+Replace the placeholders with the percent-encoded values of your actual `POSTGRES_*` settings. Prefer lowering job concurrency and avoiding overlapping syncs before raising the pool size.
 
 ## Library Intelligence Backup & Restore
 

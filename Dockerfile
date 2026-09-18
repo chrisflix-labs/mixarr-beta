@@ -96,6 +96,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 # the immutable image; `npx --yes` downloaded about 230 MB into /tmp on every
 # fresh v2.4.14 container and was a confirmed writable-layer defect.
 COPY --from=production-deps --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --chown=nextjs:nodejs scripts/database-config.js scripts/docker-entrypoint.js ./scripts/
 
 VOLUME ["/config", "/data"]
 
@@ -110,4 +111,5 @@ ENV HOSTNAME="0.0.0.0"
 # Existing installations historically used `db push`, so required identity fields
 # must be added and populated before Prisma reconciles the final schema. The
 # post-push step performs the same idempotent data backfill as the v2.1.1 migration.
-CMD ["sh", "-c", "./node_modules/.bin/prisma db execute --schema prisma/schema.prisma --file prisma/db-push-preflight.sql && ./node_modules/.bin/prisma db push --skip-generate && ./node_modules/.bin/prisma db execute --schema prisma/schema.prisma --file prisma/migrations/20260803010000_storage_safety_v2415/migration.sql && ./node_modules/.bin/prisma db execute --schema prisma/schema.prisma --file prisma/db-push-v2.1.1-backfill.sql && ./node_modules/.bin/prisma db execute --schema prisma/schema.prisma --file prisma/db-push-v2.4.13-request-limit-backfill.sql && node server.js"]
+ENTRYPOINT ["node", "scripts/docker-entrypoint.js"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma db execute --schema prisma/schema.prisma --file prisma/db-push-preflight.sql && ./node_modules/.bin/prisma db push --skip-generate && ./node_modules/.bin/prisma db execute --schema prisma/schema.prisma --file prisma/migrations/20260803010000_storage_safety_v2415/migration.sql && ./node_modules/.bin/prisma db execute --schema prisma/schema.prisma --file prisma/db-push-v2.1.1-backfill.sql && ./node_modules/.bin/prisma db execute --schema prisma/schema.prisma --file prisma/db-push-v2.4.13-request-limit-backfill.sql && exec node server.js"]

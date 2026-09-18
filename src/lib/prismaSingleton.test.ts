@@ -14,13 +14,17 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe("Prisma singleton", () => {
-  it("keeps PrismaClient construction isolated to src/lib/prisma.ts", () => {
+  it("keeps PrismaClient construction isolated to the app singleton and startup probe", () => {
     const root = process.cwd();
     const offenders = sourceFiles(root)
       .filter((file) => /new\s+PrismaClient\s*\(/.test(readFileSync(file, "utf8")))
       .map((file) => relative(root, file).replace(/\\/g, "/"));
 
-    assert.deepEqual(offenders, ["src/lib/prisma.ts"]);
+    // The entrypoint authenticates once in its own process and disconnects
+    // before launching the server; application code still uses one singleton.
+    assert.deepEqual(offenders, ["scripts/docker-entrypoint.js", "src/lib/prisma.ts"]);
+    const entrypoint = readFileSync(join(root, "scripts/docker-entrypoint.js"), "utf8");
+    assert.match(entrypoint, /finally\s*\{\s*await prisma\.\$disconnect\(\)/);
   });
 
   it("uses a global singleton in the shared Prisma helper", () => {
